@@ -1463,6 +1463,15 @@ PER_SHOT_USER_PROMPT_TEMPLATE = """SHOT #{shot_index} of {total_shots} | {shot_t
 - Text elements: {text_elements}
 - Animation: {animation_strategy}
 - Complexity: {complexity_level}
+- Entrance transition: {transition_in}
+
+**WRAPPER ENTRANCE ANIMATION**:
+The shot's outermost `<div>` MUST have `id="shot-root"` and `style="position:relative;width:100%;height:100%;overflow:hidden"`.
+Inject this as the FIRST `<script>` block (before per-element animations):
+```js
+{transition_css_block}
+```
+If `transition_in` is `cut`, omit this block entirely.
 {image_prompt_line}
 {video_query_line}
 {director_notes}
@@ -1506,4 +1515,17 @@ Return a SINGLE shot as JSON (no array, no wrapper):
 
 The first character of your response must be `{{` and the last must be `}}`. No markdown, no commentary.
 """
+
+
+TRANSITION_CSS_BLOCKS: dict = {
+    "cut":         "",
+    "fade":        "gsap.fromTo('#shot-root',{opacity:0},{opacity:1,duration:0.4,ease:'power2.out'});",
+    "slide_right": "gsap.fromTo('#shot-root',{x:'-100%',opacity:0},{x:'0%',opacity:1,duration:0.45,ease:'power3.out'});",
+    "slide_left":  "gsap.fromTo('#shot-root',{x:'100%',opacity:0},{x:'0%',opacity:1,duration:0.45,ease:'power3.out'});",
+    "slide_up":    "gsap.fromTo('#shot-root',{y:'60px',opacity:0},{y:'0px',opacity:1,duration:0.5,ease:'power3.out'});",
+    "zoom_in":     "gsap.fromTo('#shot-root',{scale:0.85,opacity:0},{scale:1,opacity:1,duration:0.45,ease:'back.out(1.4)'});",
+    "zoom_out":    "gsap.fromTo('#shot-root',{scale:1.15,opacity:0},{scale:1,opacity:1,duration:0.45,ease:'power3.out'});",
+    "wipe_right":  "gsap.set('#shot-root',{clipPath:'inset(0 100% 0 0)'});gsap.to('#shot-root',{clipPath:'inset(0 0% 0 0)',duration:0.5,ease:'power3.inOut'});",
+    "dissolve_up": "gsap.fromTo('#shot-root',{y:'20px',opacity:0},{y:'0px',opacity:1,duration:0.55,ease:'power2.out'});",
+}
 

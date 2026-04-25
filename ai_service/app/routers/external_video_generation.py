@@ -30,7 +30,10 @@ from ..schemas.video_generation import (
     UpdateAudioTrackRequest,
     DeleteAudioTrackRequest,
     AudioTrackResponse,
+    VideoCostPreviewRequest,
+    VideoCostPreviewResponse,
 )
+from ..services.video_estimation_service import estimate_video_generation
 from pydantic import BaseModel, Field
 from ..services.video_generation_service import VideoGenerationService
 from ..repositories.ai_video_repository import AiVideoRepository
@@ -151,6 +154,46 @@ def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationSe
 
 
 @router.post(
+    "/preview-cost",
+    response_model=VideoCostPreviewResponse,
+    summary="Estimate credits/cost for a video generation request before submitting",
+)
+def preview_video_cost(
+    payload: VideoCostPreviewRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> VideoCostPreviewResponse:
+    """
+    Returns the resolved selections (so the FE can show a confirmation summary)
+    plus an expected/low/high credit and USD cost estimate, plus the institute's
+    current credit balance and whether it covers the worst-case high estimate.
+    """
+    result = estimate_video_generation(
+        db,
+        institute_id=institute_id,
+        model=payload.model,
+        quality_tier=payload.quality_tier,
+        target_duration=payload.target_duration,
+        target_audience=payload.target_audience,
+        orientation=payload.orientation,
+        voice_gender=payload.voice_gender,
+        tts_provider=payload.tts_provider,
+        voice_id=payload.voice_id,
+        language=payload.language,
+        generate_avatar=payload.generate_avatar,
+        background_music_enabled=payload.background_music_enabled,
+        sound_effects_enabled=payload.sound_effects_enabled,
+        content_type=payload.content_type,
+        visual_style=payload.visual_style,
+        captions_enabled=payload.captions_enabled,
+        html_quality=payload.html_quality,
+        review_mode=payload.review_mode,
+        attachments_count=payload.attachments_count,
+    )
+    return VideoCostPreviewResponse(**result)
+
+
+@router.post(
     "/generate",
     summary="Generate AI video (External)",
     response_class=StreamingResponse
@@ -231,6 +274,7 @@ async def generate_video_external(
                         mute_tts_on_source_clips=p.mute_tts_on_source_clips,
                         background_music_enabled=p.background_music_enabled,
                         background_music_volume=p.background_music_volume,
+                        sub_shots_enabled=p.sub_shots_enabled,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -395,6 +439,7 @@ async def resume_video_external(
                         mute_tts_on_source_clips=_meta.get("mute_tts_on_source_clips", False),
                         background_music_enabled=_meta.get("background_music_enabled"),
                         background_music_volume=_meta.get("background_music_volume"),
+                        sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -520,6 +565,7 @@ async def retry_video_external(
                     mute_tts_on_source_clips=_meta.get("mute_tts_on_source_clips", False),
                     background_music_enabled=_meta.get("background_music_enabled"),
                     background_music_volume=_meta.get("background_music_volume"),
+                    sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                 ):
                     await q.put(json.dumps(event))
         except Exception as exc:

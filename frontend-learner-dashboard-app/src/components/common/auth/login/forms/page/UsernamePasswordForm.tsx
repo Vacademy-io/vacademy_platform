@@ -203,6 +203,28 @@ export function UsernameLogin({
               console.error("Institute ID or User ID is undefined");
             }
 
+            // Honor explicit deep-link redirect FIRST (highest priority).
+            // Set when an unauthenticated user clicks a deep link like
+            // /reports/attendance?from=...&to=... — TanStack navigate({to})
+            // strips query strings, so use window.location.assign for paths
+            // that contain '?' to preserve the URL verbatim.
+            const explicitRedirect =
+              typeof redirect === "string" && redirect && redirect !== "/login/"
+                ? redirect
+                : null;
+
+            if (explicitRedirect) {
+              if (
+                /^https?:\/\//.test(explicitRedirect) ||
+                explicitRedirect.includes("?")
+              ) {
+                window.location.assign(explicitRedirect);
+              } else {
+                navigate({ to: explicitRedirect as never });
+              }
+              return;
+            }
+
             // Determine redirect URL based on type and courseId
             let redirectUrl = "/dashboard";
 

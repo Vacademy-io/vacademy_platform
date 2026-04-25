@@ -453,6 +453,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "image_prompt_enhancement": False,
         "shot_diversity_enforcement": False,
         "segment_context": False,
+        # Stock-only: no AI image generation; use CSS gradients + stock photos/videos
+        "stock_preference": "stock_only",
+        # Use cheap flash model for all LLM calls in this tier
+        "preferred_script_model": "google/gemini-3-flash-preview",
+        "preferred_shot_model": "google/gemini-3-flash-preview",
     },
     "standard": {
         "script_temperature": 0.5,
@@ -464,6 +469,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "image_prompt_enhancement": False,
         "shot_diversity_enforcement": True,
         "segment_context": True,
+        # Strongly prefer stock; fall back to AI only for abstract/conceptual content
+        "stock_preference": "stock_first",
+        "preferred_script_model": "google/gemini-3-flash-preview",
+        "preferred_shot_model": "google/gemini-3-flash-preview",
     },
     "premium": {
         "script_temperature": 0.6,
@@ -483,6 +492,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_enabled": True,
         "sound_max_cues_per_shot": 1,
         "sound_max_cues_per_video": 10,
+        # Prefer stock; Director runs on main model, script+shots use flash
+        "stock_preference": "stock_first",
+        "preferred_script_model": "google/gemini-3-flash-preview",
+        "preferred_shot_model": "google/gemini-3-flash-preview",
     },
     "ultra": {
         "script_temperature": 0.6,
@@ -506,6 +519,8 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_max_cues_per_video": 20,
         "background_music_enabled": True,
         "background_music_default_volume": 0.20,
+        # Use stock where available; AI for hero/conceptual shots
+        "stock_preference": "stock_first",
     },
     "super_ultra": {
         "script_temperature": 0.6,
@@ -538,38 +553,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_max_cues_per_video": 40,
         "background_music_enabled": True,
         "background_music_default_volume": 0.20,
+        # Use stock where available; AI for motion-biased hero shots that need precise visuals
+        "stock_preference": "stock_first",
     },
 }
-
-
-# Per-million token USD rates for models routed through OpenRouter.
-# Fallback rates are used for unknown model IDs.
-_LLM_PRICING: Dict[str, Dict[str, float]] = {
-    "google/gemini-2.5-pro": {"input": 1.25, "output": 10.0},
-    "google/gemini-2.5-pro-preview": {"input": 1.25, "output": 10.0},
-    "google/gemini-2.0-pro": {"input": 1.25, "output": 5.0},
-    "google/gemini-2.5-flash": {"input": 0.10, "output": 0.40},
-    "google/gemini-pro-1.5": {"input": 1.25, "output": 5.0},
-    "google/gemini-1.5-pro": {"input": 1.25, "output": 5.0},
-    "google/gemini-1.5-flash": {"input": 0.075, "output": 0.30},
-}
-_LLM_PRICING_FALLBACK: Dict[str, float] = {"input": 1.25, "output": 5.0}
-_IMAGE_COST_USD: float = 0.04          # per generated image
-_TTS_COST_PER_1K_CHARS_USD: float = 0.30  # ElevenLabs standard rate
-
-
-def _calculate_generation_cost(
-    model_id: str,
-    prompt_tokens: int,
-    completion_tokens: int,
-    image_count: int,
-    tts_character_count: int,
-) -> float:
-    rates = _LLM_PRICING.get(model_id, _LLM_PRICING_FALLBACK)
-    llm_cost = (prompt_tokens / 1_000_000) * rates["input"] + (completion_tokens / 1_000_000) * rates["output"]
-    img_cost = image_count * _IMAGE_COST_USD
-    tts_cost = (tts_character_count / 1000) * _TTS_COST_PER_1K_CHARS_USD
-    return round(llm_cost + img_cost + tts_cost, 4)
 
 
 def _validate_whisper_script(word_entries: list, lang_code: str) -> bool:
@@ -1464,6 +1451,7 @@ class VideoGenerationPipeline:
         mute_tts_on_source_clips: bool = False,
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
+        sub_shots_enabled: bool = False,
         progress_callback: Optional[Any] = None,
     ) -> Dict[str, Any]:
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
@@ -1498,6 +1486,10 @@ class VideoGenerationPipeline:
         # Volume is only used when a track is actually generated.
         self._background_music_enabled_override: Optional[bool] = background_music_enabled
         self._background_music_volume_override: Optional[float] = background_music_volume
+        # Experimental: split dense shots into 2 focused sub-shots before HTML gen.
+        self._sub_shots_enabled: bool = bool(sub_shots_enabled)
+        if self._sub_shots_enabled:
+            print("✂️  Sub-shot decomposition ENABLED (experimental)")
         # Populated by the music stage once segments are generated + merged.
         # Read by _write_timeline to insert a "Background Music" entry into
         # meta.audio_tracks so the player + renderer see it automatically.
@@ -1962,7 +1954,21 @@ class VideoGenerationPipeline:
                 # Resuming from a checkpoint after TTS — files must already exist
                 self._require_file(response_json, "narration_raw.json (ElevenLabs response)")
                 self._require_file(audio_path, "narration.mp3 (decoded audio)")
-                tts_outputs = {"response_json": response_json, "audio_path": audio_path}
+                # Recover TTS character count from the script file so cost/credit
+                # accounting still reflects the TTS work done in the prior run.
+                _resumed_tts_chars = 0
+                try:
+                    _script_text_for_tts = script_path.read_text(encoding="utf-8") if script_path and script_path.exists() else ""
+                    _resumed_tts_chars = len(_script_text_for_tts)
+                except Exception:
+                    _resumed_tts_chars = 0
+                if _resumed_tts_chars:
+                    accumulate_usage({"tts_character_count": _resumed_tts_chars})
+                tts_outputs = {
+                    "response_json": response_json,
+                    "audio_path": audio_path,
+                    "tts_character_count": _resumed_tts_chars,
+                }
             # else: no-audio content type (e.g. SLIDES) — leave tts_outputs as empty defaults
 
         # Only proceed to WORDS if we are not stopping before it
@@ -2472,21 +2478,16 @@ class VideoGenerationPipeline:
         else:
             video_path = None
 
-        # Attach per-video cost estimate so the service layer can persist it in metadata
-        _model_id = getattr(self.html_client, 'current_model', self.html_client.default_model)
-        total_usage["model"] = _model_id
-        total_usage["estimated_cost_usd"] = _calculate_generation_cost(
-            model_id=_model_id,
-            prompt_tokens=total_usage.get("prompt_tokens", 0),
-            completion_tokens=total_usage.get("completion_tokens", 0),
-            image_count=total_usage.get("image_count", 0),
-            tts_character_count=total_usage.get("tts_character_count", 0),
+        # Token totals are emitted; cost estimation is the service layer's job
+        # (it has DB access to the canonical ai_models pricing table).
+        total_usage["model"] = getattr(
+            self.html_client, "current_model", self.html_client.default_model
         )
-        print(f"💰 Estimated generation cost: ${total_usage['estimated_cost_usd']:.4f} "
-              f"({total_usage.get('prompt_tokens', 0):,} in / "
+        print(f"📊 Generation token totals: "
+              f"{total_usage.get('prompt_tokens', 0):,} in / "
               f"{total_usage.get('completion_tokens', 0):,} out tokens, "
               f"{total_usage.get('image_count', 0)} images, "
-              f"{total_usage.get('tts_character_count', 0):,} TTS chars)")
+              f"{total_usage.get('tts_character_count', 0):,} TTS chars")
 
         return {
             "run_dir": run_dir,
@@ -4872,6 +4873,113 @@ class VideoGenerationPipeline:
         return director_plan, total_usage
 
     # ------------------------------------------------------------------
+    # Sub-shot decomposition (experimental) — split dense shots in 2
+    # ------------------------------------------------------------------
+
+    def _decompose_shot(
+        self,
+        shot: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Optionally split one shot into 2 focused sub-shots.
+
+        Uses a heuristic gate first to skip cheap shots, then a small LLM
+        call (script_client) to make the decision. Returns the original
+        shot unchanged if decomposition isn't warranted or any validation
+        fails (graceful fallback).
+        """
+        try:
+            duration = float(shot.get("end_time", 0)) - float(shot.get("start_time", 0))
+        except (TypeError, ValueError):
+            return [shot]
+
+        shot_type = shot.get("shot_type", "")
+        # Never split typography-only shots — they are already a single beat.
+        if shot_type in ("KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP"):
+            return [shot]
+
+        complexity = shot.get("complexity_level", "moderate")
+        text_elements = shot.get("text_elements", []) or []
+        anim = (shot.get("animation_strategy", "") or "").lower()
+        needs_check = (
+            (duration > 6.0 and complexity == "dense")
+            or len(text_elements) > 5
+            or (" then " in anim or "phase" in anim)
+        )
+        if not needs_check:
+            return [shot]
+
+        sys_prompt = (
+            "You are a video shot decomposer. Decide if a shot should split into exactly "
+            "2 focused sub-shots.\n"
+            "Split ONLY when animation_strategy has two clearly distinct visual phases, OR "
+            "text_elements has 6+ items in 2 logical groups.\n"
+            "Do NOT split progressive builds (growing chart, equation reveal, step-by-step).\n"
+            "Return JSON only: {\"should_split\": false}\n"
+            "OR {\"should_split\": true, \"sub_shots\": [<shot_a>, <shot_b>]}\n"
+            "Sub-shots: contiguous (a.start==parent.start, b.end==parent.end, "
+            "a.end==b.start), same shot_type, focused visual_description / "
+            "animation_strategy / text_elements, narration_excerpt split at a natural "
+            "sentence break, sync_points split by time range."
+        )
+        user_prompt = (
+            f"Parent shot:\n{json.dumps(shot, ensure_ascii=False)}\n\n"
+            "Decide and return JSON only."
+        )
+
+        try:
+            raw, _usage = self.script_client.chat(
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+                max_tokens=1200,
+            )
+            data = _extract_json_blob(raw)
+        except Exception as exc:
+            print(f"   ⚠️  Decomposer call failed for shot {shot.get('shot_index', '?')}: {exc}")
+            return [shot]
+
+        if not isinstance(data, dict) or not data.get("should_split"):
+            return [shot]
+
+        sub_shots = data.get("sub_shots") or []
+        if len(sub_shots) != 2:
+            return [shot]
+
+        try:
+            a, b = sub_shots[0], sub_shots[1]
+            a_start = float(a.get("start_time"))
+            a_end = float(a.get("end_time"))
+            b_start = float(b.get("start_time"))
+            b_end = float(b.get("end_time"))
+            p_start = float(shot.get("start_time"))
+            p_end = float(shot.get("end_time"))
+        except (TypeError, ValueError, KeyError):
+            return [shot]
+
+        if not (
+            abs(a_start - p_start) < 0.01
+            and abs(b_end - p_end) < 0.01
+            and abs(a_end - b_start) < 0.01
+        ):
+            return [shot]
+
+        # Field inheritance — copy parent context the decomposer didn't set
+        _inherit_keys = ("image_prompt", "video_query", "notes", "overlay", "beat_index")
+        for _ss in (a, b):
+            for _k in _inherit_keys:
+                if _k not in _ss and _k in shot:
+                    _ss[_k] = shot[_k]
+            _ss.setdefault("shot_type", shot_type)
+
+        # transition_in: first sub-shot inherits parent's; second uses 'cut' (interior)
+        a["transition_in"] = shot.get("transition_in") or "fade"
+        b["transition_in"] = "cut"
+
+        return [a, b]
+
+    # ------------------------------------------------------------------
     # Per-Shot HTML generation — uses Director plan + focused prompts
     # ------------------------------------------------------------------
 
@@ -4892,7 +5000,7 @@ class VideoGenerationPipeline:
         Returns (entries, usage) in the same format as _generate_html_segments.
         """
         from shot_type_cards import build_per_shot_system_prompt
-        from prompts import PER_SHOT_USER_PROMPT_TEMPLATE, get_html_generation_safe_area
+        from prompts import PER_SHOT_USER_PROMPT_TEMPLATE, get_html_generation_safe_area, TRANSITION_CSS_BLOCKS
 
         # Skill library (ultra/super_ultra) — resolved lazily below per-shot
         _skill_enabled = bool(self._tier_config.get("skill_library_enabled"))
@@ -4969,17 +5077,48 @@ class VideoGenerationPipeline:
 
         def _shot_task(shot_idx: int, shot: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
             """Generate HTML for a single shot."""
+            # Sub-shot identity (set by the dispatch block below). When a parent
+            # shot is split, both sub-shots run with the parent's `shot_idx` so
+            # neighbour lookups (shots[shot_idx ± 1]) and progress totals stay
+            # correct; uniqueness is encoded into the cache path and entry id
+            # via `_sub_suffix` instead.
+            _sub_idx_val: Optional[int] = shot.get("_sub_idx") if shot.get("_is_sub_shot") else None
+            _sub_suffix = f"_sub{_sub_idx_val}" if _sub_idx_val is not None else ""
+            _entry_id = f"shot-{shot_idx}" + (f"-sub{_sub_idx_val}" if _sub_idx_val is not None else "")
+            _log_label = f"Shot {shot_idx + 1}" + (f".{_sub_idx_val + 1}" if _sub_idx_val is not None else "")
+
             # Resume: load from cache if this shot was already generated in a prior run
-            _cache_path = _shot_cache_dir / f"shot_{shot_idx:03d}.json"
+            _cache_path = _shot_cache_dir / f"shot_{shot_idx:03d}{_sub_suffix}.json"
             if _cache_path.exists():
                 try:
                     _cached = json.loads(_cache_path.read_text())
                     if _cached.get("entries"):
-                        print(f"   ♻️  Shot {shot_idx + 1} loaded from cache — skipping LLM call")
+                        print(f"   ♻️  {_log_label} loaded from cache — skipping LLM call")
                         # Return zero usage so we don't double-count already-paid tokens
                         return _cached["entries"], {}
                 except Exception:
                     pass  # corrupt cache — regenerate
+
+            # Sub-shot decomposition (experimental flag) — split dense shots
+            # into 2 focused sub-shots before HTML generation. Both sub-shots
+            # recurse with the parent's `shot_idx` so neighbour context and
+            # progress totals stay sane; per-sub-shot uniqueness comes from
+            # `_sub_idx` (used for cache path + entry id only).
+            if getattr(self, "_sub_shots_enabled", False) and not shot.get("_is_sub_shot"):
+                _sub_shots = self._decompose_shot(shot)
+                if len(_sub_shots) > 1:
+                    print(f"   ✂️  Shot {shot_idx + 1} → {len(_sub_shots)} sub-shots")
+                    _all_entries: List[Dict[str, Any]] = []
+                    _agg_usage: Dict[str, Any] = {}
+                    for _i, _ss in enumerate(_sub_shots):
+                        _ss["_is_sub_shot"] = True
+                        _ss["_sub_idx"] = _i
+                        _e, _u = _shot_task(shot_idx, _ss)
+                        _all_entries.extend(_e)
+                        for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                            if _k in _u:
+                                _agg_usage[_k] = _agg_usage.get(_k, 0) + _u[_k]
+                    return _all_entries, _agg_usage
 
             shot_type = shot.get("shot_type", "TEXT_DIAGRAM")
             start_time = float(shot.get("start_time", 0))
@@ -5073,6 +5212,9 @@ class VideoGenerationPipeline:
 
             text_elements_str = ", ".join(shot.get("text_elements", [])) or "(Director will specify)"
 
+            transition_in = shot.get("transition_in") or "fade"
+            transition_css_block = TRANSITION_CSS_BLOCKS.get(transition_in, "")
+
             user_prompt = PER_SHOT_USER_PROMPT_TEMPLATE.format(
                 shot_index=shot_idx + 1,
                 total_shots=total_shots,
@@ -5084,6 +5226,8 @@ class VideoGenerationPipeline:
                 text_elements=text_elements_str,
                 animation_strategy=shot.get("animation_strategy", ""),
                 complexity_level=shot.get("complexity_level", "moderate"),
+                transition_in=transition_in,
+                transition_css_block=transition_css_block,
                 image_prompt_line=image_prompt_line,
                 video_query_line=video_query_line,
                 director_notes=director_notes,
@@ -5102,6 +5246,28 @@ class VideoGenerationPipeline:
                 width=_w,
                 height=_h,
             )
+
+            # Inject stock media preference instruction based on tier config.
+            _stock_pref = self._tier_config.get("stock_preference", "mixed")
+            _stock_instruction = {
+                "stock_only": (
+                    "\n\n**MEDIA RULE — STOCK ONLY**: Do NOT write `data-img-prompt` attributes. "
+                    "AI image generation is disabled for this tier. "
+                    "For any background or illustration: use `<video data-video-query='...'>` "
+                    "or `<img data-img-source='stock' data-img-prompt='...'>` (stock photo). "
+                    "For abstract content with no stock equivalent, use a CSS gradient background instead."
+                ),
+                "stock_first": (
+                    "\n\n**MEDIA RULE — STOCK FIRST**: For all backgrounds, B-roll, and real-world scenes "
+                    "(people, places, objects, nature, technology), use `<video data-video-query='...'>` "
+                    "or `<img data-img-source='stock' data-img-prompt='...'>` (stock photo). "
+                    "Only use `data-img-prompt` (AI generation) for truly abstract or conceptual visuals "
+                    "that have no real-world equivalent (e.g. mathematical structures, fictional concepts, "
+                    "stylised diagrams). Default to stock unless AI is genuinely necessary."
+                ),
+            }.get(_stock_pref, "")
+            if _stock_instruction:
+                user_prompt = user_prompt + _stock_instruction
 
             # Inject the shared shot pack (premium/ultra/super_ultra only).
             # Rewrite the id_prefix placeholder with this shot's concrete index.
@@ -5350,7 +5516,7 @@ class VideoGenerationPipeline:
                     "htmlStartX": 0, "htmlStartY": 0,
                     "htmlEndX": _w, "htmlEndY": _h,
                     "html": kinetic_html,
-                    "id": f"shot-{shot_idx}",
+                    "id": _entry_id,
                     "index": shot_idx,
                     "z": shot.get("z", 10),
                     # Tag with shot_type so the Sound Planner's family logic
@@ -5436,7 +5602,7 @@ class VideoGenerationPipeline:
                         "start": start_time, "end": end_time,
                         "htmlStartX": 0, "htmlStartY": 0, "htmlEndX": _w, "htmlEndY": _h,
                         "html": _sbs_html,
-                        "id": f"shot-{shot_idx}", "index": shot_idx,
+                        "id": _entry_id, "index": shot_idx,
                         "z": shot.get("z", 10),
                         "_shot_type": shot_type,
                         "_narration_excerpt": shot.get("narration_excerpt", ""),
@@ -5629,7 +5795,7 @@ class VideoGenerationPipeline:
                 "htmlEndX": _w,
                 "htmlEndY": _h,
                 "html": html,
-                "id": f"shot-{shot_idx}",
+                "id": _entry_id,
                 "index": shot_idx,
                 # Stashed for downstream stock-video ranking — not rendered.
                 "_shot_type": shot_type,
@@ -7566,6 +7732,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # Stock photo path: try configured providers in order (hint + fallback) before
         # falling through to AI generation.
         img_source = task.get("img_source", "generate")
+        if self._tier_config.get("stock_preference") == "stock_only" and img_source == "generate":
+            img_source = "stock"
         if img_source == "stock":
             orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
             services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), prompt)
@@ -7981,6 +8149,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             immediately — the caller handles sleep + requeue in the main thread.
             """
             img_source = task.get("img_source", "generate")
+
+            # stock_only tier: treat every img_source=="generate" as "stock" — never
+            # call the AI image generator. If stock search also fails, the tag stays
+            # as-is and the CSS gradient background (written by the LLM) shows instead.
+            _stock_only = self._tier_config.get("stock_preference") == "stock_only"
+            if _stock_only and img_source == "generate":
+                img_source = "stock"
+
             # Stock photo path: try configured providers in order (hint + fallback)
             # before falling through to AI generation.
             if img_source == "stock":

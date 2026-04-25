@@ -51,7 +51,9 @@ function classify(passed: number, total: number, hadError: boolean): Verdict {
 }
 
 export function QuestionModeView({ question, slideId }: Props) {
-  // Per-language code, kept locally (not persisted across sessions in v1).
+  const codeStorageKey = `coding_code_${slideId}`;
+  // Per-language code, persisted per-slide in Capacitor Preferences so a
+  // refresh / app re-open doesn't wipe in-progress work. Hydrated below.
   const [codeByLang, setCodeByLang] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const l of question.allowedLanguages) {
@@ -63,6 +65,61 @@ export function QuestionModeView({ question, slideId }: Props) {
   const [language, setLanguage] = useState<LangId>(() =>
     pickInitialLang(question.allowedLanguages),
   );
+  const codeHydratedRef = useRef(false);
+
+  // Hydrate saved code from Preferences. Merge over the starter defaults so
+  // languages the learner hasn't touched still show their starter, and any
+  // newly-allowed language added by the admin since last session shows up.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { value } = await Preferences.get({ key: codeStorageKey });
+        if (cancelled) return;
+        if (value) {
+          try {
+            const obj = JSON.parse(value) as {
+              codeByLang?: Record<string, string>;
+              language?: LangId;
+            };
+            if (obj && typeof obj === "object") {
+              if (obj.codeByLang && typeof obj.codeByLang === "object") {
+                setCodeByLang((prev) => ({ ...prev, ...obj.codeByLang }));
+              }
+              if (
+                obj.language &&
+                question.allowedLanguages.includes(obj.language)
+              ) {
+                setLanguage(obj.language);
+              }
+            }
+          } catch {
+            // corrupt entry — ignore, starter defaults remain
+          }
+        }
+      } catch {
+        // Preferences unavailable; keep starter defaults
+      } finally {
+        if (!cancelled) codeHydratedRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [codeStorageKey, question.allowedLanguages]);
+
+  // Debounce-save code + last-used language whenever they change. Skipped
+  // until hydration finishes so we don't overwrite saved code with starters.
+  useEffect(() => {
+    if (!codeHydratedRef.current) return;
+    const t = setTimeout(() => {
+      Preferences.set({
+        key: codeStorageKey,
+        value: JSON.stringify({ codeByLang, language }),
+      }).catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+  }, [codeByLang, language, codeStorageKey]);
 
   const [output, setOutput] = useState<string>("");
   const [isRunning, setIsRunning] = useState(false);

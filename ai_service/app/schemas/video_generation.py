@@ -10,6 +10,37 @@ from pydantic import BaseModel, Field, model_validator
 _log = logging.getLogger(__name__)
 
 
+class VideoCostPreviewRequest(BaseModel):
+    """
+    Request for the pre-generation credit/cost preview. Mirrors VideoGenerationRequest
+    but allows omitting prompt/files (estimate is heuristic, doesn't need them).
+    """
+    quality_tier: str = "ultra"
+    model: Optional[str] = None
+    target_duration: str = "2-3 minutes"
+    target_audience: str = "General/Adult"
+    orientation: Literal["landscape", "portrait"] = "landscape"
+    visual_style: str = "standard"
+    voice_gender: str = "female"
+    tts_provider: str = "standard"
+    voice_id: Optional[str] = None
+    language: str = "English"
+    generate_avatar: bool = False
+    background_music_enabled: Optional[bool] = None
+    sound_effects_enabled: bool = True
+    content_type: str = "VIDEO"
+    captions_enabled: bool = True
+    html_quality: str = "advanced"
+    review_mode: bool = False
+    attachments_count: int = 0
+
+
+class VideoCostPreviewResponse(BaseModel):
+    selections: Dict[str, Any]
+    estimate: Dict[str, Any]
+    balance: Dict[str, Any]
+
+
 class ReferenceFileItem(BaseModel):
     """A reference file (image or PDF) attached to a generation request."""
     url: str = Field(..., description="Public S3 URL of the file")
@@ -161,6 +192,15 @@ class VideoGenerationRequest(BaseModel):
             "Initial volume multiplier (0.0-1.0) for the generated background music "
             "track. If omitted, uses the tier default (0.20). Users can adjust post-"
             "generation via the audio-tracks UI."
+        )
+    )
+    sub_shots_enabled: bool = Field(
+        default=False,
+        description=(
+            "Experimental: when True, the pipeline runs a quick decomposer on each "
+            "shot and may split dense shots into 2 focused sub-shots before HTML "
+            "generation. Improves visual precision on motion-heavy scenes at the "
+            "cost of one extra small LLM call per qualifying shot."
         )
     )
     mute_tts_on_source_clips: bool = Field(

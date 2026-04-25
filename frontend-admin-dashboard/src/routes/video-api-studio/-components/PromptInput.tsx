@@ -42,6 +42,7 @@ import {
     Monitor,
     Smartphone,
     Upload,
+    Scissors,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
 import { useFileUpload } from '@/hooks/use-file-upload';
@@ -75,6 +76,7 @@ import {
 import { useAIModelsList } from '@/hooks/useAiModels';
 import { useAiCreditsQuery, useCreditEstimateQuery } from '@/services/ai-credits/get-ai-credits';
 import { LatexRenderer } from './LatexRenderer';
+import { CostPreviewInline, CostPreviewModal, useCostPreview } from './CostPreview';
 
 interface PromptInputProps {
     onGenerate: (request: GenerateVideoRequest) => void;
@@ -135,6 +137,8 @@ export function PromptInput({
 }: PromptInputProps) {
     const [showPreview, setShowPreview] = useState(false);
     const [isPdfProcessing, setIsPdfProcessing] = useState(false);
+    const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+    const [pendingRequest, setPendingRequest] = useState<GenerateVideoRequest | null>(null);
     // TTS voice selection state
     const [availableVoices, setAvailableVoices] = useState<TtsVoice[]>([]);
     const [isLoadingVoices, setIsLoadingVoices] = useState(false);
@@ -393,14 +397,13 @@ export function PromptInput({
         }
     };
 
-    const handleSubmit = () => {
-        if (!prompt.trim() || isGenerating || disabled) return;
+    const buildRequest = (): GenerateVideoRequest => {
         const referenceFiles: ReferenceFile[] = attachments.map((a) => ({
             url: a.url,
             name: a.fileName,
             type: a.fileType,
         }));
-        onGenerate({
+        return {
             prompt: prompt.trim(),
             ...options,
             ...(referenceFiles.length > 0 ? { reference_files: referenceFiles } : {}),
@@ -413,7 +416,28 @@ export function PromptInput({
                           : {}),
                   }
                 : {}),
-        });
+        };
+    };
+
+    const handleSubmit = () => {
+        if (!prompt.trim() || isGenerating || disabled) return;
+        setPendingRequest(buildRequest());
+        setConfirmModalOpen(true);
+    };
+
+    const costPreview = useCostPreview({
+        apiKey,
+        options,
+        reviewMode: !!reviewModeEnabled,
+        attachmentsCount: attachments.length,
+    });
+
+    const handleConfirmGenerate = () => {
+        if (!pendingRequest) return;
+        setConfirmModalOpen(false);
+        const req = pendingRequest;
+        setPendingRequest(null);
+        onGenerate(req);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -1287,6 +1311,51 @@ export function PromptInput({
                         </Popover>
                     )}
 
+                    {/* Sub-shot Decomposition (Experimental) */}
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-7 gap-1.5 bg-background text-xs font-normal hover:bg-muted"
+                            >
+                                <Scissors className="size-3" />
+                                <span className="hidden text-muted-foreground lg:inline">
+                                    Sub-shots:
+                                </span>
+                                <Badge
+                                    variant={options.sub_shots_enabled ? 'default' : 'secondary'}
+                                    className="h-4 px-1 text-[10px]"
+                                >
+                                    {options.sub_shots_enabled ? 'On' : 'Off'}
+                                </Badge>
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-60 p-3" align="start">
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5">
+                                        <Label className="text-xs">Sub-shot decomposition</Label>
+                                        <span className="rounded border px-1 text-[9px] uppercase tracking-wide text-muted-foreground">
+                                            Experimental
+                                        </span>
+                                    </div>
+                                    <Switch
+                                        checked={!!options.sub_shots_enabled}
+                                        onCheckedChange={(v) =>
+                                            updateOption('sub_shots_enabled', v)
+                                        }
+                                    />
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">
+                                    Splits dense, motion-heavy shots into 2 focused sub-shots
+                                    before HTML generation. Better visual precision; small extra
+                                    LLM cost on qualifying shots.
+                                </p>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+
                     {/* Style Preview Chip */}
                     <Popover>
                         <PopoverTrigger asChild>
@@ -1659,6 +1728,8 @@ export function PromptInput({
                     )}
                 </div>
 
+                <CostPreviewInline data={costPreview.data} loading={costPreview.loading} />
+
                 <div className="flex w-full justify-end px-1 pb-1">
                     <Link
                         to="/study-library/ai-copilot"
@@ -1670,6 +1741,18 @@ export function PromptInput({
                     </Link>
                 </div>
             </div>
+
+            <CostPreviewModal
+                open={confirmModalOpen}
+                onOpenChange={(v) => {
+                    setConfirmModalOpen(v);
+                    if (!v) setPendingRequest(null);
+                }}
+                data={costPreview.data}
+                loading={costPreview.loading}
+                error={costPreview.error}
+                onConfirm={handleConfirmGenerate}
+            />
         </div>
     );
 }

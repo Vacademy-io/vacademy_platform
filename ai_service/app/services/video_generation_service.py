@@ -20,7 +20,75 @@ from uuid import uuid4
 from ..repositories.ai_video_repository import AiVideoRepository
 from .s3_service import S3Service
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from ..models.ai_token_usage import ApiProvider, RequestType
+
+
+# TTS unit cost — currently a single rate across providers; if you add per-provider
+# TTS billing, move this to the DB the way LLM/image rates already live there.
+_TTS_COST_PER_1K_CHARS_USD: float = 0.30  # ElevenLabs standard rate
+
+# Image price is sourced from ai_models.image_price_per_unit (V221+). This default
+# applies only if the configured image model is missing from the registry.
+_IMAGE_COST_USD_FALLBACK: float = 0.04
+
+
+def _lookup_image_unit_price(db: Session, image_model_id: Optional[str]) -> float:
+    """Resolve per-image USD cost from ai_models, falling back to the constant."""
+    if not image_model_id:
+        return _IMAGE_COST_USD_FALLBACK
+    try:
+        row = db.execute(
+            text(
+                "SELECT image_price_per_unit FROM ai_models "
+                "WHERE model_id = :m AND is_active = TRUE LIMIT 1"
+            ),
+            {"m": image_model_id},
+        ).fetchone()
+        if row and row.image_price_per_unit is not None:
+            return float(row.image_price_per_unit)
+    except Exception:
+        pass
+    return _IMAGE_COST_USD_FALLBACK
+
+
+# Image generation model used by the video pipeline (OpenRouter route).
+_VIDEO_IMAGE_MODEL_ID: str = "bytedance-seed/seedream-4.5"
+
+
+def _estimate_video_cost_usd(
+    db: Session,
+    model: Optional[str],
+    prompt_tokens: int,
+    completion_tokens: int,
+    image_count: int,
+    tts_character_count: int,
+) -> Optional[float]:
+    """
+    Estimate USD cost for a video generation run by sourcing rates from the
+    ai_models table (single source of truth). Returns None if the LLM model is
+    unknown — caller should treat that as "estimate unavailable" rather than $0.
+    """
+    if not model:
+        return None
+    try:
+        row = db.execute(
+            text(
+                "SELECT input_price_per_1m, output_price_per_1m, is_free "
+                "FROM ai_models WHERE model_id = :m AND is_active = TRUE LIMIT 1"
+            ),
+            {"m": model},
+        ).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    input_rate = 0.0 if row.is_free else float(row.input_price_per_1m or 0)
+    output_rate = 0.0 if row.is_free else float(row.output_price_per_1m or 0)
+    llm_cost = (prompt_tokens / 1_000_000) * input_rate + (completion_tokens / 1_000_000) * output_rate
+    img_cost = image_count * _lookup_image_unit_price(db, _VIDEO_IMAGE_MODEL_ID)
+    tts_cost = (tts_character_count / 1000) * _TTS_COST_PER_1K_CHARS_USD
+    return round(llm_cost + img_cost + tts_cost, 4)
 
 
 
@@ -106,6 +174,7 @@ class VideoGenerationService:
         mute_tts_on_source_clips: bool = False,
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
+        sub_shots_enabled: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -180,6 +249,8 @@ class VideoGenerationService:
                 gen_metadata["background_music_enabled"] = bool(background_music_enabled)
             if background_music_volume is not None:
                 gen_metadata["background_music_volume"] = float(background_music_volume)
+            if sub_shots_enabled:
+                gen_metadata["sub_shots_enabled"] = True
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -254,6 +325,7 @@ class VideoGenerationService:
                     mute_tts_on_source_clips=mute_tts_on_source_clips,
                     background_music_enabled=background_music_enabled,
                     background_music_volume=background_music_volume,
+                    sub_shots_enabled=sub_shots_enabled,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -339,6 +411,7 @@ class VideoGenerationService:
         mute_tts_on_source_clips: bool = False,
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
+        sub_shots_enabled: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -391,9 +464,19 @@ class VideoGenerationService:
             except Exception as e:
                 logger.warning(f"[VideoGenService] Failed to auto-select model from defaults: {e}")
 
+        # Tier-aware model routing: free/standard/premium use a cheap flash model for
+        # script + shot HTML; ultra/super_ultra keep the full resolved model for everything.
+        _TIER_FLASH_MODEL = "google/gemini-3-flash-preview"
+        _FLASH_TIERS = {"free", "standard", "premium"}
+
         if resolved_model:
-            pipeline_args["script_model"] = resolved_model
-            pipeline_args["html_model"] = resolved_model
+            if quality_tier in _FLASH_TIERS:
+                # Director (premium) stays on resolved_model — only script + shots use flash
+                pipeline_args["script_model"] = _TIER_FLASH_MODEL
+                pipeline_args["html_model"]   = _TIER_FLASH_MODEL
+            else:
+                pipeline_args["script_model"] = resolved_model
+                pipeline_args["html_model"]   = resolved_model
 
         pipeline = VideoGenerationPipeline(**pipeline_args)
         
@@ -827,6 +910,7 @@ class VideoGenerationService:
                     mute_tts_on_source_clips=mute_tts_on_source_clips,
                     background_music_enabled=background_music_enabled,
                     background_music_volume=background_music_volume,
+                    sub_shots_enabled=sub_shots_enabled,
                     progress_callback=_progress_cb,
                 )
 
@@ -981,8 +1065,16 @@ class VideoGenerationService:
                 if outputs and "token_usage" in outputs and db_session:
                     try:
                         _usage = outputs["token_usage"]
-                        if _usage.get("total_tokens", 0) > 0 or _usage.get("estimated_cost_usd") is not None:
+                        if _usage.get("total_tokens", 0) > 0:
                             from datetime import datetime as _dt
+                            _est_cost = _estimate_video_cost_usd(
+                                db_session,
+                                _usage.get("model"),
+                                _usage.get("prompt_tokens", 0),
+                                _usage.get("completion_tokens", 0),
+                                _usage.get("image_count", 0),
+                                _usage.get("tts_character_count", 0),
+                            )
                             _video_rec = self.repository.get_by_video_id(video_id)
                             _existing_meta = (_video_rec.extra_metadata or {}) if _video_rec else {}
                             _existing_meta["token_usage"] = {
@@ -992,13 +1084,13 @@ class VideoGenerationService:
                                 "image_count": _usage.get("image_count", 0),
                                 "tts_character_count": _usage.get("tts_character_count", 0),
                                 "stock_count": _usage.get("stock_count", 0),
-                                "estimated_cost_usd": _usage.get("estimated_cost_usd"),
+                                "estimated_cost_usd": _est_cost,
                                 "model": _usage.get("model"),
                                 "recorded_at": _dt.utcnow().isoformat(),
                             }
                             self.repository.update_metadata(video_id, _existing_meta)
-                            logger.info(f"[VideoGenService] Saved token_usage to metadata for {video_id}: "
-                                        f"est. ${_usage.get('estimated_cost_usd', 0):.4f}")
+                            _cost_str = f"${_est_cost:.4f}" if _est_cost is not None else "unavailable (model not in ai_models)"
+                            logger.info(f"[VideoGenService] Saved token_usage to metadata for {video_id}: est. {_cost_str}")
                     except Exception as _me:
                         logger.warning(f"[VideoGenService] Failed to save token_usage to metadata: {_me}")
 

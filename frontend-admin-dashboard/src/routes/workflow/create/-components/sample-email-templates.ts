@@ -210,7 +210,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   scheduled_batch_report: {
     name: 'Attendance Report',
     subject: '{{fullName}}, your attendance report ({{startDate}} - {{endDate}})',
-    variables: ['fullName', 'email', 'attendancePercentage', 'sessionsAttended', 'startDate', 'endDate', 'sessionsTableHtml', 'totalDurationMinutes', 'instituteName'],
+    variables: ['fullName', 'email', 'attendancePercentage', 'sessionsAttended', 'startDate', 'endDate', 'sessionsTableHtml', 'totalDurationMinutes', 'instituteName', 'reportUrl'],
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
   <h2 style="color:#1a1a1a">Attendance Report</h2>
   <p style="color:#444;line-height:1.6">Hi <strong>{{fullName}}</strong>, here's your attendance summary for <strong>{{startDate}}</strong> to <strong>{{endDate}}</strong>:</p>
@@ -221,8 +221,14 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   </div>
   <h3 style="color:#1e293b;margin-top:24px">Session Details</h3>
   {{sessionsTableHtml}}
+  <div style="text-align:center;margin:24px 0">
+    <a href="{{reportUrl}}" style="display:inline-block;background:#2563eb;color:#ffffff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px">View Full Report &amp; Download PDF</a>
+  </div>
   <p style="color:#444;line-height:1.6;margin-top:16px">Regular attendance is the key to success.</p>
   <p style="color:#888;font-size:13px;margin-top:32px">Best regards,<br/>{{instituteName}}</p>
+  <p style="border-top:1px solid #e2e8f0;margin-top:24px;padding-top:12px;color:#94a3b8;font-size:11px;line-height:1.5">
+    <strong>* Engagement Score</strong> = 80 pts attendance time + 20 pts interactions (chats, talks, raises, emojis, polls). View the full report for a per-session breakdown.
+  </p>
 </div>`,
   },
 

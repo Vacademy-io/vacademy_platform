@@ -8,10 +8,14 @@ metadata:
 spec:
   replicas: {{ .Values.replicaCount }}
   strategy:
+    # Image is ~1.5 GB and Whisper / image-gen libs spike CPU at startup.
+    # Running old + new pods simultaneously (the global default surge=1) saturated
+    # the node during a rollout and tripped TaintManagerEviction on neighbours.
+    # Kill the old pod first; brief downtime is the right trade for single-replica.
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: {{ .Values.rollingUpdate.maxSurge }}
-      maxUnavailable: {{ .Values.rollingUpdate.maxUnavailable }}
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: ai-service
@@ -27,6 +31,15 @@ spec:
           envFrom:
             - configMapRef:
                 name: myconfigmapv1.0
+          env:
+            - name: WHISPER_CPU_THREADS
+              value: "{{ .Values.services.ai_service.whisper.cpuThreads | default "2" }}"
+            - name: WHISPER_NUM_WORKERS
+              value: "{{ .Values.services.ai_service.whisper.numWorkers | default "1" }}"
+            {{- if .Values.services.ai_service.whisper.modelSize }}
+            - name: WHISPER_MODEL_SIZE
+              value: "{{ .Values.services.ai_service.whisper.modelSize }}"
+            {{- end }}
           resources:
             requests:
               cpu: "500m"
@@ -41,7 +54,7 @@ spec:
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
-            timeoutSeconds: 5
+            timeoutSeconds: 15
             failureThreshold: 5
             successThreshold: 1
           startupProbe:
@@ -49,10 +62,10 @@ spec:
               path: /ai-service/health
               port: {{ .Values.services.ai_service.port }}
               scheme: HTTP
-            initialDelaySeconds: 180
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 30
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 15
+            failureThreshold: 60
             successThreshold: 1
           readinessProbe:
             httpGet:
@@ -61,7 +74,7 @@ spec:
               scheme: HTTP
             initialDelaySeconds: 180
             periodSeconds: 30
-            timeoutSeconds: 5
+            timeoutSeconds: 15
             failureThreshold: 5
             successThreshold: 1
           ports:

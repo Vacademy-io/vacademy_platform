@@ -226,6 +226,9 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   </div>
   <p style="color:#444;line-height:1.6;margin-top:16px">Regular attendance is the key to success.</p>
   <p style="color:#888;font-size:13px;margin-top:32px">Best regards,<br/>{{instituteName}}</p>
+  <p style="border-top:1px solid #e2e8f0;margin-top:24px;padding-top:12px;color:#94a3b8;font-size:11px;line-height:1.5">
+    <strong>* Engagement Score</strong> = 80 pts attendance time + 20 pts interactions (chats, talks, raises, emojis, polls). View the full report for a per-session breakdown.
+  </p>
 </div>`,
   },
 

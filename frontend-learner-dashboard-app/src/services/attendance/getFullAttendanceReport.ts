@@ -14,6 +14,19 @@ export interface FullAttendanceReportEngagementLog {
   engagementData: string | null;
   providerTotalDurationMinutes: number | null;
   statusType: string;
+  /** Per-session score breakdown (populated only when engagement data exists). */
+  engagementScore?: number;
+  attendancePoints?: number;
+  interactionPoints?: number;
+  meetingDurationMinutes?: number;
+  interactionBreakdown?: {
+    chats: number;
+    raisehand: number;
+    talks: number;
+    talkTime: number;
+    emojis: number;
+    pollVotes: number;
+  };
 }
 
 export interface FullAttendanceReportStudent {

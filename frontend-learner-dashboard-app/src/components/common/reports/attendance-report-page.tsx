@@ -263,6 +263,105 @@ export default function AttendanceReportPage() {
         {/* Reuse the exact same pre-rendered HTML the backend builds for emails */}
         <div dangerouslySetInnerHTML={{ __html: student.sessionsTableHtml }} />
 
+        {/* Per-session engagement score breakdown — only shown when at least one
+            session has score components. Hidden in email; visible only here. */}
+        {student.engagementLogs.some((l) => l.engagementScore !== undefined) && (
+          <div style={{ marginTop: 24 }}>
+            <h3 style={{ color: "#1e293b", marginTop: 0 }}>
+              Engagement Score Breakdown
+            </h3>
+            <p style={{ color: "#64748b", fontSize: 12, lineHeight: 1.5, marginTop: 4 }}>
+              How each session's score is computed: <strong>80 pts</strong> based on
+              attendance time vs. total session length, plus <strong>20 pts</strong>{" "}
+              from in-session interactions. Total capped at 100.
+            </p>
+            {student.engagementLogs
+              .filter((l) => l.engagementScore !== undefined)
+              .map((log) => {
+                const sessionTitle =
+                  student.sessions.find((s) => s.sessionId === log.sessionId)?.title ??
+                  log.sessionId;
+                const score = log.engagementScore ?? 0;
+                const attPts = log.attendancePoints ?? 0;
+                const intPts = log.interactionPoints ?? 0;
+                const mtgMins = log.meetingDurationMinutes;
+                const joined = log.providerTotalDurationMinutes ?? 0;
+                const ib = log.interactionBreakdown;
+                const scoreColor =
+                  score >= 70 ? "#16a34a" : score >= 40 ? "#ca8a04" : "#dc2626";
+
+                return (
+                  <table
+                    key={log.sessionId + log.scheduleId}
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 8,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <tbody>
+                      <tr>
+                        <td style={{ padding: "10px 12px" }}>
+                          <div
+                            style={{
+                              fontWeight: 600,
+                              color: "#1e293b",
+                              fontSize: 13,
+                              marginBottom: 6,
+                            }}
+                          >
+                            {sessionTitle}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#475569", lineHeight: 1.7 }}>
+                            <div>
+                              <strong style={{ color: "#1e293b" }}>Attendance:</strong>{" "}
+                              {attPts}/80
+                              {mtgMins !== undefined && joined > 0 && (
+                                <span style={{ color: "#94a3b8" }}>
+                                  {" "}
+                                  ({joined} of {mtgMins} min joined)
+                                </span>
+                              )}
+                            </div>
+                            <div>
+                              <strong style={{ color: "#1e293b" }}>Interactions:</strong>{" "}
+                              {intPts}/20
+                              {ib && (
+                                <span style={{ color: "#94a3b8" }}>
+                                  {" "}
+                                  ({ib.chats} chat
+                                  {ib.chats === 1 ? "" : "s"}, {ib.raisehand} raise
+                                  {ib.raisehand === 1 ? "" : "s"}, {ib.talks} talk
+                                  {ib.talks === 1 ? "" : "s"}, {ib.emojis} emoji
+                                  {ib.emojis === 1 ? "" : "s"}, {ib.pollVotes} poll
+                                  {ib.pollVotes === 1 ? "" : "s"})
+                                </span>
+                              )}
+                            </div>
+                            <div
+                              style={{
+                                marginTop: 6,
+                                paddingTop: 6,
+                                borderTop: "1px dashed #e2e8f0",
+                              }}
+                            >
+                              <strong style={{ color: scoreColor }}>
+                                Total: {score}/100
+                              </strong>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                );
+              })}
+          </div>
+        )}
+
         <p style={{ color: "#444", lineHeight: 1.6, marginTop: 16 }}>
           Regular attendance is the key to success.
         </p>

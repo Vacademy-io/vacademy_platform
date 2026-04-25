@@ -1776,8 +1776,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
                         for (var session : sessionDetails) {
                             String status = String.valueOf(session.getOrDefault("attendanceStatus", "UNMARKED"));
-                            String statusColor = "PRESENT".equals(status) ? "#16a34a" : "ABSENT".equals(status) ? "#dc2626" : "#94a3b8";
-                            String statusLabel = "PRESENT".equals(status) ? "Present" : "ABSENT".equals(status) ? "Absent" : "Unmarked";
+                            // UNMARKED counts as Absent for display purposes — no in-between state shown to students
+                            String statusColor = "PRESENT".equals(status) ? "#16a34a" : "#dc2626";
+                            String statusLabel = "PRESENT".equals(status) ? "Present" : "Absent";
                             String sessionId = String.valueOf(session.get("sessionId"));
 
                             // Lookup engagement for this session
@@ -1840,9 +1841,27 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                                 double totalScore = Math.min(100.0, attendancePts + interactionPts);
                                 int scoreInt = (int) Math.round(totalScore);
 
-                                // Build display string — just the score, no cryptic abbreviations
+                                // Persist score breakdown on the engagement log map so the
+                                // report page (and any downstream consumer) can show a
+                                // per-session breakdown without re-implementing the formula.
                                 if (hasProviderDuration || hasEngagementJson) {
-                                    engagementStr = scoreInt + "/100";
+                                    eng.put("engagementScore", scoreInt);
+                                    eng.put("attendancePoints", Math.round(attendancePts * 10.0) / 10.0);
+                                    eng.put("interactionPoints", Math.round(interactionPts * 10.0) / 10.0);
+                                    if (meetingMinutes != null) eng.put("meetingDurationMinutes", meetingMinutes);
+                                    eng.put("interactionBreakdown", Map.of(
+                                            "chats", chats,
+                                            "raisehand", raises,
+                                            "talks", talks,
+                                            "talkTime", talkTime,
+                                            "emojis", emojis,
+                                            "pollVotes", pollVotes
+                                    ));
+                                }
+
+                                // Build display string — score + asterisk; footer explains the formula
+                                if (hasProviderDuration || hasEngagementJson) {
+                                    engagementStr = scoreInt + "/100*";
                                     // Color by score
                                     engagementColor = scoreInt >= 70 ? "#16a34a"
                                                     : scoreInt >= 40 ? "#ca8a04" : "#dc2626";

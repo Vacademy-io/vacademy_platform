@@ -140,6 +140,34 @@ public class TeacherCourseDetailDTO {
         packageEntity.setCreatedAt(createdAt != null ? new Date(createdAt.getTime()) : null);
         packageEntity.setUpdatedAt(updatedAt != null ? new Date(updatedAt.getTime()) : null);
         packageEntity.setCreatedByUserId(createdByUserId);
+
+        // Populate the rest of the package columns selected by `p.*` so the
+        // Authored Courses tab can render preview image, banner, tags, and
+        // other course metadata. Without this, those fields stay null even
+        // though the SQL row has them.
+        packageEntity.setThumbnailFileId((String) result.get("thumbnail_file_id"));
+        packageEntity.setCoursePreviewImageMediaId(
+            (String) result.get("course_preview_image_media_id"));
+        packageEntity.setCourseBannerMediaId((String) result.get("course_banner_media_id"));
+        packageEntity.setCourseMediaId((String) result.get("course_media_id"));
+        packageEntity.setWhyLearn((String) result.get("why_learn"));
+        packageEntity.setWhoShouldLearn((String) result.get("who_should_learn"));
+        packageEntity.setAboutTheCourse((String) result.get("about_the_course"));
+        packageEntity.setTags((String) result.get("comma_separated_tags"));
+        packageEntity.setCourseHtmlDescription((String) result.get("course_html_description"));
+        packageEntity.setOriginalCourseId((String) result.get("original_course_id"));
+        Object isPublished = result.get("is_course_published_to_catalaouge");
+        if (isPublished instanceof Boolean) {
+            packageEntity.setIsCoursePublishedToCatalaouge((Boolean) isPublished);
+        }
+        Object courseDepth = result.get("course_depth");
+        if (courseDepth instanceof Number) {
+            packageEntity.setCourseDepth(((Number) courseDepth).intValue());
+        }
+        Object versionNumber = result.get("version_number");
+        if (versionNumber instanceof Number) {
+            packageEntity.setVersionNumber(((Number) versionNumber).intValue());
+        }
         
         // Extract session details
         SessionInfo sessionInfo = SessionInfo.builder()

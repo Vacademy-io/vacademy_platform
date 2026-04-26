@@ -86,11 +86,25 @@ const GenerateInviteLinkDialog = ({
     const parentBatch = selectedBatches.find((batch) => batch.isParent) || selectedBatches[0];
     const isBundle = selectedBatches.length > 1;
 
-    const courseDetailsData = studyLibraryData?.find(
-        (item) => item.course.id === (parentBatch?.courseId || selectedCourse?.id)
-    );
+    const lookupCourseId = parentBatch?.courseId || selectedCourse?.id;
+    const courseDetailsData =
+        studyLibraryData?.find((item) => item.course.id === lookupCourseId) ??
+        studyLibraryData?.find((item) =>
+            Array.isArray(item.package_sessions)
+                ? item.package_sessions.some((ps) => ps.id === lookupCourseId)
+                : false
+        );
 
     const queryClient = useQueryClient();
+
+    // When the dialog opens, ensure studyLibraryData is fresh so that
+    // course-level fields edited recently (description, tags, preview/banner
+    // media, course media) are reflected in the invite-link preview.
+    useEffect(() => {
+        if (!showSummaryDialog) return;
+        queryClient.invalidateQueries({ queryKey: ['GET_INIT_STUDY_LIBRARY'] });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showSummaryDialog]);
     const form = useForm<InviteLinkFormValues>({
         resolver: zodResolver(inviteLinkSchema),
         defaultValues: {
@@ -593,52 +607,104 @@ const GenerateInviteLinkDialog = ({
                     inviteLinkDetails?.web_page_meta_data_json,
                     {}
                 );
-                const transformedData =
-                    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-                    // @ts-expect-error
-                    await transformApiDataToCourseDataForInvite(courseDetailsData);
+                const transformedData = courseDetailsData
+                    ? await transformApiDataToCourseDataForInvite(
+                          courseDetailsData as Parameters<
+                              typeof transformApiDataToCourseDataForInvite
+                          >[0]
+                      )
+                    : null;
+
+                // Fall back when a candidate is null/undefined OR an empty
+                // string / empty array / object whose values are all empty.
+                // Saved invite-link templates often persist empty strings for
+                // course-level fields, and `??` would treat those as "set"
+                // and prevent us from falling back to the live course data.
+                // Rich-text editors save "empty" as `<p></p>` / `<p><br></p>`,
+                // so strip tags + whitespace before deciding emptiness.
+                const hasValue = (v: unknown): boolean => {
+                    if (v === null || v === undefined) return false;
+                    if (typeof v === 'string') {
+                        const stripped = v
+                            .replace(/<[^>]*>/g, '')
+                            .replace(/&nbsp;/g, '')
+                            .trim();
+                        return stripped !== '';
+                    }
+                    if (Array.isArray(v)) return v.length > 0;
+                    if (typeof v === 'object') {
+                        return Object.values(v as Record<string, unknown>).some(hasValue);
+                    }
+                    return true;
+                };
+                const pick = <T,>(...candidates: Array<T | null | undefined>): T | undefined =>
+                    candidates.find(hasValue) as T | undefined;
 
                 form.reset({
                     ...form.getValues(),
-                    course: parsedJsonData?.course ?? transformedData?.packageName,
-                    description: parsedJsonData?.description ?? transformedData?.description,
+                    course: pick(parsedJsonData?.course, transformedData?.packageName) ?? '',
+                    description:
+                        pick(parsedJsonData?.description, transformedData?.description) ?? '',
                     learningOutcome:
-                        parsedJsonData?.learningOutcome ??
-                        parsedJsonData?.whyLearn ??
-                        transformedData?.whyLearn,
+                        pick(
+                            parsedJsonData?.learningOutcome,
+                            parsedJsonData?.whyLearn,
+                            transformedData?.whyLearn
+                        ) ?? '',
                     aboutCourse:
-                        parsedJsonData?.aboutCourse ??
-                        parsedJsonData?.aboutTheCourse ??
-                        transformedData?.aboutTheCourse,
+                        pick(
+                            parsedJsonData?.aboutCourse,
+                            parsedJsonData?.aboutTheCourse,
+                            transformedData?.aboutTheCourse
+                        ) ?? '',
                     targetAudience:
-                        parsedJsonData?.targetAudience ??
-                        parsedJsonData?.whoShouldLearn ??
-                        transformedData?.whoShouldLearn,
+                        pick(
+                            parsedJsonData?.targetAudience,
+                            parsedJsonData?.whoShouldLearn,
+                            transformedData?.whoShouldLearn
+                        ) ?? '',
+                    // Course-level media: prefer live course data over the
+                    // saved template. The template's stored ids/URLs are
+                    // often stale (presigned URLs expire daily, files can
+                    // be replaced on the course). Only fall back to the
+                    // template when the live course has no media at all.
                     coursePreview:
-                        parsedJsonData?.coursePreview ??
-                        parsedJsonData?.coursePreviewImageMediaId ??
-                        transformedData?.coursePreviewImageMediaId,
+                        pick(
+                            transformedData?.coursePreviewImageMediaId,
+                            parsedJsonData?.coursePreview,
+                            parsedJsonData?.coursePreviewImageMediaId
+                        ) ?? '',
                     courseBanner:
-                        parsedJsonData?.courseBanner ??
-                        parsedJsonData?.courseBannerMediaId ??
-                        transformedData?.courseBannerMediaId,
+                        pick(
+                            transformedData?.courseBannerMediaId,
+                            parsedJsonData?.courseBanner,
+                            parsedJsonData?.courseBannerMediaId
+                        ) ?? '',
                     courseMedia:
-                        parsedJsonData?.courseMedia ??
-                        parsedJsonData?.courseMediaId ??
-                        transformedData?.courseMediaId,
+                        pick(
+                            transformedData?.courseMediaId,
+                            parsedJsonData?.courseMedia,
+                            parsedJsonData?.courseMediaId
+                        ) ?? { type: '', id: '' },
                     coursePreviewBlob:
-                        parsedJsonData?.coursePreviewBlob ??
-                        parsedJsonData?.coursePreviewImageMediaPreview ??
-                        transformedData?.coursePreviewImageMediaPreview,
+                        pick(
+                            transformedData?.coursePreviewImageMediaPreview,
+                            parsedJsonData?.coursePreviewBlob,
+                            parsedJsonData?.coursePreviewImageMediaPreview
+                        ) ?? '',
                     courseBannerBlob:
-                        parsedJsonData?.courseBannerBlob ??
-                        parsedJsonData?.courseBannerMediaPreview ??
-                        transformedData?.courseBannerMediaPreview,
+                        pick(
+                            transformedData?.courseBannerMediaPreview,
+                            parsedJsonData?.courseBannerBlob,
+                            parsedJsonData?.courseBannerMediaPreview
+                        ) ?? '',
                     courseMediaBlob:
-                        parsedJsonData?.courseMediaBlob ??
-                        parsedJsonData?.courseMediaPreview ??
-                        transformedData?.courseMediaPreview,
-                    tags: parsedJsonData?.tags ?? transformedData?.tags,
+                        pick(
+                            transformedData?.courseMediaPreview,
+                            parsedJsonData?.courseMediaBlob,
+                            parsedJsonData?.courseMediaPreview
+                        ) ?? '',
+                    tags: pick(parsedJsonData?.tags, transformedData?.tags) ?? [],
                 });
             } catch (error) {
                 console.error('Error transforming course data:', error);

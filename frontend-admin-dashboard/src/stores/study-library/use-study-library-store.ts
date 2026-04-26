@@ -10,6 +10,16 @@ export interface CourseType {
     createdByUserId?: string;
     institute_id?: string;
     originalCourseId?: string;
+    is_course_published_to_catalaouge?: boolean;
+    course_preview_image_media_id?: string | null;
+    course_banner_media_id?: string | null;
+    course_media_id?: string | null;
+    why_learn?: string | null;
+    who_should_learn?: string | null;
+    about_the_course?: string | null;
+    tags?: string | null;
+    course_depth?: number | null;
+    course_html_description?: string | null;
 }
 
 export type StudyLibrarySessionType = SessionType;

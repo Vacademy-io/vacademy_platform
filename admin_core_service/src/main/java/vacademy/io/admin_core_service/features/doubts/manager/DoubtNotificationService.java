@@ -396,13 +396,20 @@ public class DoubtNotificationService {
         }
     }
 
-    /** Mirrors DynamicNotificationService's logic — accepts {@code #RRGGBB} or {@code RRGGBB}. */
+    /**
+     * Accepts whatever value the admin dashboard's theme picker writes into
+     * {@code institute_theme_code}. The frontend stores either a raw hex (e.g. {@code "#ED7424"})
+     * or a CSS color keyword (e.g. {@code "green"}, {@code "blue"}). Both are valid CSS values
+     * that email clients render — live-class emails work because they pass the raw value through.
+     * The previous version rejected anything that wasn't a 6/7-char hex and fell back to orange,
+     * which is why doubt emails showed orange even when the institute had {@code green} set.
+     * Only when the column is null/blank do we use the fallback.
+     */
     private String normalizeThemeColor(String themeCode) {
         if (themeCode == null || themeCode.trim().isEmpty()) return FALLBACK_THEME_COLOR;
         String t = themeCode.trim();
-        if (t.startsWith("#") && t.length() == 7) return t;
-        if (t.matches("^[0-9A-Fa-f]{6}$")) return "#" + t;
-        return FALLBACK_THEME_COLOR;
+        if (t.matches("^[0-9A-Fa-f]{6}$")) return "#" + t;  // hex without '#' → normalize
+        return t;                                            // hex with '#', CSS keyword, or any valid CSS color → pass through
     }
 
     /** Strip HTML and truncate for push body / placeholder use. */

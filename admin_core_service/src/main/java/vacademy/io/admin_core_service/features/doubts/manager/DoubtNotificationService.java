@@ -323,6 +323,12 @@ public class DoubtNotificationService {
         m.put("recipient_name", safe(recipientName));
         m.put("institute_name", ctx.instituteName);
         m.put("institute_theme_color", ctx.themeColor);
+        // Aliases so a template author can use whichever placeholder name matches the rest of the
+        // platform's templates: live-class emails ship with {{THEME_COLOR}} (uppercase), invitation
+        // emails use {{themeColor}} (camelCase). Same resolved hex regardless of casing.
+        m.put("THEME_COLOR", ctx.themeColor);
+        m.put("themeColor", ctx.themeColor);
+        m.put("INSTITUTE_NAME", ctx.instituteName);
         m.put("support_email", ctx.fromEmail);
         return m;
     }

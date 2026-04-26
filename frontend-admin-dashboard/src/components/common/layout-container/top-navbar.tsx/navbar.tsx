@@ -58,6 +58,7 @@ import {
     getSystemAlertsQuery,
     stripHtml,
     fetchSystemAlerts,
+    markSystemAlertsAsRead,
 } from '@/services/notifications/system-alerts';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -149,6 +150,25 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const unreadCount = useMemo(() => {
         return alertsList?.content?.reduce((acc, item) => acc + (item.isRead ? 0 : 1), 0) || 0;
     }, [alertsList]);
+
+    const markVisibleAlertsAsRead = async () => {
+        if (!userId) return;
+        const unreadIds =
+            alertsList?.content
+                ?.filter((item) => !item.isRead)
+                .map((item) => item.messageId)
+                .filter(Boolean) || [];
+        if (!unreadIds.length) return;
+        await markSystemAlertsAsRead(unreadIds, userId);
+        await queryClient.invalidateQueries({ queryKey: ['SYSTEM_ALERTS', userId] });
+        await queryClient.invalidateQueries({ queryKey: ['SYSTEM_ALERTS_INFINITE', userId] });
+    };
+
+    const handleNotificationsOpenChange = (open: boolean) => {
+        if (open) {
+            void markVisibleAlertsAsRead();
+        }
+    };
 
     const handleLogout = async (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         event.preventDefault(); // Prevents dropdown from closing immediately
@@ -527,7 +547,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                 )}
 
                 {/* Notifications */}
-                <DropdownMenu>
+                <DropdownMenu onOpenChange={handleNotificationsOpenChange}>
                     <DropdownMenuTrigger className="relative flex items-center justify-center">
                         <div className="relative rounded-full p-1.5 hover:bg-neutral-200 md:p-2">
                             <BellSimple
@@ -551,12 +571,26 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                     >
                         <div className="flex items-center justify-between px-3 py-2">
                             <span className="text-sm font-medium">System Alerts</span>
-                            <button
-                                className="text-xs text-primary-500 hover:underline"
-                                onClick={() => setShowAllDialog(true)}
-                            >
-                                See all
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {!!unreadCount && (
+                                    <button
+                                        className="text-xs text-neutral-500 hover:underline"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            void markVisibleAlertsAsRead();
+                                        }}
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                                <button
+                                    className="text-xs text-primary-500 hover:underline"
+                                    onClick={() => setShowAllDialog(true)}
+                                >
+                                    See all
+                                </button>
+                            </div>
                         </div>
                         <Separator />
                         <div className="max-h-80 overflow-y-auto p-2">

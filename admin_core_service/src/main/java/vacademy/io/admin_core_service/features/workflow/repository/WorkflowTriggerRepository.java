@@ -35,12 +35,16 @@ public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger
     @Query("SELECT w FROM WorkflowTrigger w WHERE w.webhookUrlSlug = :slug AND w.status = :status")
     WorkflowTrigger findByWebhookUrlSlugAndStatus(@Param("slug") String slug, @Param("status") String status);
 
+    // Both queries also filter by workflow.status = 'ACTIVE' so DRAFT/INACTIVE
+    // workflows (e.g. created by Save Draft / Test Run before publish) don't
+    // accidentally fire and cause duplicate emails when an event arrives.
     @Query("""
         SELECT w FROM WorkflowTrigger w
         WHERE w.instituteId = :instituteId
           AND w.triggerEventName = :eventType
           AND w.status IN :statuses
           AND w.eventId = :eventId
+          AND w.workflow.status = 'ACTIVE'
     """)
     List<WorkflowTrigger> findSpecificTriggers(
         @Param("instituteId") String instituteId,
@@ -55,6 +59,7 @@ public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger
           AND w.triggerEventName = :eventType
           AND w.status IN :statuses
           AND w.eventId IS NULL
+          AND w.workflow.status = 'ACTIVE'
     """)
     List<WorkflowTrigger> findGlobalTriggers(
         @Param("instituteId") String instituteId,
@@ -68,6 +73,7 @@ public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger
           AND w.triggerEventName = :eventType
           AND w.status IN :statuses
           AND w.eventId IS NULL
+          AND w.workflow.status = 'ACTIVE'
     """)
     List<WorkflowTrigger> findGlobalTriggersByEventType(
         @Param("instituteId") String instituteId,

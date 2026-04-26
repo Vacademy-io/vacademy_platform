@@ -120,3 +120,26 @@ export function stripHtml(html: string): string {
     tmp.innerHTML = html;
     return (tmp.textContent || tmp.innerText || '').trim();
 }
+
+export async function markSystemAlertAsRead(
+    recipientMessageId: string,
+    userId: string
+): Promise<void> {
+    try {
+        await axios.post(`${BASE_URL}/notification-service/v1/user-messages/interactions/read`, {
+            recipientMessageId,
+            userId,
+            interactionType: 'READ',
+        });
+    } catch (error) {
+        console.warn('Failed to mark system alert as read:', error);
+    }
+}
+
+export async function markSystemAlertsAsRead(
+    recipientMessageIds: string[],
+    userId: string
+): Promise<void> {
+    if (!recipientMessageIds.length || !userId) return;
+    await Promise.all(recipientMessageIds.map((id) => markSystemAlertAsRead(id, userId)));
+}

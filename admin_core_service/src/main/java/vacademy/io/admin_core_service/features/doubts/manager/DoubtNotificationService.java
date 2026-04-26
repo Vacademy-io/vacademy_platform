@@ -14,7 +14,10 @@ import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
+import vacademy.io.admin_core_service.features.domain_routing.entity.InstituteDomainRouting;
+import vacademy.io.admin_core_service.features.domain_routing.repository.InstituteDomainRoutingRepository;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -80,6 +83,27 @@ public class DoubtNotificationService {
     @Autowired
     private NotificationService notificationService;
 
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
+
+    @Autowired
+    private InstituteDomainRoutingRepository domainRoutingRepository;
+
+    /** Sub-path on the admin dashboard that lists doubts; we append ?doubtId=X so the
+     *  recipient lands directly on the right entry. The frontend currently routes to the
+     *  doubt list when doubtId is present and falls back to the list view otherwise. */
+    private static final String ADMIN_DOUBT_PATH = "/study-library/doubt-management";
+
+    /** Sub-path on the learner portal where the doubt thread surfaces. The learner app may
+     *  redirect from here to the originating slide; if it doesn't, the user still lands on a
+     *  recognisable page rather than the website root. */
+    private static final String LEARNER_DOUBT_PATH = "/study-library";
+
+    /** Conventional admin subdomain we synthesize when the institute has no ADMIN routing
+     *  row but does have a LEARNER one — most multi-tenant setups follow the
+     *  {@code admin.<domain>} / {@code learner.<domain>} naming convention. */
+    private static final String FALLBACK_ADMIN_SUBDOMAIN = "admin";
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -112,7 +136,7 @@ public class DoubtNotificationService {
                     DoubtNotificationTemplateDefaults.RAISED_TEMPLATE_NAME);
             if (templateId != null) {
                 safeEmail(instituteId, assigneeUserIds, templateId,
-                        buildPlaceholders(doubt, null, ctx), ctx);
+                        buildPlaceholders(doubt, null, ctx, Audience.ADMIN), ctx);
             }
         }
 
@@ -153,7 +177,7 @@ public class DoubtNotificationService {
                     DoubtNotificationTemplateDefaults.RESOLVED_TEMPLATE_NAME);
             if (templateId != null) {
                 safeEmail(instituteId, recipient, templateId,
-                        buildPlaceholders(doubt, null, ctx), ctx);
+                        buildPlaceholders(doubt, null, ctx, Audience.LEARNER), ctx);
             }
         }
 
@@ -314,15 +338,30 @@ public class DoubtNotificationService {
         return data;
     }
 
-    private Map<String, String> buildPlaceholders(Doubts doubt, String recipientName, InstituteContext ctx) {
+    /** Audience the email is going to. Drives which institute domain we point the deep link at. */
+    private enum Audience { ADMIN, LEARNER }
+
+    private Map<String, String> buildPlaceholders(Doubts doubt, String recipientName,
+                                                  InstituteContext ctx, Audience audience) {
         Map<String, String> m = new HashMap<>();
         m.put("doubt_id", safe(doubt.getId()));
         m.put("batch_id", safe(doubt.getPackageSessionId()));
+        // Human-readable batch label ("Class 9 2026-27") for the email body. Falls back to the
+        // raw package_session_id so existing templates that still reference {{batch_id}} keep
+        // rendering without producing an empty string.
+        String batchName = lookupBatchName(doubt.getPackageSessionId());
+        m.put("batch_name", batchName.isEmpty() ? safe(doubt.getPackageSessionId()) : batchName);
         m.put("doubt_text", summarizeDoubt(doubt));
         m.put("student_id", safe(doubt.getUserId()));
         m.put("recipient_name", safe(recipientName));
         m.put("institute_name", ctx.instituteName);
         m.put("institute_theme_color", ctx.themeColor);
+        // Clickable deep link. For ADMIN audience (raised event → teachers/admins) this routes
+        // to the admin doubt-management page; for LEARNER (resolved event) it routes into the
+        // learner portal. Falls back to "#" when the institute has no domain routing configured —
+        // the link will still render but won't navigate, which is no worse than the original
+        // hardcoded "#" template href.
+        m.put("doubt_url", lookupDoubtUrl(doubt, ctx, audience));
         // Aliases so a template author can use whichever placeholder name matches the rest of the
         // platform's templates: live-class emails ship with {{THEME_COLOR}} (uppercase), invitation
         // emails use {{themeColor}} (camelCase). Same resolved hex regardless of casing.
@@ -331,6 +370,92 @@ public class DoubtNotificationService {
         m.put("INSTITUTE_NAME", ctx.instituteName);
         m.put("support_email", ctx.fromEmail);
         return m;
+    }
+
+    /**
+     * Builds the clickable deep link injected into the email's CTA button.
+     *
+     * <p>Resolution order, mirroring the live-class email pattern:
+     * <ol>
+     *   <li>For {@code ADMIN} audience: try {@code institute_domain_routing} role=ADMIN. If that's
+     *       not configured (most institutes only set up LEARNER routing), fall through to the
+     *       LEARNER row's domain and synthesize {@code admin.<domain>} as the subdomain — this
+     *       matches the convention used by Vacademy's white-labeled deployments
+     *       (e.g. learner.shikshanation.com / admin.shikshanation.com).</li>
+     *   <li>For {@code LEARNER} audience: read role=LEARNER from {@code institute_domain_routing}.</li>
+     *   <li>If neither lookup succeeds → {@code "#"} (no navigation, but the email still renders).</li>
+     * </ol>
+     */
+    private String lookupDoubtUrl(Doubts doubt, InstituteContext ctx, Audience audience) {
+        if (doubt == null || doubt.getId() == null || doubt.getId().isEmpty()) return "#";
+        if (ctx == null || ctx.instituteId == null || ctx.instituteId.isEmpty()) return "#";
+        try {
+            if (audience == Audience.ADMIN) {
+                Optional<InstituteDomainRouting> adminRouting =
+                        domainRoutingRepository.findByInstituteIdAndRole(ctx.instituteId, "ADMIN");
+                if (adminRouting.isPresent()) {
+                    return formatDoubtUrl(adminRouting.get().getSubdomain(),
+                            adminRouting.get().getDomain(), ADMIN_DOUBT_PATH, doubt.getId());
+                }
+                // Synthesize admin URL from the LEARNER routing's domain.
+                Optional<InstituteDomainRouting> learnerRouting =
+                        domainRoutingRepository.findByInstituteIdAndRole(ctx.instituteId, "LEARNER");
+                if (learnerRouting.isPresent()) {
+                    return formatDoubtUrl(FALLBACK_ADMIN_SUBDOMAIN,
+                            learnerRouting.get().getDomain(), ADMIN_DOUBT_PATH, doubt.getId());
+                }
+                return "#";
+            }
+            // LEARNER audience
+            Optional<InstituteDomainRouting> learnerRouting =
+                    domainRoutingRepository.findByInstituteIdAndRole(ctx.instituteId, "LEARNER");
+            if (learnerRouting.isPresent()) {
+                return formatDoubtUrl(learnerRouting.get().getSubdomain(),
+                        learnerRouting.get().getDomain(), LEARNER_DOUBT_PATH, doubt.getId());
+            }
+            return "#";
+        } catch (Exception e) {
+            log.warn("Failed to resolve doubt URL (institute={}, audience={}, doubt={}): {}",
+                    ctx.instituteId, audience, doubt.getId(), e.getMessage());
+            return "#";
+        }
+    }
+
+    /** Assembles {@code https://subdomain.domain/path?doubtId=id}. Trims trailing slashes from
+     *  the domain so we don't end up with double slashes when the routing row has them. */
+    private String formatDoubtUrl(String subdomain, String domain, String path, String doubtId) {
+        if (domain == null || domain.isBlank()) return "#";
+        String cleanDomain = domain.trim().replaceAll("^https?://", "").replaceAll("/$", "");
+        String cleanSubdomain = subdomain == null ? "" : subdomain.trim();
+        String host = cleanSubdomain.isEmpty() || "*".equals(cleanSubdomain)
+                ? cleanDomain
+                : cleanSubdomain + "." + cleanDomain;
+        return "https://" + host + path + "?doubtId=" + doubtId;
+    }
+
+    /**
+     * Composes a human-readable batch label from the package + session-name fields, mirroring
+     * the format used in the admin doubt-list UI (e.g. "Class 9 2026-27"). Returns an empty
+     * string on any lookup failure — callers fall back to the raw id so the email never renders
+     * a literal {@code "null"} placeholder.
+     */
+    private String lookupBatchName(String packageSessionId) {
+        if (packageSessionId == null || packageSessionId.isEmpty()) return "";
+        try {
+            return packageSessionRepository.findById(packageSessionId)
+                    .map(ps -> {
+                        String pkg = ps.getPackageEntity() != null ? ps.getPackageEntity().getPackageName() : null;
+                        String session = ps.getName();
+                        if (pkg == null || pkg.isBlank()) {
+                            return session == null ? "" : session.trim();
+                        }
+                        return session == null || session.isBlank() ? pkg.trim() : (pkg.trim() + " " + session.trim());
+                    })
+                    .orElse("");
+        } catch (Exception e) {
+            log.warn("Failed to lookup batch name for packageSessionId={}: {}", packageSessionId, e.getMessage());
+            return "";
+        }
     }
 
     /**
@@ -357,7 +482,7 @@ public class DoubtNotificationService {
         } catch (Exception e) {
             log.warn("Failed to load institute context for {}: {}", instituteId, e.getMessage());
         }
-        return new InstituteContext(instituteName, themeColor, fromEmail, fromName);
+        return new InstituteContext(instituteId, instituteName, themeColor, fromEmail, fromName);
     }
 
     /**
@@ -435,12 +560,15 @@ public class DoubtNotificationService {
 
     /** Immutable per-institute context bundle resolved once per dispatch. */
     private static final class InstituteContext {
+        final String instituteId;
         final String instituteName;
         final String themeColor;
         final String fromEmail;
         final String fromName;
 
-        InstituteContext(String instituteName, String themeColor, String fromEmail, String fromName) {
+        InstituteContext(String instituteId, String instituteName, String themeColor,
+                         String fromEmail, String fromName) {
+            this.instituteId = instituteId == null ? "" : instituteId;
             this.instituteName = instituteName == null ? "" : instituteName;
             this.themeColor = themeColor == null ? FALLBACK_THEME_COLOR : themeColor;
             this.fromEmail = fromEmail == null ? FALLBACK_SUPPORT_EMAIL : fromEmail;

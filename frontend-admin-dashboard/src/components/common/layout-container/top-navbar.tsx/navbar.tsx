@@ -59,6 +59,7 @@ import {
     stripHtml,
     fetchSystemAlerts,
     markSystemAlertsAsRead,
+    formatAlertTimestamp,
 } from '@/services/notifications/system-alerts';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -667,7 +668,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                     Sent by {item.createdByName || 'System'}
                                                 </span>
                                                 <span>•</span>
-                                                <span>{new Date(sentAt).toLocaleString()}</span>
+                                                <span>{formatAlertTimestamp(sentAt)}</span>
                                             </div>
                                         </div>
                                     );
@@ -728,9 +729,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                                     </span>
                                                                     <span>•</span>
                                                                     <span>
-                                                                        {new Date(
+                                                                        {formatAlertTimestamp(
                                                                             sentAt
-                                                                        ).toLocaleString()}
+                                                                        )}
                                                                     </span>
                                                                 </div>
                                                             </div>

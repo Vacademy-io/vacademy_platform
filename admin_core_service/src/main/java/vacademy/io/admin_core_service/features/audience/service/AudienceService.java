@@ -489,6 +489,7 @@ public class AudienceService {
                     contextData.put("audience", audienceDTO);
                     contextData.put("audienceId", requestDTO.getAudienceId());
                     contextData.put("instituteId", instituteId);
+                    contextData.put("instituteName", instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
                     contextData.put("customFields", customFieldsForEmail);
                     contextData.put("submissionTime", submissionTime);
                     contextData.put("responseId", savedResponse.getId());
@@ -759,6 +760,7 @@ public class AudienceService {
                 contextData.put("audience", audienceDTO); // Audience details
                 contextData.put("audienceId", requestDTO.getAudienceId());
                 contextData.put("instituteId", instituteId);
+                contextData.put("instituteName", instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
                 contextData.put("customFields", customFieldsForEmail); // Map of custom field name -> value
                 contextData.put("submissionTime", submissionTime);
                 contextData.put("responseId", savedResponse.getId());
@@ -2229,6 +2231,7 @@ public class AudienceService {
         contextData.put("audience", audienceDTO);
         contextData.put("audienceId", audienceId);
         contextData.put("instituteId", instituteId);
+        contextData.put("instituteName", instituteRepository.findById(instituteId).map(Institute::getInstituteName).orElse(""));
         contextData.put("customFields", customFieldsForEmail);
         contextData.put("submissionTime", submissionTime);
         contextData.put("responseId", savedResponse.getId());

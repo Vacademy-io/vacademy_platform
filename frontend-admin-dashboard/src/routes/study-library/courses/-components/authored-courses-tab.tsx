@@ -280,12 +280,18 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
             // Create unique ID for each entry
             const uniqueId = `${response.courseId}_${response.sessionInfo.sessionId}_${response.levelInfo.levelId}`;
 
-            const parsedTags = course.tags
-                ? course.tags
-                      .split(',')
-                      .map((t) => t.trim())
-                      .filter(Boolean)
-                : [];
+            // Backend currently sends `tags` as a comma-separated string,
+            // but defend against an array shape in case the API changes
+            // or the cache holds a previously-typed payload.
+            const rawTags: unknown = (course as { tags?: unknown }).tags;
+            const parsedTags: string[] = Array.isArray(rawTags)
+                ? (rawTags as string[])
+                : typeof rawTags === 'string'
+                  ? rawTags
+                        .split(',')
+                        .map((t) => t.trim())
+                        .filter(Boolean)
+                  : [];
 
             return {
                 id: uniqueId,
@@ -504,7 +510,19 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
             ) : (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
                     {filteredCourses.map((course) => {
-                        const tags = course.tags || [];
+                        // Defensive: backend returns `tags` as a comma-separated
+                        // string, and a stale cache or older bundle may still
+                        // surface it that way. Normalise to an array so
+                        // `.slice().map()` never blows up.
+                        const rawTags: unknown = course.tags;
+                        const tags: string[] = Array.isArray(rawTags)
+                            ? (rawTags as string[])
+                            : typeof rawTags === 'string'
+                              ? rawTags
+                                    .split(',')
+                                    .map((t) => t.trim())
+                                    .filter(Boolean)
+                              : [];
                         const levelName = !isDefaultName(course.levelInfo.levelName)
                             ? course.levelInfo.levelName
                             : null;

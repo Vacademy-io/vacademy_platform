@@ -159,9 +159,34 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                 .map((item) => item.messageId)
                 .filter(Boolean) || [];
         if (!unreadIds.length) return;
+
+        const unreadIdSet = new Set(unreadIds);
+        const markPagedItemsRead = (page: PagedResponse<SystemAlertItem> | undefined) =>
+            page
+                ? {
+                      ...page,
+                      content: page.content.map((item) =>
+                          unreadIdSet.has(item.messageId) ? { ...item, isRead: true } : item
+                      ),
+                  }
+                : page;
+
+        queryClient.setQueriesData<PagedResponse<SystemAlertItem>>(
+            { queryKey: ['SYSTEM_ALERTS', userId] },
+            (old) => markPagedItemsRead(old) ?? old
+        );
+        queryClient.setQueriesData<{ pages: PagedResponse<SystemAlertItem>[]; pageParams: unknown[] }>(
+            { queryKey: ['SYSTEM_ALERTS_INFINITE', userId] },
+            (old) =>
+                old
+                    ? {
+                          ...old,
+                          pages: old.pages.map((p) => markPagedItemsRead(p) as PagedResponse<SystemAlertItem>),
+                      }
+                    : old
+        );
+
         await markSystemAlertsAsRead(unreadIds, userId);
-        await queryClient.invalidateQueries({ queryKey: ['SYSTEM_ALERTS', userId] });
-        await queryClient.invalidateQueries({ queryKey: ['SYSTEM_ALERTS_INFINITE', userId] });
     };
 
     const handleNotificationsOpenChange = (open: boolean) => {

@@ -173,10 +173,26 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 triggerEvent: triggerEvent ?? 'AUDIENCE_LEAD_SUBMISSION',
             }, 250, 50, true);
 
+            // respondentEmailRequests = list of email requests for the LEAD
+            // (always populated by AudienceService for any lead submission).
+            // adminEmailRequests = list for notifying admins (often empty when
+            // audience.toNotify is not configured) — wrong list for "send to lead".
+            //
+            // templateVars maps the sample template's placeholder names to the
+            // actual context fields. Without these, {{parentName}} stays literal.
+            // Resolution order in SendEmailNodeHandler:
+            //   item field → context field → customFields[<key>] → SpEL → literal
             const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
                 templateName: answers.templateName as string,
-                on: "#ctx['adminEmailRequests']",
+                on: "#ctx['respondentEmailRequests']",
                 forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+                templateVars: {
+                    parentName: 'Full Name',     // resolves from customFields["Full Name"]
+                    fullName: 'Full Name',       // alias, in case template uses {{fullName}}
+                    email: 'Email',              // resolves from customFields["Email"]
+                    mobileNumber: 'Phone Number',// resolves from customFields["Phone Number"]
+                    instituteName: 'instituteName', // resolves from context
+                },
             }, 250, 230);
 
             return {
@@ -721,8 +737,8 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
     // Template #16 REMOVED: Same issue as #10 — static email not supported by SEND_EMAIL handler.
 
     // ─── 17. Lead follow-up with different template ───
-    // VERIFIED: adminEmailRequests is List<Map> prepared by AudienceService ✓
-    //   Same proven pattern as template #2 but lets user pick a different template
+    // VERIFIED: respondentEmailRequests is List<Map> with the lead's email,
+    //   always populated by AudienceService for each form submission.
     {
         id: 'lead_followup_email',
         name: 'Lead follow-up email',
@@ -745,8 +761,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
 
             const emailNode = makeNode('SEND_EMAIL', `Follow-up: ${answers.templateName}`, {
                 templateName: answers.templateName as string,
-                on: "#ctx['adminEmailRequests']",
+                on: "#ctx['respondentEmailRequests']",
                 forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+                templateVars: {
+                    parentName: 'Full Name',
+                    fullName: 'Full Name',
+                    email: 'Email',
+                    mobileNumber: 'Phone Number',
+                    instituteName: 'instituteName',
+                },
             }, 250, 230);
 
             return {

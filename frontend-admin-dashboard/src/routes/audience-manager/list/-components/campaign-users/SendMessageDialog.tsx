@@ -39,9 +39,15 @@ import {
     listTemplates,
     type WhatsAppTemplateDTO,
 } from '@/routes/communication/whatsapp-templates/-services/template-api';
+import {
+    getMessageTemplates,
+    getMessageTemplate,
+} from '@/services/message-template-service';
+import type { MessageTemplate } from '@/types/message-template-types';
 import { toast } from 'sonner';
 import { useGetCampaignById } from '../../-hooks/useGetCampaignById';
 import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
+import { fetchCampaignLeads } from '../../-services/get-campaign-users';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -163,6 +169,10 @@ export function SendMessageDialog({
     const [subject, setSubject] = useState('');
     const [body, setBody] = useState('');
     const [emailType, setEmailType] = useState('UTILITY_EMAIL');
+    const [emailTemplates, setEmailTemplates] = useState<MessageTemplate[]>([]);
+    const [loadingEmailTemplates, setLoadingEmailTemplates] = useState(false);
+    const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState<string>('custom');
+    const [loadingTemplateContent, setLoadingTemplateContent] = useState(false);
 
     // Push / System Alert state
     const [pushTitle, setPushTitle] = useState('');
@@ -174,6 +184,12 @@ export function SendMessageDialog({
     // Send state
     const [isSending, setIsSending] = useState(false);
     const [sendResult, setSendResult] = useState<SendAudienceMessageResponse | null>(null);
+
+    // Resolved recipient count: prefer the prop (may already be known from the lead table view),
+    // else fetch a 1-row page from the leads endpoint to read totalElements.
+    const [resolvedLeadCount, setResolvedLeadCount] = useState<number | null>(
+        leadCount > 0 ? leadCount : null
+    );
 
     // -----------------------------------------------------------------------
     // Reset on close
@@ -189,13 +205,37 @@ export function SendMessageDialog({
             setSubject('');
             setBody('');
             setEmailType('UTILITY_EMAIL');
+            setEmailTemplates([]);
+            setLoadingEmailTemplates(false);
+            setSelectedEmailTemplateId('custom');
+            setLoadingTemplateContent(false);
             setPushTitle('');
             setPushBody('');
             setVariableMapping({});
             setIsSending(false);
             setSendResult(null);
+            setResolvedLeadCount(leadCount > 0 ? leadCount : null);
         }
-    }, [open]);
+    }, [open, leadCount]);
+
+    // -----------------------------------------------------------------------
+    // Resolve actual lead count when caller didn't pass one.
+    // -----------------------------------------------------------------------
+    useEffect(() => {
+        if (!open) return;
+        if (leadCount > 0) return;
+        let cancelled = false;
+        fetchCampaignLeads({ audience_id: campaignId, page: 0, size: 1 })
+            .then((res) => {
+                if (!cancelled) setResolvedLeadCount(res.totalElements ?? 0);
+            })
+            .catch(() => {
+                /* leave as null; UI falls back to "all members" */
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [open, campaignId, leadCount]);
 
     // -----------------------------------------------------------------------
     // Fetch WA templates when channel is WHATSAPP
@@ -218,6 +258,55 @@ export function SendMessageDialog({
             cancelled = true;
         };
     }, [channel, instituteId]);
+
+    // -----------------------------------------------------------------------
+    // Fetch saved email templates when channel is EMAIL
+    // -----------------------------------------------------------------------
+    useEffect(() => {
+        if (channel !== 'EMAIL') return;
+        let cancelled = false;
+        setLoadingEmailTemplates(true);
+        // Pull a generous page so the dropdown shows everything the institute has.
+        getMessageTemplates('EMAIL', 0, 100)
+            .then((res) => {
+                if (!cancelled) setEmailTemplates(res.templates);
+            })
+            .catch(() => {
+                if (!cancelled) toast.error('Failed to load email templates');
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingEmailTemplates(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [channel]);
+
+    // -----------------------------------------------------------------------
+    // Apply selected email template (load full content -> prefill subject + body)
+    // -----------------------------------------------------------------------
+    const handleEmailTemplateSelect = useCallback(async (templateId: string) => {
+        setSelectedEmailTemplateId(templateId);
+        // Reset variable mapping since placeholders will change.
+        setVariableMapping({});
+
+        if (templateId === 'custom') {
+            setSubject('');
+            setBody('');
+            return;
+        }
+
+        setLoadingTemplateContent(true);
+        try {
+            const full = await getMessageTemplate(templateId);
+            setSubject(full.subject ?? '');
+            setBody(full.content ?? '');
+        } catch {
+            toast.error('Failed to load template content');
+        } finally {
+            setLoadingTemplateContent(false);
+        }
+    }, []);
 
     // -----------------------------------------------------------------------
     // Derived: approved templates
@@ -363,20 +452,23 @@ export function SendMessageDialog({
     // -----------------------------------------------------------------------
 
     const renderStepIndicator = () => (
-        <div className="mb-6 flex items-center gap-2">
+        <div className="mb-6 flex w-full min-w-0 items-center gap-1 overflow-hidden">
             {STEP_TITLES.map((title, i) => {
                 const stepNum = i + 1;
                 const isActive = stepNum === step;
                 const isDone = stepNum < step;
                 return (
-                    <div key={title} className="flex items-center gap-2">
+                    <div
+                        key={title}
+                        className={`flex min-w-0 items-center gap-1.5 ${isActive ? 'flex-1' : 'flex-none'}`}
+                    >
                         {i > 0 && (
                             <div
-                                className={`h-px w-6 ${isDone ? 'bg-primary' : 'bg-muted-foreground/30'}`}
+                                className={`h-px flex-1 min-w-2 ${isDone ? 'bg-primary' : 'bg-muted-foreground/30'}`}
                             />
                         )}
                         <div
-                            className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium ${
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-medium ${
                                 isActive
                                     ? 'bg-primary text-primary-foreground'
                                     : isDone
@@ -384,13 +476,13 @@ export function SendMessageDialog({
                                       : 'bg-muted text-muted-foreground'
                             }`}
                         >
-                            {isDone ? <CheckCircle2 className="h-4 w-4" /> : stepNum}
+                            {isDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : stepNum}
                         </div>
-                        <span
-                            className={`hidden text-xs sm:inline ${isActive ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}
-                        >
-                            {title}
-                        </span>
+                        {isActive && (
+                            <span className="truncate text-xs font-semibold text-foreground">
+                                {title}
+                            </span>
+                        )}
                     </div>
                 );
             })}
@@ -399,7 +491,7 @@ export function SendMessageDialog({
 
     // Step 1 ------------------------------------------------------------------
     const renderChannelSelection = () => (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
             {CHANNELS.map((ch) => {
                 const Icon = ch.icon;
                 const isSelected = channel === ch.value;
@@ -408,17 +500,19 @@ export function SendMessageDialog({
                         key={ch.value}
                         type="button"
                         onClick={() => setChannel(ch.value)}
-                        className={`flex flex-col items-center gap-2 rounded-lg border-2 p-5 text-center transition-colors hover:bg-muted/50 ${
+                        className={`flex min-w-0 flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-colors hover:bg-muted/50 ${
                             isSelected
                                 ? 'border-primary bg-primary/5'
                                 : 'border-muted-foreground/20'
                         }`}
                     >
                         <Icon
-                            className={`h-8 w-8 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`}
+                            className={`h-7 w-7 ${isSelected ? 'text-primary' : 'text-muted-foreground'}`}
                         />
                         <span className="text-sm font-semibold">{ch.label}</span>
-                        <span className="text-xs text-muted-foreground">{ch.description}</span>
+                        <span className="text-xs text-muted-foreground line-clamp-3">
+                            {ch.description}
+                        </span>
                     </button>
                 );
             })}
@@ -482,6 +576,41 @@ export function SendMessageDialog({
             return (
                 <div className="space-y-4">
                     <div className="space-y-2">
+                        <Label>Template</Label>
+                        {loadingEmailTemplates ? (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Loading templates...
+                            </div>
+                        ) : (
+                            <Select
+                                value={selectedEmailTemplateId}
+                                onValueChange={handleEmailTemplateSelect}
+                                disabled={loadingTemplateContent}
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a template" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="custom">
+                                        Custom — write from scratch
+                                    </SelectItem>
+                                    {emailTemplates.map((t) => (
+                                        <SelectItem key={t.id} value={t.id}>
+                                            {t.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                        {loadingTemplateContent && (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Loading template content...
+                            </div>
+                        )}
+                    </div>
+                    <div className="space-y-2">
                         <Label>Email Type</Label>
                         <Select value={emailType} onValueChange={setEmailType}>
                             <SelectTrigger className="w-60">
@@ -506,9 +635,13 @@ export function SendMessageDialog({
                         <Textarea
                             value={body}
                             onChange={(e) => setBody(e.target.value)}
-                            placeholder="Enter email body HTML..."
+                            placeholder="Enter email body HTML... use {{variable}} for placeholders"
                             className="min-h-[200px] font-mono text-sm"
                         />
+                        <p className="text-xs text-muted-foreground">
+                            Placeholders like <code className="font-mono">{'{{name}}'}</code> are
+                            replaced per-recipient on send. Map them in the next step.
+                        </p>
                     </div>
                 </div>
             );
@@ -665,7 +798,11 @@ export function SendMessageDialog({
 
                     <div className="border-t pt-3">
                         <p className="text-xs text-muted-foreground">Recipients</p>
-                        <p className="text-sm font-medium">{leadCount} leads</p>
+                        <p className="text-sm font-medium">
+                            {resolvedLeadCount !== null
+                                ? `All ${resolvedLeadCount} member${resolvedLeadCount === 1 ? '' : 's'} of this audience`
+                                : 'All members of this audience'}
+                        </p>
                     </div>
 
                     {Object.keys(variableMapping).length > 0 && (
@@ -707,7 +844,9 @@ export function SendMessageDialog({
                     ) : (
                         <>
                             <Send className="mr-2 h-4 w-4" />
-                            Send to {leadCount} leads
+                            {resolvedLeadCount !== null
+                                ? `Send to ${resolvedLeadCount} member${resolvedLeadCount === 1 ? '' : 's'}`
+                                : 'Send to all members'}
                         </>
                     )}
                 </Button>
@@ -720,7 +859,7 @@ export function SendMessageDialog({
     // -----------------------------------------------------------------------
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+            <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden">
                 <DialogHeader>
                     <DialogTitle>Send Message</DialogTitle>
                     <DialogDescription>

@@ -17,6 +17,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
     MessageSquare,
     Mail,
@@ -173,6 +174,7 @@ export function SendMessageDialog({
     const [loadingEmailTemplates, setLoadingEmailTemplates] = useState(false);
     const [selectedEmailTemplateId, setSelectedEmailTemplateId] = useState<string>('custom');
     const [loadingTemplateContent, setLoadingTemplateContent] = useState(false);
+    const [emailBodyView, setEmailBodyView] = useState<'preview' | 'edit'>('edit');
 
     // Push / System Alert state
     const [pushTitle, setPushTitle] = useState('');
@@ -209,6 +211,7 @@ export function SendMessageDialog({
             setLoadingEmailTemplates(false);
             setSelectedEmailTemplateId('custom');
             setLoadingTemplateContent(false);
+            setEmailBodyView('edit');
             setPushTitle('');
             setPushBody('');
             setVariableMapping({});
@@ -293,6 +296,7 @@ export function SendMessageDialog({
         if (templateId === 'custom') {
             setSubject('');
             setBody('');
+            setEmailBodyView('edit');
             return;
         }
 
@@ -301,6 +305,8 @@ export function SendMessageDialog({
             const full = await getMessageTemplate(templateId);
             setSubject(full.subject ?? '');
             setBody(full.content ?? '');
+            // Default to rendered preview when a saved template loads.
+            setEmailBodyView('preview');
         } catch {
             toast.error('Failed to load template content');
         } finally {
@@ -490,6 +496,12 @@ export function SendMessageDialog({
     );
 
     // Step 1 ------------------------------------------------------------------
+    const handleChannelPick = (value: Channel) => {
+        setChannel(value);
+        // Skip the redundant "Next" click — channel choice is final on click.
+        setStep(2);
+    };
+
     const renderChannelSelection = () => (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
             {CHANNELS.map((ch) => {
@@ -499,7 +511,7 @@ export function SendMessageDialog({
                     <button
                         key={ch.value}
                         type="button"
-                        onClick={() => setChannel(ch.value)}
+                        onClick={() => handleChannelPick(ch.value)}
                         className={`flex min-w-0 flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-colors hover:bg-muted/50 ${
                             isSelected
                                 ? 'border-primary bg-primary/5'
@@ -631,13 +643,39 @@ export function SendMessageDialog({
                         />
                     </div>
                     <div className="space-y-2">
-                        <Label>Body (HTML)</Label>
-                        <Textarea
-                            value={body}
-                            onChange={(e) => setBody(e.target.value)}
-                            placeholder="Enter email body HTML... use {{variable}} for placeholders"
-                            className="min-h-[200px] font-mono text-sm"
-                        />
+                        <div className="flex items-center justify-between">
+                            <Label>Body</Label>
+                        </div>
+                        <Tabs
+                            value={emailBodyView}
+                            onValueChange={(v) => setEmailBodyView(v as 'preview' | 'edit')}
+                            className="w-full"
+                        >
+                            <TabsList className="grid w-fit grid-cols-2">
+                                <TabsTrigger value="preview">Preview</TabsTrigger>
+                                <TabsTrigger value="edit">Edit HTML</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="preview" className="mt-2">
+                                {body.trim() ? (
+                                    <div
+                                        className="min-h-[260px] max-h-[420px] overflow-auto rounded-md border bg-white p-4 text-sm text-neutral-900"
+                                        dangerouslySetInnerHTML={{ __html: body }}
+                                    />
+                                ) : (
+                                    <div className="flex min-h-[260px] items-center justify-center rounded-md border bg-muted/20 text-sm text-muted-foreground">
+                                        Pick a template or switch to Edit HTML to write content.
+                                    </div>
+                                )}
+                            </TabsContent>
+                            <TabsContent value="edit" className="mt-2">
+                                <Textarea
+                                    value={body}
+                                    onChange={(e) => setBody(e.target.value)}
+                                    placeholder="Enter email body HTML... use {{variable}} for placeholders"
+                                    className="min-h-[260px] font-mono text-sm"
+                                />
+                            </TabsContent>
+                        </Tabs>
                         <p className="text-xs text-muted-foreground">
                             Placeholders like <code className="font-mono">{'{{name}}'}</code> are
                             replaced per-recipient on send. Map them in the next step.

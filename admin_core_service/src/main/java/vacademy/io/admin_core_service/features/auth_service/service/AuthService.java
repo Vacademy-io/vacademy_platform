@@ -364,6 +364,45 @@ public class AuthService {
         }
     }
 
+    /**
+     * Fetch the user IDs of every user holding a given role within an institute. Returns an
+     * empty list (never throws back to caller) when the institute has no such users or when the
+     * lookup fails — this is meant for best-effort fallbacks like the doubt-notification cascade,
+     * where admin broadcast is a backup, not a hard requirement.
+     */
+    public List<String> getUserIdsByRole(String instituteId, String roleName) {
+        if (instituteId == null || instituteId.isBlank() || roleName == null || roleName.isBlank()) {
+            return List.of();
+        }
+        try {
+            String endpoint = AuthServiceRoutes.GET_USERS_BY_ROLE
+                    + "?instituteId=" + java.net.URLEncoder.encode(instituteId, java.nio.charset.StandardCharsets.UTF_8)
+                    + "&roleName=" + java.net.URLEncoder.encode(roleName, java.nio.charset.StandardCharsets.UTF_8);
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    null);
+            if (response == null || response.getBody() == null
+                    || !response.getStatusCode().is2xxSuccessful()) {
+                return List.of();
+            }
+            ObjectMapper objectMapper = new ObjectMapper();
+            objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            List<UserDTO> users = objectMapper.readValue(response.getBody(),
+                    new TypeReference<List<UserDTO>>() {});
+            return users.stream()
+                    .map(UserDTO::getId)
+                    .filter(id -> id != null && !id.isEmpty())
+                    .distinct()
+                    .toList();
+        } catch (Exception e) {
+            // Swallow — this method only powers fallbacks; failure should not break doubt creation.
+            return List.of();
+        }
+    }
+
     public void updateInstituteSettings(String instituteId, String userIdentifier) {
         try {
             String endpoint = AuthServiceRoutes.UPDATE_INSTITUTE_SETTINGS;

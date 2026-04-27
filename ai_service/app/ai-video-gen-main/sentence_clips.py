@@ -121,7 +121,11 @@ def build_sentence_clips(
                        (e.g. "videos/vid_abc/sentences/").
         slice_fn: callable that uploads each cut and returns its URL.
 
-    Raises SentenceMappingError if the sentence-to-word mapping fails badly.
+    Sentences whose alignment can't be found in the word stream are
+    skipped (with a warning) rather than aborting the whole map; the
+    returned list may be shorter than `split_into_sentences(script_text)`.
+    Raises SentenceMappingError only when the input is structurally
+    unusable (empty `words`).
     """
     sentences = split_into_sentences(script_text)
     if not sentences:
@@ -175,36 +179,56 @@ def map_sentences_to_words(
     *,
     id_prefix: str = "sent",
 ) -> List[_MappedSentence]:
-    """For each sentence, consume the matching number of words from the
-    word stream and emit its [start_time, end_time] plus the per-sentence
-    word list (with times rebased to the sentence start).
+    """For each sentence, find its slice of the word stream by SEARCHING
+    a small window around the expected position rather than counting
+    sequentially. Drift caused by token-count mismatches (contractions,
+    numbers spelled out, symbols) gets re-anchored every sentence instead
+    of accumulating across the file.
 
-    The mapping is a sequential walk — we trust Whisper's word ordering
-    against the script's word ordering. If the running drift between the
-    sentence text and the consumed words exceeds a sanity threshold we
-    raise rather than silently producing misaligned clips.
+    Sentences whose anchor can't be found inside the search window are
+    SKIPPED with a warning rather than aborting the whole map — the
+    caller still gets clips for every sentence that did align. The
+    cursor advances by the expected token count after a skip so we don't
+    keep searching the same dead spot.
+
+    Empty `words` raises SentenceMappingError; everything else degrades
+    gracefully.
     """
+    if not words:
+        raise SentenceMappingError("words list is empty; cannot map sentences to time")
+
     cursor = 0
     out: List[_MappedSentence] = []
+    word_tokens = [_normalize(str(w.get("word", ""))) for w in words]
+    skipped: List[int] = []
+
     for idx, sentence in enumerate(sentences):
         sentence_tokens = _tokenize(sentence)
         if not sentence_tokens:
             continue
-        n = len(sentence_tokens)
-        if cursor + n > len(words):
-            # Common cause: script has trailing words the audio never
-            # spoke, or words.json is truncated. Take whatever's left.
-            n = len(words) - cursor
-            if n <= 0:
-                logger.warning(
-                    "sentence %d (%r) has no remaining words; stopping mapping",
-                    idx, sentence[:40],
-                )
-                break
+        if cursor >= len(words):
+            logger.warning("sentence %d (%r) has no remaining words; stopping",
+                           idx, sentence[:40])
+            break
 
-        slice_words = words[cursor:cursor + n]
-        _check_alignment(sentence_tokens, slice_words, idx, sentence)
+        anchor = _find_sentence_anchor(
+            word_tokens=word_tokens,
+            sentence_tokens=sentence_tokens,
+            cursor=cursor,
+        )
+        if anchor is None:
+            logger.warning(
+                "sentence %d alignment lost; skipping (%r)", idx, sentence[:60],
+            )
+            skipped.append(idx)
+            # Best-effort cursor bump so we don't search the same window
+            # repeatedly. Underestimates by design — better to re-find the
+            # next sentence than to leapfrog past several real ones.
+            cursor = min(len(words), cursor + max(1, len(sentence_tokens) // 2))
+            continue
 
+        start_idx, end_idx = anchor
+        slice_words = words[start_idx:end_idx + 1]
         start_time = float(slice_words[0]["start"])
         end_time = float(slice_words[-1]["end"])
         rel_words = [
@@ -222,8 +246,13 @@ def map_sentences_to_words(
             end_time=end_time,
             words=rel_words,
         ))
-        cursor += n
+        cursor = end_idx + 1
 
+    if skipped:
+        logger.warning(
+            "mapped %d/%d sentences (%d skipped due to alignment drift)",
+            len(out), len(sentences), len(skipped),
+        )
     return out
 
 
@@ -231,10 +260,109 @@ def map_sentences_to_words(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-# When the first words of the consumed slice and the sentence diverge by
-# more than this fraction, we abort instead of producing garbage clips.
-# Calibrated for typical Whisper jitter ("F1" vs "F-1", "don't" vs "dont").
-_ALIGNMENT_DRIFT_THRESHOLD = 0.5
+# How far past the cursor we'll search for a sentence's start anchor.
+# Calibrated against typical Whisper drift on numbers / abbreviations
+# / symbols ("1990" → "nineteen ninety", "F1" → "F" "1", "%" → "percent").
+# A 30-word window is roughly 6-8 seconds of audio at normal speech rate
+# — comfortably wider than any single Whisper drift event we've seen.
+_ANCHOR_SEARCH_WINDOW = 30
+# How many tokens to compare when scoring an anchor candidate. More tokens
+# = more confidence; fewer = works on very short sentences. 3 is the sweet
+# spot — works for "Yes." (1 token, falls back to expected position) up to
+# multi-paragraph sentences.
+_ANCHOR_PREFIX_LEN = 3
+_ANCHOR_SUFFIX_LEN = 3
+# Minimum fraction of prefix tokens that must match to accept a candidate.
+# At 0.67, two of three must match — robust to one dropped/misheard word
+# at the boundary while still rejecting unrelated positions.
+_ANCHOR_MIN_SCORE = 0.67
+
+
+def _find_sentence_anchor(
+    *,
+    word_tokens: List[str],
+    sentence_tokens: List[str],
+    cursor: int,
+) -> Optional[tuple]:
+    """Locate the [start_idx, end_idx] in `word_tokens` that best matches
+    `sentence_tokens`, searching forward from `cursor`. Returns None when
+    no candidate clears the score threshold (sentence is unmappable).
+
+    The search is two-step:
+      1. Find the START by scoring sentence's first N tokens against each
+         candidate position in [cursor, cursor + window).
+      2. Find the END similarly, anchored to (start + expected_len) ± window.
+    """
+    expected_len = len(sentence_tokens)
+    prefix = sentence_tokens[:_ANCHOR_PREFIX_LEN]
+    suffix = sentence_tokens[-_ANCHOR_SUFFIX_LEN:]
+
+    start_idx = _best_match(
+        word_tokens=word_tokens,
+        needle=prefix,
+        search_from=cursor,
+        search_to=min(len(word_tokens), cursor + _ANCHOR_SEARCH_WINDOW),
+    )
+    if start_idx is None:
+        return None
+
+    # Predicted end position; search a small window around it for the
+    # actual suffix. Clamp to stream bounds. If the sentence is short
+    # enough that prefix and suffix overlap, just use start + len - 1.
+    if expected_len <= _ANCHOR_PREFIX_LEN + _ANCHOR_SUFFIX_LEN:
+        end_idx = min(len(word_tokens) - 1, start_idx + expected_len - 1)
+        return start_idx, end_idx
+
+    predicted_end = start_idx + expected_len - len(suffix)
+    end_search_from = max(start_idx + 1, predicted_end - _ANCHOR_SEARCH_WINDOW // 2)
+    end_search_to = min(len(word_tokens), predicted_end + _ANCHOR_SEARCH_WINDOW // 2 + len(suffix))
+
+    suffix_start = _best_match(
+        word_tokens=word_tokens,
+        needle=suffix,
+        search_from=end_search_from,
+        search_to=end_search_to,
+    )
+    if suffix_start is None:
+        # Fall back to the count-based prediction. The clip will be roughly
+        # right; only the tail seconds may be off.
+        end_idx = min(len(word_tokens) - 1, start_idx + expected_len - 1)
+    else:
+        end_idx = suffix_start + len(suffix) - 1
+
+    return start_idx, end_idx
+
+
+def _best_match(
+    *,
+    word_tokens: List[str],
+    needle: List[str],
+    search_from: int,
+    search_to: int,
+) -> Optional[int]:
+    """Return the index in word_tokens[search_from:search_to] where
+    `needle` aligns best, or None if no candidate clears the score
+    threshold. Score = fraction of tokens matching at that offset."""
+    if not needle or search_from >= search_to:
+        return None
+    needle_len = len(needle)
+    best_idx: Optional[int] = None
+    best_score = 0.0
+    for i in range(search_from, search_to):
+        if i + needle_len > len(word_tokens):
+            break
+        matches = sum(
+            1 for a, b in zip(needle, word_tokens[i:i + needle_len]) if a == b
+        )
+        score = matches / needle_len
+        # Prefer the EARLIEST position when scores tie — keeps us moving
+        # forward and avoids accidentally skipping past short sentences.
+        if score > best_score:
+            best_score = score
+            best_idx = i
+        if best_score == 1.0:
+            break
+    return best_idx if best_score >= _ANCHOR_MIN_SCORE else None
 
 
 def _tokenize(text: str) -> List[str]:
@@ -244,26 +372,3 @@ def _tokenize(text: str) -> List[str]:
 
 def _normalize(token: str) -> str:
     return _NORMALIZE_RE.sub("", token).lower()
-
-
-def _check_alignment(
-    sentence_tokens: List[str],
-    slice_words: List[Dict[str, Any]],
-    idx: int,
-    sentence: str,
-) -> None:
-    """Compare the first few tokens of the sentence against the first few
-    consumed words. If too many disagree, the mapping has drifted and the
-    rest of the output would be garbage — raise so the caller can decide
-    whether to abort or fall back to legacy single-MP3 mode."""
-    head = sentence_tokens[:5]
-    consumed = [_normalize(str(w.get("word", ""))) for w in slice_words[:5]]
-    if not head or not consumed:
-        return
-    mismatches = sum(1 for a, b in zip(head, consumed) if a != b)
-    drift = mismatches / max(len(head), 1)
-    if drift > _ALIGNMENT_DRIFT_THRESHOLD:
-        raise SentenceMappingError(
-            f"sentence {idx} alignment drift {drift:.0%}: "
-            f"expected {head!r}, got {consumed!r} (sentence={sentence[:60]!r})"
-        )

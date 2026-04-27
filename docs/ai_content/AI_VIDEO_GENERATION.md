@@ -42,8 +42,8 @@
  │    ├── _shot_task (parallel)       → LLM call #4…N: one per shot             │
  │    ├── skill composer pass         → substitute <skill> tags                 │
  │    ├── _validate_shot_animation_density → regen sparse shots (super_ultra)   │
- │    ├── _process_generated_images   → Gemini / Pexels for images              │
- │    ├── _process_stock_videos       → Pexels + LLM ranker (super_ultra)       │
+ │    ├── _process_generated_images   → Seedream / Pexels / Pixabay for images  │
+ │    ├── _process_stock_videos       → Pexels / Pixabay + LLM ranker (super)   │
  │    └── _ensure_fonts               → inject CSS + SVG defs                   │
  │    │                                                                         │
  │    ▼                                                                         │
@@ -93,6 +93,7 @@ Both playback paths consume **identical** HTML/CSS/JS. The pipeline generates on
 | `app/ai-video-gen-main/skill_composer.py` | Pure function `compose(shot_html, ctx)` that scans for `<skill>` tags, validates params, renders each skill, and substitutes inline. Aggregates CSS/JS into the final HTML. |
 | `app/ai-video-gen-main/skills/**/skill.py` | Individual motion primitive modules (6 shipped — `bar_chart_grow`, `number_counter`, `typewriter_text`, `equation_term_reveal`, `stagger_list`, `ring_progress`). Drop-in: add a folder, no pipeline changes. |
 | `app/ai-video-gen-main/pexels_service.py` | Pexels stock photo + video client. Exposes `search_videos()` (legacy single-pick) and `search_video_candidates()` (returns N candidates for LLM ranking). |
+| `app/ai-video-gen-main/pixabay_service.py` | Pixabay stock photo + video client. Mirrors the PexelsService surface (`search_photos`, `search_videos`, `search_video_candidates`) so the pipeline can swap providers transparently. Used for illustrations / diagrams / educational imagery where Pexels is thin. |
 | `app/ai-video-gen-main/generate_video.py` | The Playwright render engine. Loads HTML, advances GSAP timeline, screenshots each frame, emits MP4. Not called from `ai_service` — runs as its own render server. |
 | `app/ai-video-gen-main/content_type_prompts.py` | Per-content-type prompt overrides (QUIZ, STORYBOOK, SIMULATION, etc.). |
 | `app/ai-video-gen-main/map_assets.py` | Pre-built SVG maps (world, countries, regions) the LLM can reference. |
@@ -231,9 +232,33 @@ Resolution × orientation → dimension lookup:
 
 The browser player mixes these via `useWebAudioMixer` (Web Audio API). The render server mixes them via ffmpeg post-processing.
 
+#### Auto-generated background music (Lyria 3 / ultra + super_ultra)
+
+On `ultra` / `super_ultra` tiers, the Director additionally emits a `music_plan` object alongside `shots`. The pipeline feeds each segment's prompt into Google Lyria (Vertex AI) using the same service account as Google TTS, uploads each segment to S3, and — for videos spanning multiple segments — merges them into a single MP3 via the render worker's `POST /concat_audio` endpoint. The final track is inserted into `meta.audio_tracks[]` with `id="background-music"`, `label="Background Music"`, `volume=0.20`, `fadeIn=2.0`, `fadeOut=3.0`. Since it rides the same `audio_tracks` channel as user uploads, the AudioTracksPanel UI can edit/replace/delete it exactly like any other track.
+
+Request knobs (on `VideoGenerationRequest`):
+- `background_music_enabled` (Optional[bool]) — `None` = tier default (on for ultra/super_ultra), `True`/`False` overrides.
+- `background_music_volume` (Optional[float], 0.0–1.0) — initial volume; defaults to tier config (0.20).
+
+Lyria's per-clip cap is ~180s, so longer videos are tiled across N segments (≤170s each) with 2s crossfades. Music failures are non-fatal: the video ships without a score and the error is logged. Relevant env vars: `GOOGLE_CLOUD_PROJECT`, `LYRIA_LOCATION` (default `us-central1`), `LYRIA_MODEL_ID` (default `lyria-3-pro-preview`; `us-central1` only at time of writing), `RENDER_WORKER_URL` (required for multi-segment concat). Service account must have `aiplatform.endpoints.predict` on the Lyria model. Code: [`music_generator.py`](../../ai_service/app/ai-video-gen-main/music_generator.py), Director contract in [`director_prompts.py::MUSIC_PLAN_EXTENSION`](../../ai_service/app/ai-video-gen-main/director_prompts.py).
+
 ### 2.6 TTS voices
 
 - `GET /external/video/v1/tts/voices?language=English&gender=female&tier=premium` — returns available voices (provider varies by language: Sarvam for Indian languages, Google Cloud for global, Microsoft Edge for free tier).
+
+**Supported languages** (~40 via Google Cloud; defined in [`_GOOGLE_VOICES`](../../ai_service/app/routers/external_video_generation.py) and [`LANGUAGES`](../../frontend-admin-dashboard/src/routes/video-api-studio/-services/video-generation.ts)):
+
+- **English**: US, UK, Australia, India
+- **European**: Spanish (ES, US), Portuguese (BR, PT), French (FR, CA), German, Italian, Dutch (NL, BE), Danish, Finnish, Norwegian, Swedish, Icelandic, Polish, Russian, Ukrainian, Czech, Slovak, Hungarian, Romanian, Bulgarian, Greek, Catalan
+- **Middle East / Africa**: Arabic, Hebrew, Turkish, Afrikaans
+- **Asian**: Japanese, Korean, Chinese (Mandarin, Taiwan), Thai, Vietnamese, Indonesian, Malay, Filipino
+- **Indian** (route to Sarvam on premium tier): Hindi, Bengali, Tamil, Telugu, Marathi, Kannada, Gujarati, Malayalam, Urdu
+
+**Voice classes** (ordered by quality): Chirp3-HD > Neural2 > WaveNet > Standard. Studio voices are intentionally excluded — they don't support SSML timepoints, which our word-timestamp flow requires. Adding them later would need a Whisper-based alignment fallback and a separate credit multiplier.
+
+Each language exposes every class Google supports for that locale — see the per-language entries in `_GOOGLE_VOICES` for the full voice id list. The canonical Chirp3-HD voice set (4 female + 4 male) is `Aoede / Kore / Leda / Zephyr` and `Charon / Fenrir / Orus / Puck`.
+
+**Sample generation**: `scripts/generate_google_tts_samples.py` synthesizes a ~6-second preview in each voice's native language and uploads to `s3://vacademy-media-storage/TTS_SAMPLES/GOOGLE/`. Run `--dry-run` first to see count + estimated cost. The script emits a `_GOOGLE_SAMPLE_URLS` dict to paste into `external_video_generation.py`. Re-runs are idempotent via `--skip-existing`.
 
 ---
 
@@ -646,7 +671,7 @@ Every shot type is always available — the Director picks freely. `DOMAIN_SHOT_
 
 ### 3.9 Image generation — `_process_generated_images()`
 
-Scans every shot's HTML for `<img data-img-prompt="...">` tags and generates the images via Gemini (or fetches from Pexels if `data-img-source='stock'`).
+Scans every shot's HTML for `<img data-img-prompt="...">` tags. For `data-img-source='stock'` the pipeline tries Pexels and Pixabay (order is driven by the optional `data-stock-provider` attribute, otherwise an auto heuristic) before falling back to AI generation. `data-img-source='generate'` tags go straight to OpenRouter's `bytedance-seed/seedream-4.5` via `_call_image_generation_llm` (chat/completions with `modalities:["image"]`; response `images[].image_url.url` is a base64 data URL).
 
 **Cutout handling**: If `data-cutout='true'`, the image is run through `rembg` (u2netp model, singleton session) to remove the background, producing a transparent PNG.
 
@@ -656,17 +681,17 @@ Scans every shot's HTML for `<img data-img-prompt="...">` tags and generates the
 
 ### 3.10 Stock videos — `_process_stock_videos()`
 
-For each shot with `data-video-query="...search terms"`, calls Pexels API to find a matching stock video, downloads it, stores in S3, and rewrites the shot HTML to reference the S3 URL. Supports multiple Pexels API keys (round-robin with rate-limit detection).
+For each shot with `data-video-query="...search terms"`, searches the configured stock providers (Pexels and/or Pixabay) to find a matching stock video, downloads it, stores in S3, and rewrites the shot HTML to reference the S3 URL. The optional `data-stock-provider` attribute on the `<video>` tag pins which provider to try first; otherwise keyword heuristics pick the order. Both providers support multiple API keys (round-robin with rate-limit detection).
 
 #### 3.10.1 Legacy path (premium / ultra / free)
 
-Calls `PexelsService.search_videos(query, orientation)` which returns the first usable HD video meeting the minimum duration. No ranking, no dedup.
+For each configured provider in order, calls `search_videos(query, orientation)` and takes the first usable HD video meeting the minimum duration. No ranking, no dedup. The first provider with a hit wins; on empty, falls through to the next provider.
 
 #### 3.10.2 LLM-ranked path (super_ultra only)
 
 When `stock_video_ranking` tier flag is set:
 
-1. Calls `PexelsService.search_video_candidates(query, orientation, per_page=6)` which returns **up to 6 candidate videos** with `{id, url, image, duration, alt, photographer, pexels_url}`.
+1. Calls `search_video_candidates(query, orientation, per_page=6)` on each provider in order until one returns hits. Both `PexelsService` and `PixabayService` return the same shape: **up to 6 candidate videos** as `{id, url, image, duration, alt, photographer, pexels_url}`.
 2. Filters out any video ID already in `self._used_pexels_video_ids` (dedup across shots — no two shots in one run get the same clip).
 3. If more than one candidate remains, calls `_rank_pexels_candidates_with_llm(candidates, query, narration, visual_description)` ([automation_pipeline.py:6074](../../ai_service/app/ai-video-gen-main/automation_pipeline.py#L6074)). This is a small LLM call that sees:
    - The shot's narration excerpt

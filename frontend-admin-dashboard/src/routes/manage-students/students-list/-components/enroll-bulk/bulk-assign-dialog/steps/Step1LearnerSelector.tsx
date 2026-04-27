@@ -14,6 +14,8 @@ import {
 import { CsvUserImporter, CsvPaymentInfo } from '../../components/CsvUserImporter';
 import { ManualUserEntry } from '../../components/ManualUserEntry';
 import { FromCourseSelector } from '../../components/FromCourseSelector';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface Props {
     instituteId: string;
@@ -109,7 +111,7 @@ export const Step1LearnerSelector = ({
                     </TabsTrigger>
                     <TabsTrigger value="from_course" className="flex-1">
                         <UserPlus size={14} className="mr-1.5" />
-                        From Course
+                        From {getTerminology(ContentTerms.Course, SystemTerms.Course)}
                     </TabsTrigger>
                     <TabsTrigger value="csv" className="flex-1">
                         <Upload size={14} className="mr-1.5" />

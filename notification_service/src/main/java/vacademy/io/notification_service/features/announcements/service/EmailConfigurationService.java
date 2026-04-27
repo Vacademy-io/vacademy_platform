@@ -8,12 +8,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.announcements.dto.EmailConfigDTO;
+import vacademy.io.notification_service.features.notification_log.repository.EmailAddressMappingRepository;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Service for managing email configurations and providing dropdown options
@@ -22,9 +24,10 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 public class EmailConfigurationService {
-    
+
     private final InstituteInternalService instituteInternalService;
     private final ObjectMapper objectMapper;
+    private final EmailAddressMappingRepository emailAddressMappingRepository;
     
     /**
      * Get available email configurations for dropdown
@@ -215,7 +218,21 @@ public class EmailConfigurationService {
             } else {
                 log.info("Successfully added email configuration: {} for institute: {}", emailConfig.getType(), instituteId);
             }
-            
+
+            // Keep email_address_mapping in sync so inbound emails can be routed to this institute
+            try {
+                if (emailConfig.getEmail() != null && !emailConfig.getEmail().isBlank()) {
+                    emailAddressMappingRepository.upsert(
+                            UUID.randomUUID().toString(),
+                            emailConfig.getEmail().toLowerCase().trim(),
+                            instituteId,
+                            emailConfig.getType()
+                    );
+                }
+            } catch (Exception e) {
+                log.warn("Failed to upsert email_address_mapping for {}: {}", emailConfig.getEmail(), e.getMessage());
+            }
+
             return emailConfig;
             
         } catch (Exception e) {

@@ -38,6 +38,7 @@ ssh "$RENDER_SERVER" "mkdir -p $REMOTE_DIR/render_worker $REMOTE_DIR/app/ai-vide
 rsync -avz --progress \
     "$SCRIPT_DIR/main.py" \
     "$SCRIPT_DIR/worker.py" \
+    "$SCRIPT_DIR/audio_ops.py" \
     "$SCRIPT_DIR/requirements.txt" \
     "$SCRIPT_DIR/Dockerfile" \
     "$SCRIPT_DIR/build.sh" \

@@ -30,7 +30,10 @@ from ..schemas.video_generation import (
     UpdateAudioTrackRequest,
     DeleteAudioTrackRequest,
     AudioTrackResponse,
+    VideoCostPreviewRequest,
+    VideoCostPreviewResponse,
 )
+from ..services.video_estimation_service import estimate_video_generation
 from pydantic import BaseModel, Field
 from ..services.video_generation_service import VideoGenerationService
 from ..repositories.ai_video_repository import AiVideoRepository
@@ -151,6 +154,46 @@ def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationSe
 
 
 @router.post(
+    "/preview-cost",
+    response_model=VideoCostPreviewResponse,
+    summary="Estimate credits/cost for a video generation request before submitting",
+)
+def preview_video_cost(
+    payload: VideoCostPreviewRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> VideoCostPreviewResponse:
+    """
+    Returns the resolved selections (so the FE can show a confirmation summary)
+    plus an expected/low/high credit and USD cost estimate, plus the institute's
+    current credit balance and whether it covers the worst-case high estimate.
+    """
+    result = estimate_video_generation(
+        db,
+        institute_id=institute_id,
+        model=payload.model,
+        quality_tier=payload.quality_tier,
+        target_duration=payload.target_duration,
+        target_audience=payload.target_audience,
+        orientation=payload.orientation,
+        voice_gender=payload.voice_gender,
+        tts_provider=payload.tts_provider,
+        voice_id=payload.voice_id,
+        language=payload.language,
+        generate_avatar=payload.generate_avatar,
+        background_music_enabled=payload.background_music_enabled,
+        sound_effects_enabled=payload.sound_effects_enabled,
+        content_type=payload.content_type,
+        visual_style=payload.visual_style,
+        captions_enabled=payload.captions_enabled,
+        html_quality=payload.html_quality,
+        review_mode=payload.review_mode,
+        attachments_count=payload.attachments_count,
+    )
+    return VideoCostPreviewResponse(**result)
+
+
+@router.post(
     "/generate",
     summary="Generate AI video (External)",
     response_class=StreamingResponse
@@ -229,6 +272,9 @@ async def generate_video_external(
                         input_video_ids=p.input_video_ids,
                         input_video_audio=p.input_video_audio,
                         mute_tts_on_source_clips=p.mute_tts_on_source_clips,
+                        background_music_enabled=p.background_music_enabled,
+                        background_music_volume=p.background_music_volume,
+                        sub_shots_enabled=p.sub_shots_enabled,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -391,6 +437,9 @@ async def resume_video_external(
                         input_video_ids=_meta.get("input_video_ids"),
                         input_video_audio=_meta.get("input_video_audio"),
                         mute_tts_on_source_clips=_meta.get("mute_tts_on_source_clips", False),
+                        background_music_enabled=_meta.get("background_music_enabled"),
+                        background_music_volume=_meta.get("background_music_volume"),
+                        sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -514,6 +563,9 @@ async def retry_video_external(
                     input_video_ids=_meta.get("input_video_ids"),
                     input_video_audio=_meta.get("input_video_audio"),
                     mute_tts_on_source_clips=_meta.get("mute_tts_on_source_clips", False),
+                    background_music_enabled=_meta.get("background_music_enabled"),
+                    background_music_volume=_meta.get("background_music_volume"),
+                    sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                 ):
                     await q.put(json.dumps(event))
         except Exception as exc:
@@ -779,6 +831,217 @@ async def update_frame_external(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Sentence clips — per-sentence audio metadata for the script editor
+#
+# The video pipeline auto-builds these for every newly generated video
+# after the HTML stage. This endpoint backfills older videos on demand:
+# slice the existing global narration.mp3 along sentence boundaries
+# (no re-TTS, no voice drift) and store the clip URLs in
+# meta.sentences[] inside the timeline JSON.
+# ---------------------------------------------------------------------------
+
+class SentenceWordDto(BaseModel):
+    word: str
+    start: float
+    end: float
+
+
+class SentenceClipDto(BaseModel):
+    id: str
+    text: str
+    audio_url: str
+    start_time: float
+    duration: float
+    words: List[SentenceWordDto]
+
+
+class BuildSentencesResponse(BaseModel):
+    video_id: str
+    timeline_url: str
+    count: int
+    sentences: List[SentenceClipDto]
+    skipped_reason: Optional[str] = None
+
+
+@router.post(
+    "/sentences/build",
+    response_model=BuildSentencesResponse,
+    summary="Build per-sentence audio clips for a video (External)",
+)
+async def build_sentence_clips_external(
+    payload: dict,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> BuildSentencesResponse:
+    """
+    Slice this video's narration.mp3 into per-sentence clips and persist
+    the metadata into meta.sentences[] inside the timeline JSON. Idempotent
+    — re-running overwrites the previous sentences[] at the same S3 keys.
+
+    Used to backfill videos generated before per-sentence audio was a
+    pipeline-default. New videos populate sentences[] automatically.
+
+    Body: { "video_id": "vid_abc..." }
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    video_id = (payload or {}).get("video_id")
+    if not isinstance(video_id, str) or not video_id:
+        raise HTTPException(status_code=400, detail="video_id is required")
+
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Render server not configured. Set RENDER_SERVER_URL.",
+        )
+
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url,
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+    try:
+        result = svc.build_for_video(video_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to build sentences: {exc}")
+
+    return BuildSentencesResponse(
+        video_id=result.video_id,
+        timeline_url=result.timeline_url,
+        count=result.count,
+        sentences=[SentenceClipDto(**s) for s in result.sentences],
+        skipped_reason=result.skipped_reason,
+    )
+
+
+class VoiceOverrides(BaseModel):
+    """Optional per-request voice config. Any field left None falls back
+    to the value persisted on the video record at creation time."""
+    language: Optional[str] = None
+    voice_gender: Optional[str] = None
+    tts_provider: Optional[str] = None
+    voice_id: Optional[str] = None
+
+
+class RegenerateSentenceRequest(BaseModel):
+    video_id: str
+    sentence_id: str
+    new_text: str
+    voice_overrides: Optional[VoiceOverrides] = None
+    crossfade_ms: int = Field(
+        default=50, ge=0, le=2000,
+        description="Crossfade duration at each splice join. Lower values reduce cross-sentence bleed.",
+    )
+    head_pad_ms: int = Field(
+        default=40, ge=0, le=500,
+        description="Shifts the splice boundary later by this many ms — preserves the previous word's natural acoustic tail at sentence boundaries.",
+    )
+
+
+class RegenerateSentenceResponse(BaseModel):
+    video_id: str
+    sentence: SentenceClipDto
+    duration_delta: float = Field(
+        ..., description="new clip duration − old; ripple downstream timestamps by this"
+    )
+    new_global_audio_url: str
+    new_global_duration: float
+    timeline_url: str
+
+
+@router.post(
+    "/sentence/regenerate",
+    response_model=RegenerateSentenceResponse,
+    summary="Re-narrate one sentence and splice it into the global audio (External)",
+)
+async def regenerate_sentence_external(
+    payload: RegenerateSentenceRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> RegenerateSentenceResponse:
+    """
+    Re-narrate a single sentence using the same voice the video was
+    originally generated with.
+
+    Flow on the server:
+      1. TTS the new text → fresh per-sentence MP3 in the same voice.
+      2. Render worker splices the clip into the global narration.mp3
+         with crossfading on both joins.
+      3. Every later sentence and entry has its timestamp shifted by the
+         duration delta (ripple) so audio/visual sync is preserved.
+      4. The patched timeline JSON is re-uploaded; the video record's
+         audio URL is updated to the new spliced MP3.
+
+    Returns the updated sentence plus the duration delta so the editor
+    can ripple its in-memory entry list immediately.
+
+    Errors:
+      - 400 — request body invalid, or sentence not found / sentences[]
+              not built yet on this video (call /sentences/build first).
+      - 503 — render server not configured.
+      - 500 — TTS / splice / S3 failure.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Render server not configured. Set RENDER_SERVER_URL.",
+        )
+
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url,
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+    overrides = payload.voice_overrides.dict(exclude_none=True) if payload.voice_overrides else None
+
+    try:
+        result = svc.regenerate_sentence(
+            video_id=payload.video_id,
+            sentence_id=payload.sentence_id,
+            new_text=payload.new_text,
+            voice_overrides=overrides,
+            crossfade_ms=payload.crossfade_ms,
+            head_pad_ms=payload.head_pad_ms,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate sentence: {exc}")
+
+    return RegenerateSentenceResponse(
+        video_id=result.video_id,
+        sentence=SentenceClipDto(**result.sentence),
+        duration_delta=result.duration_delta,
+        new_global_audio_url=result.new_global_audio_url,
+        new_global_duration=result.new_global_duration,
+        timeline_url=result.timeline_url,
+    )
 
 
 # ---------------------------------------------------------------------------

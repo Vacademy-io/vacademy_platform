@@ -227,7 +227,9 @@ public class UserMessagesController {
             Pageable pageable = PageRequest.of(page, size);
             Page<UserMessagesResponse> messages = userMessageService
                     .getSystemAlerts(userId, priority, pageable);
-            return cacheableOk(messages);
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.noStore())
+                    .body(messages);
         } catch (Exception e) {
             log.error("Error getting system alerts for user: {}", userId, e);
             return ResponseEntity.badRequest().build();

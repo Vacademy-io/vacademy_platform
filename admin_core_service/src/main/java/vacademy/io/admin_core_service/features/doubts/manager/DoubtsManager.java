@@ -62,7 +62,13 @@ public class DoubtsManager {
     @Autowired
     DoubtsAssigneeRepository doubtsAssigneeRepository;
 
+    @Autowired
+    vacademy.io.admin_core_service.features.auth_service.service.AuthService authService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /** Role name as configured in auth_service for institute-level admins. */
+    private static final String ADMIN_ROLE = "ADMIN";
 
     public ResponseEntity<String> updateOrCreateDoubt(CustomUserDetails userDetails, String doubtId, DoubtsDto request) {
         if(StringUtils.hasText(doubtId)){
@@ -88,16 +94,21 @@ public class DoubtsManager {
                 .build();
 
         Doubts savedDoubt = doubtService.updateOrCreateDoubt(doubts);
+        // Resolve the institute up-front — we need it for the admin fallback inside
+        // resolveImplicitAssignees AND for the notification dispatch below.
+        String instituteId = facultyMappingRepository
+                .findInstituteIdByPackageSessionId(savedDoubt.getPackageSessionId())
+                .orElse(null);
         List<String> finalAssigneeIds = new ArrayList<>();
         try {
             if (savedDoubt.getParentId() == null) {
-                // Seed the assignee list with faculty who are FSPSSM-linked to this batch — these
-                // become the "default" assignees an admin sees as pre-selected for the doubt. The
-                // exact set (subject-scoped / batch-wide / none) is controlled by the institute's
-                // DOUBT_MANAGEMENT_SETTING.
+                // Seed the assignee list with the cascade resolver: subject teacher → batch
+                // teacher → admin. Driven by DOUBT_MANAGEMENT_SETTING.defaultAssigneeSource and
+                // ensures the doubt is never silently dropped — at minimum the institute admin
+                // gets notified so they can re-assign manually.
                 String subjectId = resolveSubjectIdForDoubt(savedDoubt);
                 Set<String> assigneeIds = new LinkedHashSet<>(resolveImplicitAssignees(
-                        savedDoubt.getPackageSessionId(), subjectId));
+                        savedDoubt.getPackageSessionId(), subjectId, instituteId));
                 // Overlay any explicit ids the client asked for (e.g. admin picked someone from
                 // the dropdown at creation time).
                 if (request.getDoubtAssigneeRequestUserIds() != null) {
@@ -117,54 +128,83 @@ public class DoubtsManager {
         // Fire "doubt raised" notifications after the assignees are persisted. Only for top-level
         // doubts (not replies) and only when we have at least one assignee to notify. Notification
         // failures are swallowed inside the service and must not affect the doubt creation response.
-        if (savedDoubt.getParentId() == null && !finalAssigneeIds.isEmpty()) {
-            String instituteId = facultyMappingRepository
-                    .findInstituteIdByPackageSessionId(savedDoubt.getPackageSessionId())
-                    .orElse(null);
-            if (instituteId != null) {
-                doubtNotificationService.notifyDoubtRaised(savedDoubt, finalAssigneeIds, instituteId);
-            }
+        if (savedDoubt.getParentId() == null && !finalAssigneeIds.isEmpty() && instituteId != null) {
+            doubtNotificationService.notifyDoubtRaised(savedDoubt, finalAssigneeIds, instituteId);
         }
         return savedDoubt.getId();
     }
 
     /**
-     * Returns distinct user ids for faculty who should be auto-assigned to a newly-created doubt
-     * on the given package session. Behavior is driven by the institute's DOUBT_MANAGEMENT_SETTING:
-     *   - SUBJECT_TEACHER: only faculty whose FSPSSM row matches the doubt's subject. Falls back
-     *     to batch-wide when no subject match exists AND {@code fallbackToBatchWhenNoSubjectTeacher}
-     *     is true (default).
-     *   - BATCH_TEACHER / BOTH / unconfigured: all faculty FSPSSM-linked to the batch (legacy).
-     *   - NONE: empty list — admin must assign manually.
+     * Returns distinct user ids for users who should be auto-assigned to a newly-created doubt on
+     * the given package session. Behavior is driven by the institute's DOUBT_MANAGEMENT_SETTING:
      *
-     * {@code subjectId} may be {@code null} for non-slide doubts; in that case SUBJECT_TEACHER
-     * cannot narrow and we treat it as batch-wide.
+     * <ul>
+     *   <li>{@code SUBJECT_TEACHER}: cascades subject teacher → batch teacher → admin. Subject
+     *       narrowing only applies when a subject is resolvable (i.e. SLIDE-source doubts).</li>
+     *   <li>{@code BATCH_TEACHER} or {@code BOTH} or unconfigured: cascades batch teacher → admin.</li>
+     *   <li>{@code NONE}: skips faculty entirely and assigns directly to admin so doubts never
+     *       go un-notified — the admin can then re-assign manually from the doubt UI.</li>
+     * </ul>
+     *
+     * <p>Admin fallback is the safety net: even if no faculty is mapped to the batch, the
+     * institute's ADMIN-role users will receive the doubt notification and bell alert. Returns
+     * an empty list only when both the faculty lookup AND the admin lookup return nothing —
+     * that means the institute has no users at all who can receive the doubt.
+     *
+     * @param subjectId  may be {@code null} for non-slide doubts; SUBJECT_TEACHER mode then skips
+     *                   the subject step and cascades to batch.
+     * @param instituteId required for the admin fallback lookup. If null, admin step is skipped.
      */
-    List<String> resolveImplicitAssignees(String packageSessionId, String subjectId) {
+    List<String> resolveImplicitAssignees(String packageSessionId, String subjectId, String instituteId) {
         if (packageSessionId == null || packageSessionId.isEmpty()) return List.of();
 
         DoubtManagementSettingDataDto setting = loadDoubtManagementSetting(packageSessionId);
         DoubtDefaultAssigneeSourceEnum source = parseAssigneeSource(setting);
 
+        // NONE → skip teachers entirely, go straight to admin so the doubt is still routed.
         if (source == DoubtDefaultAssigneeSourceEnum.NONE) {
-            return List.of();
+            return resolveAdminFallback(instituteId);
         }
 
-        // Narrow to subject-specific faculty when requested and possible.
+        // Step 1: SUBJECT_TEACHER → try the subject-specific faculty first.
         if (source == DoubtDefaultAssigneeSourceEnum.SUBJECT_TEACHER
                 && subjectId != null && !subjectId.isEmpty()) {
             List<String> subjectFaculty = activeUserIdsFromMappings(
                     facultyMappingRepository.findByPackageSessionIdAndSubjectId(packageSessionId, subjectId));
             if (!subjectFaculty.isEmpty()) return subjectFaculty;
-
+            // Subject teacher missing — honor fallback toggle. Default true: cascade to batch.
             boolean fallback = setting == null
                     || setting.getFallbackToBatchWhenNoSubjectTeacher() == null
                     || Boolean.TRUE.equals(setting.getFallbackToBatchWhenNoSubjectTeacher());
-            if (!fallback) return List.of();
-            // fall through to batch-wide
+            if (!fallback) {
+                // Strict subject-only mode: skip batch but still keep the admin safety net so
+                // the doubt isn't dropped on the floor.
+                return resolveAdminFallback(instituteId);
+            }
         }
 
-        return activeUserIdsFromMappings(facultyMappingRepository.findByPackageSessionId(packageSessionId));
+        // Step 2: batch-wide faculty (this is what BATCH_TEACHER mode hits directly, and what
+        // SUBJECT_TEACHER mode falls back to when subject teacher is empty).
+        List<String> batchFaculty = activeUserIdsFromMappings(
+                facultyMappingRepository.findByPackageSessionId(packageSessionId));
+        if (!batchFaculty.isEmpty()) return batchFaculty;
+
+        // Step 3: final fallback — institute admin(s).
+        return resolveAdminFallback(instituteId);
+    }
+
+    /**
+     * Returns admin user IDs for the institute, or an empty list if none exist or instituteId is
+     * unknown. Failures in auth_service are swallowed by AuthService.getUserIdsByRole.
+     */
+    private List<String> resolveAdminFallback(String instituteId) {
+        if (instituteId == null || instituteId.isEmpty()) return List.of();
+        try {
+            return authService.getUserIdsByRole(instituteId, ADMIN_ROLE);
+        } catch (Exception e) {
+            log.warn("Admin fallback lookup failed for institute {}: {}", instituteId, e.getMessage());
+            return List.of();
+        }
     }
 
     private List<String> activeUserIdsFromMappings(List<FacultySubjectPackageSessionMapping> mappings) {

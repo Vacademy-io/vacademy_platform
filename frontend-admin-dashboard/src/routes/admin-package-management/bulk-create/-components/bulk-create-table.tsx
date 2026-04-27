@@ -31,7 +31,7 @@ import {
 import { BatchSelectorDialog } from './batch-selector-dialog';
 import { CourseContentDialog } from './course-content-dialog';
 import { TagSelectorDialog } from './tag-selector-dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatTagForDisplay } from '@/lib/utils';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -334,7 +334,7 @@ export function BulkCreateTable({
                                                     variant="outline"
                                                     className="rounded-full text-[10px]"
                                                 >
-                                                    {tag}
+                                                    {formatTagForDisplay(tag)}
                                                     <button
                                                         onClick={() =>
                                                             handleRemoveTag(course.id, tag)

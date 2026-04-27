@@ -419,6 +419,14 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
                             + "--btn-primary-bg:" + color + ";"
                             + "}";
                     params.put("userdata-bbb_custom_style", css);
+
+                    // Skip the "Microphone / Listen only" chooser and echo test
+                    params.put("userdata-bbb_auto_join_audio", "true");
+                    params.put("userdata-bbb_skip_check_audio", "true");
+                    params.put("userdata-bbb_listen_only_mode", "false");
+
+                    // Hide the Session Details welcome popup (BBB 3.0+)
+                    params.put("userdata-bbb_show_session_details_on_join", "false");
                 }
             } catch (Exception e) {
                 log.warn("[BBB] Failed to fetch institute theme for join URL: {}", e.getMessage());

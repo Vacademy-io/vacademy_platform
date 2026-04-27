@@ -2598,12 +2598,33 @@ export const SlideMaterial = ({
                 <div className="sticky top-0 z-50 -mx-2 -mt-2 flex flex-wrap items-center justify-between gap-1 border-b border-neutral-200 bg-white/80 px-2 py-1 shadow-sm backdrop-blur-sm sm:-mx-3 sm:-mt-3 sm:px-3 sm:py-1.5 md:-mx-4 md:-mt-4 md:flex-nowrap md:gap-3 md:px-4 md:py-2.5 lg:-mx-7 lg:-mt-7 lg:gap-4 lg:px-7 lg:py-3">
                     <div className="w-full min-w-0 md:w-auto md:flex-1">
                         {isEditing ? (
-                            <div className="flex items-center justify-center gap-2 duration-200 animate-in fade-in">
+                            <div className="flex min-w-0 items-center gap-2 duration-200 animate-in fade-in">
                                 <input
                                     type="text"
                                     value={heading}
                                     onChange={handleHeadingChange}
-                                    className="w-fit border-b border-neutral-300 bg-transparent text-lg font-semibold text-neutral-700 transition-colors duration-200 focus:border-primary-500 focus:outline-none"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            updateHeading(
+                                                activeItem,
+                                                addUpdateVideoSlide,
+                                                SaveDraft,
+                                                heading,
+                                                setIsEditing,
+                                                addUpdateDocumentSlide,
+                                                addUpdateQuizSlide,
+                                                updateAssignmentOrder,
+                                                updateQuestionOrder,
+                                                addUpdateAudioSlide
+                                            );
+                                        } else if (e.key === 'Escape') {
+                                            e.preventDefault();
+                                            setHeading(activeItem?.title || '');
+                                            setIsEditing(false);
+                                        }
+                                    }}
+                                    className="min-w-0 flex-1 border-b border-neutral-300 bg-transparent text-lg font-semibold text-neutral-700 transition-colors duration-200 focus:border-primary-500 focus:outline-none"
                                     autoFocus
                                 />
                                 <Check
@@ -2615,12 +2636,13 @@ export const SlideMaterial = ({
                                             heading,
                                             setIsEditing,
                                             addUpdateDocumentSlide,
-                                            addUpdateQuizSlide, // <-- pass this for QUIZ support
-                                            updateAssignmentOrder, // <-- pass for ASSIGNMENT
-                                            updateQuestionOrder // <-- pass for QUESTION
+                                            addUpdateQuizSlide,
+                                            updateAssignmentOrder,
+                                            updateQuestionOrder,
+                                            addUpdateAudioSlide
                                         )
                                     }
-                                    className="cursor-pointer hover:text-primary-500"
+                                    className="shrink-0 cursor-pointer hover:text-primary-500"
                                 />
                             </div>
                         ) : (

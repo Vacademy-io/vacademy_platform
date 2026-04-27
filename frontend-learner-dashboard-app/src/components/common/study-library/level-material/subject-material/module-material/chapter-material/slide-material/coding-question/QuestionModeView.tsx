@@ -26,10 +26,12 @@ import type {
   Verdict,
 } from "./types";
 import { runCode, runTestCase } from "./executor";
+import { preloadPyodide, isPyodideReady } from "../code-slide-utils.";
 import { SessionTimer } from "./SessionTimer";
 import { clearSessionTimer } from "./session-timer-utils";
 import { SubmissionHistory } from "./SubmissionHistory";
 import { saveSubmission } from "./submission-store";
+import { OutputDiff } from "./OutputDiff";
 
 interface Props {
   question: CodingQuestionConfig;
@@ -49,7 +51,9 @@ function classify(passed: number, total: number, hadError: boolean): Verdict {
 }
 
 export function QuestionModeView({ question, slideId }: Props) {
-  // Per-language code, kept locally (not persisted across sessions in v1).
+  const codeStorageKey = `coding_code_${slideId}`;
+  // Per-language code, persisted per-slide in Capacitor Preferences so a
+  // refresh / app re-open doesn't wipe in-progress work. Hydrated below.
   const [codeByLang, setCodeByLang] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const l of question.allowedLanguages) {
@@ -61,6 +65,61 @@ export function QuestionModeView({ question, slideId }: Props) {
   const [language, setLanguage] = useState<LangId>(() =>
     pickInitialLang(question.allowedLanguages),
   );
+  const codeHydratedRef = useRef(false);
+
+  // Hydrate saved code from Preferences. Merge over the starter defaults so
+  // languages the learner hasn't touched still show their starter, and any
+  // newly-allowed language added by the admin since last session shows up.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { value } = await Preferences.get({ key: codeStorageKey });
+        if (cancelled) return;
+        if (value) {
+          try {
+            const obj = JSON.parse(value) as {
+              codeByLang?: Record<string, string>;
+              language?: LangId;
+            };
+            if (obj && typeof obj === "object") {
+              if (obj.codeByLang && typeof obj.codeByLang === "object") {
+                setCodeByLang((prev) => ({ ...prev, ...obj.codeByLang }));
+              }
+              if (
+                obj.language &&
+                question.allowedLanguages.includes(obj.language)
+              ) {
+                setLanguage(obj.language);
+              }
+            }
+          } catch {
+            // corrupt entry — ignore, starter defaults remain
+          }
+        }
+      } catch {
+        // Preferences unavailable; keep starter defaults
+      } finally {
+        if (!cancelled) codeHydratedRef.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [codeStorageKey, question.allowedLanguages]);
+
+  // Debounce-save code + last-used language whenever they change. Skipped
+  // until hydration finishes so we don't overwrite saved code with starters.
+  useEffect(() => {
+    if (!codeHydratedRef.current) return;
+    const t = setTimeout(() => {
+      Preferences.set({
+        key: codeStorageKey,
+        value: JSON.stringify({ codeByLang, language }),
+      }).catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+  }, [codeByLang, language, codeStorageKey]);
 
   const [output, setOutput] = useState<string>("");
   const [isRunning, setIsRunning] = useState(false);
@@ -77,6 +136,34 @@ export function QuestionModeView({ question, slideId }: Props) {
   const submitInFlightRef = useRef(false);
 
   const def = getLanguageDef(language);
+
+  // Pyodide is ~10 MB; preload in the background on mount so Run/Submit
+  // aren't silently blocked for 30s on first click. If python isn't in the
+  // allowed set, skip the preload entirely.
+  const pythonAllowed = useMemo(
+    () =>
+      question.allowedLanguages.some(
+        (l) => LANGUAGE_REGISTRY[l]?.executor === "pyodide",
+      ),
+    [question.allowedLanguages],
+  );
+  const [pyodideReady, setPyodideReady] = useState<boolean>(() =>
+    isPyodideReady(),
+  );
+  useEffect(() => {
+    if (!pythonAllowed || pyodideReady) return;
+    let cancelled = false;
+    preloadPyodide().then(() => {
+      if (!cancelled) setPyodideReady(isPyodideReady());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pythonAllowed, pyodideReady]);
+  // Only gate when the current language is the python one — switching to JS
+  // or a Judge0 language should run immediately.
+  const needsPyodide = def.executor === "pyodide";
+  const pythonBlocked = needsPyodide && !pyodideReady;
 
   const handleLangChange = useCallback((l: LangId) => {
     setLanguage(l);
@@ -216,8 +303,17 @@ export function QuestionModeView({ question, slideId }: Props) {
               key: `coding_session_started_${slideId}`,
             });
             if (value) {
-              const n = Number(value);
-              if (Number.isFinite(n)) sessionStartedAt = n;
+              // Newer sessions store JSON { startedAt, totalMinutes };
+              // older ones store a bare millisecond number.
+              try {
+                const obj = JSON.parse(value);
+                if (obj && Number.isFinite(obj.startedAt)) {
+                  sessionStartedAt = Number(obj.startedAt);
+                }
+              } catch {
+                const n = Number(value);
+                if (Number.isFinite(n)) sessionStartedAt = n;
+              }
             }
           } catch {
             // Preferences unavailable (e.g. SSR / web build without plugin)
@@ -243,7 +339,23 @@ export function QuestionModeView({ question, slideId }: Props) {
         };
 
         await saveSubmission(submission);
-        setTestResults(results);
+        // Redact hidden-test answer keys before they land in React state —
+        // otherwise a learner can open DevTools and read `expected`/`stdout`
+        // for hidden cases they just failed. The full payload already went
+        // to the backend above; backend redacts on GET for non-privileged
+        // users. Keep `passed`/`timeMs` so the UI still shows pass/fail.
+        const safeResults: TestCaseResult[] = results.map((r) =>
+          r.visible
+            ? r
+            : {
+                ...r,
+                stdout: "",
+                expected: "",
+                stderr: "",
+                error: r.error ? "(hidden)" : undefined,
+              },
+        );
+        setTestResults(safeResults);
         setLatestVerdict(verdict);
         setLatestScore(score);
         setHistoryTick((t) => t + 1);
@@ -288,6 +400,37 @@ export function QuestionModeView({ question, slideId }: Props) {
   const onTimerExpire = useCallback(() => {
     submit(true);
   }, [submit]);
+
+  // Keep latest handlers in refs so the Monaco commands registered once at
+  // mount always see the freshest closure (onRun/submit change every render
+  // due to their dep arrays, but Monaco's addCommand is one-shot).
+  const onRunRef = useRef(onRun);
+  const onSubmitRef = useRef<() => void>(() => submit(false));
+  onRunRef.current = onRun;
+  onSubmitRef.current = () => submit(false);
+
+  // Register Ctrl/Cmd+Enter = Run, Ctrl/Cmd+Shift+Enter = Submit.
+  // Hotkeys fire only when the editor is focused — standard LeetCode UX.
+  const handleEditorMount = useCallback<
+    (editor: unknown, monaco: unknown) => void
+  >((editor, monaco) => {
+    const ed = editor as {
+      addCommand: (keybinding: number, handler: () => void) => void;
+    };
+    const m = monaco as {
+      KeyMod: { CtrlCmd: number; Shift: number };
+      KeyCode: { Enter: number };
+    };
+    ed.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.Enter, () => {
+      onRunRef.current();
+    });
+    ed.addCommand(
+      m.KeyMod.CtrlCmd | m.KeyMod.Shift | m.KeyCode.Enter,
+      () => {
+        onSubmitRef.current();
+      },
+    );
+  }, []);
 
   // ---- Resize: vertical split (top = code+problem, bottom = output/tests)
   const [bottomHeight, setBottomHeight] = useState(220);
@@ -347,11 +490,19 @@ export function QuestionModeView({ question, slideId }: Props) {
             />
           ) : null}
 
+          {pythonBlocked && (
+            <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+              <Loader2 className="size-3 animate-spin" />
+              Loading Python runtime…
+            </span>
+          )}
+
           <Button
             variant="outline"
             size="sm"
             onClick={onRun}
-            disabled={isRunning || isSubmitting}
+            disabled={isRunning || isSubmitting || pythonBlocked}
+            title="Run against sample tests (Ctrl/Cmd+Enter)"
           >
             {isRunning ? (
               <Loader2 className="mr-1 size-4 animate-spin" />
@@ -364,8 +515,9 @@ export function QuestionModeView({ question, slideId }: Props) {
           <Button
             size="sm"
             onClick={() => submit(false)}
-            disabled={isSubmitting || isRunning}
+            disabled={isSubmitting || isRunning || pythonBlocked}
             className="bg-primary-500 text-white hover:bg-primary-600"
+            title="Submit against all tests incl. hidden (Ctrl/Cmd+Shift+Enter)"
           >
             {isSubmitting ? (
               <Loader2 className="mr-1 size-4 animate-spin" />
@@ -412,6 +564,7 @@ export function QuestionModeView({ question, slideId }: Props) {
             language={def.monacoLang}
             value={codeByLang[language] ?? ""}
             theme="vs-dark"
+            onMount={handleEditorMount}
             onChange={(v) =>
               setCodeByLang((prev) => ({ ...prev, [language]: v ?? "" }))
             }
@@ -499,26 +652,17 @@ export function QuestionModeView({ question, slideId }: Props) {
                         </span>
                       )}
                     </div>
-                    {r.visible && (
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <div className="text-[10px] font-semibold uppercase text-gray-500">
-                            Your output
-                          </div>
-                          <pre className="overflow-auto rounded bg-white p-1 font-mono text-[11px]">
-                            {r.stdout || "(empty)"}
-                          </pre>
-                        </div>
-                        <div>
-                          <div className="text-[10px] font-semibold uppercase text-gray-500">
-                            Expected
-                          </div>
-                          <pre className="overflow-auto rounded bg-white p-1 font-mono text-[11px]">
-                            {r.expected || "(empty)"}
-                          </pre>
-                        </div>
-                      </div>
-                    )}
+                    {r.visible &&
+                      (r.passed ? (
+                        <pre className="overflow-auto rounded bg-white p-1 font-mono text-[11px]">
+                          {r.stdout || "(empty)"}
+                        </pre>
+                      ) : (
+                        <OutputDiff
+                          actual={r.stdout ?? ""}
+                          expected={r.expected ?? ""}
+                        />
+                      ))}
                     {r.stderr && (
                       <pre className="mt-1 overflow-auto rounded bg-white p-1 font-mono text-[11px] text-red-700">
                         {r.stderr}

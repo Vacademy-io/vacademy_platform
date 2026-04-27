@@ -11,6 +11,8 @@ import {
     CustomField,
     SystemField,
 } from '@/services/custom-field-settings';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface Props {
     onAdd: (rows: NewUserRow[]) => void;
@@ -131,6 +133,7 @@ interface VisibleSystemField {
 }
 
 export const ManualUserEntry = ({ onAdd }: Props) => {
+    const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
     const [rows, setRows] = useState<EditableRow[]>([emptyRow()]);
     const [submitted, setSubmitted] = useState(false);
 
@@ -253,7 +256,7 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                     >
                         <div className="mb-2 flex items-center justify-between">
                             <span className="text-xs font-semibold text-neutral-500">
-                                Learner #{idx + 1}
+                                {learnerTerm} #{idx + 1}
                             </span>
                             <div className="flex items-center gap-2">
                                 {hasExtraFields && (

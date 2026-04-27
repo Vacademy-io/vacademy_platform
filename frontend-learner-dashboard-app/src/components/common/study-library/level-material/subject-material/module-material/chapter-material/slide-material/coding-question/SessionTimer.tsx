@@ -28,11 +28,18 @@ function fmt(ms: number): string {
 export function SessionTimer({ slideId, totalMinutes, onExpire }: Props) {
   const [now, setNow] = useState(() => Date.now());
   const [startedAt, setStartedAt] = useState<number | null>(null);
+  // Snapshot the duration at session start. If the admin edits the question's
+  // sessionTimeMinutes while a learner is mid-attempt, we keep the deadline
+  // the learner originally agreed to — prevents the timer jumping forward or
+  // backward unexpectedly.
+  const [snapshotMinutes, setSnapshotMinutes] = useState<number | null>(null);
   const expiredRef = useRef(false);
   const onExpireRef = useRef(onExpire);
   onExpireRef.current = onExpire;
 
-  // Hydrate / initialize startedAt from Preferences.
+  // Hydrate / initialize from Preferences. Value is JSON
+  // {startedAt, totalMinutes}; a bare numeric string is also accepted for
+  // back-compat with sessions started before this upgrade.
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -41,33 +48,55 @@ export function SessionTimer({ slideId, totalMinutes, onExpire }: Props) {
         const { value } = await Preferences.get({ key: k });
         if (cancelled) return;
         if (value) {
-          const parsed = Number(value);
-          if (Number.isFinite(parsed)) {
-            setStartedAt(parsed);
+          let parsedStart: number | null = null;
+          let parsedMins: number | null = null;
+          try {
+            const obj = JSON.parse(value);
+            if (obj && typeof obj === "object") {
+              if (Number.isFinite(obj.startedAt)) parsedStart = Number(obj.startedAt);
+              if (Number.isFinite(obj.totalMinutes)) parsedMins = Number(obj.totalMinutes);
+            }
+          } catch {
+            const n = Number(value);
+            if (Number.isFinite(n)) parsedStart = n;
+          }
+          if (parsedStart != null) {
+            setStartedAt(parsedStart);
+            setSnapshotMinutes(parsedMins ?? totalMinutes);
             return;
           }
         }
         const ts = Date.now();
-        await Preferences.set({ key: k, value: String(ts) });
-        if (!cancelled) setStartedAt(ts);
+        await Preferences.set({
+          key: k,
+          value: JSON.stringify({ startedAt: ts, totalMinutes }),
+        });
+        if (!cancelled) {
+          setStartedAt(ts);
+          setSnapshotMinutes(totalMinutes);
+        }
       } catch (e) {
         // Preferences may not be available in pure web; fall back to in-memory.
         console.warn("[SessionTimer] Preferences unavailable", e);
-        if (!cancelled) setStartedAt(Date.now());
+        if (!cancelled) {
+          setStartedAt(Date.now());
+          setSnapshotMinutes(totalMinutes);
+        }
       }
     };
     load();
     return () => {
       cancelled = true;
     };
-  }, [slideId]);
+  }, [slideId, totalMinutes]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  const totalMs = totalMinutes * MS_PER_MIN;
+  const effectiveMinutes = snapshotMinutes ?? totalMinutes;
+  const totalMs = effectiveMinutes * MS_PER_MIN;
   const elapsed = startedAt ? now - startedAt : 0;
   const remaining = Math.max(0, totalMs - elapsed);
 

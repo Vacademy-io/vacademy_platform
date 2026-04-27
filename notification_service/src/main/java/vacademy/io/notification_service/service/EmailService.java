@@ -329,8 +329,9 @@ public class EmailService {
             logger.info("Email sent successfully to {} using {}", to,
                     StringUtils.hasText(instituteId) ? "custom SMTP" : "default SMTP");
 
-            // Save notification log for bounce event tracking
-            saveEmailNotificationLog(to, subject, text, "EMAIL_SERVICE", null, null);
+            String messageId = null;
+            try { messageId = message.getMessageID(); } catch (Exception ignored) {}
+            saveEmailNotificationLog(to, subject, text, "EMAIL_SERVICE", messageId, null);
 
         } catch (Exception e) {
             logger.error("Failed to send email", e);
@@ -413,7 +414,7 @@ public class EmailService {
                     mailSenderToUse.send(message);
                     logger.info("OTP email successfully sent to: {}", to);
 
-                    // Save notification log for bounce event tracking
+                    // Preserve existing OTP behavior: sourceId = calling service identifier (replies to OTP emails are not expected).
                     saveEmailNotificationLog(to, emailSubject, emailBody, "OTP_SERVICE", service, null);
 
                 } catch (Exception e) {
@@ -595,8 +596,9 @@ public class EmailService {
                     message.setContent(multipart);
                     finalMailSender.send(message);
 
-                    // Save notification log for bounce event tracking
-                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", null, null);
+                    String messageId = null;
+                    try { messageId = message.getMessageID(); } catch (Exception ignored) {}
+                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", messageId, null);
 
                 } catch (Exception e) {
                     logger.error("Failed to send HTML email to: {}", to, e);
@@ -689,8 +691,9 @@ public class EmailService {
                     mailSenderToUse.send(message);
                     logger.info("Email successfully sent to: {}", to);
 
-                    // Save notification log for bounce event tracking
-                    saveEmailNotificationLog(to, emailSubject, emailBody, service != null ? service : "ATTACHMENT_EMAIL_SERVICE", null, null);
+                    String messageId = null;
+                    try { messageId = message.getMessageID(); } catch (Exception ignored) {}
+                    saveEmailNotificationLog(to, emailSubject, emailBody, service != null ? service : "ATTACHMENT_EMAIL_SERVICE", messageId, null);
 
                 } catch (MessagingException e) {
                     logger.error("Error while preparing or sending the email", e);

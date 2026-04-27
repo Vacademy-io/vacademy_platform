@@ -84,7 +84,15 @@ const AudioSlidePreview = ({ activeItem, isLearnerView = false }: AudioSlidePrev
 
     const handleLoadedMetadata = () => {
         if (audioRef.current) {
-            setDuration(audioRef.current.duration);
+            const d = audioRef.current.duration;
+            if (Number.isFinite(d) && d > 0) setDuration(d);
+        }
+    };
+
+    const handleDurationChange = () => {
+        if (audioRef.current) {
+            const d = audioRef.current.duration;
+            if (Number.isFinite(d) && d > 0) setDuration(d);
         }
     };
 
@@ -122,11 +130,20 @@ const AudioSlidePreview = ({ activeItem, isLearnerView = false }: AudioSlidePrev
 
     // Format time (mm:ss)
     const formatTime = (time: number): string => {
-        if (isNaN(time)) return '0:00';
+        if (!Number.isFinite(time) || time < 0) return '0:00';
         const minutes = Math.floor(time / 60);
         const seconds = Math.floor(time % 60);
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
+
+    // Prefer the live audio element duration; fall back to the stored length
+    // so the timer renders reliably even before metadata loads or when
+    // audio.duration reports Infinity (some streamed sources).
+    const storedDurationSec =
+        audioSlide?.audio_length_in_millis && audioSlide.audio_length_in_millis > 0
+            ? audioSlide.audio_length_in_millis / 1000
+            : 0;
+    const effectiveDuration = duration > 0 ? duration : storedDurationSec;
 
     // Check if the slide is deleted
     if (activeItem?.status === 'DELETED') {
@@ -208,9 +225,9 @@ const AudioSlidePreview = ({ activeItem, isLearnerView = false }: AudioSlidePrev
                                 {activeItem.description}
                             </p>
                         )}
-                        {audioSlide?.audio_length_in_millis && (
+                        {effectiveDuration > 0 && (
                             <p className="mt-1 text-xs text-neutral-400">
-                                Duration: {formatTime(audioSlide.audio_length_in_millis / 1000)}
+                                Duration: {formatTime(effectiveDuration)}
                             </p>
                         )}
                     </div>
@@ -223,24 +240,28 @@ const AudioSlidePreview = ({ activeItem, isLearnerView = false }: AudioSlidePrev
                         <span className="w-12 text-right text-xs text-neutral-500">
                             {formatTime(currentTime)}
                         </span>
-                        <div className="relative flex-1">
-                            <input
-                                type="range"
-                                min="0"
-                                max={duration || 0}
-                                value={currentTime}
-                                onChange={handleSeek}
-                                className="h-2 w-full cursor-pointer appearance-none rounded-full bg-neutral-200 [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary-500"
-                            />
-                            <div
-                                className="pointer-events-none absolute left-0 top-0 h-2 rounded-full bg-primary-500"
-                                style={{
-                                    width: duration ? `${(currentTime / duration) * 100}%` : '0%',
-                                }}
-                            />
-                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max={effectiveDuration || 0}
+                            value={currentTime}
+                            onChange={handleSeek}
+                            disabled={effectiveDuration <= 0}
+                            style={{
+                                background: `linear-gradient(to right, hsl(var(--primary-500)) 0% ${
+                                    effectiveDuration
+                                        ? (currentTime / effectiveDuration) * 100
+                                        : 0
+                                }%, #e5e5e5 ${
+                                    effectiveDuration
+                                        ? (currentTime / effectiveDuration) * 100
+                                        : 0
+                                }% 100%)`,
+                            }}
+                            className="h-2 flex-1 cursor-pointer appearance-none rounded-full [&::-moz-range-thumb]:size-4 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary-500 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-runnable-track]:bg-transparent [&::-webkit-slider-thumb]:size-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary-500"
+                        />
                         <span className="w-12 text-xs text-neutral-500">
-                            {formatTime(duration)}
+                            {formatTime(effectiveDuration)}
                         </span>
                     </div>
 
@@ -277,6 +298,7 @@ const AudioSlidePreview = ({ activeItem, isLearnerView = false }: AudioSlidePrev
                 src={audioUrl}
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
+                onDurationChange={handleDurationChange}
                 onError={handleAudioError}
                 onEnded={handleAudioEnded}
                 onPlay={() => setIsPlaying(true)}

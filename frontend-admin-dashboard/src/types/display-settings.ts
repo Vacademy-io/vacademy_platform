@@ -177,12 +177,22 @@ export interface DisplaySettingsData {
         viewCourseConfiguration: boolean;
         viewCourseOverviewItem: boolean;
         viewContentNumbering: boolean;
+        // When true, non-admin users with HAS_FACULTY_ASSIGNED can navigate
+        // into slides on a published / in-review course in read-only mode.
+        // When false, slide click is blocked entirely (legacy behavior).
+        allowViewSlidesInReadOnly?: boolean;
     };
 
     // 10) Slide view action visibility toggles
     slideView?: {
         showCopyTo: boolean;
         showMoveTo: boolean;
+    };
+
+    // 10b) Authored Courses card action visibility (Explore Courses → Authored tab)
+    authoredCoursesCard?: {
+        showCopyToEdit: boolean;
+        showDelete: boolean;
     };
 
     // 11) Course creation configuration

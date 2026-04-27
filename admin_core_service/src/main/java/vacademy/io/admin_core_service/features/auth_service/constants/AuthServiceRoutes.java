@@ -20,4 +20,11 @@ public class AuthServiceRoutes {
     public static final String GET_USER_BY_MOBILE = "/auth-service/v1/user/internal/user-by-mobile";
     public static final String UPDATE_INSTITUTE_SETTINGS = "/auth-service/internal/institute-settings";
     public static final String AUTOSUGGEST_USERS = "/auth-service/internal/user/autosuggest-users";
+
+    /**
+     * Returns users with a given role for a specific institute.
+     * Query params: instituteId, roleName.
+     * Used by the doubt-notification cascade to fall back to ADMIN users when no faculty is mapped.
+     */
+    public static final String GET_USERS_BY_ROLE = "/auth-service/v1/users/by-role";
 }

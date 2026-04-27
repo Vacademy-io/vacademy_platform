@@ -28,6 +28,7 @@ public class CommunicationTimelineService {
 
     private static final Map<String, String[]> TYPE_TO_CHANNEL_DIRECTION = Map.of(
             "EMAIL", new String[]{"EMAIL", "OUTBOUND"},
+            "INBOUND_EMAIL", new String[]{"EMAIL", "INBOUND"},
             "WHATSAPP_MESSAGE_OUTGOING", new String[]{"WHATSAPP", "OUTBOUND"},
             "WHATSAPP_MESSAGE_INCOMING", new String[]{"WHATSAPP", "INBOUND"},
             "WHATSAPP_OUTGOING", new String[]{"WHATSAPP", "OUTBOUND"}
@@ -99,7 +100,7 @@ public class CommunicationTimelineService {
     private List<String> resolveNotificationTypes(List<String> channels, String direction) {
         // All possible non-event types
         Map<String, List<String>> channelToTypes = Map.of(
-                "EMAIL", List.of("EMAIL"),
+                "EMAIL", List.of("EMAIL", "INBOUND_EMAIL"),
                 "WHATSAPP", List.of("WHATSAPP_MESSAGE_OUTGOING", "WHATSAPP_MESSAGE_INCOMING", "WHATSAPP_OUTGOING")
         );
 
@@ -113,11 +114,11 @@ public class CommunicationTimelineService {
             List<String> channelTypes = channelToTypes.getOrDefault(channel.toUpperCase(), List.of());
             if ("INBOUND".equalsIgnoreCase(direction)) {
                 channelTypes.stream()
-                        .filter(t -> t.contains("INCOMING"))
+                        .filter(this::isInboundType)
                         .forEach(types::add);
             } else if ("OUTBOUND".equalsIgnoreCase(direction)) {
                 channelTypes.stream()
-                        .filter(t -> !t.contains("INCOMING"))
+                        .filter(t -> !isInboundType(t))
                         .forEach(types::add);
             } else {
                 types.addAll(channelTypes);
@@ -126,10 +127,15 @@ public class CommunicationTimelineService {
 
         // Ensure we always have at least one type
         if (types.isEmpty()) {
-            types.addAll(List.of("EMAIL", "WHATSAPP_MESSAGE_OUTGOING", "WHATSAPP_MESSAGE_INCOMING", "WHATSAPP_OUTGOING"));
+            types.addAll(List.of("EMAIL", "INBOUND_EMAIL",
+                    "WHATSAPP_MESSAGE_OUTGOING", "WHATSAPP_MESSAGE_INCOMING", "WHATSAPP_OUTGOING"));
         }
 
         return new ArrayList<>(types);
+    }
+
+    private boolean isInboundType(String type) {
+        return type.contains("INCOMING") || "INBOUND_EMAIL".equals(type);
     }
 
     private UnifiedCommunicationDTO mapToDTO(
@@ -169,6 +175,11 @@ public class CommunicationTimelineService {
             Map<String, NotificationLog> latestEmailEvents,
             Map<String, List<NotificationLog>> allEmailEvents) {
 
+        if ("INBOUND_EMAIL".equals(nl.getNotificationType())) {
+            mapInboundEmailFields(builder, nl);
+            return;
+        }
+
         // Extract subject from body (first line or truncated)
         String body = nl.getBody();
         String title = truncate(body, 100);
@@ -206,6 +217,44 @@ public class CommunicationTimelineService {
                 .build());
 
         builder.statusTimeline(timeline);
+    }
+
+    private void mapInboundEmailFields(
+            UnifiedCommunicationDTO.UnifiedCommunicationDTOBuilder builder,
+            NotificationLog nl) {
+
+        String subject = nl.getBody(); // we store subject in body for inbound emails
+        String fullBody = subject;
+        String toAddress = null;
+
+        if (nl.getMessagePayload() != null && !nl.getMessagePayload().isBlank()) {
+            try {
+                Map<String, Object> payload = objectMapper.readValue(
+                        nl.getMessagePayload(), new TypeReference<Map<String, Object>>() {});
+                Object bodyObj = payload.get("body");
+                if (bodyObj instanceof String s) fullBody = s;
+                Object toObj = payload.get("to");
+                if (toObj instanceof String s) toAddress = s;
+            } catch (Exception e) {
+                log.debug("Could not parse INBOUND_EMAIL messagePayload for log {}: {}", nl.getId(), e.getMessage());
+            }
+        }
+
+        builder.title(truncate(subject, 100));
+        builder.bodyPreview(truncate(fullBody, 150));
+        builder.fullBody(fullBody);
+        builder.senderInfo(nl.getChannelId());           // From address (sender of the inbound email)
+        if (toAddress != null) {
+            builder.recipientInfo(toAddress);            // To address (our institute mailbox)
+        }
+        builder.status("RECEIVED");
+        builder.statusTimeline(List.of(
+                UnifiedCommunicationDTO.StatusEvent.builder()
+                        .status("RECEIVED")
+                        .timestamp(nl.getNotificationDate())
+                        .details("Email received")
+                        .build()
+        ));
     }
 
     private void mapWhatsAppFields(

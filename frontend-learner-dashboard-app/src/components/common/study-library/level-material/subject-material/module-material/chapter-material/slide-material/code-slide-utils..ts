@@ -90,6 +90,22 @@ const loadPyodideInstance = async (): Promise<any> => {
 };
 
 /**
+ * Kick off Pyodide download without running any code. Safe to call multiple
+ * times — subsequent calls share the existing load promise. Lets the UI
+ * show a "Loading Python…" state while ~5–10 MB streams in, instead of the
+ * learner clicking Run three times on a silent page.
+ */
+export const preloadPyodide = (): Promise<void> => {
+  return loadPyodideInstance().then(
+    () => undefined,
+    // Swallow preload errors — the real run will surface them with context.
+    () => undefined,
+  );
+};
+
+export const isPyodideReady = (): boolean => pyodide != null;
+
+/**
  * Execute Python code using Pyodide.
  *
  * Optional `stdin` feeds the Python program's input() calls. Without it,

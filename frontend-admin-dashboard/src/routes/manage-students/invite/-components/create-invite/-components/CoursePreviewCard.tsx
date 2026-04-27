@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { UseFormReturn } from 'react-hook-form';
 import { InviteLinkFormValues } from '../GenerateInviteLinkSchema';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +15,35 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+
+// Renders a course image with a graceful placeholder when the URL is empty
+// or fails to load (e.g. the saved media file no longer exists).
+const PreviewImageWithFallback = ({ src, alt }: { src?: string; alt: string }) => {
+    const [errored, setErrored] = useState(false);
+    useEffect(() => {
+        setErrored(false);
+    }, [src]);
+
+    if (!src || errored) {
+        return (
+            <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
+                <p className="text-white">
+                    <ImageSquare size={100} />
+                </p>
+            </div>
+        );
+    }
+    return (
+        <div className="h-[200px] w-full rounded-lg bg-gray-100">
+            <img
+                src={src}
+                alt={alt}
+                onError={() => setErrored(true)}
+                className="size-full rounded-lg object-contain"
+            />
+        </div>
+    );
+};
 
 interface CoursePreviewCardProps {
     form: UseFormReturn<InviteLinkFormValues>;
@@ -269,13 +299,10 @@ const CoursePreviewCard = ({
                                         <DashboardLoader />
                                     </div>
                                 ) : form.watch('coursePreview') ? (
-                                    <div className="h-[200px] w-full rounded-lg bg-gray-100">
-                                        <img
-                                            src={form.watch('coursePreviewBlob')}
-                                            alt="Course Preview"
-                                            className="size-full rounded-lg object-contain"
-                                        />
-                                    </div>
+                                    <PreviewImageWithFallback
+                                        src={form.watch('coursePreviewBlob')}
+                                        alt="Course Preview"
+                                    />
                                 ) : (
                                     <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
                                         <p className="text-white">
@@ -317,13 +344,10 @@ const CoursePreviewCard = ({
                                         <DashboardLoader />
                                     </div>
                                 ) : form.watch('courseBanner') ? (
-                                    <div className="h-[200px] w-full rounded-lg bg-gray-100">
-                                        <img
-                                            src={form.watch('courseBannerBlob')}
-                                            alt="Course Banner"
-                                            className="size-full rounded-lg object-contain"
-                                        />
-                                    </div>
+                                    <PreviewImageWithFallback
+                                        src={form.watch('courseBannerBlob')}
+                                        alt="Course Banner"
+                                    />
                                 ) : (
                                     <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
                                         <p className="text-white">
@@ -366,29 +390,35 @@ const CoursePreviewCard = ({
                                     <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
                                         <DashboardLoader />
                                     </div>
-                                ) : form.watch('courseMedia')?.id &&
+                                ) : (form.watch('courseMedia')?.id ||
+                                      form.watch('courseMediaBlob')) &&
                                   form.watch('courseMedia')?.type !== 'youtube' ? (
                                     form.watch('courseMedia')?.type === 'video' ? (
-                                        <div className="h-[200px] w-full rounded-lg bg-gray-100">
-                                            <video
-                                                src={form.watch('courseMediaBlob')}
-                                                controls
-                                                controlsList="nodownload noremoteplayback"
-                                                disablePictureInPicture
-                                                disableRemotePlayback
-                                                className="size-full rounded-lg object-contain"
-                                            >
-                                                Your browser does not support the video tag.
-                                            </video>
-                                        </div>
+                                        form.watch('courseMediaBlob') ? (
+                                            <div className="h-[200px] w-full rounded-lg bg-gray-100">
+                                                <video
+                                                    src={form.watch('courseMediaBlob')}
+                                                    controls
+                                                    controlsList="nodownload noremoteplayback"
+                                                    disablePictureInPicture
+                                                    disableRemotePlayback
+                                                    className="size-full rounded-lg object-contain"
+                                                >
+                                                    Your browser does not support the video tag.
+                                                </video>
+                                            </div>
+                                        ) : (
+                                            <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
+                                                <p className="text-white">
+                                                    <ImageSquare size={100} />
+                                                </p>
+                                            </div>
+                                        )
                                     ) : (
-                                        <div className="flex h-[200px] items-center justify-center rounded-lg bg-gray-100">
-                                            <img
-                                                src={form.watch('courseMediaBlob')}
-                                                alt="Course Banner"
-                                                className="size-full rounded-lg object-contain"
-                                            />
-                                        </div>
+                                        <PreviewImageWithFallback
+                                            src={form.watch('courseMediaBlob')}
+                                            alt="Course Media"
+                                        />
                                     )
                                 ) : form.watch('courseMedia')?.type === 'youtube' &&
                                   form.watch('courseMedia')?.id ? (

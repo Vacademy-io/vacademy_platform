@@ -20,7 +20,75 @@ from uuid import uuid4
 from ..repositories.ai_video_repository import AiVideoRepository
 from .s3_service import S3Service
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from ..models.ai_token_usage import ApiProvider, RequestType
+
+
+# TTS unit cost — currently a single rate across providers; if you add per-provider
+# TTS billing, move this to the DB the way LLM/image rates already live there.
+_TTS_COST_PER_1K_CHARS_USD: float = 0.30  # ElevenLabs standard rate
+
+# Image price is sourced from ai_models.image_price_per_unit (V221+). This default
+# applies only if the configured image model is missing from the registry.
+_IMAGE_COST_USD_FALLBACK: float = 0.04
+
+
+def _lookup_image_unit_price(db: Session, image_model_id: Optional[str]) -> float:
+    """Resolve per-image USD cost from ai_models, falling back to the constant."""
+    if not image_model_id:
+        return _IMAGE_COST_USD_FALLBACK
+    try:
+        row = db.execute(
+            text(
+                "SELECT image_price_per_unit FROM ai_models "
+                "WHERE model_id = :m AND is_active = TRUE LIMIT 1"
+            ),
+            {"m": image_model_id},
+        ).fetchone()
+        if row and row.image_price_per_unit is not None:
+            return float(row.image_price_per_unit)
+    except Exception:
+        pass
+    return _IMAGE_COST_USD_FALLBACK
+
+
+# Image generation model used by the video pipeline (OpenRouter route).
+_VIDEO_IMAGE_MODEL_ID: str = "bytedance-seed/seedream-4.5"
+
+
+def _estimate_video_cost_usd(
+    db: Session,
+    model: Optional[str],
+    prompt_tokens: int,
+    completion_tokens: int,
+    image_count: int,
+    tts_character_count: int,
+) -> Optional[float]:
+    """
+    Estimate USD cost for a video generation run by sourcing rates from the
+    ai_models table (single source of truth). Returns None if the LLM model is
+    unknown — caller should treat that as "estimate unavailable" rather than $0.
+    """
+    if not model:
+        return None
+    try:
+        row = db.execute(
+            text(
+                "SELECT input_price_per_1m, output_price_per_1m, is_free "
+                "FROM ai_models WHERE model_id = :m AND is_active = TRUE LIMIT 1"
+            ),
+            {"m": model},
+        ).fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    input_rate = 0.0 if row.is_free else float(row.input_price_per_1m or 0)
+    output_rate = 0.0 if row.is_free else float(row.output_price_per_1m or 0)
+    llm_cost = (prompt_tokens / 1_000_000) * input_rate + (completion_tokens / 1_000_000) * output_rate
+    img_cost = image_count * _lookup_image_unit_price(db, _VIDEO_IMAGE_MODEL_ID)
+    tts_cost = (tts_character_count / 1000) * _TTS_COST_PER_1K_CHARS_USD
+    return round(llm_cost + img_cost + tts_cost, 4)
 
 
 
@@ -104,6 +172,9 @@ class VideoGenerationService:
         input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
         mute_tts_on_source_clips: bool = False,
+        background_music_enabled: Optional[bool] = None,
+        background_music_volume: Optional[float] = None,
+        sub_shots_enabled: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -174,6 +245,21 @@ class VideoGenerationService:
             if input_video_audio:
                 gen_metadata["input_video_audio"] = input_video_audio
             gen_metadata["mute_tts_on_source_clips"] = bool(mute_tts_on_source_clips)
+            if background_music_enabled is not None:
+                gen_metadata["background_music_enabled"] = bool(background_music_enabled)
+            if background_music_volume is not None:
+                gen_metadata["background_music_volume"] = float(background_music_volume)
+            if sub_shots_enabled:
+                gen_metadata["sub_shots_enabled"] = True
+            # Persist the TTS voice knobs so per-sentence re-narration in the
+            # editor can reproduce the same voice without the user having to
+            # re-supply them. Defaults are skipped to keep the row small.
+            if voice_gender and voice_gender != "female":
+                gen_metadata["voice_gender"] = voice_gender
+            if tts_provider and tts_provider != "standard":
+                gen_metadata["tts_provider"] = tts_provider
+            if voice_id:
+                gen_metadata["voice_id"] = voice_id
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -246,6 +332,9 @@ class VideoGenerationService:
                     input_video_ids=input_video_ids,
                     input_video_audio=input_video_audio,
                     mute_tts_on_source_clips=mute_tts_on_source_clips,
+                    background_music_enabled=background_music_enabled,
+                    background_music_volume=background_music_volume,
+                    sub_shots_enabled=sub_shots_enabled,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -329,6 +418,9 @@ class VideoGenerationService:
         input_video_ids: Optional[list] = None,
         input_video_audio: Optional[str] = None,
         mute_tts_on_source_clips: bool = False,
+        background_music_enabled: Optional[bool] = None,
+        background_music_volume: Optional[float] = None,
+        sub_shots_enabled: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -381,9 +473,19 @@ class VideoGenerationService:
             except Exception as e:
                 logger.warning(f"[VideoGenService] Failed to auto-select model from defaults: {e}")
 
+        # Tier-aware model routing: free/standard/premium use a cheap flash model for
+        # script + shot HTML; ultra/super_ultra keep the full resolved model for everything.
+        _TIER_FLASH_MODEL = "google/gemini-3-flash-preview"
+        _FLASH_TIERS = {"free", "standard", "premium"}
+
         if resolved_model:
-            pipeline_args["script_model"] = resolved_model
-            pipeline_args["html_model"] = resolved_model
+            if quality_tier in _FLASH_TIERS:
+                # Director (premium) stays on resolved_model — only script + shots use flash
+                pipeline_args["script_model"] = _TIER_FLASH_MODEL
+                pipeline_args["html_model"]   = _TIER_FLASH_MODEL
+            else:
+                pipeline_args["script_model"] = resolved_model
+                pipeline_args["html_model"]   = resolved_model
 
         pipeline = VideoGenerationPipeline(**pipeline_args)
         
@@ -815,6 +917,9 @@ class VideoGenerationService:
                     sound_effects_enabled=sound_effects_enabled,
                     input_video_contexts=input_video_contexts,
                     mute_tts_on_source_clips=mute_tts_on_source_clips,
+                    background_music_enabled=background_music_enabled,
+                    background_music_volume=background_music_volume,
+                    sub_shots_enabled=sub_shots_enabled,
                     progress_callback=_progress_cb,
                 )
 
@@ -969,8 +1074,16 @@ class VideoGenerationService:
                 if outputs and "token_usage" in outputs and db_session:
                     try:
                         _usage = outputs["token_usage"]
-                        if _usage.get("total_tokens", 0) > 0 or _usage.get("estimated_cost_usd") is not None:
+                        if _usage.get("total_tokens", 0) > 0:
                             from datetime import datetime as _dt
+                            _est_cost = _estimate_video_cost_usd(
+                                db_session,
+                                _usage.get("model"),
+                                _usage.get("prompt_tokens", 0),
+                                _usage.get("completion_tokens", 0),
+                                _usage.get("image_count", 0),
+                                _usage.get("tts_character_count", 0),
+                            )
                             _video_rec = self.repository.get_by_video_id(video_id)
                             _existing_meta = (_video_rec.extra_metadata or {}) if _video_rec else {}
                             _existing_meta["token_usage"] = {
@@ -980,13 +1093,13 @@ class VideoGenerationService:
                                 "image_count": _usage.get("image_count", 0),
                                 "tts_character_count": _usage.get("tts_character_count", 0),
                                 "stock_count": _usage.get("stock_count", 0),
-                                "estimated_cost_usd": _usage.get("estimated_cost_usd"),
+                                "estimated_cost_usd": _est_cost,
                                 "model": _usage.get("model"),
                                 "recorded_at": _dt.utcnow().isoformat(),
                             }
                             self.repository.update_metadata(video_id, _existing_meta)
-                            logger.info(f"[VideoGenService] Saved token_usage to metadata for {video_id}: "
-                                        f"est. ${_usage.get('estimated_cost_usd', 0):.4f}")
+                            _cost_str = f"${_est_cost:.4f}" if _est_cost is not None else "unavailable (model not in ai_models)"
+                            logger.info(f"[VideoGenService] Saved token_usage to metadata for {video_id}: est. {_cost_str}")
                     except Exception as _me:
                         logger.warning(f"[VideoGenService] Failed to save token_usage to metadata: {_me}")
 
@@ -1455,6 +1568,13 @@ class VideoGenerationService:
                         exc_info=True
                     )
 
+                # After HTML stage: build per-sentence audio clips from the
+                # already-uploaded narration.mp3 + words.json so the editor's
+                # script tab has them. Best-effort; never fail the video
+                # because clip building failed — sentences[] is purely additive.
+                if stage_pipeline_name == "html":
+                    self._build_sentence_clips_safe(video_id)
+
                 logger.info(f"[VideoGenService] Stage {stage_name} completed. Uploaded {len(uploaded_files)} files.")
                 
                 yield {
@@ -1509,7 +1629,57 @@ class VideoGenerationService:
     
     # Note: _process_pipeline_outputs is now handled inline in _run_pipeline_stages
     # for real-time database updates at each stage
-    
+
+    def _build_sentence_clips_safe(self, video_id: str) -> None:
+        """Best-effort: build per-sentence audio clips and patch them into
+        the video's timeline JSON. Called once per video after the HTML
+        stage uploads finish.
+
+        Swallows all errors and logs them — sentences[] is purely additive
+        for the editor's script tab; a failure here must never break video
+        generation. Skips silently if the render server isn't configured.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            from ..config import get_settings
+            from .render_service import RenderService
+            from .sentence_clip_service import SentenceClipService
+
+            settings = get_settings()
+            if not settings.render_server_url:
+                logger.info(
+                    "[VideoGenService] Skipping sentence-clip build for %s — render server not configured",
+                    video_id,
+                )
+                return
+
+            svc = SentenceClipService(
+                s3_service=self.s3_service,
+                render_service=RenderService(
+                    render_server_url=settings.render_server_url,
+                    render_key=settings.render_server_key,
+                ),
+                repository=self.repository,
+                video_gen_root=self.video_gen_root,
+            )
+            result = svc.build_for_video(video_id)
+            if result.ok:
+                logger.info(
+                    "[VideoGenService] Built %d sentence clip(s) for %s",
+                    result.count, video_id,
+                )
+            else:
+                logger.info(
+                    "[VideoGenService] Sentence-clip build skipped for %s: %s",
+                    video_id, result.skipped_reason,
+                )
+        except Exception as exc:
+            logger.warning(
+                "[VideoGenService] Sentence-clip build failed for %s: %s",
+                video_id, exc, exc_info=True,
+            )
+
     def get_video_status(self, video_id: str) -> Optional[Dict[str, Any]]:
         """
         Get current status of video generation.

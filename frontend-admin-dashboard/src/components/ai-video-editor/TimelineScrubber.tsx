@@ -12,7 +12,8 @@ import {
 } from './utils/track-layout';
 import { clamp } from './utils/coord-convert';
 import { useAudioWaveform } from './utils/use-audio-waveform';
-import type { Entry } from '@/components/ai-video-player/types';
+import { SentenceEditPopover } from './SentenceEditPopover';
+import type { Entry, SentenceClip } from '@/components/ai-video-player/types';
 
 // ── Layout constants ────────────────────────────────────────────────────────
 
@@ -115,6 +116,17 @@ export function TimelineScrubber() {
         neighbourId: string | null;
     } | null>(null);
 
+    // Currently-edited sentence (popover open). Anchor coordinates are
+    // captured in VIEWPORT space at click time so the portal-rendered
+    // popover positions correctly regardless of any overflow:hidden in
+    // ancestor layout. Captured-once: we don't track scroll/resize while
+    // the popover is open — clicking outside is the expected close path.
+    const [editingSentence, setEditingSentence] = useState<{
+        sentence: SentenceClip;
+        anchorViewportX: number;
+        anchorViewportTop: number;
+    } | null>(null);
+
     const navigationMode = meta.navigation;
     const totalDuration = useMemo(
         () => computeTotalDuration(entries, meta.total_duration),
@@ -127,6 +139,15 @@ export function TimelineScrubber() {
     // Audio waveform peaks (computed once per audioUrl)
     const { peaks: waveformPeaks, loading: waveformLoading } = useAudioWaveform(
         navigationMode === 'time_driven' ? audioUrl : undefined
+    );
+
+    // Per-sentence audio clips. Only renderable in time-driven mode (the
+    // waveform itself is too — sentences are an audio concept and we
+    // anchor them to absolute time). Empty for older videos that haven't
+    // been backfilled via /sentences/build.
+    const sentences: SentenceClip[] = useMemo(
+        () => (navigationMode === 'time_driven' ? meta.sentences ?? [] : []),
+        [navigationMode, meta.sentences],
     );
     const hasWaveform = navigationMode === 'time_driven' && (waveformPeaks.length > 0 || waveformLoading);
 
@@ -284,6 +305,51 @@ export function TimelineScrubber() {
         [navigationMode, entries, totalDuration, resizeEntryEdge, selectEntry]
     );
 
+    /**
+     * Count of entries that will be re-timed when a given sentence is
+     * re-narrated. The splice ripples every entry whose time range starts
+     * AT or after the sentence's start_time — those are the shots the
+     * user is implicitly affecting by editing this sentence's audio.
+     */
+    const countAffectedEntries = useCallback(
+        (sentence: SentenceClip): number => {
+            const epsilon = 1e-3;
+            const boundary = sentence.start_time;
+            return entries.reduce((n, e) => {
+                const t = e.inTime ?? e.start ?? 0;
+                return t >= boundary - epsilon ? n + 1 : n;
+            }, 0);
+        },
+        [entries],
+    );
+
+    const handleSentenceClick = useCallback(
+        (e: React.MouseEvent, sentence: SentenceClip) => {
+            // Stop the click from also being interpreted as a scrub on the bar.
+            e.stopPropagation();
+            const bar = barRef.current;
+            if (!bar) return;
+            const barRect = bar.getBoundingClientRect();
+            if (totalDuration <= 0 || barRect.width <= 0) return;
+            // Anchor on the sentence region's centre so the popover always
+            // points at the same spot regardless of where the user clicked
+            // within the region.
+            const centerTime = sentence.start_time + sentence.duration / 2;
+            const offsetX = clamp(
+                (centerTime / totalDuration) * barRect.width,
+                0,
+                barRect.width,
+            );
+            // Waveform row top in bar coords = RULER_H. Convert to viewport.
+            setEditingSentence({
+                sentence,
+                anchorViewportX: barRect.left + offsetX,
+                anchorViewportTop: barRect.top + RULER_H,
+            });
+        },
+        [totalDuration],
+    );
+
     // ── Position helpers ───────────────────────────────────────────────────
 
     const timeToPercent = (t: number) => {
@@ -420,7 +486,52 @@ export function TimelineScrubber() {
                                 className="pointer-events-none absolute inset-y-0 w-px bg-indigo-400 opacity-60"
                                 style={{ left: scrubPercent }}
                             />
+
+                            {/* Per-sentence regions: subtle hoverable bands so the user can
+                                click a sentence to edit its script. The waveform shows underneath;
+                                hover state is visual-only (opacity/border), it doesn't break the
+                                seek-on-bar-click behaviour because the regions stop propagation
+                                only on click. */}
+                            {sentences.map((s, i) => {
+                                const left = `${(s.start_time / totalDuration) * 100}%`;
+                                const width = `${(s.duration / totalDuration) * 100}%`;
+                                const isEditing = editingSentence?.sentence.id === s.id;
+                                return (
+                                    <button
+                                        key={s.id}
+                                        type="button"
+                                        title={s.text}
+                                        onClick={(e) => handleSentenceClick(e, s)}
+                                        className={[
+                                            'absolute top-0 bottom-0 cursor-pointer border-l border-transparent transition-colors',
+                                            isEditing
+                                                ? 'border-indigo-500 bg-indigo-300/40'
+                                                : 'hover:border-indigo-400 hover:bg-indigo-200/30',
+                                            // Right-most border on the last sentence so the
+                                            // grid feels closed; intermediate sentences only
+                                            // need the left border to mark their start.
+                                            i === sentences.length - 1
+                                                ? 'border-r border-r-transparent'
+                                                : '',
+                                        ].join(' ')}
+                                        style={{ left, width }}
+                                    />
+                                );
+                            })}
                         </div>
+                    )}
+
+                    {/* Sentence-edit popover. Rendered via portal at the document body
+                        so it floats above any overflow:hidden ancestors in the editor
+                        layout. Anchor coordinates are in viewport space. */}
+                    {editingSentence && (
+                        <SentenceEditPopover
+                            sentence={editingSentence.sentence}
+                            anchorViewportX={editingSentence.anchorViewportX}
+                            anchorViewportTop={editingSentence.anchorViewportTop}
+                            affectedEntryCount={countAffectedEntries(editingSentence.sentence)}
+                            onClose={() => setEditingSentence(null)}
+                        />
                     )}
 
                     {/* Channel sections */}

@@ -157,6 +157,7 @@ export const PUBLIC_INSTITUTE_BRANDING_URL = `${BASE_URL}/admin-core-service/pub
 export const DOMAIN_ROUTING_RESOLVE_URL = `${BASE_URL}/admin-core-service/public/domain-routing/v1/resolve`;
 export const urlCourseDetails = `${BASE_URL}/admin-core-service/open/packages/v2/search`;
 export const urlOpenLevels = `${BASE_URL}/admin-core-service/open/level/v1/get-levels`;
+export const urlOpenInstituteTags = `${BASE_URL}/admin-core-service/open/packages/v1/tags`;
 export const urlPublicCourseDetails = `${BASE_URL}/admin-core-service/learner-packages/v1/search`;
 // export const urlInstructor = `${BASE_URL}/auth-service/public/v1/users-of-status`;
 export const urlInstructor = `${BASE_URL}/admin-core-service/open/institute/v1/faculty/by-institute/only-creator`;
@@ -166,6 +167,7 @@ export const SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG = `${BASE_URL}/admin-core-service/le
 export const GET_QUIZ_SLIDE_ACTIVITY_LOGS = `${BASE_URL}/admin-core-service/learner-tracking/activity-log/quiz-slide/quiz-slide-activity-logs`;
 export const LIVE_SESSION_ATTENDANCE_REPORT_BY_BATCH = `${BASE_URL}/admin-core-service/live-session-report/by-batch-session`;
 export const LIVE_SESSION_ATTENDANCE_REPORT_BY_STUDENT = `${BASE_URL}/admin-core-service/live-session-report/student-report`;
+export const LEARNER_FULL_ATTENDANCE_REPORT = `${BASE_URL}/admin-core-service/learner/reports/attendance`;
 
 export const GET_BATCH_LIST = `${BASE_URL}/admin-core-service/batch/v1/batches-by-session`;
 export const GET_COURSE_BATCHES = `${BASE_URL}/admin-core-service/course/v1`;

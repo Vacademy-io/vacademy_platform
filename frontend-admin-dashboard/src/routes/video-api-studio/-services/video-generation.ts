@@ -174,6 +174,8 @@ export interface GenerateVideoRequest {
     input_video_audio?: 'original' | 'tts';
     /** When true and audio=tts: TTS mutes during SOURCE_CLIP shots so source audio plays instead. */
     mute_tts_on_source_clips?: boolean;
+    /** Experimental: split dense shots into 2 focused sub-shots before HTML generation. */
+    sub_shots_enabled?: boolean;
 }
 
 export const QUALITY_TIERS: Array<{
@@ -722,6 +724,7 @@ export function resumeVideo(
         target_duration: opts?.target_duration || '2-3 minutes',
         model: opts?.model || null,
         sound_effects_enabled: true,
+        sub_shots_enabled: opts?.sub_shots_enabled ?? false,
     };
     if (request.modifiedScript !== undefined) {
         body.modified_script = request.modifiedScript;
@@ -1212,3 +1215,99 @@ export async function regenerateFrame(
 
     return response.json();
 }
+
+// ---------------------------------------------------------------------------
+// Pre-generation cost preview
+// ---------------------------------------------------------------------------
+
+export interface VideoCostPreviewRequest {
+    quality_tier: QualityTier;
+    model?: string;
+    target_duration: string;
+    target_audience: string;
+    orientation: VideoOrientation;
+    visual_style?: VisualStyle;
+    voice_gender: VoiceGender;
+    tts_provider: TtsProvider;
+    voice_id?: string;
+    language: string;
+    generate_avatar: boolean;
+    background_music_enabled: boolean | null;
+    sound_effects_enabled: boolean;
+    content_type: ContentType;
+    captions_enabled: boolean;
+    html_quality: 'classic' | 'advanced';
+    review_mode: boolean;
+    attachments_count: number;
+}
+
+export interface VideoCostPreviewBreakdownRow {
+    component: string;
+    detail: string;
+    cost_usd: number;
+    credits: number;
+}
+
+export interface VideoCostPreviewResponse {
+    selections: {
+        quality_tier: string;
+        model: string | null;
+        target_duration: string;
+        duration_band: string;
+        target_audience: string;
+        orientation: string;
+        visual_style: string;
+        voice: { gender: string; provider: string; voice_id: string | null };
+        language: string;
+        generate_avatar: boolean;
+        background_music_enabled: boolean;
+        sound_effects_enabled: boolean;
+        content_type: string;
+        captions_enabled: boolean;
+        html_quality: string;
+        review_mode: boolean;
+        attachments_count: number;
+    };
+    estimate: {
+        expected_credits: number;
+        low_credits: number;
+        high_credits: number;
+        expected_cost_usd: number;
+        low_cost_usd: number;
+        high_cost_usd: number;
+        breakdown: VideoCostPreviewBreakdownRow[];
+        duration_band: string;
+        assumptions: string[];
+        model_registered: boolean;
+    };
+    balance: {
+        current: number | null;
+        after_expected: number | null;
+        after_high: number | null;
+        sufficient: boolean;
+        sufficient_for_high: boolean;
+    };
+}
+
+export async function previewVideoCost(
+    payload: VideoCostPreviewRequest,
+    apiKey: string
+): Promise<VideoCostPreviewResponse> {
+    const response = await fetch(
+        `${AI_SERVICE_BASE_URL}/external/video/v1/preview-cost`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Institute-Key': apiKey,
+            },
+            body: JSON.stringify(payload),
+        }
+    );
+    if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to preview cost: ${text}`);
+    }
+    return response.json();
+}
+

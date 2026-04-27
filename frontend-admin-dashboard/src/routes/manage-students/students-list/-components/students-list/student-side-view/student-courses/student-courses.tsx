@@ -202,7 +202,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                             </span>
                         )}
                         <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
-                            {((course.percentage_completed ?? 0) * 100).toFixed(0)}% Completed
+                            {Number(Math.min(Math.max(course.percentage_completed ?? 0, 0), 100).toFixed(2))}% Completed
                         </span>
                     </div>
                 )}
@@ -211,7 +211,7 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                         <div
                             className="h-2 rounded-full bg-blue-500 transition-all duration-500"
                             style={{
-                                width: `${Math.min((course.percentage_completed ?? 0) * 100, 100)}%`,
+                                width: `${Math.min(Math.max(course.percentage_completed ?? 0, 0), 100)}%`,
                             }}
                         />
                     </div>

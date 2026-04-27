@@ -482,6 +482,8 @@ export const GET_MESSAGE_TEMPLATE = `${MESSAGE_TEMPLATE_BASE}/get`;
 export const UPDATE_MESSAGE_TEMPLATE = `${MESSAGE_TEMPLATE_BASE}/update`;
 export const DELETE_MESSAGE_TEMPLATE = `${MESSAGE_TEMPLATE_BASE}`;
 export const SEARCH_MESSAGE_TEMPLATES = `${MESSAGE_TEMPLATE_BASE}/search`;
+export const MESSAGE_TEMPLATE_EXISTS = (instituteId: string, name: string) =>
+    `${MESSAGE_TEMPLATE_BASE}/exists/institute/${instituteId}/name/${encodeURIComponent(name)}`;
 
 // Student Data Enrichment Service
 export const STUDENT_DATA_ENRICHMENT_BASE = `${BASE_URL}/admin-core-service`;

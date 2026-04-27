@@ -18,6 +18,8 @@ from pydantic import BaseModel, Field
 
 from worker import RenderWorker
 from transcribe_worker import TranscribeWorker
+# audio_ops is imported lazily inside the /audio/* route handlers
+# (matches /concat_audio's pattern — keeps the import surface minimal here).
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("render-worker")
@@ -367,6 +369,270 @@ async def get_index_job_status(job_id: str, x_render_key: str = Header("")):
 
     j = index_jobs[job_id]
     return IndexJobStatus(**j)
+
+
+# ---------------------------------------------------------------------------
+# Concat Audio — merge Lyria-generated background-music segments
+# ---------------------------------------------------------------------------
+
+class ConcatAudioSegment(BaseModel):
+    url: str = Field(..., description="Public S3 URL of the segment MP3")
+    fade_in: float = Field(default=0.0, ge=0.0, description="Fade-in seconds for this segment")
+    fade_out: float = Field(default=0.0, ge=0.0, description="Fade-out seconds for this segment")
+
+
+class ConcatAudioRequest(BaseModel):
+    segments: List[ConcatAudioSegment] = Field(..., description="Ordered list of audio segments")
+    crossfade_seconds: float = Field(default=2.0, ge=0.0, le=10.0, description="Crossfade duration between adjacent segments")
+    output_key: str = Field(..., description="Destination S3 key for the merged MP3")
+    bucket: Optional[str] = Field(default=None, description="S3 bucket (defaults to AWS_BUCKET_NAME env)")
+
+
+class ConcatAudioResponse(BaseModel):
+    url: str
+    duration: float
+
+
+@app.post("/concat_audio", response_model=ConcatAudioResponse)
+async def concat_audio(request: ConcatAudioRequest, x_render_key: str = Header("")):
+    """Download segment MP3s, crossfade them via ffmpeg, upload the merged track.
+
+    Used by the AI-video-gen pipeline when Lyria generates multiple music
+    segments (video duration > ~170s). Single-segment videos skip this call
+    entirely on the caller side.
+    """
+    _verify_key(x_render_key)
+
+    if not request.segments:
+        raise HTTPException(status_code=400, detail="segments is required")
+
+    import shutil
+    import subprocess
+    import tempfile
+    from pathlib import Path
+    from urllib.request import Request as _UrlReq, urlopen
+
+    if shutil.which("ffmpeg") is None:
+        raise HTTPException(status_code=500, detail="ffmpeg not installed on render worker")
+
+    bucket = request.bucket or os.environ.get("AWS_BUCKET_NAME", "vacademy-media-storage")
+    try:
+        import boto3  # type: ignore
+    except ImportError:
+        raise HTTPException(status_code=500, detail="boto3 not installed on render worker")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        local_files: List[Path] = []
+        for i, seg in enumerate(request.segments):
+            dst = tmp / f"seg_{i:02d}.mp3"
+            try:
+                req = _UrlReq(seg.url, headers={"User-Agent": "VacademyRenderWorker/1.0"})
+                with urlopen(req, timeout=120) as resp:
+                    dst.write_bytes(resp.read())
+            except Exception as exc:
+                raise HTTPException(status_code=502, detail=f"Failed to fetch segment {i}: {exc}")
+            local_files.append(dst)
+
+        output = tmp / "music.mp3"
+        if len(local_files) == 1:
+            # Still apply fades to the single clip so intro/outro are not abrupt.
+            seg = request.segments[0]
+            afilter = []
+            if seg.fade_in > 0:
+                afilter.append(f"afade=t=in:st=0:d={seg.fade_in}")
+            if seg.fade_out > 0:
+                # Apply at the end — requires knowing duration; use areverse trick via ffprobe
+                duration = _probe_duration(local_files[0])
+                start = max(0.0, duration - seg.fade_out)
+                afilter.append(f"afade=t=out:st={start}:d={seg.fade_out}")
+            afilter_str = ",".join(afilter) if afilter else "anull"
+            cmd = [
+                "ffmpeg", "-y", "-i", str(local_files[0]),
+                "-af", afilter_str, "-b:a", "192k", str(output),
+            ]
+        else:
+            # Build acrossfade filter graph for N segments.
+            inputs: List[str] = []
+            for f in local_files:
+                inputs.extend(["-i", str(f)])
+            filter_parts: List[str] = []
+            prev = "[0:a]"
+            for i in range(1, len(local_files)):
+                out_label = f"[a{i}]"
+                filter_parts.append(
+                    f"{prev}[{i}:a]acrossfade=d={request.crossfade_seconds}"
+                    f":c1=tri:c2=tri{out_label}"
+                )
+                prev = out_label
+            filter_graph = ";".join(filter_parts)
+            cmd = [
+                "ffmpeg", "-y", *inputs,
+                "-filter_complex", filter_graph,
+                "-map", prev, "-b:a", "192k", str(output),
+            ]
+
+        result = subprocess.run(cmd, capture_output=True, timeout=600)
+        if result.returncode != 0 or not output.exists():
+            stderr = result.stderr.decode("utf-8", errors="replace")[-1000:]
+            raise HTTPException(status_code=500, detail=f"ffmpeg concat failed: {stderr}")
+
+        merged_duration = _probe_duration(output)
+        audio_bytes = output.read_bytes()
+
+        s3 = boto3.client(
+            "s3",
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+            region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+        )
+        try:
+            s3.put_object(
+                Bucket=bucket, Key=request.output_key,
+                Body=audio_bytes, ContentType="audio/mpeg",
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"S3 upload failed: {exc}")
+
+        merged_url = f"https://{bucket}.s3.amazonaws.com/{request.output_key}"
+        return ConcatAudioResponse(url=merged_url, duration=merged_duration)
+
+
+def _probe_duration(path) -> float:
+    """Best-effort MP3 duration via ffprobe; returns 0.0 on failure."""
+    import subprocess
+    try:
+        out = subprocess.check_output(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            timeout=30,
+        )
+        return float(out.strip())
+    except Exception:
+        return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Audio slice / splice — sentence-level operations for the script editor
+#
+# slice_audio: cut one MP3 into N stream-copied clips. Used both during
+# generation (post-TTS, to persist per-sentence clips) and on demand to
+# backfill sentences[] for older videos. Stream copy is lossless; slices
+# align to MP3 frame boundaries (~26 ms) which is fine for sentence cuts.
+#
+# splice_audio: replace a time range of an MP3 with a new clip, crossfading
+# both joins. Used when the editor re-narrates a single sentence — returns
+# the new total duration and the delta vs the original so the caller can
+# ripple downstream timestamps.
+# ---------------------------------------------------------------------------
+
+class SliceCutModel(BaseModel):
+    id: str = Field(..., description="Stable id used in the output S3 key and returned to the caller")
+    start: float = Field(..., ge=0.0, description="Start time in seconds")
+    end: float = Field(..., gt=0.0, description="End time in seconds (exclusive)")
+
+
+class SliceAudioRequest(BaseModel):
+    audio_url: str = Field(..., description="Public S3 URL of the source MP3")
+    cuts: List[SliceCutModel] = Field(..., min_length=1, description="Cuts to extract")
+    output_prefix: str = Field(..., description="S3 key prefix; clips upload to {prefix}{id}.mp3")
+    bucket: Optional[str] = Field(default=None, description="S3 bucket (defaults to AWS_BUCKET_NAME env)")
+
+
+class SliceClipResponse(BaseModel):
+    id: str
+    audio_url: str
+    duration: float
+
+
+class SliceAudioResponse(BaseModel):
+    clips: List[SliceClipResponse]
+
+
+@app.post("/audio/slice", response_model=SliceAudioResponse)
+async def slice_audio_endpoint(request: SliceAudioRequest, x_render_key: str = Header("")):
+    """Cut a single MP3 into N independent clips and upload each to S3.
+
+    Synchronous because slicing a typical 60s narration into ~30 sentences
+    finishes in well under a second on the worker hardware. If we ever need
+    to slice multi-hour audio this should move to the background job model.
+    """
+    _verify_key(x_render_key)
+    from audio_ops import AudioOpsError, SliceCut, slice_audio
+
+    cuts = [SliceCut(id=c.id, start=c.start, end=c.end) for c in request.cuts]
+    try:
+        results = slice_audio(
+            audio_url=request.audio_url,
+            cuts=cuts,
+            output_prefix=request.output_prefix,
+            bucket=request.bucket,
+        )
+    except AudioOpsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("slice_audio failed")
+        raise HTTPException(status_code=500, detail=f"slice_audio failed: {exc}")
+
+    return SliceAudioResponse(
+        clips=[SliceClipResponse(id=r.id, audio_url=r.audio_url, duration=r.duration) for r in results]
+    )
+
+
+class SpliceReplacement(BaseModel):
+    new_clip_url: str = Field(..., description="Public S3 URL of the replacement MP3")
+    replace_start: float = Field(..., ge=0.0, description="Start of the range to replace, in seconds")
+    replace_end: float = Field(..., gt=0.0, description="End of the range to replace, in seconds (exclusive)")
+    crossfade_ms: int = Field(default=50, ge=0, le=2000, description="Crossfade duration at each join")
+    head_pad_ms: int = Field(default=40, ge=0, le=500, description="Shift the splice boundary this many ms later — preserves the previous word's natural acoustic tail at sentence boundaries")
+
+
+class SpliceAudioRequest(BaseModel):
+    base_audio_url: str = Field(..., description="Public S3 URL of the original MP3 to splice into")
+    replacement: SpliceReplacement
+    output_key: str = Field(..., description="Destination S3 key for the spliced MP3")
+    bucket: Optional[str] = Field(default=None, description="S3 bucket (defaults to AWS_BUCKET_NAME env)")
+
+
+class SpliceAudioResponse(BaseModel):
+    output_url: str
+    new_duration: float
+    duration_delta: float = Field(..., description="new_duration − base_duration; ripple downstream timestamps by this")
+
+
+@app.post("/audio/splice", response_model=SpliceAudioResponse)
+async def splice_audio_endpoint(request: SpliceAudioRequest, x_render_key: str = Header("")):
+    """Replace a time range of an MP3 with a new clip, crossfading both joins.
+
+    The crossfade is clamped per-side to the available audio length so that
+    splicing very near the start/end of the file (or with a very short
+    replacement) degrades to a hard concat instead of failing.
+    """
+    _verify_key(x_render_key)
+    from audio_ops import AudioOpsError, splice_audio
+
+    try:
+        result = splice_audio(
+            base_audio_url=request.base_audio_url,
+            new_clip_url=request.replacement.new_clip_url,
+            replace_start=request.replacement.replace_start,
+            replace_end=request.replacement.replace_end,
+            output_key=request.output_key,
+            bucket=request.bucket,
+            crossfade_ms=request.replacement.crossfade_ms,
+            head_pad_ms=request.replacement.head_pad_ms,
+        )
+    except AudioOpsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("splice_audio failed")
+        raise HTTPException(status_code=500, detail=f"splice_audio failed: {exc}")
+
+    return SpliceAudioResponse(
+        output_url=result.output_url,
+        new_duration=result.new_duration,
+        duration_delta=result.duration_delta,
+    )
 
 
 # ---------------------------------------------------------------------------

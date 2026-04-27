@@ -775,6 +775,12 @@ export function LoginForm({
 
           if (/^https?:\/\//.test(redirectRoute)) {
             window.location.assign(redirectRoute);
+          } else if (redirectRoute.includes("?")) {
+            // TanStack navigate({to}) treats `to` as path only — query strings
+            // in `to` are ignored. For deep-links carrying query params (e.g.
+            // /reports/attendance?from=...&to=...&batchId=...), do a full
+            // same-origin navigation so the URL is preserved verbatim.
+            window.location.assign(redirectRoute);
           } else {
             navigate({ to: redirectRoute as never });
           }

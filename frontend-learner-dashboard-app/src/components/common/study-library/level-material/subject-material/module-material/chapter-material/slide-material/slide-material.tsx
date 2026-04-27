@@ -302,7 +302,12 @@ export const SlideMaterial = () => {
             hasEmbeddedData: !!embeddedData
           });
 
-          // First, check if URLs are already in the slide data (might be pre-populated)
+          // Snapshot URLs that may have been embedded in the slide payload at
+          // course-creation time. Used ONLY as a fallback when no
+          // `ai_gen_video_id` is available — when the video_id is known we
+          // always fetch fresh URLs from the API below so editor-side
+          // changes (per-sentence re-narration, re-renders) are visible to
+          // learners without requiring slide records to be re-synced.
           let existingHtmlUrl =
             htmlVideoSlide?.html_url ||
             htmlVideoSlide?.htmlUrl ||
@@ -322,6 +327,21 @@ export const SlideMaterial = () => {
           // If validation fails (e.g. empty strings), treat as not found
           if (!existingHtmlUrl || existingHtmlUrl === "") existingHtmlUrl = null;
           if (!existingAudioUrl || existingAudioUrl === "") existingAudioUrl = null;
+
+          // If we have an ai_gen_video_id, prefer the fresh API lookup and
+          // discard the snapshot — keeps audio in sync with edits made in
+          // the admin sentence editor. Only legacy slides that have no
+          // video_id at all fall back to the snapshot below.
+          const hasVideoId = !!(
+            htmlVideoSlide?.ai_gen_video_id ||
+            htmlVideoSlide?.aiGenVideoId ||
+            (activeItem as any).ai_gen_video_id ||
+            (activeItem as any).aiGenVideoId
+          );
+          if (hasVideoId) {
+            existingHtmlUrl = null;
+            existingAudioUrl = null;
+          }
 
           // Helper to render content (Split or Full)
           const renderHtmlVideoContent = (htmlUrl: string, audioUrl: string) => {

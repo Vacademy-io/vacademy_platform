@@ -90,38 +90,68 @@ export async function executeOnJudge0(
   } = input;
   const def = getLanguageDef(language);
 
+  // 429 (rate-limit) and transient 5xx get up to 3 retries with exponential
+  // backoff (1s, 2s, 4s) plus a small jitter. Public ce.judge0.com throttles
+  // aggressively; managed Judge0 still returns 429 under burst traffic.
+  const RETRY_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+  const BACKOFF_MS = [1000, 2000, 4000];
+
   return gate(async () => {
-    const res = await fetch(
-      `${JUDGE0_BASE}/submissions?base64_encoded=true&wait=true`,
-      {
-        method: "POST",
-        headers: buildHeaders(),
-        body: JSON.stringify({
-          source_code: toB64(sourceCode),
-          language_id: def.judge0Id,
-          stdin: toB64(stdin),
-          cpu_time_limit: cpuSeconds,
-          memory_limit: memoryKb,
-          redirect_stderr_to_stdout: false,
-        }),
-      },
-    );
+    const body = JSON.stringify({
+      source_code: toB64(sourceCode),
+      language_id: def.judge0Id,
+      stdin: toB64(stdin),
+      cpu_time_limit: cpuSeconds,
+      memory_limit: memoryKb,
+      redirect_stderr_to_stdout: false,
+    });
 
-    if (!res.ok) {
-      throw new Error(`Judge0 HTTP ${res.status}: ${res.statusText}`);
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= BACKOFF_MS.length; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch(
+          `${JUDGE0_BASE}/submissions?base64_encoded=true&wait=true`,
+          { method: "POST", headers: buildHeaders(), body },
+        );
+      } catch (netErr) {
+        lastError = netErr instanceof Error ? netErr : new Error(String(netErr));
+        if (attempt < BACKOFF_MS.length) {
+          await sleep(BACKOFF_MS[attempt]! + Math.random() * 250);
+          continue;
+        }
+        throw lastError;
+      }
+
+      if (res.ok) {
+        const json = await res.json();
+        return {
+          stdout: fromB64(json.stdout),
+          stderr: fromB64(json.stderr),
+          compileOutput: fromB64(json.compile_output),
+          timeMs: Math.round(parseFloat(json.time || "0") * 1000),
+          memoryKb: Number(json.memory ?? 0),
+          statusId: json.status?.id ?? 0,
+          statusDescription: json.status?.description ?? "Unknown",
+        };
+      }
+
+      // Honor Retry-After when Judge0 sends one; else fall back to backoff.
+      const retryable = RETRY_STATUS.has(res.status) && attempt < BACKOFF_MS.length;
+      lastError = new Error(`Judge0 HTTP ${res.status}: ${res.statusText}`);
+      if (!retryable) throw lastError;
+      const retryAfter = Number(res.headers.get("retry-after"));
+      const delay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : BACKOFF_MS[attempt]! + Math.random() * 250;
+      await sleep(delay);
     }
-
-    const json = await res.json();
-    return {
-      stdout: fromB64(json.stdout),
-      stderr: fromB64(json.stderr),
-      compileOutput: fromB64(json.compile_output),
-      timeMs: Math.round(parseFloat(json.time || "0") * 1000),
-      memoryKb: Number(json.memory ?? 0),
-      statusId: json.status?.id ?? 0,
-      statusDescription: json.status?.description ?? "Unknown",
-    };
+    throw lastError ?? new Error("Judge0 exhausted retries");
   });
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 export function judge0OutputToConsoleText(r: Judge0RunResult): string {

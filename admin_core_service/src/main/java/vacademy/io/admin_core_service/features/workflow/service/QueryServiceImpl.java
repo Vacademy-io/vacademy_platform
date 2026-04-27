@@ -1416,6 +1416,11 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             LocalDateTime endLocal;
 
             if (daysAgoObj != null) {
+                // "Exactly N days after submission" semantics: window is the single
+                // calendar day that is N days ago. Each user receives one follow-up
+                // exactly N days after they submitted (assuming the schedule runs
+                // daily). To send on day 3, 5, 7 the user creates separate workflows
+                // — this query is intentionally not a rolling N-day range.
                 int daysAgo = Integer.parseInt(String.valueOf(daysAgoObj));
                 startLocal = LocalDateTime.now().minusDays(daysAgo).with(LocalTime.MIN);
                 endLocal = LocalDateTime.now().minusDays(daysAgo).with(LocalTime.MAX);
@@ -1423,31 +1428,31 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 startLocal = LocalDateTime.parse(startDateStr);
                 endLocal = LocalDateTime.parse(endDateStr);
             } else {
-                // Default: last 7 days
+                // Default: the calendar day exactly 7 days ago
                 startLocal = LocalDateTime.now().minusDays(7).with(LocalTime.MIN);
-                endLocal = LocalDateTime.now().with(LocalTime.MAX);
+                endLocal = LocalDateTime.now().minusDays(7).with(LocalTime.MAX);
             }
 
             Timestamp start = Timestamp.valueOf(startLocal);
             Timestamp end = Timestamp.valueOf(endLocal);
 
-            List<String> audienceIds;
+            List<AudienceResponse> allResponses = new ArrayList<>();
             if (audienceIdParam != null && !audienceIdParam.isEmpty()) {
-                audienceIds = Arrays.stream(audienceIdParam.split(","))
+                List<String> audienceIds = Arrays.stream(audienceIdParam.split(","))
                         .map(String::trim)
                         .filter(s -> !s.isEmpty())
                         .collect(Collectors.toList());
+                for (String aid : audienceIds) {
+                    List<AudienceResponse> responses = audienceResponseRepository
+                            .findLeadsByAudienceAndDateRange(instituteId, aid, start, end);
+                    allResponses.addAll(responses);
+                }
             } else {
-                // If no audienceId provided, we need to handle it differently
-                // For now, return empty if no audienceId specified
-                return Map.of("leads", List.of(), "message", "audienceId is recommended for filtered results");
-            }
-
-            List<AudienceResponse> allResponses = new ArrayList<>();
-            for (String aid : audienceIds) {
-                List<AudienceResponse> responses = audienceResponseRepository
-                        .findLeadsByAudienceAndDateRange(instituteId, aid, start, end);
-                allResponses.addAll(responses);
+                // No audienceId configured — fall back to all audiences for the institute
+                // in the date range. Used by the "audience follow-up emails" wizard
+                // when the user selects "All campaigns".
+                allResponses.addAll(audienceResponseRepository
+                        .findLeadsByInstituteAndDateRange(instituteId, start, end));
             }
 
             // Fetch custom field values in bulk
@@ -1492,6 +1497,16 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     String fieldName = fieldIdToName.getOrDefault(cfv.getCustomFieldId(), cfv.getCustomFieldId());
                     lead.put(fieldName, cfv.getValue());
                 }
+
+                // Promote customField values to standard lowercase keys so SEND_EMAIL's
+                // extractEmailAddress() — which looks for lowercase keys like "email",
+                // "mobileNumber", etc. — finds them even when the audience form named
+                // the field "Email", "Phone Number", etc. (case + spaces). The
+                // parent_email column is often null for forms that don't separate
+                // parent vs respondent contact info, so without this promotion the
+                // lead has no recipient and gets silently skipped.
+                promoteCustomFieldsToStandardKeys(lead);
+
                 leads.add(lead);
             }
 
@@ -1564,6 +1579,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      */
     private Map<String, Object> fetchBatchAttendanceReport(Map<String, Object> params) {
         try {
+            // batchId may be a single ID or a comma-separated list (multi-select wizard).
             String batchId = (String) params.get("batchId");
             String instituteId = (String) params.get("instituteId");
 
@@ -1574,11 +1590,17 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             java.time.LocalDate end = java.time.LocalDate.now();
             java.time.LocalDate start = end.minusDays(daysBack);
 
-            // If batchId provided, fetch for that batch only
-            // If not, fetch all active batches for the institute
+            // Three cases:
+            //   1. batchId has 1 or more comma-separated IDs → fetch for exactly those
+            //   2. batchId empty + instituteId present → fetch all active batches (capped at 10)
+            //   3. neither → error
             List<String> batchIds = new ArrayList<>();
             if (batchId != null && !batchId.isEmpty()) {
-                batchIds.add(batchId);
+                batchIds = Arrays.stream(batchId.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .distinct()
+                    .collect(Collectors.toList());
             } else if (instituteId != null) {
                 // Fetch all active package session IDs for this institute via SSIGM
                 batchIds = ssigmRepo.findAll().stream()
@@ -1590,7 +1612,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     .distinct()
                     .collect(Collectors.toList());
                 log.info("No batchId provided. Found {} active batches for institute {}", batchIds.size(), instituteId);
-                // Safety limit — prevent processing too many batches (would timeout)
+                // Safety limit — prevent processing too many batches (would timeout).
+                // Only applied to the "all batches" fallback; if the user explicitly
+                // selected N batches we honor their choice in the branch above.
                 if (batchIds.size() > 10) {
                     log.warn("Too many batches ({}). Limiting to first 10 to prevent timeout.", batchIds.size());
                     batchIds = batchIds.subList(0, 10);
@@ -1599,14 +1623,20 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return Map.of("error", "Either batchId or instituteId is required");
             }
 
-            // Look up institute name once for all students (template variable {{instituteName}})
+            // Look up institute name + learner portal URL once for all students
+            // (template variables {{instituteName}} and {{reportUrl}})
             final String resolvedInstituteName;
+            final String resolvedLearnerPortalUrl;
             if (instituteId != null && !instituteId.isBlank()) {
-                resolvedInstituteName = instituteRepository.findById(instituteId)
-                        .map(inst -> inst.getInstituteName())
-                        .orElse("Your Institute");
+                var instOpt = instituteRepository.findById(instituteId);
+                resolvedInstituteName = instOpt.map(inst -> inst.getInstituteName()).orElse("Your Institute");
+                String rawUrl = instOpt.map(inst -> inst.getLearnerPortalBaseUrl()).orElse("learner.vacademy.io");
+                if (rawUrl == null || rawUrl.isBlank()) rawUrl = "learner.vacademy.io";
+                // Normalise — accept "learner.vacademy.io" or "https://learner.vacademy.io"
+                resolvedLearnerPortalUrl = rawUrl.startsWith("http") ? rawUrl : "https://" + rawUrl;
             } else {
                 resolvedInstituteName = "Your Institute";
+                resolvedLearnerPortalUrl = "https://learner.vacademy.io";
             }
 
             // Aggregate reports across all batches — includes engagement/concentration data
@@ -1681,6 +1711,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         s.put("startDate", start.toString());
                         s.put("endDate", end.toString());
                         s.put("instituteName", resolvedInstituteName);
+                        // Deep link to the learner's full report on the learner portal
+                        s.put("reportUrl", resolvedLearnerPortalUrl + "/reports/attendance?from="
+                                + start + "&to=" + end + "&batchId=" + bid);
 
                         // Per-session attendance details
                         List<Map<String, Object>> sessionDetails = new ArrayList<>();
@@ -1723,30 +1756,51 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         s.put("totalChats", totalChats);
                         s.put("totalHandRaises", totalHandRaises);
                         s.put("sessionsAttended", engagementLogs.size());
+                        // Total scheduled sessions in the report window — needed by templates
+                        // that show "X / Y attended" instead of just attended count.
+                        s.put("totalSessions", sessionDetails.size());
 
-                        // Build pre-rendered HTML table for sessions (for email templates)
-                        // The template engine does {{key}}→value, so we need to pre-build the table
+                        // Build pre-rendered card stack for sessions (for email templates).
+                        // We use stacked cards instead of a table because tables overflow
+                        // on mobile and require horizontal scroll. Cards always fit the
+                        // viewport, render identically across email clients (no <style>
+                        // tags or @media queries needed), and are readable on every
+                        // screen size.
                         StringBuilder tableHtml = new StringBuilder();
-                        tableHtml.append("<table style=\"width:100%;border-collapse:collapse;margin:16px 0;font-size:13px\">");
-                        tableHtml.append("<tr style=\"background:#f1f5f9\">");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:left;color:#475569\">Session</th>");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:left;color:#475569\">Date</th>");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Attendance</th>");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Duration</th>");
-                        tableHtml.append("<th style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#475569\">Engagement</th>");
-                        tableHtml.append("</tr>");
+                        tableHtml.append("<div style=\"margin:16px 0\">");
 
                         // Index engagement logs by sessionId for quick lookup
                         Map<String, Map<String, Object>> engBySession = new HashMap<>();
+                        // Collect schedule IDs so we can fetch meeting durations in one go
+                        java.util.Set<String> scheduleIds = new java.util.HashSet<>();
                         for (var el : engagementLogs) {
                             String sid = String.valueOf(el.get("sessionId"));
                             engBySession.put(sid, el);
+                            Object schId = el.get("scheduleId");
+                            if (schId != null) scheduleIds.add(String.valueOf(schId));
+                        }
+
+                        // Batch-fetch meeting duration for each schedule (startTime → lastEntryTime)
+                        Map<String, Integer> scheduleDurationMins = new HashMap<>();
+                        if (!scheduleIds.isEmpty()) {
+                            try {
+                                var schedules = sessionScheduleRepository.findAllById(scheduleIds);
+                                for (var sch : schedules) {
+                                    if (sch.getStartTime() != null && sch.getLastEntryTime() != null) {
+                                        long startMs = sch.getStartTime().getTime();
+                                        long endMs = sch.getLastEntryTime().getTime();
+                                        int mins = (int) ((endMs - startMs) / 60000L);
+                                        if (mins > 0) scheduleDurationMins.put(sch.getId(), mins);
+                                    }
+                                }
+                            } catch (Exception ignored) {}
                         }
 
                         for (var session : sessionDetails) {
                             String status = String.valueOf(session.getOrDefault("attendanceStatus", "UNMARKED"));
-                            String statusColor = "PRESENT".equals(status) ? "#16a34a" : "ABSENT".equals(status) ? "#dc2626" : "#94a3b8";
-                            String statusLabel = "PRESENT".equals(status) ? "Present" : "ABSENT".equals(status) ? "Absent" : "Unmarked";
+                            // UNMARKED counts as Absent for display purposes — no in-between state shown to students
+                            String statusColor = "PRESENT".equals(status) ? "#16a34a" : "#dc2626";
+                            String statusLabel = "PRESENT".equals(status) ? "Present" : "Absent";
                             String sessionId = String.valueOf(session.get("sessionId"));
 
                             // Lookup engagement for this session
@@ -1756,62 +1810,124 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                             String engagementColor = "#94a3b8";
 
                             if (eng != null) {
-                                if (eng.get("providerTotalDurationMinutes") instanceof Number) {
-                                    int mins = ((Number) eng.get("providerTotalDurationMinutes")).intValue();
-                                    durationStr = mins + " min";
+                                int providerMinutes = 0;
+                                boolean hasProviderDuration = eng.get("providerTotalDurationMinutes") instanceof Number;
+                                if (hasProviderDuration) {
+                                    providerMinutes = ((Number) eng.get("providerTotalDurationMinutes")).intValue();
+                                    durationStr = providerMinutes + " min";
                                 }
 
-                                // Parse engagement JSON (chats, hand raises, concentration etc.)
+                                // Compute engagement score (0-100):
+                                //   80 pts from attendance duration: (providerMinutes / meetingMinutes) * 80
+                                //   20 pts from interactions (chats, talks, talkTime, raisehand, emojis, pollVotes)
+                                String scheduleId = eng.get("scheduleId") != null ? String.valueOf(eng.get("scheduleId")) : null;
+                                Integer meetingMinutes = scheduleId != null ? scheduleDurationMins.get(scheduleId) : null;
+
+                                double attendancePts = 0.0;
+                                if (hasProviderDuration && meetingMinutes != null && meetingMinutes > 0) {
+                                    attendancePts = Math.min(80.0, ((double) providerMinutes / meetingMinutes) * 80.0);
+                                } else if (hasProviderDuration && providerMinutes > 0) {
+                                    // No schedule duration known — award partial based on raw minutes (cap at 80)
+                                    attendancePts = Math.min(80.0, providerMinutes * 1.5);
+                                }
+
+                                // Parse engagement JSON — BBB reports: chats, talks, talkTime, raisehand, emojis, pollVotes
                                 String engJson = eng.get("engagementData") != null ? String.valueOf(eng.get("engagementData")) : null;
+                                int chats = 0, raises = 0, talks = 0, talkTime = 0, emojis = 0, pollVotes = 0;
+                                boolean hasEngagementJson = false;
+
                                 if (engJson != null && !engJson.isEmpty() && !"null".equals(engJson)) {
                                     try {
                                         var engNode = objectMapper.readTree(engJson);
-                                        int chats = engNode.path("chats").asInt(0);
-                                        int raises = engNode.path("raisehand").asInt(0);
-                                        int concentration = engNode.path("concentration").asInt(-1);
-
-                                        StringBuilder parts = new StringBuilder();
-                                        if (concentration >= 0) {
-                                            parts.append(concentration).append("% focus");
-                                            engagementColor = concentration >= 70 ? "#16a34a" : concentration >= 40 ? "#ca8a04" : "#dc2626";
-                                        }
-                                        if (chats > 0) {
-                                            if (parts.length() > 0) parts.append(" &middot; ");
-                                            parts.append(chats).append(" chat").append(chats > 1 ? "s" : "");
-                                        }
-                                        if (raises > 0) {
-                                            if (parts.length() > 0) parts.append(" &middot; ");
-                                            parts.append(raises).append(" raise").append(raises > 1 ? "s" : "");
-                                        }
-                                        if (parts.length() > 0) {
-                                            engagementStr = parts.toString();
-                                        } else if (concentration < 0 && chats == 0 && raises == 0) {
-                                            // No interactions — mark as low engagement if they attended
-                                            engagementStr = "Low";
-                                            engagementColor = "#94a3b8";
-                                        }
+                                        chats = engNode.path("chats").asInt(0);
+                                        raises = engNode.path("raisehand").asInt(0);
+                                        talks = engNode.path("talks").asInt(0);
+                                        talkTime = engNode.path("talkTime").asInt(0);
+                                        emojis = engNode.path("emojis").asInt(0);
+                                        pollVotes = engNode.path("pollVotes").asInt(0);
+                                        hasEngagementJson = true;
                                     } catch (Exception ignored) {}
+                                }
+
+                                // Interaction score out of 20:
+                                //   chats up to 4, raises up to 4, talks up to 5, talkTime up to 3, emojis up to 2, polls up to 2
+                                double interactionPts = 0.0;
+                                interactionPts += Math.min(4.0, chats * 0.4);        // 10+ chats = 4pts
+                                interactionPts += Math.min(4.0, raises * 0.8);       // 5+ raises = 4pts
+                                interactionPts += Math.min(5.0, talks * 0.25);       // 20+ talks = 5pts
+                                interactionPts += Math.min(3.0, talkTime / 60.0 * 0.6); // 5+ min talk = 3pts
+                                interactionPts += Math.min(2.0, emojis * 0.2);       // 10+ emojis = 2pts
+                                interactionPts += Math.min(2.0, pollVotes * 0.4);    // 5+ polls = 2pts
+                                interactionPts = Math.min(20.0, interactionPts);
+
+                                double totalScore = Math.min(100.0, attendancePts + interactionPts);
+                                int scoreInt = (int) Math.round(totalScore);
+
+                                // Persist score breakdown on the engagement log map so the
+                                // report page (and any downstream consumer) can show a
+                                // per-session breakdown without re-implementing the formula.
+                                if (hasProviderDuration || hasEngagementJson) {
+                                    eng.put("engagementScore", scoreInt);
+                                    eng.put("attendancePoints", Math.round(attendancePts * 10.0) / 10.0);
+                                    eng.put("interactionPoints", Math.round(interactionPts * 10.0) / 10.0);
+                                    if (meetingMinutes != null) eng.put("meetingDurationMinutes", meetingMinutes);
+                                    eng.put("interactionBreakdown", Map.of(
+                                            "chats", chats,
+                                            "raisehand", raises,
+                                            "talks", talks,
+                                            "talkTime", talkTime,
+                                            "emojis", emojis,
+                                            "pollVotes", pollVotes
+                                    ));
+                                }
+
+                                // Build display string — score + asterisk; footer explains the formula
+                                if (hasProviderDuration || hasEngagementJson) {
+                                    engagementStr = scoreInt + "/100*";
+                                    // Color by score
+                                    engagementColor = scoreInt >= 70 ? "#16a34a"
+                                                    : scoreInt >= 40 ? "#ca8a04" : "#dc2626";
+                                } else if ("ONLINE".equals(eng.get("statusType"))) {
+                                    engagementStr = "Joined";
+                                    engagementColor = "#64748b";
                                 } else if ("OFFLINE".equals(eng.get("statusType"))) {
                                     engagementStr = "Offline";
                                 }
                             }
 
-                            tableHtml.append("<tr>");
-                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;color:#1e293b\">")
-                                     .append(session.getOrDefault("title", "-")).append("</td>");
-                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;color:#64748b\">")
-                                     .append(session.getOrDefault("meetingDate", "-")).append("</td>");
-                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center\">");
-                            tableHtml.append("<span style=\"color:").append(statusColor).append(";font-weight:600\">")
-                                     .append(statusLabel).append("</span></td>");
-                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:#64748b\">")
-                                     .append(durationStr).append("</td>");
-                            tableHtml.append("<td style=\"padding:8px 10px;border:1px solid #e2e8f0;text-align:center;color:")
-                                     .append(engagementColor).append(";font-size:12px\">")
-                                     .append(engagementStr).append("</td>");
-                            tableHtml.append("</tr>");
+                            // One card per session — uses a 2-cell table for the header row
+                            // (title + status pill) so it works in Outlook (no flexbox).
+                            // Body uses simple <div>s for label/value rows.
+                            String sessionTitle = String.valueOf(session.getOrDefault("title", "-"));
+                            String meetingDate = String.valueOf(session.getOrDefault("meetingDate", "-"));
+                            String statusBg = "PRESENT".equals(status) ? "#dcfce7" : "#fee2e2";
+
+                            tableHtml.append("<div style=\"border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:10px;background:#ffffff\">");
+                            // Header: title left, status pill right
+                            tableHtml.append("<table role=\"presentation\" style=\"width:100%;border-collapse:collapse\"><tr>");
+                            tableHtml.append("<td style=\"padding:0;font-size:14px;font-weight:600;color:#1e293b;vertical-align:middle\">")
+                                     .append(sessionTitle).append("</td>");
+                            tableHtml.append("<td style=\"padding:0;text-align:right;vertical-align:middle;white-space:nowrap\">")
+                                     .append("<span style=\"display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;color:")
+                                     .append(statusColor).append(";background:").append(statusBg).append("\">")
+                                     .append(statusLabel).append("</span>")
+                                     .append("</td>");
+                            tableHtml.append("</tr></table>");
+
+                            // Body: label/value rows
+                            tableHtml.append("<div style=\"font-size:12px;color:#64748b;margin-top:6px\">")
+                                     .append(meetingDate).append("</div>");
+                            tableHtml.append("<div style=\"display:block;margin-top:10px;font-size:12px;color:#475569\">")
+                                     .append("<span style=\"color:#94a3b8\">Duration:</span> ")
+                                     .append("<span style=\"color:#1e293b;font-weight:500\">").append(durationStr).append("</span>")
+                                     .append("&nbsp;&nbsp;&middot;&nbsp;&nbsp;")
+                                     .append("<span style=\"color:#94a3b8\">Concentration Score:</span> ")
+                                     .append("<span style=\"color:").append(engagementColor).append(";font-weight:600\">")
+                                     .append(engagementStr).append("</span>")
+                                     .append("</div>");
+                            tableHtml.append("</div>");
                         }
-                        tableHtml.append("</table>");
+                        tableHtml.append("</div>");
                         s.put("sessionsTableHtml", tableHtml.toString());
 
                         allStudents.add(s);
@@ -1833,6 +1949,68 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             log.error("Error in fetchBatchAttendanceReport", e);
             return Map.of("error", e.getMessage());
         }
+    }
+
+    /**
+     * If the lead's standard contact keys (email, mobileNumber, parentName/fullName)
+     * are null/blank, scan the customField values and promote anything that looks
+     * like an email / phone / name into the standard key. Audience forms commonly
+     * use customField names like "Email", "Phone Number", "Full Name" — those
+     * survive into the lead map but the SEND_EMAIL handler only looks at
+     * lowercase standard keys, so without this promotion the lead is silently
+     * dropped at recipient extraction.
+     */
+    private void promoteCustomFieldsToStandardKeys(Map<String, Object> lead) {
+        // email — look for any string value containing "@"
+        if (isBlankString(lead.get("email"))) {
+            for (Map.Entry<String, Object> e : lead.entrySet()) {
+                if (e.getValue() instanceof String) {
+                    String val = ((String) e.getValue()).trim();
+                    int at = val.indexOf('@');
+                    if (at > 0 && at < val.length() - 1 && !val.contains(" ")) {
+                        lead.put("email", val);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // mobileNumber — look for keys containing "phone" or "mobile" (case-insensitive)
+        if (isBlankString(lead.get("mobileNumber"))) {
+            for (Map.Entry<String, Object> e : lead.entrySet()) {
+                String key = e.getKey() == null ? "" : e.getKey().toLowerCase();
+                if ((key.contains("phone") || key.contains("mobile")) && e.getValue() instanceof String) {
+                    String val = ((String) e.getValue()).trim();
+                    if (!val.isEmpty()) {
+                        lead.put("mobileNumber", val);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // parentName / fullName — look for keys containing "name" (case-insensitive)
+        if (isBlankString(lead.get("parentName"))) {
+            for (Map.Entry<String, Object> e : lead.entrySet()) {
+                String key = e.getKey() == null ? "" : e.getKey().toLowerCase();
+                if (key.contains("name") && e.getValue() instanceof String) {
+                    String val = ((String) e.getValue()).trim();
+                    if (!val.isEmpty()) {
+                        lead.put("parentName", val);
+                        if (isBlankString(lead.get("fullName"))) {
+                            lead.put("fullName", val);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean isBlankString(Object o) {
+        if (o == null) return true;
+        if (o instanceof String) return ((String) o).trim().isEmpty();
+        return false;
     }
 }
 

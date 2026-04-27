@@ -149,6 +149,19 @@ DIRECTOR_SYSTEM_PROMPT = (
     "(e.g. photo hero → illustrated infographic → product hero outro) as long as each transition "
     "feels intentional. Use KINETIC_TITLE or a hard cut between shots to mark act changes.\n\n"
 
+    "**TRANSITION_IN** (required for every shot — pick exactly one):\n"
+    "- `\"cut\"` — instant. KINETIC_TEXT (always), fast reels back-to-back shots.\n"
+    "- `\"fade\"` — opacity 0→1, 0.4s. Default for education content, reflective beats.\n"
+    "- `\"slide_right\"` — slides in from left. Narrative forward movement.\n"
+    "- `\"slide_left\"` — slides in from right. Going back/revisiting. Use sparingly.\n"
+    "- `\"slide_up\"` — rises from below. Topic elevation, list reveals.\n"
+    "- `\"zoom_in\"` — scale 0.85→1.0. KINETIC_TITLE (always), key concept hooks.\n"
+    "- `\"zoom_out\"` — scale 1.15→1.0. Revealing larger context.\n"
+    "- `\"wipe_right\"` — clip-path sweeps from left. After topic-break beats, act transitions.\n"
+    "Non-negotiable: KINETIC_TEXT → `cut`. KINETIC_TITLE → `zoom_in`. "
+    "After KINETIC_TITLE → next shot uses `wipe_right`. Reels → prefer `cut`/`slide_right`. "
+    "Education → prefer `fade`/`slide_up`. Default: `fade`.\n\n"
+
     "Return JSON only. No markdown, no commentary. "
     "The first character of your response must be `{` and the last must be `}`.\n\n"
 
@@ -178,24 +191,30 @@ SUPER_ULTRA_DIRECTOR_EXTENSION = (
     '    {"shot_index":0,"shot_type":"VIDEO_HERO","start_time":0.0,"end_time":4.0,'
     '"narration_excerpt":"Tokyo at night hits different.",'
     '"video_query":"tokyo shibuya crossing night neon 4k",'
-    '"animation_strategy":"0.0s video crossfades in, 0.4s title splitReveal \\"TOKYO\\" (Bebas 10rem), 1.2s subtitle fadeIn, 3.0s ken-burns zoom starts"},\n'
+    '"animation_strategy":"0.0s video crossfades in, 0.4s title splitReveal \\"TOKYO\\" (Bebas 10rem), 1.2s subtitle fadeIn, 3.0s ken-burns zoom starts",'
+    '"transition_in":"zoom_in"},\n'
     '    {"shot_index":1,"shot_type":"VIDEO_HERO","start_time":4.0,"end_time":9.0,'
     '"narration_excerpt":"Neon alleys,",'
     '"video_query":"tokyo shinjuku alley neon signs",'
-    '"animation_strategy":"0.0s cut, 0.2s label wipe \\"NEON ALLEYS\\", 1.5s accent underline draws under label"},\n'
+    '"animation_strategy":"0.0s cut, 0.2s label wipe \\"NEON ALLEYS\\", 1.5s accent underline draws under label",'
+    '"transition_in":"cut"},\n'
     '    {"shot_index":2,"shot_type":"VIDEO_HERO","start_time":9.0,"end_time":14.0,'
     '"narration_excerpt":"ramen steam,",'
-    '"video_query":"ramen bowl steam rising close up cinematic"},\n'
+    '"video_query":"ramen bowl steam rising close up cinematic",'
+    '"transition_in":"slide_right"},\n'
     '    {"shot_index":3,"shot_type":"KINETIC_TEXT","start_time":14.0,"end_time":19.0,'
     '"narration_excerpt":"24-hour arcades.",'
-    '"animation_strategy":"words appear when spoken, final word \\"arcades\\" in accent color with scale pulse"},\n'
+    '"animation_strategy":"words appear when spoken, final word \\"arcades\\" in accent color with scale pulse",'
+    '"transition_in":"cut"},\n'
     '    {"shot_index":4,"shot_type":"VIDEO_HERO","start_time":19.0,"end_time":25.0,'
     '"narration_excerpt":"Book the",'
-    '"video_query":"airplane window view sunrise clouds"},\n'
+    '"video_query":"airplane window view sunrise clouds",'
+    '"transition_in":"slide_right"},\n'
     '    {"shot_index":5,"shot_type":"KINETIC_TITLE","start_time":25.0,"end_time":30.0,'
     '"narration_excerpt":"red-eye flight.",'
     '"text_elements":["RED-EYE","FLIGHT"],'
-    '"animation_strategy":"translateY wipe reveal, \\"RED-EYE\\" in accent, \\"FLIGHT\\" in primary"}\n'
+    '"animation_strategy":"translateY wipe reveal, \\"RED-EYE\\" in accent, \\"FLIGHT\\" in primary",'
+    '"transition_in":"zoom_in"}\n'
     '  ],\n'
     '  "shot_density": "fast",\n'
     '  "pacing_rationale": "30s travel reel with punchy visuals — every sentence gets its own cinematic shot; KINETIC_TEXT breaks up video to prevent monotony; outro is bold typography for shareability",\n'
@@ -213,34 +232,43 @@ SUPER_ULTRA_DIRECTOR_EXTENSION = (
     '  "shots": [\n'
     '    {"shot_index":0,"shot_type":"IMAGE_HERO","start_time":0.0,"end_time":4.0,'
     '"narration_excerpt":"Newton\'s second law",'
-    '"image_prompt":"portrait of Isaac Newton, cinematic lighting, dark background","animation_strategy":"slow zoom Ken Burns, title splitReveal \\"NEWTON\'S 2ND LAW\\" at 0.5s"},\n'
+    '"image_prompt":"portrait of Isaac Newton, cinematic lighting, dark background","animation_strategy":"slow zoom Ken Burns, title splitReveal \\"NEWTON\'S 2ND LAW\\" at 0.5s",'
+    '"transition_in":"zoom_in"},\n'
     '    {"shot_index":1,"shot_type":"EQUATION_BUILD","start_time":4.0,"end_time":11.0,'
     '"narration_excerpt":"force equals mass times acceleration.",'
     '"text_elements":["F = ma"],'
-    '"animation_strategy":"0.0s \\"F\\" scale-in from 3x, 0.8s \\"=\\" slides left, 1.6s \\"m\\" scale-in, 2.4s \\"a\\" scale-in, 3.5s each term gets a color-coded label (force/mass/accel) fading in beneath"},\n'
+    '"animation_strategy":"0.0s \\"F\\" scale-in from 3x, 0.8s \\"=\\" slides left, 1.6s \\"m\\" scale-in, 2.4s \\"a\\" scale-in, 3.5s each term gets a color-coded label (force/mass/accel) fading in beneath",'
+    '"transition_in":"fade"},\n'
     '    {"shot_index":2,"shot_type":"ANIMATED_ASSET","start_time":11.0,"end_time":15.0,'
     '"narration_excerpt":"Push a shopping cart",'
     '"image_prompt":"shopping cart cutout, isolated on solid white background, side view, clean edges",'
-    '"animation_strategy":"cart slides in from left, cartoon push motion lines draw in behind it"},\n'
+    '"animation_strategy":"cart slides in from left, cartoon push motion lines draw in behind it",'
+    '"transition_in":"slide_right"},\n'
     '    {"shot_index":3,"shot_type":"TEXT_DIAGRAM","start_time":15.0,"end_time":19.0,'
     '"narration_excerpt":"twice as hard, it accelerates twice as fast.",'
-    '"animation_strategy":"two side-by-side cart diagrams draw in (SVG), force arrows grow sequentially, speed meter counter runs 0→20→40mph"},\n'
+    '"animation_strategy":"two side-by-side cart diagrams draw in (SVG), force arrows grow sequentially, speed meter counter runs 0→20→40mph",'
+    '"transition_in":"slide_up"},\n'
     '    {"shot_index":4,"shot_type":"KINETIC_TEXT","start_time":19.0,"end_time":23.0,'
     '"narration_excerpt":"This is why F1 cars",'
-    '"animation_strategy":"pipeline-built word sync"},\n'
+    '"animation_strategy":"pipeline-built word sync",'
+    '"transition_in":"cut"},\n'
     '    {"shot_index":5,"shot_type":"VIDEO_HERO","start_time":23.0,"end_time":28.0,'
     '"narration_excerpt":"shed weight:",'
-    '"video_query":"formula 1 pit crew removing parts slow motion"},\n'
+    '"video_query":"formula 1 pit crew removing parts slow motion",'
+    '"transition_in":"slide_right"},\n'
     '    {"shot_index":6,"shot_type":"DATA_STORY","start_time":28.0,"end_time":35.0,'
     '"narration_excerpt":"less mass means more acceleration",'
-    '"animation_strategy":"bar chart draws in showing 3 cars with descending mass and ascending 0-60 times, counter-rolls on each bar"},\n'
+    '"animation_strategy":"bar chart draws in showing 3 cars with descending mass and ascending 0-60 times, counter-rolls on each bar",'
+    '"transition_in":"slide_up"},\n'
     '    {"shot_index":7,"shot_type":"TEXT_DIAGRAM","start_time":35.0,"end_time":41.0,'
     '"narration_excerpt":"for the same engine force.",'
-    '"animation_strategy":"F = ma equation returns, this time with F held constant (locked icon), mass shrinks, acceleration grows — live demonstration"},\n'
+    '"animation_strategy":"F = ma equation returns, this time with F held constant (locked icon), mass shrinks, acceleration grows — live demonstration",'
+    '"transition_in":"wipe_right"},\n'
     '    {"shot_index":8,"shot_type":"KINETIC_TITLE","start_time":41.0,"end_time":45.0,'
     '"narration_excerpt":"(outro)",'
     '"text_elements":["LESS MASS.","MORE SPEED."],'
-    '"animation_strategy":"two-line wipe reveal, \\"MORE SPEED\\" in accent color"}\n'
+    '"animation_strategy":"two-line wipe reveal, \\"MORE SPEED\\" in accent color",'
+    '"transition_in":"zoom_in"}\n'
     '  ],\n'
     '  "shot_density": "medium",\n'
     '  "pacing_rationale": "Physics needs visual proofs — the EQUATION_BUILD gets 7s because its internal animation (term-by-term reveal + labels) carries the motion; short cutaways in between keep tempo up",\n'
@@ -341,6 +369,73 @@ def build_act_planner_user_prompt(
 
 
 # ---------------------------------------------------------------------------
+# Background music planning extension (ultra / super_ultra only)
+# ---------------------------------------------------------------------------
+# Appended to the Director's system prompt when background music generation is
+# enabled. The Director then must emit a `music_plan` field alongside `shots`,
+# which the Lyria pipeline turns into a background score.
+
+MUSIC_PLAN_EXTENSION = (
+    "\n\n## 🎼 MUSIC PLAN (REQUIRED for this run)\n"
+    "In addition to `shots`, you MUST emit a `music_plan` object describing a "
+    "background score for this video. The score is generated by Google Lyria 3 "
+    "Pro and mixed under the narration at ~20% volume. Treat it as a subtle "
+    "cinematic bed — not a foreground element.\n\n"
+    "**You write ONE prose prompt with embedded `[mm:ss]` timestamp markers — "
+    "the music model produces a single coherent piece with the mood/instrument "
+    "transitions baked in at those timestamps.** This is much better than "
+    "stitched separate clips because the model composes real musical "
+    "transitions (key changes, instrument hand-offs, dynamics) instead of hard "
+    "cuts. Lyria can produce up to ~180 seconds in a single call. For longer "
+    "videos, split the prompt into multiple `chunks`, each ≤ 180 seconds.\n\n"
+    "**Authoring rules — read carefully:**\n"
+    "- Use absolute `[mm:ss]` markers within each chunk (a chunk is one Lyria "
+    "  call, so timestamps are relative to that chunk's start, not the whole video).\n"
+    "- First marker in every chunk must be `[00:00]`.\n"
+    "- Last marker in every chunk should land at or just before the chunk's "
+    "  duration (e.g. `[02:55]` or `[03:00]` for a 180s chunk).\n"
+    "- Cover the full chunk duration — no big silent stretches between markers.\n"
+    "- 4-8 markers per chunk is the sweet spot. Each marker introduces ONE "
+    "  musical change (instrument enters, mood shifts, energy rises, etc.).\n"
+    "- Describe instruments, mood, tempo, energy curve in natural prose. Lyria "
+    "  is best at instrumental/cinematic/ambient/electronic — favour those.\n"
+    "- Every prompt MUST include the phrase \"no vocals, no lyrics\" so the "
+    "  model produces an instrumental score (it's a song model otherwise).\n"
+    "- Do NOT name artists, bands, or copyrighted track titles.\n"
+    "- Keep overall tempo between 60 and 140 bpm; transitions can step it.\n"
+    "- Chunk transitions should feel like a continuation — last few seconds of "
+    "  chunk N's prompt and first few seconds of chunk N+1's prompt should "
+    "  share instrumentation/mood so the crossfade between Lyria calls "
+    "  doesn't sound abrupt.\n\n"
+    "**Output shape — add `music_plan` to your top-level JSON, alongside "
+    "`shots` and `continuity_notes`:**\n"
+    "```json\n"
+    "\"music_plan\": {\n"
+    "  \"overall_mood\": \"curious, uplifting, educational\",\n"
+    "  \"overall_genre\": \"cinematic ambient with piano and warm strings\",\n"
+    "  \"chunks\": [\n"
+    "    {\n"
+    "      \"start_time\": 0.0,\n"
+    "      \"end_time\": 180.0,\n"
+    "      \"timestamped_prompt\": \"[00:00] Begin with a soft warm cinematic instrumental — gentle solo piano melody, contemplative and curious mood, sparse arrangement, no vocals, no lyrics. [00:35] Slow warm string pads enter underneath the piano, adding depth and a sense of discovery. [01:10] Subtle low percussion (felt mallets, soft kick) joins, energy rising gently, pulse around 72 bpm. [01:50] Brass swells underneath as the strings build, building anticipation. [02:30] Triumphant resolution — strings and brass at peak warmth, piano returns to a confident melody, no vocals throughout.\"\n"
+    "    },\n"
+    "    {\n"
+    "      \"start_time\": 180.0,\n"
+    "      \"end_time\": 320.0,\n"
+    "      \"timestamped_prompt\": \"[00:00] Continue from triumphant peak — brass and strings sustained warmly, piano carrying the lead melody, instrumental, no vocals. [00:30] Gradually thin out — brass exits, strings soften. [01:20] Solo piano alone, gentle reflective coda, sparse and emotional. [02:15] Final sustained piano chord fading slowly to silence.\"\n"
+    "    }\n"
+    "  ]\n"
+    "}\n"
+    "```\n"
+    "- For videos ≤ 180 seconds, emit a single chunk.\n"
+    "- For videos > 180 seconds, split into N chunks each ≤ 180 seconds, "
+    "  tiling the full duration with no gaps.\n"
+    "- The `chunks[*].start_time` / `end_time` are absolute video timestamps; "
+    "  the markers inside `timestamped_prompt` are CHUNK-RELATIVE.\n"
+)
+
+
+# ---------------------------------------------------------------------------
 # Director user prompt template
 # ---------------------------------------------------------------------------
 
@@ -430,6 +525,7 @@ def build_director_user_prompt(
     target_shot_duration_s: Optional[float] = None,
     quality_tier: str = "",
     target_audience: str = "General/Adult",
+    include_music_plan: bool = False,
 ) -> str:
     """Assemble the Director user prompt from pipeline data."""
     aspect_label = "9:16 portrait" if width < height else "16:9"
@@ -543,6 +639,21 @@ def build_director_user_prompt(
             "visual concept and dense animation. Prefer focused 3–5s shots over 8–10s sparse ones. "
             "KINETIC_TEXT and KINETIC_TITLE shots: 2–3s max — punchy, not lingering. "
             "Do not pad duration; instead add more animation layers within each shot."
+        )
+
+    if include_music_plan:
+        # Compute the recommended chunk count up-front so the Director doesn't
+        # have to do arithmetic in-prompt.
+        _chunk_cap = 180.0
+        _chunks_needed = max(1, int(-(-audio_duration // _chunk_cap)))  # ceil
+        extras.append(
+            f"\n\n**🎼 MUSIC PLAN REMINDER**: Total narration is {audio_duration:.1f}s. "
+            f"Emit `music_plan.chunks` with {_chunks_needed} chunk(s), tiling "
+            f"[0.0, {audio_duration:.1f}] with no gaps. Each chunk's "
+            f"`timestamped_prompt` is a single prose string with `[mm:ss]` "
+            f"markers (chunk-relative, starting at `[00:00]`). Every prompt "
+            f"must contain \"no vocals, no lyrics\". See the system prompt "
+            f"for the exact shape and authoring rules."
         )
 
     if target_audience and target_audience.lower() not in ("general/adult", "general", "adult", ""):

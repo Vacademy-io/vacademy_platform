@@ -40,6 +40,14 @@ services:
     image:
       repository: public.ecr.aws/e0x1f4p4/ai-service/ai-service-repo
       tag: latest
+    # Whisper forced-alignment knobs. Defaults in code are 2 threads / 1 worker;
+    # set explicitly here so they're visible and tunable without a code deploy.
+    # WHISPER_MODEL_SIZE: "small" cuts model RAM from ~1.5 GB to ~500 MB if the
+    # 3Gi limit ever feels tight again.
+    whisper:
+      cpuThreads: "2"
+      numWorkers: "1"
+      modelSize: ""  # blank = use code default (medium for non-English, base for English)
 
 environment:
   stage: stage

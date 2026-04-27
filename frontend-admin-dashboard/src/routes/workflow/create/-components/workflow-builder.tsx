@@ -16,7 +16,7 @@ import {
 } from '@phosphor-icons/react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
-import { useSuspenseQuery } from '@tanstack/react-query';
+import { useSuspenseQuery, useQueryClient } from '@tanstack/react-query';
 import { createWorkflow, testRunWorkflow, validateWorkflow, getTriggerEventsCatalogQuery } from '@/services/workflow-service';
 import { WorkflowBuilderDTO } from '@/types/workflow/workflow-types';
 import { getUserId } from '@/utils/userDetails';
@@ -862,6 +862,7 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
     const [wizardOpen, setWizardOpen] = useState(false);
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
+    const queryClient = useQueryClient();
     const addNode = useWorkflowBuilderStore((s) => s.addNode);
 
     const onNodeClick = useCallback(
@@ -963,6 +964,13 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                 } catch { /* proceed */ }
             }
             await createWorkflow(dto, getUserId());
+            // Invalidate workflow list cache so the new/edited workflow appears immediately.
+            // refetchType: 'all' forces refetch even for inactive (suspended) queries on the
+            // list page — without it, navigating back may render stale 5-min cached data.
+            await queryClient.invalidateQueries({
+                queryKey: ['GET_ACTIVE_WORKFLOWS_WITH_SCHEDULES'],
+                refetchType: 'all',
+            });
             navigate({ to: '/workflow/list' });
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : 'Unknown error';

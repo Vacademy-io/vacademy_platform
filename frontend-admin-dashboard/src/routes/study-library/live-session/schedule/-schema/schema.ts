@@ -109,8 +109,8 @@ export const sessionFormSchema = z
             label: z.string(),
             enabled: z.boolean(),
             mandatory: z.boolean(),
-            max_stars: z.number().optional(),
-            allow_half: z.boolean().optional(),
+            max_stars: z.number().nullish(),
+            allow_half: z.boolean().nullish(),
         })).optional(),
     })
     .superRefine((data, ctx) => {

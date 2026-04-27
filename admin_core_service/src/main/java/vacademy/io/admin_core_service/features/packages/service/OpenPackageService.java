@@ -34,6 +34,13 @@ public class OpenPackageService {
         @Autowired
         private AuthService authService;
 
+        public List<String> getDistinctCatalogTags(String instituteId) {
+                if (!StringUtils.hasText(instituteId)) {
+                        return List.of();
+                }
+                return packageRepository.findAllDistinctTagsByInstituteId(instituteId);
+        }
+
         @Transactional
         public Page<PackageDetailDTO> getLearnerPackageDetail(
                         LearnerPackageFilterDTO learnerPackageFilterDTO,

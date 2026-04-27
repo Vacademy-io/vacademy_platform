@@ -20,6 +20,28 @@ export function parseHtmlToString(html: string) {
     return doc.body.textContent || doc.body.innerText || '';
 }
 
+/**
+ * Title-cases a package/genre tag while preserving separators.
+ * Bulk-create stores tags as trim().toLowerCase(), keeping spaces and
+ * hyphens intact. This helper capitalizes each word without flattening
+ * hyphens into spaces.
+ *
+ * Examples:
+ *   "sci-fi"           -> "Sci-Fi"
+ *   "science fiction"  -> "Science Fiction"
+ *   "rom-com thriller" -> "Rom-Com Thriller"
+ */
+export function formatTagForDisplay(tag: string): string {
+    if (!tag) return '';
+    const cap = (s: string) =>
+        s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
+    return tag
+        .trim()
+        .split(/\s+/)
+        .map((word) => word.split('-').map(cap).join('-'))
+        .join(' ');
+}
+
 export const goToWhatsappSupport = () => {
     const phoneNumber = '+919201534254'; // Your WhatsApp number (with country code)
     const message = encodeURIComponent('Hello, I have a question.');

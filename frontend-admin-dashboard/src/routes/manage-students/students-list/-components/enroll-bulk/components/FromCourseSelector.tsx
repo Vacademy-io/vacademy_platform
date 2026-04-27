@@ -14,6 +14,15 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_STUDENTS } from '@/constants/urls';
 import { SelectedLearner } from '../../../-types/bulk-assign-types';
 import { toast } from 'sonner';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import {
+    ContentTerms,
+    RoleTerms,
+    SystemTerms,
+} from '@/routes/settings/-components/NamingSettings';
 
 interface Props {
     instituteId: string;
@@ -31,6 +40,11 @@ interface StudentRow {
 export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Props) => {
     const { getPackageWiseLevels } = useInstituteDetailsStore();
     const packageGroups = getPackageWiseLevels();
+
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const levelTerm = getTerminology(ContentTerms.Level, SystemTerms.Level);
+    const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
+    const learnersTerm = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
 
     const [selectedCourseId, setSelectedCourseId] = useState('');
     const [selectedPackageSessionId, setSelectedPackageSessionId] = useState('');
@@ -119,7 +133,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
             {/* Source course picker */}
             <div className="grid grid-cols-2 gap-3">
                 <div>
-                    <Label className="mb-1 text-xs text-neutral-500">Source Course</Label>
+                    <Label className="mb-1 text-xs text-neutral-500">Source {courseTerm}</Label>
                     <Select
                         value={selectedCourseId}
                         onValueChange={(v) => {
@@ -129,7 +143,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                         }}
                     >
                         <SelectTrigger>
-                            <SelectValue placeholder="Select course" />
+                            <SelectValue placeholder={`Select ${courseTerm.toLowerCase()}`} />
                         </SelectTrigger>
                         <SelectContent>
                             {packageGroups.map((g) => (
@@ -141,7 +155,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                     </Select>
                 </div>
                 <div>
-                    <Label className="mb-1 text-xs text-neutral-500">Level</Label>
+                    <Label className="mb-1 text-xs text-neutral-500">{levelTerm}</Label>
                     <Select
                         value={selectedPackageSessionId}
                         onValueChange={(v) => {
@@ -151,7 +165,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                         disabled={!selectedCourseId}
                     >
                         <SelectTrigger>
-                            <SelectValue placeholder="Select level" />
+                            <SelectValue placeholder={`Select ${levelTerm.toLowerCase()}`} />
                         </SelectTrigger>
                         <SelectContent>
                             {levels.map((l) => (
@@ -186,7 +200,7 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                         onClick={handleSearch}
                         disable={!selectedPackageSessionId || loading}
                     >
-                        {loading ? 'Loading…' : 'Load Students'}
+                        {loading ? 'Loading…' : `Load ${learnersTerm}`}
                     </MyButton>
                 </div>
             </div>
@@ -209,7 +223,11 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
                                 layoutVariant="default"
                                 onClick={handleAdd}
                             >
-                                Add {checkedIds.size} student{checkedIds.size !== 1 ? 's' : ''}
+                                Add {checkedIds.size}{' '}
+                                {(checkedIds.size !== 1
+                                    ? learnersTerm
+                                    : learnerTerm
+                                ).toLowerCase()}
                             </MyButton>
                         )}
                     </div>
@@ -238,7 +256,8 @@ export const FromCourseSelector = ({ instituteId, selectedLearners, onAdd }: Pro
             )}
             {students.length === 0 && !loading && selectedPackageSessionId && (
                 <p className="text-center text-sm text-neutral-400 py-6">
-                    No students found. Click "Load Students" to search.
+                    No {learnersTerm.toLowerCase()} found. Click &quot;Load {learnersTerm}&quot; to
+                    search.
                 </p>
             )}
         </div>

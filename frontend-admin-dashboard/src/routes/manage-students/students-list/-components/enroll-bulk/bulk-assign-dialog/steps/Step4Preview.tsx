@@ -1,6 +1,15 @@
 import { BulkAssignResponse, SelectedPackageSession } from '../../../../-types/bulk-assign-types';
 import { cn } from '@/lib/utils';
 import { CheckCircle, XCircle, SkipForward } from '@phosphor-icons/react';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import {
+    ContentTerms,
+    RoleTerms,
+    SystemTerms,
+} from '@/routes/settings/-components/NamingSettings';
 
 interface Props {
     previewResponse: BulkAssignResponse;
@@ -34,6 +43,11 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
         selectedPackageSessions.map((ps) => [ps.packageSessionId, ps])
     );
 
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const levelTerm = getTerminology(ContentTerms.Level, SystemTerms.Level);
+    const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
+    const learnersTerm = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
+
     return (
         <div className="flex flex-col gap-5 px-6 py-5">
             {/* Summary banner */}
@@ -62,16 +76,16 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
 
             {summary.re_enrolled > 0 && (
                 <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700">
-                    🔄 <strong>{summary.re_enrolled}</strong> student
-                    {summary.re_enrolled !== 1 ? 's' : ''} will be re-enrolled (previously
-                    expired/terminated access).
+                    🔄 <strong>{summary.re_enrolled}</strong>{' '}
+                    {(summary.re_enrolled !== 1 ? learnersTerm : learnerTerm).toLowerCase()} will
+                    be re-enrolled (previously expired/terminated access).
                 </div>
             )}
 
             {summary.successful === 0 && summary.re_enrolled === 0 && (
                 <div className="rounded-md border border-warning-200 bg-warning-50 px-4 py-2 text-sm text-warning-700">
-                    ⚠️ No students will be newly enrolled. Review your selections or change the
-                    duplicate handling option.
+                    ⚠️ No {learnersTerm.toLowerCase()} will be newly enrolled. Review your
+                    selections or change the duplicate handling option.
                 </div>
             )}
 
@@ -81,10 +95,10 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
                     <thead className="bg-neutral-50">
                         <tr>
                             <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">
-                                Learner
+                                {learnerTerm}
                             </th>
                             <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">
-                                Course / Level
+                                {courseTerm} / {levelTerm}
                             </th>
                             <th className="px-4 py-2 text-left text-xs font-semibold text-neutral-500">
                                 Action

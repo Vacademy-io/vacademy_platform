@@ -18,10 +18,15 @@ import { Step3EnrollConfig } from './steps/Step3EnrollConfig';
 import { Step4Preview } from './steps/Step4Preview';
 import { cn } from '@/lib/utils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-
-const STEPS = ['Select Learners', 'Select Courses', 'Enrollment Config', 'Preview & Confirm'];
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import {
+    ContentTerms,
+    RoleTerms,
+    SystemTerms,
+} from '@/routes/settings/-components/NamingSettings';
 
 interface BulkAssignDialogProps {
     open: boolean;
@@ -54,6 +59,13 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
         }
         return [];
     };
+
+    const STEPS = [
+        `Select ${getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner)}`,
+        `Select ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`,
+        'Enrollment Config',
+        'Preview & Confirm',
+    ];
 
     const [step, setStep] = useState(0);
     const [selectedLearners, setSelectedLearners] = useState<SelectedLearner[]>([]);

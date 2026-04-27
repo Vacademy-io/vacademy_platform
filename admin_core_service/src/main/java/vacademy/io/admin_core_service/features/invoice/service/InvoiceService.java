@@ -39,6 +39,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoicePackageContextProjection;
 import vacademy.io.admin_core_service.features.session.dto.BatchInstituteProjection;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogLineItemRepository;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -1011,6 +1012,20 @@ public class InvoiceService {
         String lineItemsHtml = buildLineItemsHtml(invoiceData.getLineItems(), invoiceData.getCurrency());
         filled = filled.replace("{{line_items}}", lineItemsHtml);
 
+        // Terms & Conditions
+        String termsHtml = buildTermsAndConditionsHtml(invoiceData);
+        if (termsHtml == null || termsHtml.trim().isEmpty()) {
+            // Strip the entire wrapping block (including the heading) so we don't
+            // render an orphan "Terms & Conditions" section when nothing is configured.
+            filled = filled.replaceAll(
+                    "(?s)<!--\\s*TERMS_AND_CONDITIONS_BLOCK\\s*-->.*?<!--\\s*/TERMS_AND_CONDITIONS_BLOCK\\s*-->",
+                    "");
+            filled = filled.replace("{{terms_and_conditions}}", "");
+        } else {
+            // Keep wrapper markers as-is (they are HTML comments, harmless in output)
+            filled = filled.replace("{{terms_and_conditions}}", termsHtml);
+        }
+
         return filled;
     }
 
@@ -1096,16 +1111,121 @@ public class InvoiceService {
         for (InvoiceLineItemData item : lineItems) {
             html.append("<tr>");
             html.append("<td>").append(item.getDescription() != null ? item.getDescription() : "").append("</td>");
-            html.append("<td>").append(item.getQuantity() != null ? item.getQuantity() : 1).append("</td>");
+            html.append("<td class=\"right text-center\" style=\"text-align:center\">")
+                    .append(item.getQuantity() != null ? item.getQuantity() : 1).append("</td>");
             // Format unit price with currency symbol
             String unitPrice = item.getUnitPrice() != null ? item.getUnitPrice().toString() : "0.00";
-            html.append("<td>").append(currencySymbol).append(unitPrice).append("</td>");
+            html.append("<td class=\"right text-right\" style=\"text-align:right\">")
+                    .append(currencySymbol).append(unitPrice).append("</td>");
             // Format amount with currency symbol
             String amount = item.getAmount() != null ? item.getAmount().toString() : "0.00";
-            html.append("<td>").append(currencySymbol).append(amount).append("</td>");
+            html.append("<td class=\"right text-right\" style=\"text-align:right\">")
+                    .append(currencySymbol).append(amount).append("</td>");
             html.append("</tr>");
         }
         return html.toString();
+    }
+
+    /**
+     * Resolve the Terms &amp; Conditions HTML for an invoice.
+     *
+     * Reads {@code INVOICE_SETTING.termsAndConditions} from the institute settings:
+     * <pre>
+     * {
+     *   "default":   "&lt;ul&gt;...&lt;/ul&gt;",
+     *   "byLevel":   { "buy": "...", "rent": "..." },
+     *   "byPackage": { "&lt;package_uuid&gt;": "..." }
+     * }
+     * </pre>
+     *
+     * Resolution precedence per invoice (invoices are type-homogeneous, so we
+     * resolve from the primary user plan): {@code byPackage[packageId]} →
+     * {@code byLevel[levelName]} → {@code default}. Returns an empty string when
+     * nothing matches, which lets the caller drop the surrounding section.
+     */
+    @SuppressWarnings("unchecked")
+    private String buildTermsAndConditionsHtml(InvoiceData invoiceData) {
+        if (invoiceData == null || invoiceData.getInstitute() == null) {
+            return "";
+        }
+
+        Map<String, Object> invoiceSettings = getInvoiceSettings(invoiceData.getInstitute());
+        Object tncRaw = invoiceSettings.get("termsAndConditions");
+        if (!(tncRaw instanceof Map)) {
+            return "";
+        }
+        Map<String, Object> tnc = (Map<String, Object>) tncRaw;
+
+        String packageId = null;
+        String levelName = null;
+
+        try {
+            UserPlan userPlan = invoiceData.getUserPlan();
+            if (userPlan != null) {
+                List<StudentSessionInstituteGroupMapping> mappings = studentSessionRepository
+                        .findAllByUserPlanIdAndStatusIn(userPlan.getId(),
+                                List.of("ACTIVE", "INVITED", "ABANDONED_CART", "DETAILS_FILLED"));
+                if (mappings != null && !mappings.isEmpty()) {
+                    StudentSessionInstituteGroupMapping mapping = mappings.get(0);
+                    String packageSessionId = null;
+                    if (mapping.getDestinationPackageSession() != null) {
+                        packageSessionId = mapping.getDestinationPackageSession().getId();
+                    } else if (mapping.getPackageSession() != null) {
+                        packageSessionId = mapping.getPackageSession().getId();
+                    }
+                    if (packageSessionId != null && !packageSessionId.isEmpty()) {
+                        Optional<InvoicePackageContextProjection> ctx = packageSessionRepository
+                                .findPackageAndLevelByPackageSessionId(packageSessionId);
+                        if (ctx.isPresent()) {
+                            packageId = ctx.get().getPackageId();
+                            levelName = ctx.get().getLevelName();
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to resolve package/level context for T&C lookup: {}", e.getMessage());
+        }
+
+        // 1) Per-package override
+        if (packageId != null) {
+            Object byPackageRaw = tnc.get("byPackage");
+            if (byPackageRaw instanceof Map) {
+                Object html = ((Map<String, Object>) byPackageRaw).get(packageId);
+                if (html instanceof String && !((String) html).trim().isEmpty()) {
+                    return (String) html;
+                }
+            }
+        }
+
+        // 2) Per-level fallback (case-insensitive on level name)
+        if (levelName != null) {
+            Object byLevelRaw = tnc.get("byLevel");
+            if (byLevelRaw instanceof Map) {
+                Map<String, Object> byLevel = (Map<String, Object>) byLevelRaw;
+                Object html = byLevel.get(levelName);
+                if (!(html instanceof String) || ((String) html).trim().isEmpty()) {
+                    // case-insensitive lookup
+                    for (Map.Entry<String, Object> e : byLevel.entrySet()) {
+                        if (e.getKey() != null && e.getKey().equalsIgnoreCase(levelName)) {
+                            html = e.getValue();
+                            break;
+                        }
+                    }
+                }
+                if (html instanceof String && !((String) html).trim().isEmpty()) {
+                    return (String) html;
+                }
+            }
+        }
+
+        // 3) Institute-wide default
+        Object defaultHtml = tnc.get("default");
+        if (defaultHtml instanceof String && !((String) defaultHtml).trim().isEmpty()) {
+            return (String) defaultHtml;
+        }
+
+        return "";
     }
 
     /**

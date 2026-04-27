@@ -17,6 +17,8 @@ import {
     UsersThree,
 } from '@phosphor-icons/react';
 import { convertCapitalToTitleCase } from '@/lib/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -652,10 +654,16 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                     {showEnrolledStudentCount && (
                                         <span className="flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
                                             <UsersThree className="size-4" />
-                                            {course.enrolledStudentCount}{' '}
+                                            {course.enrolledStudentCount} Enrolled{' '}
                                             {course.enrolledStudentCount === 1
-                                                ? 'Enrolled Student'
-                                                : 'Enrolled Students'}
+                                                ? getTerminology(
+                                                      RoleTerms.Learner,
+                                                      SystemTerms.Learner
+                                                  )
+                                                : getTerminologyPlural(
+                                                      RoleTerms.Learner,
+                                                      SystemTerms.Learner
+                                                  )}
                                         </span>
                                     )}
 

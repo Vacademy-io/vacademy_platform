@@ -753,10 +753,16 @@ const CourseListPage = ({
                                             {showEnrolledStudentCount && (
                                                 <span className="mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
                                                     <UsersThree className="size-4" />
-                                                    {enrolledStudentCount}{' '}
+                                                    {enrolledStudentCount} Enrolled{' '}
                                                     {enrolledStudentCount === 1
-                                                        ? 'Enrolled Student'
-                                                        : 'Enrolled Students'}
+                                                        ? getTerminology(
+                                                              RoleTerms.Learner,
+                                                              SystemTerms.Learner
+                                                          )
+                                                        : getTerminologyPlural(
+                                                              RoleTerms.Learner,
+                                                              SystemTerms.Learner
+                                                          )}
                                                 </span>
                                             )}
                                             <div className="mt-auto flex gap-2 pt-3">
@@ -998,10 +1004,16 @@ const CourseListPage = ({
                                             {showEnrolledStudentCount && (
                                                 <span className="mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
                                                     <UsersThree className="size-4" />
-                                                    {course.enrolled_student_count ?? 0}{' '}
+                                                    {course.enrolled_student_count ?? 0} Enrolled{' '}
                                                     {(course.enrolled_student_count ?? 0) === 1
-                                                        ? 'Enrolled Student'
-                                                        : 'Enrolled Students'}
+                                                        ? getTerminology(
+                                                              RoleTerms.Learner,
+                                                              SystemTerms.Learner
+                                                          )
+                                                        : getTerminologyPlural(
+                                                              RoleTerms.Learner,
+                                                              SystemTerms.Learner
+                                                          )}
                                                 </span>
                                             )}
                                             <div className="mt-auto flex gap-2 pt-3">

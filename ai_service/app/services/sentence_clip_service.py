@@ -1,21 +1,28 @@
 """
 Sentence-clip orchestration.
 
-Owns the end-to-end flow that produces `meta.sentences[]` for a video:
+Two top-level operations live here, sharing the same dependencies and
+timeline-IO helpers so they stay in sync:
 
-  1. Pull the video record's S3 URLs (audio, words, timeline, script).
-  2. Download script.txt + words.json + timeline.json into a temp dir.
-  3. Use sentence_clips.build_sentence_clips() to split the script, map
-     it onto the word stream, and call the render worker to slice the
-     global narration.mp3 into per-sentence clips on S3.
-  4. Patch `meta.sentences[]` into the timeline JSON and re-upload to
-     the same S3 key (so /urls/{video_id} keeps returning the same URL).
+  build_for_video(video_id)
+    Slice an existing global narration.mp3 along sentence boundaries and
+    persist meta.sentences[] into the timeline JSON. Used by the pipeline
+    post-HTML hook (auto for new videos) and by /sentences/build (backfill
+    for old videos). No TTS — the existing audio is bit-preserved.
 
-Two callers, one implementation:
-  - VideoGenerationService — invokes after a successful HTML stage so
-    every newly generated video gets sentences[] automatically.
-  - external_video_generation.py /sentences/build endpoint — backfills
-    older videos on demand.
+  regenerate_sentence(video_id, sentence_id, new_text, voice_overrides)
+    The editor's "re-narrate this sentence" flow:
+      1. TTS the new text in the same voice → fresh per-sentence MP3.
+      2. Splice it into the global narration.mp3 (crossfaded) on the
+         render worker, replacing the old sentence's time range.
+      3. Ripple every later sentence and entry by the duration delta so
+         downstream playback stays in sync with audio.
+      4. Patch the timeline JSON, upload a new global MP3, point the
+         video record's audio URL at it.
+
+The two operations could live in separate classes, but they share enough
+dependencies (s3, render, repo, timeline I/O, video_gen import path) that
+keeping them in one focused class avoids gratuitous duplication.
 """
 from __future__ import annotations
 
@@ -23,8 +30,9 @@ import json
 import logging
 import sys
 import tempfile
+import time
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +71,42 @@ class SentenceBuildResult:
             "timeline_url": self.timeline_url,
             "count": self.count,
             "skipped_reason": self.skipped_reason,
+        }
+
+
+class SentenceRegenerateResult:
+    """Outcome of a regenerate_sentence call.
+
+    `duration_delta` is what callers ripple downstream timestamps by — it's
+    already been applied to the persisted timeline here, but the editor
+    also uses it to update its in-memory entry list immediately rather
+    than waiting for a refetch.
+    """
+
+    def __init__(
+        self,
+        video_id: str,
+        sentence: Dict[str, Any],
+        duration_delta: float,
+        new_global_audio_url: str,
+        new_global_duration: float,
+        timeline_url: str,
+    ) -> None:
+        self.video_id = video_id
+        self.sentence = sentence
+        self.duration_delta = duration_delta
+        self.new_global_audio_url = new_global_audio_url
+        self.new_global_duration = new_global_duration
+        self.timeline_url = timeline_url
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "video_id": self.video_id,
+            "sentence": self.sentence,
+            "duration_delta": self.duration_delta,
+            "new_global_audio_url": self.new_global_audio_url,
+            "new_global_duration": self.new_global_duration,
+            "timeline_url": self.timeline_url,
         }
 
 
@@ -162,6 +206,142 @@ class SentenceClipService:
                 timeline_url=timeline_url,
             )
 
+    def regenerate_sentence(
+        self,
+        video_id: str,
+        sentence_id: str,
+        new_text: str,
+        *,
+        voice_overrides: Optional[Dict[str, Any]] = None,
+        crossfade_ms: int = 150,
+    ) -> SentenceRegenerateResult:
+        """Re-narrate one sentence: TTS the new text in the same voice,
+        splice the resulting clip into the global narration.mp3 with
+        crossfading on both joins, ripple downstream timestamps by the
+        duration delta, and persist the patched timeline.
+
+        Voice configuration: read from the video record's metadata; per-
+        request `voice_overrides` win when present (keys: `language`,
+        `voice_gender`, `tts_provider`, `voice_id`).
+
+        Raises ValueError when the video / sentence isn't found, or when
+        meta.sentences[] hasn't been built yet (caller should run
+        /sentences/build first). All other failures (TTS, splice, S3)
+        bubble up as RuntimeError.
+        """
+        new_text = (new_text or "").strip()
+        if not new_text:
+            raise ValueError("new_text is required")
+
+        record = self.repository.get_by_video_id(video_id)
+        if record is None:
+            raise ValueError(f"video {video_id} not found")
+        s3_urls = dict(record.s3_urls or {})
+        if not s3_urls.get("audio") or not s3_urls.get("timeline"):
+            raise ValueError(
+                "video is missing audio/timeline S3 URLs; cannot regenerate"
+            )
+
+        with tempfile.TemporaryDirectory(prefix=f"regen-{video_id}-") as tmpdir:
+            tmp = Path(tmpdir)
+
+            timeline = self._download_json(s3_urls["timeline"], tmp / "timeline.json")
+            sentences = self._extract_sentences(timeline)
+            if not sentences:
+                raise ValueError(
+                    "this video has no meta.sentences[] yet — call "
+                    "/sentences/build first to bootstrap them"
+                )
+            idx, target = _find_sentence_by_id(sentences, sentence_id)
+            if target is None:
+                raise ValueError(f"sentence {sentence_id!r} not in timeline")
+
+            old_start = float(target.get("start_time") or 0.0)
+            old_duration = float(target.get("duration") or 0.0)
+            old_end = old_start + old_duration
+
+            # 1. TTS the new text → local MP3 + word timestamps.
+            voice = self._resolve_voice(record, voice_overrides)
+            tts_result = self._synthesize_sentence(
+                text=new_text, output_path=tmp / "new_clip.mp3", voice=voice,
+            )
+
+            # 2. Upload the new per-sentence clip. Versioned key (timestamp
+            # suffix) so old/cached URLs keep working until the timeline
+            # JSON is refetched by clients.
+            version_tag = _version_tag()
+            clip_key = self._versioned_clip_key(video_id, sentence_id, version_tag)
+            new_clip_url = self.s3_service.upload_file(
+                file_path=tts_result.audio_path,
+                s3_key=clip_key,
+                content_type="audio/mpeg",
+            )
+
+            # 3. Splice into the global MP3 (render worker does ffmpeg +
+            # crossfade). Output to a versioned key for the same cache
+            # reason — we'll point the video record at this new URL.
+            new_audio_key = self._versioned_audio_key(video_id, version_tag)
+            splice = self.render_service.splice_audio(
+                base_audio_url=s3_urls["audio"],
+                new_clip_url=new_clip_url,
+                replace_start=old_start,
+                replace_end=old_end,
+                output_key=new_audio_key,
+                crossfade_ms=crossfade_ms,
+            )
+            new_global_url = splice.get("output_url")
+            new_global_duration = float(splice.get("new_duration") or 0.0)
+            duration_delta = float(splice.get("duration_delta") or 0.0)
+            if not new_global_url:
+                raise RuntimeError(f"splice_audio returned no output_url: {splice}")
+
+            # 4. Mutate the timeline:
+            #    - patch the target sentence in place
+            #    - ripple every later sentence by delta
+            #    - ripple every entry whose time range starts at/after the
+            #      replacement window by delta
+            #    - bump meta.total_duration if present
+            updated_target = self._patch_sentence(
+                target=target,
+                new_text=new_text,
+                new_clip_url=new_clip_url,
+                tts_result=tts_result,
+            )
+            _ripple_sentences(sentences, after_idx=idx, delta=duration_delta)
+            _ripple_entries(timeline, boundary=old_start, delta=duration_delta)
+            _bump_total_duration(timeline, delta=duration_delta)
+
+            # 5. Persist: timeline JSON back to its S3 key, video record's
+            # audio URL pointed at the new spliced MP3.
+            timeline_url = self._upload_timeline_json(
+                timeline=timeline,
+                timeline_s3_url=s3_urls["timeline"],
+                video_id=video_id,
+                tmp_path=tmp / "timeline.out.json",
+            )
+            try:
+                self.repository.update_files(
+                    video_id=video_id, s3_urls={"audio": new_global_url},
+                )
+            except AttributeError:
+                # Older repository APIs may not have update_files; the
+                # spliced URL is still in the timeline so playback works,
+                # but next time someone reads s3_urls.audio they'll get
+                # the stale URL. Surface it loudly.
+                logger.warning(
+                    "repository.update_files missing; record %s still points at old audio",
+                    video_id,
+                )
+
+        return SentenceRegenerateResult(
+            video_id=video_id,
+            sentence=updated_target,
+            duration_delta=duration_delta,
+            new_global_audio_url=new_global_url,
+            new_global_duration=new_global_duration,
+            timeline_url=timeline_url,
+        )
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
@@ -225,23 +405,114 @@ class SentenceClipService:
         video_id: str,
         tmp_path: Path,
     ) -> str:
-        """Write sentences[] under timeline.meta.sentences and re-upload
-        the timeline JSON to the same S3 key. Returns the (possibly
-        unchanged) S3 URL."""
+        """Write sentences[] under timeline.meta.sentences and re-upload."""
         meta = timeline.setdefault("meta", {})
         if not isinstance(meta, dict):
             raise RuntimeError(f"timeline.meta is not an object (got {type(meta).__name__})")
         meta["sentences"] = sentences
-
-        tmp_path.write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
-        s3_key = self._extract_s3_key(timeline_s3_url) or f"ai-videos/{video_id}/timeline/time_based_frame.json"
-        return self.s3_service.upload_file(
-            file_path=tmp_path,
-            s3_key=s3_key,
-            content_type="application/json",
+        return self._upload_timeline_json(
+            timeline=timeline,
+            timeline_s3_url=timeline_s3_url,
+            video_id=video_id,
+            tmp_path=tmp_path,
         )
 
-    # ----- I/O helpers -----
+    # ----- regenerate-only internals -----
+
+    def _resolve_voice(self, record, overrides: Optional[Dict[str, Any]]):
+        """Build the VoiceConfig used for re-narration: video record's
+        persisted metadata is the base; per-request overrides win."""
+        self._ensure_video_gen_on_path()
+        try:
+            from sentence_tts import VoiceConfig
+        except ImportError as exc:
+            raise RuntimeError(f"sentence_tts not importable: {exc}") from exc
+        meta = dict(record.extra_metadata or {})
+        if overrides:
+            for key in ("voice_gender", "tts_provider", "voice_id"):
+                v = overrides.get(key)
+                if v is not None:
+                    meta[key] = v
+        language = (overrides or {}).get("language") or record.language or "English"
+        return VoiceConfig.from_metadata(language=language, metadata=meta)
+
+    def _synthesize_sentence(self, *, text: str, output_path: Path, voice):
+        """TTS one sentence using the same code path the pipeline uses."""
+        self._ensure_video_gen_on_path()
+        try:
+            from sentence_tts import synthesize_one_sentence
+        except ImportError as exc:
+            raise RuntimeError(f"sentence_tts not importable: {exc}") from exc
+        from ..config import get_settings
+        openrouter_key = get_settings().openrouter_api_key
+        if not openrouter_key:
+            raise RuntimeError("OPENROUTER_API_KEY not configured")
+        return synthesize_one_sentence(
+            text=text, output_path=output_path, voice=voice,
+            openrouter_key=openrouter_key, align_words=True,
+        )
+
+    @staticmethod
+    def _extract_sentences(timeline: Dict[str, Any]) -> List[Dict[str, Any]]:
+        meta = timeline.get("meta") if isinstance(timeline, dict) else None
+        if not isinstance(meta, dict):
+            return []
+        sentences = meta.get("sentences")
+        return sentences if isinstance(sentences, list) else []
+
+    @staticmethod
+    def _patch_sentence(
+        *,
+        target: Dict[str, Any],
+        new_text: str,
+        new_clip_url: str,
+        tts_result,
+    ) -> Dict[str, Any]:
+        """Mutate `target` in place (so it reflects in `timeline.meta.sentences`)
+        with the new clip's text/url/duration/words. Returns the same dict."""
+        target["text"] = new_text
+        target["audio_url"] = new_clip_url
+        target["duration"] = float(tts_result.duration or 0.0)
+        # Whisper words come back with absolute timestamps in the clip; we
+        # already store them rebased to clip start (clip start == 0 for a
+        # single-sentence MP3, so they're already relative — pass through).
+        target["words"] = [
+            {"word": w["word"], "start": float(w["start"]), "end": float(w["end"])}
+            for w in (tts_result.words or [])
+        ]
+        return target
+
+    @staticmethod
+    def _versioned_clip_key(video_id: str, sentence_id: str, version_tag: str) -> str:
+        return f"ai-videos/{video_id}/sentences/{sentence_id}-{version_tag}.mp3"
+
+    @staticmethod
+    def _versioned_audio_key(video_id: str, version_tag: str) -> str:
+        return f"ai-videos/{video_id}/audio/narration-{version_tag}.mp3"
+
+    def _ensure_video_gen_on_path(self) -> None:
+        """sys.path injection — same trick used by VideoGenerationService for
+        importing the dash-named ai-video-gen-main package as a module."""
+        if str(self.video_gen_root) not in sys.path:
+            sys.path.insert(0, str(self.video_gen_root))
+
+    # ----- shared timeline I/O -----
+
+    def _upload_timeline_json(
+        self,
+        *,
+        timeline: Dict[str, Any],
+        timeline_s3_url: str,
+        video_id: str,
+        tmp_path: Path,
+    ) -> str:
+        tmp_path.write_text(json.dumps(timeline, ensure_ascii=False), encoding="utf-8")
+        s3_key = self._extract_s3_key(timeline_s3_url) or (
+            f"ai-videos/{video_id}/timeline/time_based_frame.json"
+        )
+        return self.s3_service.upload_file(
+            file_path=tmp_path, s3_key=s3_key, content_type="application/json",
+        )
 
     def _download_text(self, url: str, dest: Path) -> str:
         if not self.s3_service.download_file(url, dest):
@@ -261,3 +532,73 @@ class SentenceClipService:
         if idx == -1:
             return None
         return s3_url[idx + len(marker):]
+
+
+# ---------------------------------------------------------------------------
+# Module-level helpers (pure — no I/O, no class state)
+# ---------------------------------------------------------------------------
+
+def _find_sentence_by_id(
+    sentences: List[Dict[str, Any]], sentence_id: str,
+) -> Tuple[int, Optional[Dict[str, Any]]]:
+    for i, s in enumerate(sentences):
+        if s.get("id") == sentence_id:
+            return i, s
+    return -1, None
+
+
+def _ripple_sentences(
+    sentences: List[Dict[str, Any]], *, after_idx: int, delta: float,
+) -> None:
+    """Shift every sentence after `after_idx` by `delta`. Mutates in place.
+    Skipped when delta is effectively zero — no need to dirty floats."""
+    if abs(delta) < 1e-6:
+        return
+    for s in sentences[after_idx + 1:]:
+        if "start_time" in s and isinstance(s["start_time"], (int, float)):
+            s["start_time"] = float(s["start_time"]) + delta
+
+
+def _ripple_entries(
+    timeline: Dict[str, Any], *, boundary: float, delta: float,
+) -> None:
+    """Shift every entry whose `inTime`/`exitTime` falls AT or after the
+    splice boundary by `delta`. Entries that started before the boundary
+    but extend past it (e.g. an overlay that spans the edited sentence)
+    only have their exitTime shifted — their start stays put.
+
+    Mutates timeline['entries'] in place; no-ops if delta is ~0.
+    """
+    if abs(delta) < 1e-6:
+        return
+    entries = timeline.get("entries")
+    if not isinstance(entries, list):
+        return
+    epsilon = 1e-3  # avoid floating-point boundary jitter
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        for key in ("inTime", "exitTime", "start", "end"):
+            v = entry.get(key)
+            if not isinstance(v, (int, float)):
+                continue
+            if v >= boundary - epsilon:
+                entry[key] = float(v) + delta
+
+
+def _bump_total_duration(timeline: Dict[str, Any], *, delta: float) -> None:
+    if abs(delta) < 1e-6:
+        return
+    meta = timeline.get("meta")
+    if not isinstance(meta, dict):
+        return
+    td = meta.get("total_duration")
+    if isinstance(td, (int, float)):
+        meta["total_duration"] = float(td) + delta
+
+
+def _version_tag() -> str:
+    """Filename-safe timestamp suffix for versioned S3 keys. Avoids
+    cache collisions when the editor regenerates the same sentence twice
+    without breaking older URLs that may still be referenced elsewhere."""
+    return f"v{int(time.time() * 1000)}"

@@ -251,6 +251,15 @@ class VideoGenerationService:
                 gen_metadata["background_music_volume"] = float(background_music_volume)
             if sub_shots_enabled:
                 gen_metadata["sub_shots_enabled"] = True
+            # Persist the TTS voice knobs so per-sentence re-narration in the
+            # editor can reproduce the same voice without the user having to
+            # re-supply them. Defaults are skipped to keep the row small.
+            if voice_gender and voice_gender != "female":
+                gen_metadata["voice_gender"] = voice_gender
+            if tts_provider and tts_provider != "standard":
+                gen_metadata["tts_provider"] = tts_provider
+            if voice_id:
+                gen_metadata["voice_id"] = voice_id
 
             video_record = self.repository.create(
                 video_id=video_id,

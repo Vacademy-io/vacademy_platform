@@ -928,6 +928,114 @@ async def build_sentence_clips_external(
     )
 
 
+class VoiceOverrides(BaseModel):
+    """Optional per-request voice config. Any field left None falls back
+    to the value persisted on the video record at creation time."""
+    language: Optional[str] = None
+    voice_gender: Optional[str] = None
+    tts_provider: Optional[str] = None
+    voice_id: Optional[str] = None
+
+
+class RegenerateSentenceRequest(BaseModel):
+    video_id: str
+    sentence_id: str
+    new_text: str
+    voice_overrides: Optional[VoiceOverrides] = None
+    crossfade_ms: int = Field(default=150, ge=0, le=2000)
+
+
+class RegenerateSentenceResponse(BaseModel):
+    video_id: str
+    sentence: SentenceClipDto
+    duration_delta: float = Field(
+        ..., description="new clip duration − old; ripple downstream timestamps by this"
+    )
+    new_global_audio_url: str
+    new_global_duration: float
+    timeline_url: str
+
+
+@router.post(
+    "/sentence/regenerate",
+    response_model=RegenerateSentenceResponse,
+    summary="Re-narrate one sentence and splice it into the global audio (External)",
+)
+async def regenerate_sentence_external(
+    payload: RegenerateSentenceRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> RegenerateSentenceResponse:
+    """
+    Re-narrate a single sentence using the same voice the video was
+    originally generated with.
+
+    Flow on the server:
+      1. TTS the new text → fresh per-sentence MP3 in the same voice.
+      2. Render worker splices the clip into the global narration.mp3
+         with crossfading on both joins.
+      3. Every later sentence and entry has its timestamp shifted by the
+         duration delta (ripple) so audio/visual sync is preserved.
+      4. The patched timeline JSON is re-uploaded; the video record's
+         audio URL is updated to the new spliced MP3.
+
+    Returns the updated sentence plus the duration delta so the editor
+    can ripple its in-memory entry list immediately.
+
+    Errors:
+      - 400 — request body invalid, or sentence not found / sentences[]
+              not built yet on this video (call /sentences/build first).
+      - 503 — render server not configured.
+      - 500 — TTS / splice / S3 failure.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Render server not configured. Set RENDER_SERVER_URL.",
+        )
+
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url,
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+    overrides = payload.voice_overrides.dict(exclude_none=True) if payload.voice_overrides else None
+
+    try:
+        result = svc.regenerate_sentence(
+            video_id=payload.video_id,
+            sentence_id=payload.sentence_id,
+            new_text=payload.new_text,
+            voice_overrides=overrides,
+            crossfade_ms=payload.crossfade_ms,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate sentence: {exc}")
+
+    return RegenerateSentenceResponse(
+        video_id=result.video_id,
+        sentence=SentenceClipDto(**result.sentence),
+        duration_delta=result.duration_delta,
+        new_global_audio_url=result.new_global_audio_url,
+        new_global_duration=result.new_global_duration,
+        timeline_url=result.timeline_url,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Video Render (offloaded to dedicated Hetzner render server)
 # ---------------------------------------------------------------------------

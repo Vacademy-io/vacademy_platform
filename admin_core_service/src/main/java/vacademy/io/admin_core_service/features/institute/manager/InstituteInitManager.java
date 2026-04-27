@@ -188,8 +188,9 @@ public class InstituteInitManager {
                                         () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
                                                         activeStatuses));
 
-                        // Filter by faculty mapping: skip for root users and users with ADMIN/TEACHER role.
-                        if (user != null && !user.isRootUser() && !hasRole(user, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
+                        // Skip faculty filtering for users with ADMIN/TEACHER role — they should see all package sessions.
+                        // Sub-org admins (no ADMIN/TEACHER role, but have FSPSSM) → filtering applies, scoped to their access.
+                        if (user != null && !hasRole(user, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
                                 List<String> allowedAccessIds = facultyMappingRepository
                                                 .findAccessIdsByUserIdAndInstituteId(
                                                                 user.getUserId(), instId, List.of("ACTIVE"));
@@ -545,10 +546,6 @@ public class InstituteInitManager {
                                 .build();
         }
 
-        /**
-         * Checks if the user has HAS_FACULTY_ASSIGNED permission.
-         * Falls back to checking FSPSSM directly if not found in Spring Security authorities.
-         */
         private boolean hasRole(CustomUserDetails user, String... roles) {
                 return user.getAuthorities().stream()
                                 .map(auth -> auth.getAuthority())
@@ -560,6 +557,10 @@ public class InstituteInitManager {
                                 });
         }
 
+        /**
+         * Checks if the user has HAS_FACULTY_ASSIGNED permission.
+         * Falls back to checking FSPSSM directly if not found in Spring Security authorities.
+         */
         private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
                 boolean fromAuthorities = user.getAuthorities().stream()
                                 .map(auth -> auth.getAuthority())

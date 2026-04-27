@@ -88,8 +88,8 @@ function QuestionField({
     useCaseId,
 }: {
     question: WizardQuestion;
-    value: string | number | undefined;
-    onChange: (val: string | number) => void;
+    value: string | number | string[] | undefined;
+    onChange: (val: string | number | string[]) => void;
     instituteId: string;
     useCaseId?: string;
 }) {
@@ -118,6 +118,64 @@ function QuestionField({
         </select>
     );
 
+    // Multi-select checkbox list, mirrors the event-entity-picker visual style.
+    // Empty selection = "all" (matches backend's CSV → empty fallback to institute-wide query).
+    const renderMultiSelect = (
+        options: Array<{ value: string; label: string }>,
+        loading: boolean,
+        emptyLabel: string,
+    ) => {
+        const selected: string[] = Array.isArray(value)
+            ? (value as string[])
+            : value
+                ? [String(value)]
+                : [];
+        const toggle = (id: string) => {
+            const next = selected.includes(id)
+                ? selected.filter((s) => s !== id)
+                : [...selected, id];
+            onChange(next);
+        };
+        return (
+            <div className="space-y-2">
+                <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-300 bg-white">
+                    {loading && (
+                        <div className="px-3 py-2 text-xs text-gray-400">Loading...</div>
+                    )}
+                    {!loading && options.length === 0 && (
+                        <div className="px-3 py-2 text-xs text-gray-400">No options available</div>
+                    )}
+                    {options.map((opt) => {
+                        const checked = selected.includes(opt.value);
+                        return (
+                            <label
+                                key={opt.value}
+                                className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer border-b last:border-b-0 transition-colors ${
+                                    checked ? 'bg-primary-50' : 'hover:bg-gray-50'
+                                }`}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggle(opt.value)}
+                                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
+                                />
+                                <span className="text-sm text-gray-800 truncate flex-1">{opt.label}</span>
+                            </label>
+                        );
+                    })}
+                </div>
+                <p className="text-[10px] text-gray-400">
+                    {selected.length === 0
+                        ? emptyLabel
+                        : selected.length === 1
+                            ? '1 selected'
+                            : `${selected.length} selected`}
+                </p>
+            </div>
+        );
+    };
+
     return (
         <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700">
@@ -129,7 +187,20 @@ function QuestionField({
             )}
 
             {question.type === 'batch_select' && renderDropdown(batchOptions, batchLoading, '-- Select a batch --', !question.required)}
-            {question.type === 'audience_select' && renderDropdown(audienceOptions, audienceLoading, '-- Select an audience --', !question.required)}
+            {question.type === 'batch_multi_select' && renderMultiSelect(
+                batchOptions,
+                batchLoading,
+                question.required
+                    ? 'Select at least one batch.'
+                    : 'No selection — runs across all active batches in your institute.'
+            )}
+            {question.type === 'audience_select' && renderMultiSelect(
+                audienceOptions,
+                audienceLoading,
+                question.required
+                    ? 'Select at least one campaign.'
+                    : 'No selection — runs across all campaigns.'
+            )}
             {question.type === 'template_select' && (
                 <div className="space-y-2">
                     {renderDropdown(templateOptions, templateLoading, '-- Select an email template --')}
@@ -268,12 +339,12 @@ export function UseCaseWizardStep({
     const templates = getTemplatesForTrigger(triggerConfig.eventName || undefined, workflowType);
 
     const [selectedTemplate, setSelectedTemplate] = useState<UseCaseTemplate | null>(null);
-    const [answers, setAnswers] = useState<Record<string, string | number>>({});
+    const [answers, setAnswers] = useState<Record<string, string | number | string[]>>({});
 
     // Reset answers when template changes
     useEffect(() => {
         if (selectedTemplate) {
-            const defaults: Record<string, string | number> = {};
+            const defaults: Record<string, string | number | string[]> = {};
             selectedTemplate.questions.forEach((q) => {
                 if (q.defaultValue !== undefined) {
                     defaults[q.id] = q.defaultValue;
@@ -290,7 +361,9 @@ export function UseCaseWizardStep({
             .filter((q) => q.required)
             .every((q) => {
                 const val = answers[q.id];
-                return val !== undefined && val !== '' && val !== 0;
+                if (val === undefined) return false;
+                if (Array.isArray(val)) return val.length > 0;
+                return val !== '' && val !== 0;
             })
         : false;
 

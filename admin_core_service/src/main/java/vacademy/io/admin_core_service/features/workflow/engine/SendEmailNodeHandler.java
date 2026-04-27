@@ -27,6 +27,12 @@ import vacademy.io.common.logging.SentryLogger;
 import vacademy.io.admin_core_service.features.workflow.service.NotificationRateLimitService;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
@@ -40,6 +46,25 @@ public class SendEmailNodeHandler implements NodeHandler {
     private final WorkflowExecutionLogger executionLogger;
     private final NotificationRateLimitService rateLimitService;
     private final Map<String, Template> templateCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    // Throttling defaults — workflows that fan out to many recipients (e.g., a batch
+    // of 500 students) can overwhelm the notification service / SMTP provider if
+    // dispatched as a single API call. We chunk users per batch, sleep between chunks,
+    // and enforce a per-chunk timeout so a hung backend doesn't block the workflow
+    // thread indefinitely. All three values can be overridden per-node via config:
+    //   "chunkSize": 100, "throttleMs": 500, "chunkTimeoutMs": 60000
+    private static final int DEFAULT_CHUNK_SIZE = 50;
+    private static final long DEFAULT_THROTTLE_MS = 200L;
+    private static final long DEFAULT_CHUNK_TIMEOUT_MS = 30_000L; // 30 seconds per chunk send
+
+    // Daemon thread pool dedicated to chunked sends. We need a separate thread so we
+    // can abandon a hung notification call via Future.cancel(). Cached pool reclaims
+    // idle threads automatically. Daemon = won't block JVM shutdown.
+    private final ExecutorService chunkExecutor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "send-email-chunk");
+        t.setDaemon(true);
+        return t;
+    });
 
     @Override
     public boolean supports(String nodeType) {
@@ -157,10 +182,13 @@ public class SendEmailNodeHandler implements NodeHandler {
             List<Map<String, Object>> allEmailRequests = new ArrayList<>();
             List<EmailExecutionDetails.FailedEmail> failedEmails = new ArrayList<>();
 
-            // Get node-level config: templateName, templateVars, recipientField
+            // Get node-level config: templateName, templateVars, recipientField, chunkSize, throttleMs, chunkTimeoutMs
             String nodeLevelTemplateName = null;
             Map<String, Object> nodeLevelTemplateVars = null;
             String nodeLevelRecipientField = null; // e.g., "parentsEmail" to send to parents instead of students
+            int chunkSize = DEFAULT_CHUNK_SIZE;
+            long throttleMs = DEFAULT_THROTTLE_MS;
+            long chunkTimeoutMs = DEFAULT_CHUNK_TIMEOUT_MS;
             try {
                 com.fasterxml.jackson.databind.JsonNode configRoot = objectMapper.readTree(nodeConfigJson);
                 if (configRoot.has("templateName") && !configRoot.get("templateName").asText("").isBlank()) {
@@ -171,6 +199,18 @@ public class SendEmailNodeHandler implements NodeHandler {
                 }
                 if (configRoot.has("templateVars") && configRoot.get("templateVars").isObject()) {
                     nodeLevelTemplateVars = objectMapper.convertValue(configRoot.get("templateVars"), Map.class);
+                }
+                if (configRoot.has("chunkSize") && configRoot.get("chunkSize").isInt()) {
+                    int cs = configRoot.get("chunkSize").asInt();
+                    if (cs > 0) chunkSize = cs;
+                }
+                if (configRoot.has("throttleMs") && configRoot.get("throttleMs").canConvertToLong()) {
+                    long t = configRoot.get("throttleMs").asLong();
+                    if (t >= 0) throttleMs = t;
+                }
+                if (configRoot.has("chunkTimeoutMs") && configRoot.get("chunkTimeoutMs").canConvertToLong()) {
+                    long t = configRoot.get("chunkTimeoutMs").asLong();
+                    if (t > 0) chunkTimeoutMs = t;
                 }
             } catch (Exception e) {
                 log.warn("Failed to parse node-level template config", e);
@@ -340,9 +380,10 @@ public class SendEmailNodeHandler implements NodeHandler {
 
                     List<NotificationDTO> finalBatchList = new ArrayList<>(regularBatchMap.values());
                     try {
-                        notificationService.sendEmailToUsersMultipleViaUnified(finalBatchList, finalInstituteId);
+                        sendRegularBatchesChunked(finalBatchList, finalInstituteId, chunkSize, throttleMs, chunkTimeoutMs);
                         emailResults.add("SUCCESS: Dispatched " + finalBatchList.size() + " batches");
-                        log.info("Successfully dispatched {} regular email batches.", finalBatchList.size());
+                        log.info("Successfully dispatched {} regular email batches (chunkSize={}, throttleMs={}, chunkTimeoutMs={}).",
+                                finalBatchList.size(), chunkSize, throttleMs, chunkTimeoutMs);
                     } catch (Exception e) {
                         log.error("Error sending regular email batch request", e);
                         SentryLogger.SentryEventBuilder.error(e)
@@ -385,9 +426,10 @@ public class SendEmailNodeHandler implements NodeHandler {
                 if (!attachmentBatchMap.isEmpty()) {
                     List<AttachmentNotificationDTO> finalAttachmentList = new ArrayList<>(attachmentBatchMap.values());
                     try {
-                        notificationService.sendAttachmentEmailViaUnified(finalAttachmentList, finalInstituteId);
+                        sendAttachmentBatchesChunked(finalAttachmentList, finalInstituteId, chunkSize, throttleMs, chunkTimeoutMs);
                         emailResults.add("Attachment batch send successful.");
-                        log.info("Successfully dispatched {} attachment email batches.", finalAttachmentList.size());
+                        log.info("Successfully dispatched {} attachment email batches (chunkSize={}, throttleMs={}, chunkTimeoutMs={}).",
+                                finalAttachmentList.size(), chunkSize, throttleMs, chunkTimeoutMs);
                     } catch (Exception e) {
                         log.error("Error sending attachment email batch request", e);
                         SentryLogger.SentryEventBuilder.error(e)
@@ -1047,6 +1089,145 @@ public class SendEmailNodeHandler implements NodeHandler {
         }
 
         return null; // No valid email found
+    }
+
+    /**
+     * Splits each NotificationDTO's user list into smaller chunks and dispatches
+     * them sequentially with a delay between calls. Avoids hammering the
+     * notification service / SMTP provider with one giant request when the
+     * workflow fans out to hundreds of recipients.
+     *
+     * Behavior preserved vs the original single-call dispatch:
+     *  - Same emails sent to same recipients (chunk size only affects how the
+     *    notification service receives them; the underlying loop processes one
+     *    DTO at a time anyway).
+     *  - When a batch fits in one chunk, the original DTO is reused (no copy).
+     *  - Sleep only happens BETWEEN sends, never before the first or after the
+     *    last, so small workflows pay no extra latency.
+     *  - Each chunk send is wrapped with a per-chunk timeout. On timeout we
+     *    log a warning and continue to the next chunk (don't abort the batch).
+     *    On any OTHER exception we propagate so the outer try/catch marks the
+     *    batch failed exactly as it did before chunking was added.
+     */
+    private void sendRegularBatchesChunked(List<NotificationDTO> batches, String instituteId,
+            int chunkSize, long throttleMs, long chunkTimeoutMs) {
+        boolean firstSend = true;
+        for (NotificationDTO batch : batches) {
+            List<NotificationToUserDTO> users = batch.getUsers();
+            if (users == null || users.isEmpty()) {
+                continue;
+            }
+            int total = users.size();
+            for (int i = 0; i < total; i += chunkSize) {
+                if (!firstSend) sleepQuiet(throttleMs);
+                int end = Math.min(i + chunkSize, total);
+                NotificationDTO chunkDto;
+                if (i == 0 && end == total) {
+                    // Single-chunk batch: reuse original DTO, no copy needed.
+                    chunkDto = batch;
+                } else {
+                    chunkDto = new NotificationDTO();
+                    chunkDto.setSubject(batch.getSubject());
+                    chunkDto.setBody(batch.getBody());
+                    chunkDto.setNotificationType(batch.getNotificationType());
+                    chunkDto.setSource(batch.getSource());
+                    chunkDto.setSourceId(batch.getSourceId());
+                    chunkDto.setUsers(new ArrayList<>(users.subList(i, end)));
+                }
+                int chunkUserCount = end - i;
+                runWithTimeout(
+                        () -> notificationService.sendEmailToUsersMultipleViaUnified(List.of(chunkDto), instituteId),
+                        chunkTimeoutMs,
+                        "regular email chunk (subject=" + chunkDto.getSubject() + ", users=" + chunkUserCount + ")");
+                firstSend = false;
+            }
+        }
+    }
+
+    private void sendAttachmentBatchesChunked(List<AttachmentNotificationDTO> batches, String instituteId,
+            int chunkSize, long throttleMs, long chunkTimeoutMs) {
+        boolean firstSend = true;
+        for (AttachmentNotificationDTO batch : batches) {
+            List<AttachmentUsersDTO> users = batch.getUsers();
+            if (users == null || users.isEmpty()) {
+                continue;
+            }
+            int total = users.size();
+            for (int i = 0; i < total; i += chunkSize) {
+                if (!firstSend) sleepQuiet(throttleMs);
+                int end = Math.min(i + chunkSize, total);
+                AttachmentNotificationDTO chunkDto;
+                if (i == 0 && end == total) {
+                    chunkDto = batch;
+                } else {
+                    chunkDto = AttachmentNotificationDTO.builder()
+                            .subject(batch.getSubject())
+                            .body(batch.getBody())
+                            .notificationType(batch.getNotificationType())
+                            .source(batch.getSource())
+                            .sourceId(batch.getSourceId())
+                            .users(new ArrayList<>(users.subList(i, end)))
+                            .build();
+                }
+                int chunkUserCount = end - i;
+                runWithTimeout(
+                        () -> notificationService.sendAttachmentEmailViaUnified(List.of(chunkDto), instituteId),
+                        chunkTimeoutMs,
+                        "attachment email chunk (subject=" + chunkDto.getSubject() + ", users=" + chunkUserCount + ")");
+                firstSend = false;
+            }
+        }
+    }
+
+    /**
+     * Runs the chunk-send task on a daemon executor and waits up to timeoutMs.
+     * Behavior contract:
+     *  - If the call completes in time → return normally.
+     *  - If it TIMES OUT → cancel the future, log a warning, return normally
+     *    (the workflow continues to the next chunk).
+     *  - If it throws any OTHER exception → propagate as RuntimeException so
+     *    the call site's existing try/catch can mark the batch failed (this
+     *    preserves pre-existing failure-marking semantics for non-hung errors).
+     *  - If the wait is interrupted → restore interrupt flag and propagate.
+     *
+     * NOTE: Future.cancel(true) only sets the interrupt flag on the worker
+     * thread. The underlying HTTP call may still complete in the background
+     * (depends on the HTTP client honoring interrupts). This is acceptable —
+     * the goal is to stop blocking the workflow thread, not to forcibly kill
+     * the network request.
+     */
+    private void runWithTimeout(Runnable task, long timeoutMs, String description) {
+        if (timeoutMs <= 0) {
+            // Timeout disabled — run inline (preserves pre-timeout behavior).
+            task.run();
+            return;
+        }
+        CompletableFuture<Void> future = CompletableFuture.runAsync(task, chunkExecutor);
+        try {
+            future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            log.warn("Send timed out after {}ms — {}. Continuing to next chunk.", timeoutMs, description);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof RuntimeException) {
+                throw (RuntimeException) cause;
+            }
+            throw new RuntimeException("Send failed for " + description, cause);
+        } catch (InterruptedException e) {
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Send interrupted for " + description, e);
+        }
+    }
+
+    private void sleepQuiet(long ms) {
+        if (ms <= 0) return;
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /**

@@ -1416,6 +1416,11 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             LocalDateTime endLocal;
 
             if (daysAgoObj != null) {
+                // "Exactly N days after submission" semantics: window is the single
+                // calendar day that is N days ago. Each user receives one follow-up
+                // exactly N days after they submitted (assuming the schedule runs
+                // daily). To send on day 3, 5, 7 the user creates separate workflows
+                // — this query is intentionally not a rolling N-day range.
                 int daysAgo = Integer.parseInt(String.valueOf(daysAgoObj));
                 startLocal = LocalDateTime.now().minusDays(daysAgo).with(LocalTime.MIN);
                 endLocal = LocalDateTime.now().minusDays(daysAgo).with(LocalTime.MAX);
@@ -1423,31 +1428,31 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 startLocal = LocalDateTime.parse(startDateStr);
                 endLocal = LocalDateTime.parse(endDateStr);
             } else {
-                // Default: last 7 days
+                // Default: the calendar day exactly 7 days ago
                 startLocal = LocalDateTime.now().minusDays(7).with(LocalTime.MIN);
-                endLocal = LocalDateTime.now().with(LocalTime.MAX);
+                endLocal = LocalDateTime.now().minusDays(7).with(LocalTime.MAX);
             }
 
             Timestamp start = Timestamp.valueOf(startLocal);
             Timestamp end = Timestamp.valueOf(endLocal);
 
-            List<String> audienceIds;
+            List<AudienceResponse> allResponses = new ArrayList<>();
             if (audienceIdParam != null && !audienceIdParam.isEmpty()) {
-                audienceIds = Arrays.stream(audienceIdParam.split(","))
+                List<String> audienceIds = Arrays.stream(audienceIdParam.split(","))
                         .map(String::trim)
                         .filter(s -> !s.isEmpty())
                         .collect(Collectors.toList());
+                for (String aid : audienceIds) {
+                    List<AudienceResponse> responses = audienceResponseRepository
+                            .findLeadsByAudienceAndDateRange(instituteId, aid, start, end);
+                    allResponses.addAll(responses);
+                }
             } else {
-                // If no audienceId provided, we need to handle it differently
-                // For now, return empty if no audienceId specified
-                return Map.of("leads", List.of(), "message", "audienceId is recommended for filtered results");
-            }
-
-            List<AudienceResponse> allResponses = new ArrayList<>();
-            for (String aid : audienceIds) {
-                List<AudienceResponse> responses = audienceResponseRepository
-                        .findLeadsByAudienceAndDateRange(instituteId, aid, start, end);
-                allResponses.addAll(responses);
+                // No audienceId configured — fall back to all audiences for the institute
+                // in the date range. Used by the "audience follow-up emails" wizard
+                // when the user selects "All campaigns".
+                allResponses.addAll(audienceResponseRepository
+                        .findLeadsByInstituteAndDateRange(instituteId, start, end));
             }
 
             // Fetch custom field values in bulk
@@ -1564,6 +1569,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
      */
     private Map<String, Object> fetchBatchAttendanceReport(Map<String, Object> params) {
         try {
+            // batchId may be a single ID or a comma-separated list (multi-select wizard).
             String batchId = (String) params.get("batchId");
             String instituteId = (String) params.get("instituteId");
 
@@ -1574,11 +1580,17 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             java.time.LocalDate end = java.time.LocalDate.now();
             java.time.LocalDate start = end.minusDays(daysBack);
 
-            // If batchId provided, fetch for that batch only
-            // If not, fetch all active batches for the institute
+            // Three cases:
+            //   1. batchId has 1 or more comma-separated IDs → fetch for exactly those
+            //   2. batchId empty + instituteId present → fetch all active batches (capped at 10)
+            //   3. neither → error
             List<String> batchIds = new ArrayList<>();
             if (batchId != null && !batchId.isEmpty()) {
-                batchIds.add(batchId);
+                batchIds = Arrays.stream(batchId.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .distinct()
+                    .collect(Collectors.toList());
             } else if (instituteId != null) {
                 // Fetch all active package session IDs for this institute via SSIGM
                 batchIds = ssigmRepo.findAll().stream()
@@ -1590,7 +1602,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     .distinct()
                     .collect(Collectors.toList());
                 log.info("No batchId provided. Found {} active batches for institute {}", batchIds.size(), instituteId);
-                // Safety limit — prevent processing too many batches (would timeout)
+                // Safety limit — prevent processing too many batches (would timeout).
+                // Only applied to the "all batches" fallback; if the user explicitly
+                // selected N batches we honor their choice in the branch above.
                 if (batchIds.size() > 10) {
                     log.warn("Too many batches ({}). Limiting to first 10 to prevent timeout.", batchIds.size());
                     batchIds = batchIds.subList(0, 10);

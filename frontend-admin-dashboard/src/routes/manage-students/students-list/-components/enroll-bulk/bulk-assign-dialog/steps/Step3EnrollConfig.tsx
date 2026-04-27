@@ -17,6 +17,15 @@ import { Button } from '@/components/ui/button';
 import { CalendarIcon } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import {
+    ContentTerms,
+    RoleTerms,
+    SystemTerms,
+} from '@/routes/settings/-components/NamingSettings';
 
 interface Props {
     instituteId: string;
@@ -33,6 +42,10 @@ export const Step3EnrollConfig = ({
     options,
     onOptionsChange,
 }: Props) => {
+    const courseTerm = getTerminology(ContentTerms.Course, SystemTerms.Course);
+    const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
+    const learnersTerm = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
+
     const updateSession = (packageSessionId: string, patch: Partial<SelectedPackageSession>) => {
         onSelectedPackageSessionsChange(
             selectedPackageSessions.map((ps) =>
@@ -46,10 +59,11 @@ export const Step3EnrollConfig = ({
             {/* Per-course invite configuration */}
             <div>
                 <h3 className="mb-1 text-sm font-semibold text-neutral-700">
-                    Enrollment Invite per Course
+                    Enrollment Invite per {courseTerm}
                 </h3>
                 <p className="mb-3 text-xs text-neutral-400">
-                    Choose an invite link for each course. Leave blank to auto-use the default invite.
+                    Choose an invite link for each {courseTerm.toLowerCase()}. Leave blank to
+                    auto-use the default invite.
                 </p>
                 <div className="flex flex-col gap-3">
                     {selectedPackageSessions.map((ps) => (
@@ -119,10 +133,11 @@ export const Step3EnrollConfig = ({
                     <div className="flex items-center justify-between">
                         <div>
                             <Label className="text-sm font-medium text-neutral-700">
-                                Notify Learners
+                                Notify {learnersTerm}
                             </Label>
                             <p className="text-xs text-neutral-400">
-                                Send enrollment confirmation emails to newly enrolled students
+                                Send enrollment confirmation emails to newly enrolled{' '}
+                                {learnersTerm.toLowerCase()}
                             </p>
                         </div>
                         <Switch
@@ -140,7 +155,8 @@ export const Step3EnrollConfig = ({
                                 Send Credentials
                             </Label>
                             <p className="text-xs text-neutral-400">
-                                Send registration email with login credentials to new students
+                                Send registration email with login credentials to new{' '}
+                                {learnersTerm.toLowerCase()}
                             </p>
                         </div>
                         <Switch
@@ -154,7 +170,7 @@ export const Step3EnrollConfig = ({
                     {/* Duplicate handling */}
                     <div>
                         <Label className="mb-1 text-sm font-medium text-neutral-700">
-                            If Student is Already Enrolled
+                            If {learnerTerm} is Already Enrolled
                         </Label>
                         <Select
                             value={options.duplicateHandling}
@@ -178,11 +194,11 @@ export const Step3EnrollConfig = ({
                         </Select>
                         <p className="mt-1 text-xs text-neutral-400">
                             {options.duplicateHandling === 'SKIP' &&
-                                'Already enrolled students will be silently skipped.'}
+                                `Already enrolled ${learnersTerm.toLowerCase()} will be silently skipped.`}
                             {options.duplicateHandling === 'RE_ENROLL' &&
-                                'Students with expired or terminated access will be re-activated.'}
+                                `${learnersTerm} with expired or terminated access will be re-activated.`}
                             {options.duplicateHandling === 'ERROR' &&
-                                'Already enrolled students will appear as failures in the results.'}
+                                `Already enrolled ${learnersTerm.toLowerCase()} will appear as failures in the results.`}
                         </p>
                     </div>
 

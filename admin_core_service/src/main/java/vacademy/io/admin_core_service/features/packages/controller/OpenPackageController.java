@@ -48,5 +48,13 @@ public class OpenPackageController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/v1/tags")
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PUBLIC)
+    public ResponseEntity<java.util.List<String>> getInstituteDistinctTags(
+            @RequestParam("instituteId") String instituteId
+    ) {
+        return ResponseEntity.ok(openPackageService.getDistinctCatalogTags(instituteId));
+    }
+
 
 }

@@ -267,6 +267,22 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("startDate") Timestamp startDate,
                         @Param("endDate") Timestamp endDate);
 
+        /**
+         * Find all audience responses for an institute within a date range,
+         * across all audiences. Used for scheduled follow-ups when no specific
+         * audienceId is configured.
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
+                        """)
+        List<AudienceResponse> findLeadsByInstituteAndDateRange(
+                        @Param("instituteId") String instituteId,
+                        @Param("startDate") Timestamp startDate,
+                        @Param("endDate") Timestamp endDate);
+
         Optional<AudienceResponse> findFirstByStudentUserIdAndApplicantIdIsNotNull(String studentUserId);
 
         /**

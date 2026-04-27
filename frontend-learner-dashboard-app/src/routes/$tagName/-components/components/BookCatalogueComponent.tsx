@@ -11,6 +11,7 @@ import {
   buildLevelNameToIdMap,
   LevelNameToIdMap,
 } from "../../-services/level-service";
+import { fetchInstituteCatalogueTags } from "../../-services/institute-tags-service";
 import { Button } from "@/components/ui/button";
 import {
   Search,
@@ -24,7 +25,7 @@ import {
   ShoppingBag,
   Trash2,
 } from "lucide-react";
-import { toTitleCase } from "@/lib/utils";
+import { toTitleCase, formatTagForDisplay } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
 import { ShareButton } from "./ShareButton";
@@ -257,9 +258,19 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]); // re-run when route changes so new searchTerms on route apply
 
-  // Extract Genre (Tag) config for the top UI
+  // Genre filter is enabled whenever catalogue_json has a "tag" filter entry.
+  // The actual genre list is fetched live from the institute's distinct catalogue
+  // tags, so admin-created tags show up automatically without editing catalogue_json.
   const genreConfig = useMemo(() => filtersConfig?.find((f) => f.id === "tag"), [filtersConfig]);
-  const genres = genreConfig?.options || [];
+  const showGenreFilter = Boolean(genreConfig);
+
+  const { data: genres = [] } = useQuery<string[]>({
+    queryKey: ["institute-catalogue-tags", instituteId],
+    queryFn: () => fetchInstituteCatalogueTags(instituteId),
+    enabled: !!instituteId && showGenreFilter,
+    staleTime: 10 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+  });
 
   // Resolve level_name ("buy" / "rent") -> level_id via the open levels endpoint.
   // Cached long-term; levels rarely change and this is shared across mode toggles.
@@ -457,7 +468,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-0">
 
           {/* 2. Enhanced Genres UI - Horizontal Scrollable Chips */}
-          {genres.length > 0 && (
+          {showGenreFilter && genres.length > 0 && (
             <div className="mt-0">
               <div className="flex font-bold flex-col gap-1">
                 <div className="flex items-center justify-between ">
@@ -495,7 +506,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                           }
                         `}
                       >
-                        <span>{genre}</span>
+                        <span>{formatTagForDisplay(genre)}</span>
                         {isSelected && (
                           <span className="bg-white/20 rounded-full p-0.5 ml-1 hover:bg-white/30 active:bg-white/40 text-black transition-colors">
                             <X className="h-3 w-3" />

@@ -69,9 +69,9 @@ public interface PackageDetailProjection {
     String getSessionName();
 
     /**
-     * Count of ACTIVE student enrollments for this package_session.
-     * Excludes DELETED, INACTIVE, and TERMINATED mappings. Null for queries
-     * that do not select enrollment counts.
+     * Total enrolled students (ACTIVE + INACTIVE) for this package_session.
+     * Excludes DELETED and TERMINATED mappings. Null for queries that do
+     * not select enrollment counts.
      */
     Long getEnrolledStudentCount();
 }

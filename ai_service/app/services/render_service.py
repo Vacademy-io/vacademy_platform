@@ -196,15 +196,20 @@ class RenderService:
         replace_end: float,
         output_key: str,
         bucket: Optional[str] = None,
-        crossfade_ms: int = 150,
+        crossfade_ms: int = 50,
+        head_pad_ms: int = 40,
     ) -> Dict[str, Any]:
         """Replace `[replace_start, replace_end)` of `base_audio_url` with
         `new_clip_url`, crossfading both joins. Uploads to `output_key`.
 
-        Returns `{output_url, new_duration, duration_delta}`. The delta is
-        what callers ripple downstream timestamps by.
+        Defaults are tuned for sentence-boundary splices: a 50 ms crossfade
+        is short enough to avoid bleeding into adjacent words, and a 40 ms
+        head pad shifts the cut into the natural silence at the start of
+        the replaced sentence so the previous word's acoustic tail is
+        preserved.
 
-        Raises RuntimeError on transport / worker failure.
+        Returns `{output_url, new_duration, duration_delta}`. Raises
+        RuntimeError on transport / worker failure.
         """
         payload: dict = {
             "base_audio_url": base_audio_url,
@@ -213,6 +218,7 @@ class RenderService:
                 "replace_start": replace_start,
                 "replace_end": replace_end,
                 "crossfade_ms": crossfade_ms,
+                "head_pad_ms": head_pad_ms,
             },
             "output_key": output_key,
         }

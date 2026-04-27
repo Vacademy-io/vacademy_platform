@@ -583,7 +583,8 @@ class SpliceReplacement(BaseModel):
     new_clip_url: str = Field(..., description="Public S3 URL of the replacement MP3")
     replace_start: float = Field(..., ge=0.0, description="Start of the range to replace, in seconds")
     replace_end: float = Field(..., gt=0.0, description="End of the range to replace, in seconds (exclusive)")
-    crossfade_ms: int = Field(default=150, ge=0, le=2000, description="Crossfade duration at each join")
+    crossfade_ms: int = Field(default=50, ge=0, le=2000, description="Crossfade duration at each join")
+    head_pad_ms: int = Field(default=40, ge=0, le=500, description="Shift the splice boundary this many ms later — preserves the previous word's natural acoustic tail at sentence boundaries")
 
 
 class SpliceAudioRequest(BaseModel):
@@ -619,6 +620,7 @@ async def splice_audio_endpoint(request: SpliceAudioRequest, x_render_key: str =
             output_key=request.output_key,
             bucket=request.bucket,
             crossfade_ms=request.replacement.crossfade_ms,
+            head_pad_ms=request.replacement.head_pad_ms,
         )
     except AudioOpsError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

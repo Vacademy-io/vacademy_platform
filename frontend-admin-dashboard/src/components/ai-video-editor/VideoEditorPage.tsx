@@ -97,6 +97,11 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
         saveChanges,
         undo,
         redo,
+        // Track these in the store so re-narration / re-rendering can refresh
+        // the preview without remounting from the original mount-time props.
+        audioUrl: storeAudioUrl,
+        htmlUrl: storeHtmlUrl,
+        wordsUrl: storeWordsUrl,
     } = useVideoEditorStore();
 
     const [entriesPanelOpen, setEntriesPanelOpen] = useState(true);
@@ -570,9 +575,12 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                         style={{ aspectRatio: `${canvasW}/${canvasH}`, maxHeight: '100%' }}
                     >
                         <AIContentPlayer
-                            timelineUrl={props.htmlUrl}
-                            audioUrl={props.audioUrl}
-                            wordsUrl={props.wordsUrl}
+                            // Read URLs from the store so re-narrate updates flow into
+                            // the preview player without remounting the editor. Falls
+                            // back to mount-time props if the store hasn't initialised.
+                            timelineUrl={storeHtmlUrl || props.htmlUrl}
+                            audioUrl={storeAudioUrl ?? props.audioUrl}
+                            wordsUrl={storeWordsUrl ?? props.wordsUrl}
                             avatarUrl={props.avatarUrl}
                             width={canvasW}
                             height={canvasH}

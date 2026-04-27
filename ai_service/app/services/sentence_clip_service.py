@@ -213,7 +213,8 @@ class SentenceClipService:
         new_text: str,
         *,
         voice_overrides: Optional[Dict[str, Any]] = None,
-        crossfade_ms: int = 150,
+        crossfade_ms: int = 50,
+        head_pad_ms: int = 40,
     ) -> SentenceRegenerateResult:
         """Re-narrate one sentence: TTS the new text in the same voice,
         splice the resulting clip into the global narration.mp3 with
@@ -288,6 +289,7 @@ class SentenceClipService:
                 replace_end=old_end,
                 output_key=new_audio_key,
                 crossfade_ms=crossfade_ms,
+                head_pad_ms=head_pad_ms,
             )
             new_global_url = splice.get("output_url")
             new_global_duration = float(splice.get("new_duration") or 0.0)
@@ -311,7 +313,31 @@ class SentenceClipService:
             _ripple_entries(timeline, boundary=old_start, delta=duration_delta)
             _bump_total_duration(timeline, delta=duration_delta)
 
-            # 5. Persist: timeline JSON back to its S3 key, video record's
+            # 5. Splice the global narration.words.json so caption playback
+            # stays in sync with the new audio. Best-effort: if the words
+            # file isn't reachable or is malformed we log and continue —
+            # the sentence still plays, only captions for downstream words
+            # would drift, which is recoverable later via a manual rebuild.
+            words_url = s3_urls.get("words")
+            if words_url:
+                try:
+                    self._splice_global_words(
+                        words_s3_url=words_url,
+                        old_start=old_start,
+                        old_end=old_end,
+                        new_sentence_words=updated_target.get("words") or [],
+                        sentence_start_time=float(updated_target.get("start_time") or old_start),
+                        duration_delta=duration_delta,
+                        tmp_path=tmp / "words.out.json",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to splice global words.json for %s: %s — captions "
+                        "after %.2fs may drift until the file is rebuilt",
+                        video_id, exc, old_start,
+                    )
+
+            # 6. Persist: timeline JSON back to its S3 key, video record's
             # audio URL pointed at the new spliced MP3.
             timeline_url = self._upload_timeline_json(
                 timeline=timeline,
@@ -496,6 +522,55 @@ class SentenceClipService:
         if str(self.video_gen_root) not in sys.path:
             sys.path.insert(0, str(self.video_gen_root))
 
+    # ----- global words.json splice -----
+
+    def _splice_global_words(
+        self,
+        *,
+        words_s3_url: str,
+        old_start: float,
+        old_end: float,
+        new_sentence_words: List[Dict[str, Any]],
+        sentence_start_time: float,
+        duration_delta: float,
+        tmp_path: Path,
+    ) -> None:
+        """Patch the global narration.words.json to match the spliced audio.
+
+        Strategy: drop every word that falls inside the replaced range,
+        insert the new sentence's words rebased to absolute time, then
+        ripple every word that comes after the replacement by
+        `duration_delta`. The new file is uploaded back to the same S3 key
+        — same pattern the timeline JSON uses, so consumers don't need to
+        learn a versioned URL.
+        """
+        # Download → parse → splice → re-upload
+        download_path = tmp_path.with_suffix(".in.json")
+        if not self.s3_service.download_file(words_s3_url, download_path):
+            raise RuntimeError(f"failed to download {words_s3_url}")
+        raw = json.loads(download_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, list):
+            raise RuntimeError(
+                f"words.json malformed (expected list, got {type(raw).__name__})"
+            )
+
+        spliced = _splice_word_stream(
+            base_words=raw,
+            old_start=old_start,
+            old_end=old_end,
+            new_sentence_words=new_sentence_words,
+            sentence_start_time=sentence_start_time,
+            duration_delta=duration_delta,
+        )
+        tmp_path.write_text(json.dumps(spliced, ensure_ascii=False), encoding="utf-8")
+
+        s3_key = self._extract_s3_key(words_s3_url)
+        if not s3_key:
+            raise RuntimeError(f"could not derive S3 key from {words_s3_url}")
+        self.s3_service.upload_file(
+            file_path=tmp_path, s3_key=s3_key, content_type="application/json",
+        )
+
     # ----- shared timeline I/O -----
 
     def _upload_timeline_json(
@@ -602,3 +677,72 @@ def _version_tag() -> str:
     cache collisions when the editor regenerates the same sentence twice
     without breaking older URLs that may still be referenced elsewhere."""
     return f"v{int(time.time() * 1000)}"
+
+
+def _splice_word_stream(
+    *,
+    base_words: List[Dict[str, Any]],
+    old_start: float,
+    old_end: float,
+    new_sentence_words: List[Dict[str, Any]],
+    sentence_start_time: float,
+    duration_delta: float,
+) -> List[Dict[str, Any]]:
+    """Rebuild a global word-timestamps list to match a spliced audio file.
+
+    Three-band partition of `base_words`:
+      - HEAD: words ending at or before `old_start`. Kept verbatim — the
+        audio they describe is unchanged in the new MP3.
+      - REPLACED: words whose [start, end] overlaps the replaced range.
+        Dropped — the audio they described no longer exists. The new
+        sentence's words take over this band.
+      - TAIL: words starting at or after `old_end`. Kept, but their
+        timestamps shift by `duration_delta` because the new sentence
+        is longer/shorter than the old one.
+
+    The new sentence's words come in clip-relative form (0..clip_duration);
+    we rebase them to absolute time at `sentence_start_time` (== old_start
+    in current callers) before splicing in.
+
+    Pure function — no I/O, easy to unit-test against synthetic streams.
+    """
+    epsilon = 1e-3
+
+    head: List[Dict[str, Any]] = []
+    tail: List[Dict[str, Any]] = []
+    for w in base_words:
+        if not isinstance(w, dict):
+            continue
+        try:
+            w_start = float(w.get("start", 0.0))
+            w_end = float(w.get("end", 0.0))
+        except (TypeError, ValueError):
+            continue
+        if w_end <= old_start + epsilon:
+            head.append(w)
+        elif w_start >= old_end - epsilon:
+            # Ripple the tail by the duration delta (positive when the new
+            # clip is longer; negative when it's shorter).
+            tail.append({
+                **w,
+                "start": w_start + duration_delta,
+                "end": w_end + duration_delta,
+            })
+        # else: word straddles or sits inside [old_start, old_end] → drop.
+
+    inserted: List[Dict[str, Any]] = []
+    for w in new_sentence_words:
+        if not isinstance(w, dict):
+            continue
+        try:
+            rel_start = float(w.get("start", 0.0))
+            rel_end = float(w.get("end", 0.0))
+        except (TypeError, ValueError):
+            continue
+        inserted.append({
+            "word": str(w.get("word", "")),
+            "start": sentence_start_time + rel_start,
+            "end": sentence_start_time + rel_end,
+        })
+
+    return head + inserted + tail

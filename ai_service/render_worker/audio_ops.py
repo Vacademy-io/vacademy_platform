@@ -26,8 +26,12 @@ from pathlib import Path
 from typing import List, Optional
 from urllib.request import Request as _UrlReq, urlopen
 
-DEFAULT_BUCKET_ENV = "AWS_BUCKET_NAME"
-DEFAULT_BUCKET_FALLBACK = "vacademy-media-storage"
+# Env var names, checked in order. AWS_S3_PUBLIC_BUCKET is what deploy.sh
+# actually sets on the container today; AWS_BUCKET_NAME is the older name
+# the existing /concat_audio endpoint uses. Supporting both lets either
+# convention work without forcing a deploy-script change.
+DEFAULT_BUCKET_ENVS = ("AWS_S3_PUBLIC_BUCKET", "AWS_BUCKET_NAME")
+DEFAULT_BUCKET_FALLBACK = "vacademy-media-storage-public"
 DEFAULT_REGION = "ap-south-1"
 DEFAULT_USER_AGENT = "VacademyRenderWorker/1.0"
 DOWNLOAD_TIMEOUT_S = 120
@@ -130,23 +134,39 @@ def splice_audio(
     replace_end: float,
     output_key: str,
     bucket: Optional[str] = None,
-    crossfade_ms: int = 150,
+    crossfade_ms: int = 50,
+    head_pad_ms: int = 40,
 ) -> SpliceResult:
     """Replace `[replace_start, replace_end)` of `base_audio_url` with
     `new_clip_url`, crossfading at both joins, and upload to `output_key`.
 
+    `head_pad_ms` extends the head slice that many milliseconds PAST
+    `replace_start`. Word-boundary timestamps from Whisper mark the end of
+    the spoken phoneme but ignore acoustic decay, so a "0-gap" sentence
+    boundary still has audible word tail just after the timestamp. Without
+    a pad, the crossfade sits over that tail (chopping the previous word
+    mid-decay); with a small pad, the crossfade sits over the natural
+    silence/breath at the START of the replaced sentence instead. The same
+    pad shifts the tail's start by the same amount so total replaced
+    duration matches the request.
+
+    `crossfade_ms` defaults to 50 — short enough to avoid cross-sentence
+    bleed, long enough to mask MP3 frame-boundary artefacts at the cuts.
+
     Returns the new total duration and the delta vs the original base. The
-    delta is what callers (e.g. the editor) use to ripple downstream
-    timestamps when the replacement is longer or shorter than the original.
+    delta is what callers ripple downstream timestamps by.
     """
     if replace_end <= replace_start:
         raise AudioOpsError("replace_end must be > replace_start")
     if crossfade_ms < 0:
         raise AudioOpsError("crossfade_ms must be >= 0")
+    if head_pad_ms < 0:
+        raise AudioOpsError("head_pad_ms must be >= 0")
     _ensure_ffmpeg()
     bucket_name = _resolve_bucket(bucket)
     s3 = _get_s3_client()
     crossfade_s = crossfade_ms / 1000.0
+    pad_s = head_pad_ms / 1000.0
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
@@ -162,14 +182,26 @@ def splice_audio(
                 f"audio duration {base_duration:.2f}s"
             )
 
+        # Apply the pad: head ends `pad_s` later, tail starts `pad_s` later.
+        # The window's TOTAL length is preserved so `duration_delta` math
+        # downstream stays correct. Clamp so the shifted boundary stays
+        # inside [replace_start, replace_end] (no point padding past the
+        # window we're replacing).
+        max_pad = max(0.0, (replace_end - replace_start) / 2.0)
+        effective_pad = min(pad_s, max_pad)
+        head_end = replace_start + effective_pad
+        tail_start = replace_end + effective_pad
+        if tail_start > base_duration:
+            tail_start = base_duration
+
         head = tmp / "head.mp3"
         tail = tmp / "tail.mp3"
         _run_ffmpeg([
-            "ffmpeg", "-y", "-ss", "0", "-to", f"{replace_start:.3f}",
+            "ffmpeg", "-y", "-ss", "0", "-to", f"{head_end:.3f}",
             "-i", str(base), "-c", "copy", str(head),
         ], what="splice head")
         _run_ffmpeg([
-            "ffmpeg", "-y", "-ss", f"{replace_end:.3f}",
+            "ffmpeg", "-y", "-ss", f"{tail_start:.3f}",
             "-i", str(base), "-c", "copy", str(tail),
         ], what="splice tail")
 
@@ -249,7 +281,13 @@ def _ensure_ffmpeg() -> None:
 
 
 def _resolve_bucket(bucket: Optional[str]) -> str:
-    return bucket or os.environ.get(DEFAULT_BUCKET_ENV, DEFAULT_BUCKET_FALLBACK)
+    if bucket:
+        return bucket
+    for env_name in DEFAULT_BUCKET_ENVS:
+        value = os.environ.get(env_name)
+        if value:
+            return value
+    return DEFAULT_BUCKET_FALLBACK
 
 
 def _get_s3_client():

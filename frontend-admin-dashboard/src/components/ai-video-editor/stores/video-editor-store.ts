@@ -180,6 +180,11 @@ export interface VideoEditorState {
     // Save state
     isSaving: boolean;
 
+    /** ID of the sentence currently being re-narrated (or null when idle).
+     *  Drives loading UI in the SentenceEditPopover so the user can't fire
+     *  a second regenerate while the first is in flight. */
+    regeneratingSentenceId: string | null;
+
     // Actions
     init: (params: InitParams) => void;
     loadTimeline: () => Promise<void>;
@@ -231,6 +236,26 @@ export interface VideoEditorState {
     undo: () => void;
     redo: () => void;
     saveChanges: () => Promise<void>;
+
+    /**
+     * Re-narrate one sentence in the same voice the video was originally
+     * generated with. Calls the ai_service /sentence/regenerate endpoint;
+     * on success, applies the same ripple to in-memory state that the
+     * server already persisted to the timeline JSON in S3:
+     *   - meta.sentences[i] replaced with the new clip
+     *   - all later sentences shifted by duration_delta
+     *   - all entries whose time range starts at/after the splice
+     *     boundary shifted by duration_delta
+     *   - meta.total_duration bumped
+     *   - audioUrl pointed at the new spliced MP3
+     *
+     * Returns ok/error rather than throwing so the popover can render
+     * inline error feedback without try/catch boilerplate.
+     */
+    regenerateSentence: (
+        sentenceId: string,
+        newText: string,
+    ) => Promise<{ ok: boolean; error?: string }>;
 }
 
 function snapshot(s: VideoEditorState): HistorySnapshot {
@@ -275,6 +300,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     past: [],
     future: [],
     isSaving: false,
+    regeneratingSentenceId: null,
 
     init: (params) => {
         set({
@@ -752,5 +778,82 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             set({ isSaving: false });
             throw err;
         }
+    },
+
+    regenerateSentence: async (sentenceId, newText) => {
+        const { videoId, apiKey, regeneratingSentenceId, meta } = get();
+        if (regeneratingSentenceId) {
+            return { ok: false, error: 'Another sentence is already regenerating' };
+        }
+        if (!videoId || !apiKey) {
+            return { ok: false, error: 'Video not initialized' };
+        }
+        const sentences = meta.sentences ?? [];
+        const targetIdx = sentences.findIndex((s) => s.id === sentenceId);
+        if (targetIdx === -1) {
+            return { ok: false, error: `Sentence ${sentenceId} not found` };
+        }
+        const trimmed = newText.trim();
+        if (!trimmed) {
+            return { ok: false, error: 'Text cannot be empty' };
+        }
+        if (trimmed === sentences[targetIdx]?.text.trim()) {
+            return { ok: false, error: 'Text unchanged — nothing to re-narrate' };
+        }
+
+        set({ regeneratingSentenceId: sentenceId });
+        // Lazy import: keeps the API module out of any cold-start path that
+        // doesn't actually use sentence editing.
+        const { apiRegenerateSentence } = await import('../utils/sentence-api');
+        const result = await apiRegenerateSentence(videoId, apiKey, sentenceId, trimmed);
+
+        if (!result.ok) {
+            set({ regeneratingSentenceId: null });
+            return { ok: false, error: result.error };
+        }
+
+        const { sentence: updatedSentence, duration_delta, new_global_audio_url } = result.data;
+        set((s) => {
+            // Splice boundary == old sentence's start_time. Anything starting
+            // at or after that point ripples by `duration_delta`. Server has
+            // already applied this same ripple to the persisted timeline JSON.
+            const oldStart = sentences[targetIdx]?.start_time ?? updatedSentence.start_time;
+            const epsilon = 1e-3;
+            const updatedSentences = (s.meta.sentences ?? []).map((sent, i) => {
+                if (i === targetIdx) return updatedSentence;
+                if (i > targetIdx) {
+                    return { ...sent, start_time: sent.start_time + duration_delta };
+                }
+                return sent;
+            });
+            const updatedEntries = s.entries.map((e) => {
+                const next = { ...e };
+                let mutated = false;
+                if (e.inTime != null && e.inTime >= oldStart - epsilon) {
+                    next.inTime = e.inTime + duration_delta;
+                    mutated = true;
+                }
+                if (e.exitTime != null && e.exitTime >= oldStart - epsilon) {
+                    next.exitTime = e.exitTime + duration_delta;
+                    mutated = true;
+                }
+                return mutated ? next : e;
+            });
+            const newTotal =
+                s.meta.total_duration != null
+                    ? Math.max(0, s.meta.total_duration + duration_delta)
+                    : s.meta.total_duration;
+            return {
+                regeneratingSentenceId: null,
+                audioUrl: new_global_audio_url || s.audioUrl,
+                meta: {
+                    ...s.meta,
+                    sentences: updatedSentences,
+                    total_duration: newTotal,
+                },
+                entries: updatedEntries,
+            };
+        });
+        return { ok: true };
     },
 }));

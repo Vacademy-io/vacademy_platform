@@ -942,7 +942,14 @@ class RegenerateSentenceRequest(BaseModel):
     sentence_id: str
     new_text: str
     voice_overrides: Optional[VoiceOverrides] = None
-    crossfade_ms: int = Field(default=150, ge=0, le=2000)
+    crossfade_ms: int = Field(
+        default=50, ge=0, le=2000,
+        description="Crossfade duration at each splice join. Lower values reduce cross-sentence bleed.",
+    )
+    head_pad_ms: int = Field(
+        default=40, ge=0, le=500,
+        description="Shifts the splice boundary later by this many ms — preserves the previous word's natural acoustic tail at sentence boundaries.",
+    )
 
 
 class RegenerateSentenceResponse(BaseModel):
@@ -1020,6 +1027,7 @@ async def regenerate_sentence_external(
             new_text=payload.new_text,
             voice_overrides=overrides,
             crossfade_ms=payload.crossfade_ms,
+            head_pad_ms=payload.head_pad_ms,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

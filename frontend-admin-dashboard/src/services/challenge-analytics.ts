@@ -97,7 +97,8 @@ export const getEngagementLeaderboard = async (
     startDate: string,
     endDate: string,
     page: number = 1,
-    pageSize: number = 20
+    pageSize: number = 20,
+    customFieldFilter?: { name: string; value: string }
 ): Promise<LeaderboardResponse> => {
     const instituteId = getCurrentInstituteId();
 
@@ -105,12 +106,23 @@ export const getEngagementLeaderboard = async (
         throw new Error('Institute ID not found');
     }
 
+    const hasFilter =
+        !!customFieldFilter &&
+        !!customFieldFilter.name &&
+        !!customFieldFilter.value;
+
     const requestBody: LeaderboardRequest = {
         institute_id: instituteId,
         start_date: toNotificationDateFormat(startDate),
         end_date: toNotificationDateFormat(endDate),
         page,
         page_size: pageSize,
+        ...(hasFilter
+            ? {
+                  custom_field_name: customFieldFilter!.name,
+                  custom_field_value: customFieldFilter!.value,
+              }
+            : {}),
     };
 
     const response = await authenticatedAxiosInstance.post<LeaderboardResponse>(
@@ -219,8 +231,22 @@ export const challengeAnalyticsKeys = {
         [...challengeAnalyticsKeys.all, 'center-heatmap', startDate, endDate] as const,
     dailyParticipation: (startDate: string, endDate: string) =>
         [...challengeAnalyticsKeys.all, 'daily-participation', startDate, endDate] as const,
-    leaderboard: (startDate: string, endDate: string, page: number) =>
-        [...challengeAnalyticsKeys.all, 'leaderboard', startDate, endDate, page] as const,
+    leaderboard: (
+        startDate: string,
+        endDate: string,
+        page: number,
+        customFieldName?: string,
+        customFieldValue?: string
+    ) =>
+        [
+            ...challengeAnalyticsKeys.all,
+            'leaderboard',
+            startDate,
+            endDate,
+            page,
+            customFieldName ?? '',
+            customFieldValue ?? '',
+        ] as const,
     completionCohort: (startDate: string, endDate: string, templates: string[], page: number) =>
         [
             ...challengeAnalyticsKeys.all,

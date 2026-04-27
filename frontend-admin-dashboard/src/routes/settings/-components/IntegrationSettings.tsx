@@ -8,7 +8,15 @@ import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
 import { toast } from 'sonner';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import { Copy, Check, ArrowSquareOut, Trash, Plus } from '@phosphor-icons/react';
+import { Copy, Check, ArrowSquareOut, Trash, Plus, PencilSimple, X } from '@phosphor-icons/react';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import {
     initiateMetaOAuth,
     getSessionPages,
@@ -18,6 +26,7 @@ import {
     saveGoogleConnector,
     listConnectors,
     deactivateConnector,
+    updateConnector,
     buildGoogleWebhookUrl,
     fetchAudienceCustomFields,
     buildFieldMappingJson,
@@ -138,6 +147,149 @@ function FieldMappingBuilder({
     );
 }
 
+// ── Connector edit dialog (per-center default values) ──────────────────────
+
+interface KeyValueRow {
+    key: string;
+    value: string;
+}
+
+const parseDefaultValues = (json: string | null | undefined): KeyValueRow[] => {
+    if (!json) return [];
+    try {
+        const parsed = JSON.parse(json);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            return Object.entries(parsed as Record<string, unknown>).map(([key, value]) => ({
+                key,
+                value: value == null ? '' : String(value),
+            }));
+        }
+    } catch {
+        // ignore — show empty editor and let admin start fresh
+    }
+    return [];
+};
+
+const serializeDefaultValues = (rows: KeyValueRow[]): string => {
+    const obj: Record<string, string> = {};
+    rows.forEach((r) => {
+        const k = r.key.trim();
+        if (k) obj[k] = r.value;
+    });
+    return JSON.stringify(obj);
+};
+
+function ConnectorEditDialog({
+    connector,
+    open,
+    onOpenChange,
+    onSave,
+    isSaving,
+}: {
+    connector: ConnectorListItem | null;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onSave: (rows: KeyValueRow[]) => void;
+    isSaving: boolean;
+}) {
+    const [rows, setRows] = useState<KeyValueRow[]>([]);
+
+    useEffect(() => {
+        if (open && connector) {
+            const initial = parseDefaultValues(connector.defaultValuesJson);
+            setRows(initial.length > 0 ? initial : [{ key: '', value: '' }]);
+        }
+    }, [open, connector]);
+
+    const updateRow = (idx: number, patch: Partial<KeyValueRow>) => {
+        setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+    };
+    const addRow = () => setRows((prev) => [...prev, { key: '', value: '' }]);
+    const removeRow = (idx: number) =>
+        setRows((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)));
+
+    const hasDuplicateKeys = (() => {
+        const seen = new Set<string>();
+        for (const r of rows) {
+            const k = r.key.trim();
+            if (!k) continue;
+            if (seen.has(k)) return true;
+            seen.add(k);
+        }
+        return false;
+    })();
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-xl">
+                <DialogHeader>
+                    <DialogTitle>Edit center details</DialogTitle>
+                    <DialogDescription>
+                        These key/value pairs are merged into every form submission this connector
+                        receives. Use them for per-center constants like center name, schedule
+                        link, or contact phone. Form values always take precedence over defaults.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-2">
+                    <div className="grid grid-cols-[1fr_1fr_28px] gap-2 text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+                        <span>Key</span>
+                        <span>Value</span>
+                        <span />
+                    </div>
+                    {rows.map((row, idx) => (
+                        <div
+                            key={idx}
+                            className="grid grid-cols-[1fr_1fr_28px] items-center gap-2"
+                        >
+                            <Input
+                                value={row.key}
+                                onChange={(e) => updateRow(idx, { key: e.target.value })}
+                                placeholder="e.g. center name"
+                            />
+                            <Input
+                                value={row.value}
+                                onChange={(e) => updateRow(idx, { value: e.target.value })}
+                                placeholder="e.g. Baner"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => removeRow(idx)}
+                                className="text-neutral-400 hover:text-red-600"
+                                title="Remove row"
+                            >
+                                <X className="size-4" />
+                            </button>
+                        </div>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={addRow} className="gap-1">
+                        <Plus className="size-3.5" />
+                        Add field
+                    </Button>
+                    {hasDuplicateKeys && (
+                        <p className="text-xs text-red-600">
+                            Duplicate keys detected — only the last value for each key will be kept.
+                        </p>
+                    )}
+                </div>
+
+                <DialogFooter>
+                    <Button
+                        variant="outline"
+                        onClick={() => onOpenChange(false)}
+                        disabled={isSaving}
+                    >
+                        Cancel
+                    </Button>
+                    <Button onClick={() => onSave(rows)} disabled={isSaving}>
+                        {isSaving ? 'Saving…' : 'Save'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 // ── Connector table ──────────────────────────────────────────────────────────
 
 const VENDOR_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -148,9 +300,11 @@ const VENDOR_LABELS: Record<string, { label: string; color: string; bg: string }
 function ConnectorTable({
     connectors,
     onDelete,
+    onEdit,
 }: {
     connectors: ConnectorListItem[];
     onDelete: (id: string) => void;
+    onEdit: (connector: ConnectorListItem) => void;
 }) {
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -241,7 +395,14 @@ function ConnectorTable({
                                         <span className="text-xs text-neutral-400">auto</span>
                                     )}
                                 </td>
-                                <td className="px-4 py-2.5">
+                                <td className="flex items-center gap-2 px-4 py-2.5">
+                                    <button
+                                        onClick={() => onEdit(c)}
+                                        className="text-neutral-400 hover:text-primary-600"
+                                        title="Edit center details"
+                                    >
+                                        <PencilSimple className="size-4" />
+                                    </button>
                                     <button
                                         onClick={() => onDelete(c.id)}
                                         className="text-neutral-400 hover:text-red-600"
@@ -636,6 +797,24 @@ export default function IntegrationSettings() {
         onError: () => toast.error('Failed to deactivate connector'),
     });
 
+    const [editingConnector, setEditingConnector] = useState<ConnectorListItem | null>(null);
+
+    const { mutate: saveConnectorEdits, isPending: isSavingEdits } = useMutation({
+        mutationFn: (args: { id: string; defaultValuesJson: string }) =>
+            updateConnector(args.id, { defaultValuesJson: args.defaultValuesJson }),
+        onSuccess: () => {
+            toast.success('Connector updated');
+            setEditingConnector(null);
+            queryClient.invalidateQueries({ queryKey: ['ad-connectors'] });
+        },
+        onError: (err: unknown) => {
+            const msg =
+                (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+                'Failed to update connector';
+            toast.error(msg);
+        },
+    });
+
     const handleSaved = () => {
         queryClient.invalidateQueries({ queryKey: ['ad-connectors'] });
     };
@@ -675,6 +854,7 @@ export default function IntegrationSettings() {
                         <ConnectorTable
                             connectors={Array.isArray(connectors) ? connectors : []}
                             onDelete={(id) => deleteConnector(id)}
+                            onEdit={(c) => setEditingConnector(c)}
                         />
                     )}
                 </CardContent>
@@ -717,6 +897,22 @@ export default function IntegrationSettings() {
                     {showAddGoogle && <AddGoogleForm onSaved={handleSaved} />}
                 </CardContent>
             </Card>
+
+            <ConnectorEditDialog
+                connector={editingConnector}
+                open={!!editingConnector}
+                onOpenChange={(o) => {
+                    if (!o) setEditingConnector(null);
+                }}
+                onSave={(rows) =>
+                    editingConnector &&
+                    saveConnectorEdits({
+                        id: editingConnector.id,
+                        defaultValuesJson: serializeDefaultValues(rows),
+                    })
+                }
+                isSaving={isSavingEdits}
+            />
         </div>
     );
 }

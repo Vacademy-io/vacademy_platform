@@ -32,11 +32,19 @@ export function useEngagementLeaderboard(
     endDate: string,
     page: number = 1,
     pageSize: number = 20,
-    enabled: boolean = true
+    enabled: boolean = true,
+    customFieldFilter?: { name: string; value: string }
 ) {
     return useQuery({
-        queryKey: challengeAnalyticsKeys.leaderboard(startDate, endDate, page),
-        queryFn: () => getEngagementLeaderboard(startDate, endDate, page, pageSize),
+        queryKey: challengeAnalyticsKeys.leaderboard(
+            startDate,
+            endDate,
+            page,
+            customFieldFilter?.name,
+            customFieldFilter?.value
+        ),
+        queryFn: () =>
+            getEngagementLeaderboard(startDate, endDate, page, pageSize, customFieldFilter),
         enabled: enabled && !!startDate && !!endDate,
         staleTime: 5 * 60 * 1000,
     });

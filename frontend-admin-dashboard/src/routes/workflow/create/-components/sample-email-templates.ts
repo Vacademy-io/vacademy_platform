@@ -210,14 +210,14 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   scheduled_batch_report: {
     name: 'Attendance Report',
     subject: '{{fullName}}, your attendance report ({{startDate}} - {{endDate}})',
-    variables: ['fullName', 'email', 'attendancePercentage', 'sessionsAttended', 'startDate', 'endDate', 'sessionsTableHtml', 'totalDurationMinutes', 'instituteName', 'reportUrl'],
+    variables: ['fullName', 'email', 'attendancePercentage', 'sessionsAttended', 'totalSessions', 'startDate', 'endDate', 'sessionsTableHtml', 'totalDurationMinutes', 'instituteName', 'reportUrl'],
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
   <h2 style="color:#1a1a1a">Attendance Report</h2>
   <p style="color:#444;line-height:1.6">Hi <strong>{{fullName}}</strong>, here's your attendance summary for <strong>{{startDate}}</strong> to <strong>{{endDate}}</strong>:</p>
   <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:24px;text-align:center;margin:20px 0">
     <div style="font-size:44px;font-weight:bold;color:#16a34a;line-height:1.2">{{attendancePercentage}}%</div>
     <div style="color:#444;margin-top:12px;font-size:14px">Attendance Rate</div>
-    <div style="color:#666;margin-top:6px;font-size:13px">{{sessionsAttended}} sessions attended &middot; {{totalDurationMinutes}} min total</div>
+    <div style="color:#666;margin-top:6px;font-size:13px">{{sessionsAttended}} of {{totalSessions}} sessions attended &middot; {{totalDurationMinutes}} min total</div>
   </div>
   <h3 style="color:#1e293b;margin-top:24px">Session Details</h3>
   {{sessionsTableHtml}}
@@ -227,7 +227,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   <p style="color:#444;line-height:1.6;margin-top:16px">Regular attendance is the key to success.</p>
   <p style="color:#888;font-size:13px;margin-top:32px">Best regards,<br/>{{instituteName}}</p>
   <p style="border-top:1px solid #e2e8f0;margin-top:24px;padding-top:12px;color:#94a3b8;font-size:11px;line-height:1.5">
-    <strong>* Engagement Score</strong> = 80 pts attendance time + 20 pts interactions (chats, talks, raises, emojis, polls). View the full report for a per-session breakdown.
+    <strong>* Concentration Score</strong> = 80 pts attendance time + 20 pts interactions (chats, talks, raises, emojis, polls). View the full report for a per-session breakdown.
   </p>
 </div>`,
   },
@@ -235,7 +235,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   scheduled_engagement_summary: {
     name: 'Engagement Summary',
     subject: '{{fullName}}, your weekly engagement report',
-    variables: ['fullName', 'attendancePercentage', 'sessionsAttended', 'totalDurationMinutes', 'totalChats', 'totalHandRaises', 'startDate', 'endDate', 'sessionsTableHtml', 'instituteName'],
+    variables: ['fullName', 'attendancePercentage', 'sessionsAttended', 'totalSessions', 'totalDurationMinutes', 'totalChats', 'totalHandRaises', 'startDate', 'endDate', 'sessionsTableHtml', 'instituteName'],
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
   <h2 style="color:#1a1a1a">Weekly Engagement Report</h2>
   <p style="color:#444;line-height:1.6">Hi <strong>{{fullName}}</strong>, here's how you engaged this week:</p>
@@ -247,7 +247,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
       </td>
       <td style="width:4%"></td>
       <td style="background:#f0fdf4;border-radius:8px;padding:16px;text-align:center;width:21%">
-        <div style="font-size:28px;font-weight:bold;color:#16a34a">{{sessionsAttended}}</div>
+        <div style="font-size:28px;font-weight:bold;color:#16a34a">{{sessionsAttended}}/{{totalSessions}}</div>
         <div style="color:#64748b;font-size:12px;margin-top:4px">Sessions</div>
       </td>
       <td style="width:4%"></td>
@@ -272,7 +272,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   scheduled_parents_attendance: {
     name: 'Parent Attendance Update',
     subject: '{{fullName}}\'s weekly attendance update ({{startDate}} - {{endDate}})',
-    variables: ['fullName', 'attendancePercentage', 'sessionsAttended', 'startDate', 'endDate', 'sessionsTableHtml', 'instituteName'],
+    variables: ['fullName', 'attendancePercentage', 'sessionsAttended', 'totalSessions', 'startDate', 'endDate', 'sessionsTableHtml', 'instituteName'],
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
   <h2 style="color:#1a1a1a">Weekly Attendance Update</h2>
   <p style="color:#444;line-height:1.6">Dear Parent,</p>
@@ -280,7 +280,7 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:24px;text-align:center;margin:20px 0">
     <div style="font-size:44px;font-weight:bold;color:#16a34a;line-height:1.2">{{attendancePercentage}}%</div>
     <div style="color:#444;margin-top:12px;font-size:14px">Attendance Rate</div>
-    <div style="color:#666;margin-top:6px;font-size:13px">{{sessionsAttended}} sessions attended</div>
+    <div style="color:#666;margin-top:6px;font-size:13px">{{sessionsAttended}} of {{totalSessions}} sessions attended</div>
   </div>
   <h3 style="color:#1e293b;margin-top:24px">Session Details</h3>
   {{sessionsTableHtml}}

@@ -18,6 +18,8 @@ from pydantic import BaseModel, Field
 
 from worker import RenderWorker
 from transcribe_worker import TranscribeWorker
+# audio_ops is imported lazily inside the /audio/* route handlers
+# (matches /concat_audio's pattern — keeps the import surface minimal here).
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("render-worker")
@@ -508,6 +510,127 @@ def _probe_duration(path) -> float:
         return float(out.strip())
     except Exception:
         return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Audio slice / splice — sentence-level operations for the script editor
+#
+# slice_audio: cut one MP3 into N stream-copied clips. Used both during
+# generation (post-TTS, to persist per-sentence clips) and on demand to
+# backfill sentences[] for older videos. Stream copy is lossless; slices
+# align to MP3 frame boundaries (~26 ms) which is fine for sentence cuts.
+#
+# splice_audio: replace a time range of an MP3 with a new clip, crossfading
+# both joins. Used when the editor re-narrates a single sentence — returns
+# the new total duration and the delta vs the original so the caller can
+# ripple downstream timestamps.
+# ---------------------------------------------------------------------------
+
+class SliceCutModel(BaseModel):
+    id: str = Field(..., description="Stable id used in the output S3 key and returned to the caller")
+    start: float = Field(..., ge=0.0, description="Start time in seconds")
+    end: float = Field(..., gt=0.0, description="End time in seconds (exclusive)")
+
+
+class SliceAudioRequest(BaseModel):
+    audio_url: str = Field(..., description="Public S3 URL of the source MP3")
+    cuts: List[SliceCutModel] = Field(..., min_length=1, description="Cuts to extract")
+    output_prefix: str = Field(..., description="S3 key prefix; clips upload to {prefix}{id}.mp3")
+    bucket: Optional[str] = Field(default=None, description="S3 bucket (defaults to AWS_BUCKET_NAME env)")
+
+
+class SliceClipResponse(BaseModel):
+    id: str
+    audio_url: str
+    duration: float
+
+
+class SliceAudioResponse(BaseModel):
+    clips: List[SliceClipResponse]
+
+
+@app.post("/audio/slice", response_model=SliceAudioResponse)
+async def slice_audio_endpoint(request: SliceAudioRequest, x_render_key: str = Header("")):
+    """Cut a single MP3 into N independent clips and upload each to S3.
+
+    Synchronous because slicing a typical 60s narration into ~30 sentences
+    finishes in well under a second on the worker hardware. If we ever need
+    to slice multi-hour audio this should move to the background job model.
+    """
+    _verify_key(x_render_key)
+    from audio_ops import AudioOpsError, SliceCut, slice_audio
+
+    cuts = [SliceCut(id=c.id, start=c.start, end=c.end) for c in request.cuts]
+    try:
+        results = slice_audio(
+            audio_url=request.audio_url,
+            cuts=cuts,
+            output_prefix=request.output_prefix,
+            bucket=request.bucket,
+        )
+    except AudioOpsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("slice_audio failed")
+        raise HTTPException(status_code=500, detail=f"slice_audio failed: {exc}")
+
+    return SliceAudioResponse(
+        clips=[SliceClipResponse(id=r.id, audio_url=r.audio_url, duration=r.duration) for r in results]
+    )
+
+
+class SpliceReplacement(BaseModel):
+    new_clip_url: str = Field(..., description="Public S3 URL of the replacement MP3")
+    replace_start: float = Field(..., ge=0.0, description="Start of the range to replace, in seconds")
+    replace_end: float = Field(..., gt=0.0, description="End of the range to replace, in seconds (exclusive)")
+    crossfade_ms: int = Field(default=150, ge=0, le=2000, description="Crossfade duration at each join")
+
+
+class SpliceAudioRequest(BaseModel):
+    base_audio_url: str = Field(..., description="Public S3 URL of the original MP3 to splice into")
+    replacement: SpliceReplacement
+    output_key: str = Field(..., description="Destination S3 key for the spliced MP3")
+    bucket: Optional[str] = Field(default=None, description="S3 bucket (defaults to AWS_BUCKET_NAME env)")
+
+
+class SpliceAudioResponse(BaseModel):
+    output_url: str
+    new_duration: float
+    duration_delta: float = Field(..., description="new_duration − base_duration; ripple downstream timestamps by this")
+
+
+@app.post("/audio/splice", response_model=SpliceAudioResponse)
+async def splice_audio_endpoint(request: SpliceAudioRequest, x_render_key: str = Header("")):
+    """Replace a time range of an MP3 with a new clip, crossfading both joins.
+
+    The crossfade is clamped per-side to the available audio length so that
+    splicing very near the start/end of the file (or with a very short
+    replacement) degrades to a hard concat instead of failing.
+    """
+    _verify_key(x_render_key)
+    from audio_ops import AudioOpsError, splice_audio
+
+    try:
+        result = splice_audio(
+            base_audio_url=request.base_audio_url,
+            new_clip_url=request.replacement.new_clip_url,
+            replace_start=request.replacement.replace_start,
+            replace_end=request.replacement.replace_end,
+            output_key=request.output_key,
+            bucket=request.bucket,
+            crossfade_ms=request.replacement.crossfade_ms,
+        )
+    except AudioOpsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("splice_audio failed")
+        raise HTTPException(status_code=500, detail=f"splice_audio failed: {exc}")
+
+    return SpliceAudioResponse(
+        output_url=result.output_url,
+        new_duration=result.new_duration,
+        duration_delta=result.duration_delta,
+    )
 
 
 # ---------------------------------------------------------------------------

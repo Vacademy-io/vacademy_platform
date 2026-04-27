@@ -1559,6 +1559,13 @@ class VideoGenerationService:
                         exc_info=True
                     )
 
+                # After HTML stage: build per-sentence audio clips from the
+                # already-uploaded narration.mp3 + words.json so the editor's
+                # script tab has them. Best-effort; never fail the video
+                # because clip building failed — sentences[] is purely additive.
+                if stage_pipeline_name == "html":
+                    self._build_sentence_clips_safe(video_id)
+
                 logger.info(f"[VideoGenService] Stage {stage_name} completed. Uploaded {len(uploaded_files)} files.")
                 
                 yield {
@@ -1613,7 +1620,57 @@ class VideoGenerationService:
     
     # Note: _process_pipeline_outputs is now handled inline in _run_pipeline_stages
     # for real-time database updates at each stage
-    
+
+    def _build_sentence_clips_safe(self, video_id: str) -> None:
+        """Best-effort: build per-sentence audio clips and patch them into
+        the video's timeline JSON. Called once per video after the HTML
+        stage uploads finish.
+
+        Swallows all errors and logs them — sentences[] is purely additive
+        for the editor's script tab; a failure here must never break video
+        generation. Skips silently if the render server isn't configured.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        try:
+            from ..config import get_settings
+            from .render_service import RenderService
+            from .sentence_clip_service import SentenceClipService
+
+            settings = get_settings()
+            if not settings.render_server_url:
+                logger.info(
+                    "[VideoGenService] Skipping sentence-clip build for %s — render server not configured",
+                    video_id,
+                )
+                return
+
+            svc = SentenceClipService(
+                s3_service=self.s3_service,
+                render_service=RenderService(
+                    render_server_url=settings.render_server_url,
+                    render_key=settings.render_server_key,
+                ),
+                repository=self.repository,
+                video_gen_root=self.video_gen_root,
+            )
+            result = svc.build_for_video(video_id)
+            if result.ok:
+                logger.info(
+                    "[VideoGenService] Built %d sentence clip(s) for %s",
+                    result.count, video_id,
+                )
+            else:
+                logger.info(
+                    "[VideoGenService] Sentence-clip build skipped for %s: %s",
+                    video_id, result.skipped_reason,
+                )
+        except Exception as exc:
+            logger.warning(
+                "[VideoGenService] Sentence-clip build failed for %s: %s",
+                video_id, exc, exc_info=True,
+            )
+
     def get_video_status(self, video_id: str) -> Optional[Dict[str, Any]]:
         """
         Get current status of video generation.

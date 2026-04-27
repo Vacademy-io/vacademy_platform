@@ -834,6 +834,101 @@ async def update_frame_external(
 
 
 # ---------------------------------------------------------------------------
+# Sentence clips — per-sentence audio metadata for the script editor
+#
+# The video pipeline auto-builds these for every newly generated video
+# after the HTML stage. This endpoint backfills older videos on demand:
+# slice the existing global narration.mp3 along sentence boundaries
+# (no re-TTS, no voice drift) and store the clip URLs in
+# meta.sentences[] inside the timeline JSON.
+# ---------------------------------------------------------------------------
+
+class SentenceWordDto(BaseModel):
+    word: str
+    start: float
+    end: float
+
+
+class SentenceClipDto(BaseModel):
+    id: str
+    text: str
+    audio_url: str
+    start_time: float
+    duration: float
+    words: List[SentenceWordDto]
+
+
+class BuildSentencesResponse(BaseModel):
+    video_id: str
+    timeline_url: str
+    count: int
+    sentences: List[SentenceClipDto]
+    skipped_reason: Optional[str] = None
+
+
+@router.post(
+    "/sentences/build",
+    response_model=BuildSentencesResponse,
+    summary="Build per-sentence audio clips for a video (External)",
+)
+async def build_sentence_clips_external(
+    payload: dict,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> BuildSentencesResponse:
+    """
+    Slice this video's narration.mp3 into per-sentence clips and persist
+    the metadata into meta.sentences[] inside the timeline JSON. Idempotent
+    — re-running overwrites the previous sentences[] at the same S3 keys.
+
+    Used to backfill videos generated before per-sentence audio was a
+    pipeline-default. New videos populate sentences[] automatically.
+
+    Body: { "video_id": "vid_abc..." }
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    video_id = (payload or {}).get("video_id")
+    if not isinstance(video_id, str) or not video_id:
+        raise HTTPException(status_code=400, detail="video_id is required")
+
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Render server not configured. Set RENDER_SERVER_URL.",
+        )
+
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url,
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+    try:
+        result = svc.build_for_video(video_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to build sentences: {exc}")
+
+    return BuildSentencesResponse(
+        video_id=result.video_id,
+        timeline_url=result.timeline_url,
+        count=result.count,
+        sentences=[SentenceClipDto(**s) for s in result.sentences],
+        skipped_reason=result.skipped_reason,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Video Render (offloaded to dedicated Hetzner render server)
 # ---------------------------------------------------------------------------
 

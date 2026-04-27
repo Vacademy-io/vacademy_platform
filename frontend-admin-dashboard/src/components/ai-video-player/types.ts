@@ -170,6 +170,31 @@ export interface TimelineMeta {
         primary?: string;
         accent?: string;
     };
+
+    // Per-sentence audio clips. Populated post-TTS by the pipeline (or
+    // backfilled via /sentences/build) so the editor's script tab can edit
+    // a sentence and re-narrate just that clip. The global narration.mp3
+    // remains the authoritative source the player uses for playback;
+    // sentences[] is an editing-side index into that file.
+    sentences?: SentenceClip[];
+}
+
+/**
+ * One per-sentence audio clip stored under TimelineMeta.sentences[].
+ *
+ * `start_time` is the position of this clip inside the global narration.mp3
+ * (so existing time-based playback still works). `audio_url` is the
+ * stand-alone clip used by the editor for re-narration. `words` are the
+ * per-sentence word timestamps with times REBASED to the clip's start
+ * (0..duration) so they can be consumed without knowing start_time.
+ */
+export interface SentenceClip {
+    id: string;
+    text: string;
+    audio_url: string;
+    start_time: number;
+    duration: number;
+    words: WordTimestamp[];
 }
 
 /**

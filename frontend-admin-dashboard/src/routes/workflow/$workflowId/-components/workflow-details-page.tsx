@@ -1,4 +1,4 @@
-import { useSuspenseQuery, useQuery } from '@tanstack/react-query';
+import { useSuspenseQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { getWorkflowDiagramQuery, getActiveWorkflowsQuery, deleteWorkflow } from '@/services/workflow-service';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
@@ -20,6 +20,7 @@ interface WorkflowDetailsPageProps {
 }
 export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const { setNavHeading } = useNavHeadingStore();
     const [activeTab, setActiveTab] = useState('diagram');
     const [debugExecutionId, setDebugExecutionId] = useState<string | null>(null);
@@ -138,6 +139,10 @@ export function WorkflowDetailsPage({ workflowId }: WorkflowDetailsPageProps) {
                                             setIsDeleting(true);
                                             try {
                                                 await deleteWorkflow(workflowId);
+                                                await queryClient.invalidateQueries({
+                                                    queryKey: ['GET_ACTIVE_WORKFLOWS_WITH_SCHEDULES'],
+                                                    refetchType: 'all',
+                                                });
                                                 navigate({ to: '/workflow/list' });
                                             } catch (err) {
                                                 console.error('Failed to delete workflow:', err);

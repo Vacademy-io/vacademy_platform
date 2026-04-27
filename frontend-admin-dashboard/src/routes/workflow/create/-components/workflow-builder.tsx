@@ -964,10 +964,12 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                 } catch { /* proceed */ }
             }
             await createWorkflow(dto, getUserId());
-            // Invalidate the workflow list cache so the new workflow appears immediately
-            // (without this, the list page shows stale 5-min cached data)
+            // Invalidate workflow list cache so the new/edited workflow appears immediately.
+            // refetchType: 'all' forces refetch even for inactive (suspended) queries on the
+            // list page — without it, navigating back may render stale 5-min cached data.
             await queryClient.invalidateQueries({
                 queryKey: ['GET_ACTIVE_WORKFLOWS_WITH_SCHEDULES'],
+                refetchType: 'all',
             });
             navigate({ to: '/workflow/list' });
         } catch (err: unknown) {

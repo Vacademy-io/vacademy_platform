@@ -195,6 +195,12 @@ export interface DisplaySettingsData {
         showDelete: boolean;
     };
 
+    // 10c) Course list card content visibility (Explore Courses → All / Authored cards)
+    courseListCard?: {
+        // Show the number of ACTIVE enrolled students on each course card
+        showEnrolledStudentCount: boolean;
+    };
+
     // 11) Course creation configuration
     courseCreation?: CourseCreationSettings;
 

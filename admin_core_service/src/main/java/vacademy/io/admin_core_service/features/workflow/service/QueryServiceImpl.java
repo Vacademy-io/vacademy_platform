@@ -1497,6 +1497,16 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     String fieldName = fieldIdToName.getOrDefault(cfv.getCustomFieldId(), cfv.getCustomFieldId());
                     lead.put(fieldName, cfv.getValue());
                 }
+
+                // Promote customField values to standard lowercase keys so SEND_EMAIL's
+                // extractEmailAddress() — which looks for lowercase keys like "email",
+                // "mobileNumber", etc. — finds them even when the audience form named
+                // the field "Email", "Phone Number", etc. (case + spaces). The
+                // parent_email column is often null for forms that don't separate
+                // parent vs respondent contact info, so without this promotion the
+                // lead has no recipient and gets silently skipped.
+                promoteCustomFieldsToStandardKeys(lead);
+
                 leads.add(lead);
             }
 
@@ -1939,6 +1949,68 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             log.error("Error in fetchBatchAttendanceReport", e);
             return Map.of("error", e.getMessage());
         }
+    }
+
+    /**
+     * If the lead's standard contact keys (email, mobileNumber, parentName/fullName)
+     * are null/blank, scan the customField values and promote anything that looks
+     * like an email / phone / name into the standard key. Audience forms commonly
+     * use customField names like "Email", "Phone Number", "Full Name" — those
+     * survive into the lead map but the SEND_EMAIL handler only looks at
+     * lowercase standard keys, so without this promotion the lead is silently
+     * dropped at recipient extraction.
+     */
+    private void promoteCustomFieldsToStandardKeys(Map<String, Object> lead) {
+        // email — look for any string value containing "@"
+        if (isBlankString(lead.get("email"))) {
+            for (Map.Entry<String, Object> e : lead.entrySet()) {
+                if (e.getValue() instanceof String) {
+                    String val = ((String) e.getValue()).trim();
+                    int at = val.indexOf('@');
+                    if (at > 0 && at < val.length() - 1 && !val.contains(" ")) {
+                        lead.put("email", val);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // mobileNumber — look for keys containing "phone" or "mobile" (case-insensitive)
+        if (isBlankString(lead.get("mobileNumber"))) {
+            for (Map.Entry<String, Object> e : lead.entrySet()) {
+                String key = e.getKey() == null ? "" : e.getKey().toLowerCase();
+                if ((key.contains("phone") || key.contains("mobile")) && e.getValue() instanceof String) {
+                    String val = ((String) e.getValue()).trim();
+                    if (!val.isEmpty()) {
+                        lead.put("mobileNumber", val);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // parentName / fullName — look for keys containing "name" (case-insensitive)
+        if (isBlankString(lead.get("parentName"))) {
+            for (Map.Entry<String, Object> e : lead.entrySet()) {
+                String key = e.getKey() == null ? "" : e.getKey().toLowerCase();
+                if (key.contains("name") && e.getValue() instanceof String) {
+                    String val = ((String) e.getValue()).trim();
+                    if (!val.isEmpty()) {
+                        lead.put("parentName", val);
+                        if (isBlankString(lead.get("fullName"))) {
+                            lead.put("fullName", val);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    private boolean isBlankString(Object o) {
+        if (o == null) return true;
+        if (o instanceof String) return ((String) o).trim().isEmpty();
+        return false;
     }
 }
 

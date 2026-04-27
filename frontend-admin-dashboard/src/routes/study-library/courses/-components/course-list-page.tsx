@@ -753,7 +753,7 @@ const CourseListPage = ({
                                             {showEnrolledStudentCount && (
                                                 <span className="mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
                                                     <UsersThree className="size-4" />
-                                                    {enrolledStudentCount} Total Enrolled{' '}
+                                                    {enrolledStudentCount} Enrolled{' '}
                                                     {enrolledStudentCount === 1
                                                         ? getTerminology(
                                                               RoleTerms.Learner,
@@ -1004,7 +1004,7 @@ const CourseListPage = ({
                                             {showEnrolledStudentCount && (
                                                 <span className="mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
                                                     <UsersThree className="size-4" />
-                                                    {course.enrolled_student_count ?? 0} Total Enrolled{' '}
+                                                    {course.enrolled_student_count ?? 0} Enrolled{' '}
                                                     {(course.enrolled_student_count ?? 0) === 1
                                                         ? getTerminology(
                                                               RoleTerms.Learner,

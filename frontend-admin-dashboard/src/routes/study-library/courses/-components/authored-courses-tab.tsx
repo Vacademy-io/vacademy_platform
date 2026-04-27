@@ -654,7 +654,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                     {showEnrolledStudentCount && (
                                         <span className="flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
                                             <UsersThree className="size-4" />
-                                            {course.enrolledStudentCount} Total Enrolled{' '}
+                                            {course.enrolledStudentCount} Enrolled{' '}
                                             {course.enrolledStudentCount === 1
                                                 ? getTerminology(
                                                       RoleTerms.Learner,

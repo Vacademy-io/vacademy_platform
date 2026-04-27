@@ -88,9 +88,9 @@ public class StudentListManager {
         // Handle user-selected invite filter (works for ALL users, not just faculty)
         applyUserInviteFilter(filter);
 
-        // Skip faculty filtering for users with ADMIN role — they should see all students.
-        // Sub-org admins (no ADMIN role, but have FSPSSM) → filtering applies, scoped to their access.
-        if (user == null || hasRole(user, "ADMIN") || !hasFacultyAssignedPermission(user)) {
+        // Skip faculty filtering for users with ADMIN/TEACHER role — they should see all students.
+        // Sub-org admins (no ADMIN/TEACHER role, but have FSPSSM) → filtering applies, scoped to their access.
+        if (user == null || hasRole(user, "ADMIN", "TEACHER") || !hasFacultyAssignedPermission(user)) {
             return;
         }
 

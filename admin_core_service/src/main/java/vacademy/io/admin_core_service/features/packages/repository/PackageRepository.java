@@ -828,7 +828,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 (SELECT COUNT(*)
                  FROM student_session_institute_group_mapping ssigm
                  WHERE ssigm.package_session_id = ps.id
-                   AND ssigm.status = 'ACTIVE') AS enrolledStudentCount
+                   AND ssigm.status IN ('ACTIVE', 'INACTIVE')) AS enrolledStudentCount
 
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
@@ -1055,7 +1055,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 (SELECT COUNT(*)
                  FROM student_session_institute_group_mapping ssigm
                  WHERE ssigm.package_session_id = ps.id
-                   AND ssigm.status = 'ACTIVE') AS enrolledStudentCount
+                   AND ssigm.status IN ('ACTIVE', 'INACTIVE')) AS enrolledStudentCount
 
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
@@ -1148,7 +1148,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     (SELECT COUNT(*)
                      FROM student_session_institute_group_mapping ssigm
                      WHERE ssigm.package_session_id = ps.id
-                       AND ssigm.status = 'ACTIVE') AS enrolledStudentCount
+                       AND ssigm.status IN ('ACTIVE', 'INACTIVE')) AS enrolledStudentCount
 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
@@ -2844,7 +2844,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     COUNT(*) as enrolled_student_count
                 FROM student_session_institute_group_mapping ssigm
                 JOIN package_session ps ON ps.id = ssigm.package_session_id
-                WHERE ssigm.status = 'ACTIVE'
+                WHERE ssigm.status IN ('ACTIVE', 'INACTIVE')
                 AND ps.status != 'DELETED'
                 AND ps.status != 'INVITED'
                 GROUP BY ps.package_id

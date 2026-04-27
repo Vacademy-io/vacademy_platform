@@ -71,8 +71,8 @@ public class TeacherCourseDetailDTO {
     private PackageSessionInfo packageSessionInfo;
 
     /**
-     * Count of ACTIVE student enrollments across all (non-deleted) sessions
-     * of this package. Excludes DELETED, INACTIVE, and TERMINATED mappings.
+     * Total enrolled students (ACTIVE + INACTIVE) across all non-deleted
+     * sessions of this package. Excludes DELETED and TERMINATED mappings.
      */
     private Long enrolledStudentCount;
     

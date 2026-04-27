@@ -300,6 +300,12 @@ export const CourseStructureDetails = ({
     const readOnly = Boolean(isReadOnly);
     // Role Display Settings (course details tabs)
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
+    // When readOnly + this flag is true, slide/chapter clicks navigate into
+    // the read-only NonAdminSlidesView so the user can preview content.
+    // Defaults to true so behavior is correct before settings finish loading.
+    const allowReadOnlyNavigation =
+        roleDisplay?.coursePage?.allowViewSlidesInReadOnly !== false;
+    const blockReadOnlyClick = readOnly && !allowReadOnlyNavigation;
     useEffect(() => {
         try {
             // Use getActiveRoleDisplaySettingsKey which handles ADMIN, TEACHER, and custom roles (faculty)
@@ -1102,7 +1108,7 @@ export const CourseStructureDetails = ({
     };
 
     const handleChapterNavigation = (subjectId: string, moduleId: string, chapterId: string) => {
-        if (readOnly) return;
+        if (blockReadOnlyClick) return;
         const navigationParams = {
             courseId: router.state.location.search.courseId ?? '',
             levelId: selectedLevel,
@@ -1125,7 +1131,7 @@ export const CourseStructureDetails = ({
         chapterId: string,
         slideId: string
     ) => {
-        if (readOnly) return;
+        if (blockReadOnlyClick) return;
         const slide = chapterSlidesMap[chapterId]?.find((s) => s.id === slideId);
         if (slide) {
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -1168,7 +1174,7 @@ export const CourseStructureDetails = ({
 
     // Navigation handler for direct slides (2-depth courses)
     const handleDirectSlideNavigation = (slideId?: string) => {
-        if (readOnly) return;
+        if (blockReadOnlyClick) return;
         const slide = slideId ? directSlides.find((s) => s.id === slideId) : null;
         if (slide) {
             setActiveItem(slide);
@@ -1336,14 +1342,14 @@ export const CourseStructureDetails = ({
                                                 <Collapsible
                                                     open={isSubjectOpen}
                                                     onOpenChange={
-                                                        readOnly
+                                                        blockReadOnlyClick
                                                             ? undefined
                                                             : () => toggleSubject(subject.id)
                                                     }
                                                     className="group"
                                                 >
                                                     <CollapsibleTrigger
-                                                        className={`group/subject-trigger flex w-full items-center rounded-md p-2 text-left text-sm font-semibold text-gray-800 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${readOnly ? 'pointer-events-none' : ''}`}
+                                                        className={`group/subject-trigger flex w-full items-center rounded-md p-2 text-left text-sm font-semibold text-gray-800 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${blockReadOnlyClick ? 'pointer-events-none' : ''}`}
                                                     >
                                                         <div className="flex flex-1 items-center gap-2.5">
                                                             {isSubjectOpen ? (
@@ -1476,7 +1482,7 @@ export const CourseStructureDetails = ({
                                                                                         isModuleOpen
                                                                                     }
                                                                                     onOpenChange={
-                                                                                        readOnly
+                                                                                        blockReadOnlyClick
                                                                                             ? undefined
                                                                                             : () =>
                                                                                                 toggleModule(
@@ -1488,7 +1494,7 @@ export const CourseStructureDetails = ({
                                                                                     className="group/module"
                                                                                 >
                                                                                     <CollapsibleTrigger
-                                                                                        className={`group/module-trigger flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${readOnly ? 'pointer-events-none' : ''}`}
+                                                                                        className={`group/module-trigger flex w-full items-center rounded-md px-2 py-1.5 text-left text-sm font-medium text-gray-700 transition-colors duration-150 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 ${blockReadOnlyClick ? 'pointer-events-none' : ''}`}
                                                                                     >
                                                                                         <div className="flex flex-1 items-center gap-2.5">
                                                                                             {isModuleOpen ? (
@@ -1962,7 +1968,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
                                                                                                                                                 onClick={() => {
                                                                                                                                                     if (
-                                                                                                                                                        readOnly
+                                                                                                                                                        blockReadOnlyClick
                                                                                                                                                     )
                                                                                                                                                         return;
                                                                                                                                                     handleSlideNavigation(
@@ -2054,7 +2060,7 @@ export const CourseStructureDetails = ({
                                                 <Collapsible
                                                     open={isSubjectOpen}
                                                     onOpenChange={
-                                                        readOnly
+                                                        blockReadOnlyClick
                                                             ? undefined
                                                             : () => toggleSubject(subject.id)
                                                     }
@@ -2594,7 +2600,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
                                                                                                                                                 onClick={() => {
                                                                                                                                                     if (
-                                                                                                                                                        readOnly
+                                                                                                                                                        blockReadOnlyClick
                                                                                                                                                     )
                                                                                                                                                         return;
                                                                                                                                                     handleSlideNavigation(
@@ -2686,7 +2692,7 @@ export const CourseStructureDetails = ({
                                                 <Collapsible
                                                     open={isSubjectOpen}
                                                     onOpenChange={
-                                                        readOnly
+                                                        blockReadOnlyClick
                                                             ? undefined
                                                             : () => toggleSubject(subject.id)
                                                     }
@@ -3099,7 +3105,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
                                                                                                                                                 onClick={() => {
                                                                                                                                                     if (
-                                                                                                                                                        readOnly
+                                                                                                                                                        blockReadOnlyClick
                                                                                                                                                     )
                                                                                                                                                         return;
                                                                                                                                                     handleSlideNavigation(
@@ -3713,7 +3719,7 @@ export const CourseStructureDetails = ({
                                     >
                                         <div
                                             onClick={() => {
-                                                if (readOnly) return;
+                                                if (blockReadOnlyClick) return;
                                                 // Navigate to chapter slides
                                                 handleChapterNavigation(
                                                     selectedSubjectId,
@@ -3863,7 +3869,7 @@ export const CourseStructureDetails = ({
                                     >
                                         <div
                                             onClick={() => {
-                                                if (readOnly) return;
+                                                if (blockReadOnlyClick) return;
                                                 // Navigate to chapter slides
                                                 handleChapterNavigation(
                                                     subjects[0]?.id || '',
@@ -4009,7 +4015,7 @@ export const CourseStructureDetails = ({
                                         >
                                             <div
                                                 onClick={() => {
-                                                    if (readOnly) return;
+                                                    if (blockReadOnlyClick) return;
                                                     // Navigate to chapter slides
                                                     handleChapterNavigation(
                                                         subjects[0]?.id || '',

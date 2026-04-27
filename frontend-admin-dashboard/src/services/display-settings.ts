@@ -309,6 +309,7 @@ function mergeDisplayWithDefaults(
         viewCourseConfiguration: true,
         viewCourseOverviewItem: true,
         viewContentNumbering: true,
+        allowViewSlidesInReadOnly: true,
     };
     merged.coursePage = {
         viewInviteLinks: incoming?.coursePage?.viewInviteLinks ?? defCoursePage.viewInviteLinks,
@@ -320,6 +321,10 @@ function mergeDisplayWithDefaults(
             incoming?.coursePage?.viewCourseOverviewItem ?? defCoursePage.viewCourseOverviewItem,
         viewContentNumbering:
             incoming?.coursePage?.viewContentNumbering ?? defCoursePage.viewContentNumbering,
+        allowViewSlidesInReadOnly:
+            incoming?.coursePage?.allowViewSlidesInReadOnly ??
+            defCoursePage.allowViewSlidesInReadOnly ??
+            true,
     };
 
     // Redirect
@@ -334,6 +339,17 @@ function mergeDisplayWithDefaults(
     merged.slideView = {
         showCopyTo: incoming?.slideView?.showCopyTo ?? defSlideView.showCopyTo,
         showMoveTo: incoming?.slideView?.showMoveTo ?? defSlideView.showMoveTo,
+    };
+
+    // Authored Courses Card Settings
+    const defAuthoredCard = defaults.authoredCoursesCard || {
+        showCopyToEdit: true,
+        showDelete: true,
+    };
+    merged.authoredCoursesCard = {
+        showCopyToEdit:
+            incoming?.authoredCoursesCard?.showCopyToEdit ?? defAuthoredCard.showCopyToEdit,
+        showDelete: incoming?.authoredCoursesCard?.showDelete ?? defAuthoredCard.showDelete,
     };
 
     const defCourseCreation = defaults.courseCreation || {

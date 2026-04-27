@@ -1086,6 +1086,21 @@ public class SendEmailNodeHandler implements NodeHandler {
                     }
                 }
             }
+
+            // Defensive last-resort fallback: scan ALL values for an email-shaped
+            // string. Handles audience customFields named "Email", "Email Address",
+            // "Your Email", etc. — anything that wasn't promoted at the data layer.
+            // Validates: contains "@" with text on both sides and no whitespace.
+            for (Map.Entry<String, Object> entry : userDetailsMap.entrySet()) {
+                Object value = entry.getValue();
+                if (value instanceof String) {
+                    String s = ((String) value).trim();
+                    int at = s.indexOf('@');
+                    if (at > 0 && at < s.length() - 1 && !s.contains(" ")) {
+                        return s;
+                    }
+                }
+            }
         }
 
         return null; // No valid email found

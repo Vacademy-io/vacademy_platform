@@ -10,8 +10,8 @@ import {
   type FullAttendanceReportStudent,
 } from "@/services/attendance/getFullAttendanceReport";
 import { convertHtmlToPdf } from "@/utils/html-to-pdf";
-import { getPublicUrl } from "@/services/upload_file";
 import { getInstituteDetails } from "@/services/signup-api";
+import useSidebarStore from "@/components/common/layout-container/sidebar/useSidebar";
 
 interface InstituteBranding {
   name: string;
@@ -22,20 +22,25 @@ interface InstituteBranding {
 /**
  * Resolve institute branding (name, logo URL, address).
  *
- * Strategy:
- *  1. Try Capacitor Preferences (set at login — fastest, sync-ish)
- *  2. Try localStorage as a fallback (sync, populated alongside Preferences)
- *  3. Fall back to the public institute-details API (always works if instituteId is known)
+ * Logo + name come straight from the sidebar's Zustand store — the sidebar
+ * already resolved them via getPublicUrl() at app boot, no point re-calling.
+ * Address still loads from Preferences / localStorage / API since the sidebar
+ * doesn't carry it.
  *
- * Why the multi-tier fallback: on first load right after a deep-link login,
- * Preferences may not yet have InstituteDetails (race vs the redirect), causing
- * the branded letterhead to render blank until a manual page refresh.
+ * The provided sidebarLogoUrl is converted to a base64 data URL before render
+ * so the <img crossOrigin="anonymous"> tag (needed for PDF generation via
+ * html2canvas) doesn't collide with the non-CORS cached copy the sidebar
+ * itself created. Without this, the report page would silently show a blank
+ * logo until the user disabled cache.
  */
-async function loadInstituteBranding(): Promise<InstituteBranding | null> {
+async function loadInstituteBranding(
+  sidebarLogoUrl: string,
+  sidebarName: string
+): Promise<InstituteBranding | null> {
   let details: Record<string, unknown> | null = null;
   let instituteId: string | undefined;
 
-  // 1. Capacitor Preferences
+  // 1. Capacitor Preferences (for address)
   try {
     const stored = await Preferences.get({ key: "InstituteDetails" });
     if (stored.value) details = JSON.parse(stored.value) as Record<string, unknown>;
@@ -75,39 +80,49 @@ async function loadInstituteBranding(): Promise<InstituteBranding | null> {
     }
   }
 
-  if (!details) return null;
-
+  // Name: prefer sidebar's value, fall back to details
   const name =
-    (details.institute_name as string) ||
-    (details.name as string) ||
-    (details.instituteName as string) ||
+    sidebarName ||
+    (details?.institute_name as string) ||
+    (details?.name as string) ||
+    (details?.instituteName as string) ||
     "";
-  const logoFileId =
-    (details.institute_logo_file_id as string) ||
-    (details.logo_file_id as string) ||
-    (details.logoFileId as string) ||
-    "";
-  const addressLine =
-    (details.address as string) ||
-    (details.address_line as string) ||
-    "";
-  const city = (details.city as string) || "";
-  const state = (details.state as string) || "";
-  const country = (details.country as string) || "";
 
-  const rawLogoUrl = logoFileId ? await getPublicUrl(logoFileId).catch(() => "") : "";
-  // Append a stable cache-bust param. The same logo file is also rendered elsewhere
-  // in the app WITHOUT crossOrigin (e.g., dashboard header). When the browser has
-  // already cached that non-CORS response, this <img crossOrigin="anonymous"> tag
-  // tries to reuse it, fails the CORS check, and silently shows nothing. Hard
-  // refresh / disabling cache works because it forces a fresh CORS request.
-  // Using a different URL (?cors=1) makes the browser store a separate
-  // CORS-enabled cache entry — fetched once, reused forever, no race on first
-  // visit. S3 ignores unknown query params so the file resolves identically.
-  const logoUrl = rawLogoUrl
-    ? `${rawLogoUrl}${rawLogoUrl.includes("?") ? "&" : "?"}cors=1`
-    : "";
+  // Address: only available from details (sidebar doesn't carry it)
+  const addressLine =
+    (details?.address as string) ||
+    (details?.address_line as string) ||
+    "";
+  const city = (details?.city as string) || "";
+  const state = (details?.state as string) || "";
+  const country = (details?.country as string) || "";
+
+  // Convert the sidebar's logo URL into a base64 data URL. This sidesteps the
+  // CORS-vs-non-CORS browser-cache mismatch: the sidebar caches the URL without
+  // CORS headers, and reusing it here with crossOrigin="anonymous" would fail
+  // the CORS check and render nothing.
+  let logoUrl = "";
+  if (sidebarLogoUrl) {
+    try {
+      const resp = await fetch(sidebarLogoUrl, { cache: "no-store" });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        logoUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+      }
+    } catch {
+      // Network or CORS failure — fall back to the raw URL so at least
+      // something renders; PDF may not include the logo in this case.
+      logoUrl = sidebarLogoUrl;
+    }
+  }
+
   const addressParts = [addressLine, city, state, country].filter(Boolean);
+  if (!name && !logoUrl && addressParts.length === 0) return null;
   return { name, logoUrl, address: addressParts.join(", ") };
 }
 
@@ -142,20 +157,23 @@ export default function AttendanceReportPage() {
     staleTime: 60 * 1000,
   });
 
-  // Fetch institute branding (logo + address) lazily — used for the page header & PDF.
-  // Loaded from Preferences → localStorage → public API fallback.
-  // Polls every 2s until branding (with at least a name) is available so first-load
-  // race conditions resolve themselves without manual refresh.
+  // Reuse the sidebar's already-resolved logo URL + name. The sidebar populates
+  // these into its Zustand store at app boot via getPublicUrl(), so this page
+  // doesn't need to redo that work. Including them in the queryKey makes the
+  // query refetch automatically when the sidebar finishes loading — replaces
+  // the 2-second polling we used to need.
+  const sidebarLogoUrl = useSidebarStore((s) => s.instituteLogoFileUrl);
+  const sidebarInstituteName = useSidebarStore((s) => s.instituteName);
+
   const { data: branding } = useQuery({
-    queryKey: ["institute-branding-for-report"],
-    queryFn: loadInstituteBranding,
-    staleTime: 10 * 60 * 1000, // 10 min — branding doesn't change often
-    refetchInterval: (query) => {
-      // Stop polling once we have at least a name (logo can lag behind)
-      const d = query.state.data as InstituteBranding | null | undefined;
-      return d && d.name ? false : 2000;
-    },
-    refetchIntervalInBackground: false,
+    // v3 key — invalidates any stale cache from the previous URL-based loader.
+    queryKey: [
+      "institute-branding-for-report-v3",
+      sidebarLogoUrl,
+      sidebarInstituteName,
+    ],
+    queryFn: () => loadInstituteBranding(sidebarLogoUrl, sidebarInstituteName),
+    staleTime: 10 * 60 * 1000,
   });
 
   const student: FullAttendanceReportStudent | undefined = data?.students?.[0];

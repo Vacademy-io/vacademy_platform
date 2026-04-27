@@ -10,7 +10,15 @@ import {
 } from '@/components/ui/select';
 import { StarRatingComponent } from '@/components/common/star-rating-component';
 import { MyButton } from '@/components/design-system/button';
-import { TrashSimple, Funnel, X, Package, ListBullets, BookOpen } from '@phosphor-icons/react';
+import {
+    TrashSimple,
+    Funnel,
+    X,
+    Package,
+    ListBullets,
+    BookOpen,
+    UsersThree,
+} from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { MyPagination } from '@/components/design-system/pagination';
 import {
@@ -75,6 +83,8 @@ interface CourseListPageProps {
     showDeleteButton?: boolean;
     /** When true, hide the filters section (e.g. for faculty users with restricted access) */
     hideFilters?: boolean;
+    /** When true, render the ACTIVE enrolled-student count on each course card. */
+    showEnrolledStudentCount?: boolean;
 }
 
 const CourseListPage = ({
@@ -104,6 +114,7 @@ const CourseListPage = ({
     deletingCourseId,
     showDeleteButton = true,
     hideFilters = false,
+    showEnrolledStudentCount = false,
 }: CourseListPageProps) => {
     const navigate = useNavigate();
     const isMobile = useIsMobile();
@@ -548,6 +559,11 @@ const CourseListPage = ({
                                             .filter((n): n is string => !isDefaultName(n))
                                     ),
                                 ];
+                                // Sum ACTIVE enrolled students across all sessions of the package
+                                const enrolledStudentCount = courseRows.reduce(
+                                    (sum, r) => sum + (r.enrolled_student_count ?? 0),
+                                    0
+                                );
 
                                 return (
                                     <div
@@ -734,6 +750,15 @@ const CourseListPage = ({
                                                     </>
                                                 )}
                                             </span>
+                                            {showEnrolledStudentCount && (
+                                                <span className="mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
+                                                    <UsersThree className="size-4" />
+                                                    {enrolledStudentCount}{' '}
+                                                    {enrolledStudentCount === 1
+                                                        ? 'Enrolled Student'
+                                                        : 'Enrolled Students'}
+                                                </span>
+                                            )}
                                             <div className="mt-auto flex gap-2 pt-3">
                                                 <MyButton
                                                     className="flex-1 text-sm"
@@ -970,6 +995,15 @@ const CourseListPage = ({
                                                     </>
                                                 )}
                                             </span>
+                                            {showEnrolledStudentCount && (
+                                                <span className="mt-2 flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
+                                                    <UsersThree className="size-4" />
+                                                    {course.enrolled_student_count ?? 0}{' '}
+                                                    {(course.enrolled_student_count ?? 0) === 1
+                                                        ? 'Enrolled Student'
+                                                        : 'Enrolled Students'}
+                                                </span>
+                                            )}
                                             <div className="mt-auto flex gap-2 pt-3">
                                                 <MyButton
                                                     className="flex-1 text-sm"

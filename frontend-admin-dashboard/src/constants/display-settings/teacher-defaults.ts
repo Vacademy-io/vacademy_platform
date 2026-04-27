@@ -119,6 +119,9 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         showCopyToEdit: false,
         showDelete: false,
     },
+    courseListCard: {
+        showEnrolledStudentCount: false,
+    },
     courseCreation: {
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,

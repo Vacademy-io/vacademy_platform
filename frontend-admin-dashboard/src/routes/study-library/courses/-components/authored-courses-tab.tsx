@@ -14,6 +14,7 @@ import {
     ClockCounterClockwise,
     PaperPlaneRight,
     BookOpen,
+    UsersThree,
 } from '@phosphor-icons/react';
 import { convertCapitalToTitleCase } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -108,6 +109,8 @@ interface DetailedCourseResponse {
     packageSessionInfo: PackageSessionInfo;
     facultyAssigned: boolean;
     creator: boolean;
+    /** Count of ACTIVE student enrollments across all sessions of this package. */
+    enrolledStudentCount?: number | null;
 }
 
 interface PaginatedCoursesResponse {
@@ -142,6 +145,7 @@ interface DisplayCourse {
     levelInfo: LevelInfo;
     tags: string[];
     isCoursePublishedToCatalaouge: boolean | null;
+    enrolledStudentCount: number;
 }
 
 const MAX_VISIBLE_TAGS = 5;
@@ -205,6 +209,8 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
     const cardSettings = roleDisplay?.authoredCoursesCard;
     const showCopyToEdit = cardSettings ? cardSettings.showCopyToEdit !== false : Boolean(isAdmin);
     const showDelete = cardSettings ? cardSettings.showDelete !== false : Boolean(isAdmin);
+    const showEnrolledStudentCount =
+        roleDisplay?.courseListCard?.showEnrolledStudentCount === true;
 
     // Fetch authored courses
     const {
@@ -337,6 +343,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                 levelInfo: response.levelInfo,
                 tags: parsedTags,
                 isCoursePublishedToCatalaouge: course.isCoursePublishedToCatalaouge,
+                enrolledStudentCount: response.enrolledStudentCount ?? 0,
             };
         });
 
@@ -640,6 +647,17 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                             </>
                                         )}
                                     </span>
+
+                                    {/* Enrolled student count */}
+                                    {showEnrolledStudentCount && (
+                                        <span className="flex items-center gap-1 rounded py-1 text-xs font-medium text-gray-500">
+                                            <UsersThree className="size-4" />
+                                            {course.enrolledStudentCount}{' '}
+                                            {course.enrolledStudentCount === 1
+                                                ? 'Enrolled Student'
+                                                : 'Enrolled Students'}
+                                        </span>
+                                    )}
 
                                     {/* Updated Date */}
                                     <span className="text-xs text-gray-500">

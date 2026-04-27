@@ -61,8 +61,8 @@ export interface FeedbackQuestionConfig {
     label: string;
     enabled: boolean;
     mandatory: boolean;
-    max_stars?: number;
-    allow_half?: boolean;
+    max_stars?: number | null;
+    allow_half?: boolean | null;
 }
 
 export interface FeedbackConfig {

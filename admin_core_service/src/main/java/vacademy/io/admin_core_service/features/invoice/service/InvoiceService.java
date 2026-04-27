@@ -1889,7 +1889,7 @@ public class InvoiceService {
 
             // Send email
             try {
-                sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId);
+                sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId, pdfBytes);
             } catch (Exception e) {
                 log.error(
                         "Failed to send invoice email for multi-package invoice: {}. Invoice generation will continue.",
@@ -1983,7 +1983,7 @@ public class InvoiceService {
 
             // Send email (async)
             try {
-                sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId);
+                sendInvoiceEmail(invoice, invoiceData.getUser(), instituteId, pdfBytes);
             } catch (Exception e) {
                 log.error("Failed to send invoice email for invoice: {}. Invoice generation will continue.",
                         invoiceNumber, e);

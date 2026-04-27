@@ -49,17 +49,17 @@ interface PackageEntity {
     id: string;
     packageName: string;
     updatedAt: string;
-    thumbnail_file_id: string | null;
+    thumbnailFileId: string | null;
     status: 'DRAFT' | 'IN_REVIEW' | 'ACTIVE';
     createdAt: string;
     isCoursePublishedToCatalaouge: boolean | null;
-    course_preview_image_media_id: string | null;
-    course_banner_media_id: string | null;
+    coursePreviewImageMediaId: string | null;
+    courseBannerMediaId: string | null;
     courseMediaId: string | null;
     whyLearn: string | null;
     whoShouldLearn: string | null;
     aboutTheCourse: string | null;
-    tags: string[] | null;
+    tags: string | null;
     courseDepth: number | null;
     courseHtmlDescription: string | null;
     originalCourseId: string | null;
@@ -132,12 +132,12 @@ interface DisplayCourse {
     facultyAssignmentCount: number;
     creator: boolean;
     facultyAssigned: boolean;
-    thumbnail_file_id: string | null;
-    course_preview_image_media_id: string | null;
-    course_banner_media_id: string | null;
+    thumbnailFileId: string | null;
+    coursePreviewImageMediaId: string | null;
+    courseBannerMediaId: string | null;
     sessionInfo: SessionInfo;
     levelInfo: LevelInfo;
-    tags: string[] | null;
+    tags: string[];
     isCoursePublishedToCatalaouge: boolean | null;
 }
 
@@ -280,6 +280,19 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
             // Create unique ID for each entry
             const uniqueId = `${response.courseId}_${response.sessionInfo.sessionId}_${response.levelInfo.levelId}`;
 
+            // Backend currently sends `tags` as a comma-separated string,
+            // but defend against an array shape in case the API changes
+            // or the cache holds a previously-typed payload.
+            const rawTags: unknown = (course as { tags?: unknown }).tags;
+            const parsedTags: string[] = Array.isArray(rawTags)
+                ? (rawTags as string[])
+                : typeof rawTags === 'string'
+                  ? rawTags
+                        .split(',')
+                        .map((t) => t.trim())
+                        .filter(Boolean)
+                  : [];
+
             return {
                 id: uniqueId,
                 courseId: response.courseId,
@@ -294,12 +307,12 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                 facultyAssignmentCount: response.facultyAssignmentCount,
                 creator: response.creator,
                 facultyAssigned: response.facultyAssigned,
-                thumbnail_file_id: course.thumbnail_file_id,
-                course_preview_image_media_id: course.course_preview_image_media_id,
-                course_banner_media_id: course.course_banner_media_id,
+                thumbnailFileId: course.thumbnailFileId,
+                coursePreviewImageMediaId: course.coursePreviewImageMediaId,
+                courseBannerMediaId: course.courseBannerMediaId,
                 sessionInfo: response.sessionInfo,
                 levelInfo: response.levelInfo,
-                tags: course.tags,
+                tags: parsedTags,
                 isCoursePublishedToCatalaouge: course.isCoursePublishedToCatalaouge,
             };
         });
@@ -399,11 +412,11 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
         const [imageUrl, setImageUrl] = useState<string>('');
         const [isLoading, setIsLoading] = useState(false);
 
-        // Priority: thumbnail_file_id > course_preview_image_media_id > course_banner_media_id
+        // Priority: course preview image > banner > thumbnail (matches All Courses behavior)
         const mediaId =
-            course.thumbnail_file_id ||
-            course.course_preview_image_media_id ||
-            course.course_banner_media_id;
+            course.coursePreviewImageMediaId ||
+            course.courseBannerMediaId ||
+            course.thumbnailFileId;
 
         useEffect(() => {
             if (mediaId) {
@@ -497,7 +510,19 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
             ) : (
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
                     {filteredCourses.map((course) => {
-                        const tags = course.tags || [];
+                        // Defensive: backend returns `tags` as a comma-separated
+                        // string, and a stale cache or older bundle may still
+                        // surface it that way. Normalise to an array so
+                        // `.slice().map()` never blows up.
+                        const rawTags: unknown = course.tags;
+                        const tags: string[] = Array.isArray(rawTags)
+                            ? (rawTags as string[])
+                            : typeof rawTags === 'string'
+                              ? rawTags
+                                    .split(',')
+                                    .map((t) => t.trim())
+                                    .filter(Boolean)
+                              : [];
                         const levelName = !isDefaultName(course.levelInfo.levelName)
                             ? course.levelInfo.levelName
                             : null;

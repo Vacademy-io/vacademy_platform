@@ -11,6 +11,7 @@ import {
 } from "@/services/attendance/getFullAttendanceReport";
 import { convertHtmlToPdf } from "@/utils/html-to-pdf";
 import { getPublicUrl } from "@/services/upload_file";
+import { getInstituteDetails } from "@/services/signup-api";
 
 interface InstituteBranding {
   name: string;
@@ -19,29 +20,84 @@ interface InstituteBranding {
 }
 
 /**
- * Read InstituteDetails from Preferences (already cached at app boot) and
- * resolve the logo file ID to a public URL. Returns null if not available.
+ * Resolve institute branding (name, logo URL, address).
+ *
+ * Strategy:
+ *  1. Try Capacitor Preferences (set at login — fastest, sync-ish)
+ *  2. Try localStorage as a fallback (sync, populated alongside Preferences)
+ *  3. Fall back to the public institute-details API (always works if instituteId is known)
+ *
+ * Why the multi-tier fallback: on first load right after a deep-link login,
+ * Preferences may not yet have InstituteDetails (race vs the redirect), causing
+ * the branded letterhead to render blank until a manual page refresh.
  */
 async function loadInstituteBranding(): Promise<InstituteBranding | null> {
+  let details: Record<string, unknown> | null = null;
+  let instituteId: string | undefined;
+
+  // 1. Capacitor Preferences
   try {
     const stored = await Preferences.get({ key: "InstituteDetails" });
-    if (!stored.value) return null;
-    const details = JSON.parse(stored.value) as Record<string, unknown>;
-
-    const name = (details.institute_name as string) || "";
-    const logoFileId = (details.institute_logo_file_id as string) || "";
-    const addressLine = (details.address as string) || "";
-    const city = (details.city as string) || "";
-    const state = (details.state as string) || "";
-    const country = (details.country as string) || "";
-
-    const logoUrl = logoFileId ? await getPublicUrl(logoFileId).catch(() => "") : "";
-    const addressParts = [addressLine, city, state, country].filter(Boolean);
-    return { name, logoUrl, address: addressParts.join(", ") };
+    if (stored.value) details = JSON.parse(stored.value) as Record<string, unknown>;
   } catch (e) {
-    console.warn("[Report] Could not load institute branding:", e);
-    return null;
+    console.warn("[Report] Could not read InstituteDetails from Preferences:", e);
   }
+
+  // 2. localStorage fallback (browser context)
+  if (!details) {
+    try {
+      const raw = typeof window !== "undefined" ? localStorage.getItem("InstituteDetails") : null;
+      if (raw) details = JSON.parse(raw) as Record<string, unknown>;
+    } catch (e) {
+      console.warn("[Report] Could not read InstituteDetails from localStorage:", e);
+    }
+  }
+
+  // 3. API fallback — needs instituteId from Preferences/localStorage or details
+  instituteId =
+    (details?.id as string | undefined) ??
+    (details?.institute_id as string | undefined);
+  if (!instituteId) {
+    try {
+      const idPref = await Preferences.get({ key: "instituteId" });
+      instituteId = idPref.value || undefined;
+    } catch { /* ignore */ }
+    if (!instituteId && typeof window !== "undefined") {
+      instituteId = localStorage.getItem("instituteId") || undefined;
+    }
+  }
+  if (!details && instituteId) {
+    try {
+      const apiResp = await getInstituteDetails(instituteId);
+      details = apiResp as unknown as Record<string, unknown>;
+    } catch (e) {
+      console.warn("[Report] Could not fetch institute details from API:", e);
+    }
+  }
+
+  if (!details) return null;
+
+  const name =
+    (details.institute_name as string) ||
+    (details.name as string) ||
+    (details.instituteName as string) ||
+    "";
+  const logoFileId =
+    (details.institute_logo_file_id as string) ||
+    (details.logo_file_id as string) ||
+    (details.logoFileId as string) ||
+    "";
+  const addressLine =
+    (details.address as string) ||
+    (details.address_line as string) ||
+    "";
+  const city = (details.city as string) || "";
+  const state = (details.state as string) || "";
+  const country = (details.country as string) || "";
+
+  const logoUrl = logoFileId ? await getPublicUrl(logoFileId).catch(() => "") : "";
+  const addressParts = [addressLine, city, state, country].filter(Boolean);
+  return { name, logoUrl, address: addressParts.join(", ") };
 }
 
 interface SearchParams {
@@ -76,11 +132,19 @@ export default function AttendanceReportPage() {
   });
 
   // Fetch institute branding (logo + address) lazily — used for the page header & PDF.
-  // Loaded from Preferences (already cached at app boot) + on-demand logo URL resolution.
+  // Loaded from Preferences → localStorage → public API fallback.
+  // Polls every 2s until branding (with at least a name) is available so first-load
+  // race conditions resolve themselves without manual refresh.
   const { data: branding } = useQuery({
     queryKey: ["institute-branding-for-report"],
     queryFn: loadInstituteBranding,
     staleTime: 10 * 60 * 1000, // 10 min — branding doesn't change often
+    refetchInterval: (query) => {
+      // Stop polling once we have at least a name (logo can lag behind)
+      const d = query.state.data as InstituteBranding | null | undefined;
+      return d && d.name ? false : 2000;
+    },
+    refetchIntervalInBackground: false,
   });
 
   const student: FullAttendanceReportStudent | undefined = data?.students?.[0];

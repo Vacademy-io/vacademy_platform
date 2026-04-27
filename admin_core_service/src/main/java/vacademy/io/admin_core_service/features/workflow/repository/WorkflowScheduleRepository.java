@@ -21,9 +21,18 @@ public interface WorkflowScheduleRepository extends JpaRepository<WorkflowSchedu
         List<WorkflowSchedule> findByStatusIgnoreCase(String status);
 
         /**
-         * Find schedules that are due for execution (next_run_at <= current time)
+         * Find schedules that are due for execution (next_run_at <= current time).
+         * Also filters by workflow.status = 'ACTIVE' so schedules attached to
+         * DRAFT/INACTIVE workflows (e.g. created by Save Draft / Test Run before
+         * publish) don't fire and cause duplicate workflow runs.
          */
-        @Query("SELECT ws FROM WorkflowSchedule ws WHERE ws.status = 'ACTIVE' AND ws.nextRunAt <= :currentTime")
+        @Query("""
+            SELECT ws FROM WorkflowSchedule ws, Workflow w
+            WHERE ws.workflowId = w.id
+              AND ws.status = 'ACTIVE'
+              AND w.status = 'ACTIVE'
+              AND ws.nextRunAt <= :currentTime
+        """)
         List<WorkflowSchedule> findDueSchedules(@Param("currentTime") Instant currentTime);
 
         /**

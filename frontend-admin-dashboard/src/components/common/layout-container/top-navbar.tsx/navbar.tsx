@@ -58,6 +58,8 @@ import {
     getSystemAlertsQuery,
     stripHtml,
     fetchSystemAlerts,
+    markSystemAlertsAsRead,
+    formatAlertTimestamp,
 } from '@/services/notifications/system-alerts';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -149,6 +151,50 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const unreadCount = useMemo(() => {
         return alertsList?.content?.reduce((acc, item) => acc + (item.isRead ? 0 : 1), 0) || 0;
     }, [alertsList]);
+
+    const markVisibleAlertsAsRead = async () => {
+        if (!userId) return;
+        const unreadIds =
+            alertsList?.content
+                ?.filter((item) => !item.isRead)
+                .map((item) => item.messageId)
+                .filter(Boolean) || [];
+        if (!unreadIds.length) return;
+
+        const unreadIdSet = new Set(unreadIds);
+        const markPagedItemsRead = (page: PagedResponse<SystemAlertItem> | undefined) =>
+            page
+                ? {
+                      ...page,
+                      content: page.content.map((item) =>
+                          unreadIdSet.has(item.messageId) ? { ...item, isRead: true } : item
+                      ),
+                  }
+                : page;
+
+        queryClient.setQueriesData<PagedResponse<SystemAlertItem>>(
+            { queryKey: ['SYSTEM_ALERTS', userId] },
+            (old) => markPagedItemsRead(old) ?? old
+        );
+        queryClient.setQueriesData<{ pages: PagedResponse<SystemAlertItem>[]; pageParams: unknown[] }>(
+            { queryKey: ['SYSTEM_ALERTS_INFINITE', userId] },
+            (old) =>
+                old
+                    ? {
+                          ...old,
+                          pages: old.pages.map((p) => markPagedItemsRead(p) as PagedResponse<SystemAlertItem>),
+                      }
+                    : old
+        );
+
+        await markSystemAlertsAsRead(unreadIds, userId);
+    };
+
+    const handleNotificationsOpenChange = (open: boolean) => {
+        if (open) {
+            void markVisibleAlertsAsRead();
+        }
+    };
 
     const handleLogout = async (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         event.preventDefault(); // Prevents dropdown from closing immediately
@@ -527,7 +573,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                 )}
 
                 {/* Notifications */}
-                <DropdownMenu>
+                <DropdownMenu onOpenChange={handleNotificationsOpenChange}>
                     <DropdownMenuTrigger className="relative flex items-center justify-center">
                         <div className="relative rounded-full p-1.5 hover:bg-neutral-200 md:p-2">
                             <BellSimple
@@ -551,12 +597,26 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                     >
                         <div className="flex items-center justify-between px-3 py-2">
                             <span className="text-sm font-medium">System Alerts</span>
-                            <button
-                                className="text-xs text-primary-500 hover:underline"
-                                onClick={() => setShowAllDialog(true)}
-                            >
-                                See all
-                            </button>
+                            <div className="flex items-center gap-3">
+                                {!!unreadCount && (
+                                    <button
+                                        className="text-xs text-neutral-500 hover:underline"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            void markVisibleAlertsAsRead();
+                                        }}
+                                    >
+                                        Clear
+                                    </button>
+                                )}
+                                <button
+                                    className="text-xs text-primary-500 hover:underline"
+                                    onClick={() => setShowAllDialog(true)}
+                                >
+                                    See all
+                                </button>
+                            </div>
                         </div>
                         <Separator />
                         <div className="max-h-80 overflow-y-auto p-2">
@@ -608,7 +668,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                     Sent by {item.createdByName || 'System'}
                                                 </span>
                                                 <span>•</span>
-                                                <span>{new Date(sentAt).toLocaleString()}</span>
+                                                <span>{formatAlertTimestamp(sentAt)}</span>
                                             </div>
                                         </div>
                                     );
@@ -669,9 +729,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                                     </span>
                                                                     <span>•</span>
                                                                     <span>
-                                                                        {new Date(
+                                                                        {formatAlertTimestamp(
                                                                             sentAt
-                                                                        ).toLocaleString()}
+                                                                        )}
                                                                     </span>
                                                                 </div>
                                                             </div>

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, Wrench, Lightning, CheckCircle, ArrowRight, Sparkle } from '@phosphor-icons/react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { INIT_INSTITUTE, AUDIENCE_CAMPAIGNS_LIST, CREATE_MESSAGE_TEMPLATE, MESSAGE_TEMPLATE_EXISTS } from '@/constants/urls';
 import { getMessageTemplates } from '@/services/message-template-service';
@@ -97,6 +97,7 @@ function QuestionField({
     const { data: audienceOptions = [], isLoading: audienceLoading } = useAudienceOptions(instituteId);
     const { data: templateOptions = [], isLoading: templateLoading } = useEmailTemplateOptions();
     const [creatingSample, setCreatingSample] = useState(false);
+    const queryClient = useQueryClient();
 
     const renderDropdown = (
         options: Array<{ value: string; label: string }>,
@@ -181,9 +182,19 @@ function QuestionField({
                                         );
                                     }
 
+                                    // Invalidate the templates list so the dropdown refreshes
+                                    // and the newly-created sample appears immediately.
+                                    await queryClient.invalidateQueries({
+                                        queryKey: ['wizard-email-templates'],
+                                    });
                                     onChange(sample.name);
                                 } catch (err) {
                                     console.error('Failed to create sample template:', err);
+                                    // Even if create failed (e.g. unique-key 400 from duplicate),
+                                    // refresh the dropdown — the template likely already exists in DB.
+                                    await queryClient.invalidateQueries({
+                                        queryKey: ['wizard-email-templates'],
+                                    });
                                     // Fallback: use the name anyway — it may already exist
                                     onChange(sample.name);
                                 } finally {

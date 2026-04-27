@@ -15,7 +15,7 @@ export interface WizardQuestion {
     id: string;
     label: string;
     helpText?: string;
-    type: 'batch_select' | 'template_select' | 'audience_select' | 'live_session_select' | 'invite_select' | 'number' | 'select' | 'text';
+    type: 'batch_select' | 'batch_multi_select' | 'template_select' | 'audience_select' | 'live_session_select' | 'invite_select' | 'number' | 'select' | 'text';
     required?: boolean;
     options?: Array<{ value: string; label: string }>; // for 'select' type
     defaultValue?: string | number;
@@ -34,8 +34,9 @@ export interface UseCaseTemplate {
     workflowType: 'EVENT_DRIVEN' | 'SCHEDULED' | 'BOTH';
     /** Questions to ask the user */
     questions: WizardQuestion[];
-    /** Generate nodes and edges from answers */
-    generateWorkflow: (answers: Record<string, string | number>, triggerEvent?: string) => {
+    /** Generate nodes and edges from answers. Some answer types (e.g., audience_select)
+     * can be string[] for multi-select questions. */
+    generateWorkflow: (answers: Record<string, string | number | string[]>, triggerEvent?: string) => {
         nodes: Node[];
         edges: Edge[];
         workflowName?: string;
@@ -356,9 +357,9 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         questions: [
             {
                 id: 'batchId',
-                label: 'Which batch to report on?',
-                helpText: 'Leave empty to report on all batches.',
-                type: 'batch_select',
+                label: 'Which batch(es) to report on?',
+                helpText: 'Pick one or more batches. Leave all unchecked to report across every active batch in your institute.',
+                type: 'batch_multi_select',
             },
             {
                 id: 'templateName',
@@ -374,10 +375,17 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
             },
         ],
         generateWorkflow: (answers) => {
+            // batchId may be a string (legacy single-select) or string[] (multi-select).
+            // Backend QueryServiceImpl.fetchBatchAttendanceReport splits on "," — emit
+            // a CSV. Empty value triggers the "all active batches" fallback.
+            const batchCsv = Array.isArray(answers.batchId)
+                ? (answers.batchId as string[]).filter(Boolean).join(',')
+                : (answers.batchId as string | undefined) ?? '';
+
             const queryNode = makeNode('QUERY', 'Fetch attendance report', {
                 prebuiltKey: 'fetch_batch_attendance_report',
                 params: {
-                    ...(answers.batchId ? { batchId: answers.batchId } : {}),
+                    ...(batchCsv ? { batchId: batchCsv } : {}),
                     daysBack: answers.daysBack ?? 7,
                 },
             }, 250, 50, true);
@@ -406,8 +414,8 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         questions: [
             {
                 id: 'audienceId',
-                label: 'Which audience/campaign?',
-                helpText: 'Select a specific campaign or leave empty for all.',
+                label: 'Which audience/campaign(s)?',
+                helpText: 'Pick one or more campaigns. Leave all unchecked to follow up across every campaign.',
                 type: 'audience_select',
             },
             {
@@ -425,10 +433,17 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
             },
         ],
         generateWorkflow: (answers) => {
+            // audienceId may be a string (legacy single-select) or string[] (multi-select).
+            // Backend QueryServiceImpl splits on "," — emit a CSV. Empty value
+            // triggers the institute-wide fallback in fetchAudienceResponsesFiltered.
+            const audienceCsv = Array.isArray(answers.audienceId)
+                ? (answers.audienceId as string[]).filter(Boolean).join(',')
+                : (answers.audienceId as string | undefined) ?? '';
+
             const queryNode = makeNode('QUERY', 'Fetch recent leads', {
                 prebuiltKey: 'fetch_audience_responses_filtered',
                 params: {
-                    ...(answers.audienceId ? { audienceId: answers.audienceId } : {}),
+                    ...(audienceCsv ? { audienceId: audienceCsv } : {}),
                     daysAgo: answers.daysAgo ?? 3,
                 },
             }, 250, 50, true);

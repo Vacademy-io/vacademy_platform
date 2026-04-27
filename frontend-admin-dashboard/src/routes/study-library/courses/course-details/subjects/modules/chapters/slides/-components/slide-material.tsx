@@ -2603,6 +2603,27 @@ export const SlideMaterial = ({
                                     type="text"
                                     value={heading}
                                     onChange={handleHeadingChange}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            updateHeading(
+                                                activeItem,
+                                                addUpdateVideoSlide,
+                                                SaveDraft,
+                                                heading,
+                                                setIsEditing,
+                                                addUpdateDocumentSlide,
+                                                addUpdateQuizSlide,
+                                                updateAssignmentOrder,
+                                                updateQuestionOrder,
+                                                addUpdateAudioSlide
+                                            );
+                                        } else if (e.key === 'Escape') {
+                                            e.preventDefault();
+                                            setHeading(activeItem?.title || '');
+                                            setIsEditing(false);
+                                        }
+                                    }}
                                     className="min-w-0 flex-1 border-b border-neutral-300 bg-transparent text-lg font-semibold text-neutral-700 transition-colors duration-200 focus:border-primary-500 focus:outline-none"
                                     autoFocus
                                 />
@@ -2615,9 +2636,10 @@ export const SlideMaterial = ({
                                             heading,
                                             setIsEditing,
                                             addUpdateDocumentSlide,
-                                            addUpdateQuizSlide, // <-- pass this for QUIZ support
-                                            updateAssignmentOrder, // <-- pass for ASSIGNMENT
-                                            updateQuestionOrder // <-- pass for QUESTION
+                                            addUpdateQuizSlide,
+                                            updateAssignmentOrder,
+                                            updateQuestionOrder,
+                                            addUpdateAudioSlide
                                         )
                                     }
                                     className="shrink-0 cursor-pointer hover:text-primary-500"

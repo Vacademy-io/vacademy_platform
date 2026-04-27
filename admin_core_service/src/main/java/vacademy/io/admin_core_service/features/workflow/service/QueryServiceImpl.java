@@ -1746,20 +1746,18 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         s.put("totalChats", totalChats);
                         s.put("totalHandRaises", totalHandRaises);
                         s.put("sessionsAttended", engagementLogs.size());
+                        // Total scheduled sessions in the report window — needed by templates
+                        // that show "X / Y attended" instead of just attended count.
+                        s.put("totalSessions", sessionDetails.size());
 
-                        // Build pre-rendered HTML table for sessions (for email templates)
-                        // Wrap in overflow:auto so the table scrolls horizontally on mobile
-                        // instead of overflowing the email body
+                        // Build pre-rendered card stack for sessions (for email templates).
+                        // We use stacked cards instead of a table because tables overflow
+                        // on mobile and require horizontal scroll. Cards always fit the
+                        // viewport, render identically across email clients (no <style>
+                        // tags or @media queries needed), and are readable on every
+                        // screen size.
                         StringBuilder tableHtml = new StringBuilder();
-                        tableHtml.append("<div style=\"overflow-x:auto;-webkit-overflow-scrolling:touch;margin:16px 0\">");
-                        tableHtml.append("<table style=\"width:100%;min-width:480px;border-collapse:collapse;font-size:12px\">");
-                        tableHtml.append("<tr style=\"background:#f1f5f9\">");
-                        tableHtml.append("<th style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:left;color:#475569;white-space:nowrap\">Session</th>");
-                        tableHtml.append("<th style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:left;color:#475569;white-space:nowrap\">Date</th>");
-                        tableHtml.append("<th style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:#475569;white-space:nowrap\">Attendance</th>");
-                        tableHtml.append("<th style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:#475569;white-space:nowrap\">Duration</th>");
-                        tableHtml.append("<th style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:#475569;white-space:nowrap\">Score</th>");
-                        tableHtml.append("</tr>");
+                        tableHtml.append("<div style=\"margin:16px 0\">");
 
                         // Index engagement logs by sessionId for quick lookup
                         Map<String, Map<String, Object>> engBySession = new HashMap<>();
@@ -1887,22 +1885,38 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                                 }
                             }
 
-                            tableHtml.append("<tr>");
-                            tableHtml.append("<td style=\"padding:6px 8px;border:1px solid #e2e8f0;color:#1e293b\">")
-                                     .append(session.getOrDefault("title", "-")).append("</td>");
-                            tableHtml.append("<td style=\"padding:6px 8px;border:1px solid #e2e8f0;color:#64748b\">")
-                                     .append(session.getOrDefault("meetingDate", "-")).append("</td>");
-                            tableHtml.append("<td style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center\">");
-                            tableHtml.append("<span style=\"color:").append(statusColor).append(";font-weight:600\">")
-                                     .append(statusLabel).append("</span></td>");
-                            tableHtml.append("<td style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:#64748b\">")
-                                     .append(durationStr).append("</td>");
-                            tableHtml.append("<td style=\"padding:6px 8px;border:1px solid #e2e8f0;text-align:center;color:")
-                                     .append(engagementColor).append(";font-size:12px\">")
-                                     .append(engagementStr).append("</td>");
-                            tableHtml.append("</tr>");
+                            // One card per session — uses a 2-cell table for the header row
+                            // (title + status pill) so it works in Outlook (no flexbox).
+                            // Body uses simple <div>s for label/value rows.
+                            String sessionTitle = String.valueOf(session.getOrDefault("title", "-"));
+                            String meetingDate = String.valueOf(session.getOrDefault("meetingDate", "-"));
+                            String statusBg = "PRESENT".equals(status) ? "#dcfce7" : "#fee2e2";
+
+                            tableHtml.append("<div style=\"border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin-bottom:10px;background:#ffffff\">");
+                            // Header: title left, status pill right
+                            tableHtml.append("<table role=\"presentation\" style=\"width:100%;border-collapse:collapse\"><tr>");
+                            tableHtml.append("<td style=\"padding:0;font-size:14px;font-weight:600;color:#1e293b;vertical-align:middle\">")
+                                     .append(sessionTitle).append("</td>");
+                            tableHtml.append("<td style=\"padding:0;text-align:right;vertical-align:middle;white-space:nowrap\">")
+                                     .append("<span style=\"display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;color:")
+                                     .append(statusColor).append(";background:").append(statusBg).append("\">")
+                                     .append(statusLabel).append("</span>")
+                                     .append("</td>");
+                            tableHtml.append("</tr></table>");
+
+                            // Body: label/value rows
+                            tableHtml.append("<div style=\"font-size:12px;color:#64748b;margin-top:6px\">")
+                                     .append(meetingDate).append("</div>");
+                            tableHtml.append("<div style=\"display:block;margin-top:10px;font-size:12px;color:#475569\">")
+                                     .append("<span style=\"color:#94a3b8\">Duration:</span> ")
+                                     .append("<span style=\"color:#1e293b;font-weight:500\">").append(durationStr).append("</span>")
+                                     .append("&nbsp;&nbsp;&middot;&nbsp;&nbsp;")
+                                     .append("<span style=\"color:#94a3b8\">Concentration Score:</span> ")
+                                     .append("<span style=\"color:").append(engagementColor).append(";font-weight:600\">")
+                                     .append(engagementStr).append("</span>")
+                                     .append("</div>");
+                            tableHtml.append("</div>");
                         }
-                        tableHtml.append("</table>");
                         tableHtml.append("</div>");
                         s.put("sessionsTableHtml", tableHtml.toString());
 

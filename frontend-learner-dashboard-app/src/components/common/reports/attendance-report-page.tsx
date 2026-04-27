@@ -95,7 +95,18 @@ async function loadInstituteBranding(): Promise<InstituteBranding | null> {
   const state = (details.state as string) || "";
   const country = (details.country as string) || "";
 
-  const logoUrl = logoFileId ? await getPublicUrl(logoFileId).catch(() => "") : "";
+  const rawLogoUrl = logoFileId ? await getPublicUrl(logoFileId).catch(() => "") : "";
+  // Append a stable cache-bust param. The same logo file is also rendered elsewhere
+  // in the app WITHOUT crossOrigin (e.g., dashboard header). When the browser has
+  // already cached that non-CORS response, this <img crossOrigin="anonymous"> tag
+  // tries to reuse it, fails the CORS check, and silently shows nothing. Hard
+  // refresh / disabling cache works because it forces a fresh CORS request.
+  // Using a different URL (?cors=1) makes the browser store a separate
+  // CORS-enabled cache entry — fetched once, reused forever, no race on first
+  // visit. S3 ignores unknown query params so the file resolves identically.
+  const logoUrl = rawLogoUrl
+    ? `${rawLogoUrl}${rawLogoUrl.includes("?") ? "&" : "?"}cors=1`
+    : "";
   const addressParts = [addressLine, city, state, country].filter(Boolean);
   return { name, logoUrl, address: addressParts.join(", ") };
 }

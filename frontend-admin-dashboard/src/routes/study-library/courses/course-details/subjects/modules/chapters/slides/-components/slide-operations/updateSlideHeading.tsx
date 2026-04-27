@@ -1,5 +1,6 @@
 import { Dispatch, SetStateAction } from 'react';
 import {
+    AudioSlidePayload,
     DocumentSlidePayload,
     Slide,
     VideoSlidePayload,
@@ -33,7 +34,8 @@ export const updateHeading = async (
     >,
     addUpdateQuizSlide?: UseMutateAsyncFunction<SlideResponse, Error, QuizSlidePayload, unknown>,
     updateAssignmentOrder?: UseMutateAsyncFunction<SlideResponse, Error, any, unknown>,
-    updateQuestionOrder?: UseMutateAsyncFunction<SlideResponse, Error, any, unknown>
+    updateQuestionOrder?: UseMutateAsyncFunction<SlideResponse, Error, any, unknown>,
+    addUpdateAudioSlide?: UseMutateAsyncFunction<SlideResponse, Error, AudioSlidePayload, unknown>
 ) => {
     const status = activeItem?.status == 'DRAFT' ? 'DRAFT' : 'UNSYNC';
     if (activeItem) {
@@ -205,6 +207,42 @@ export const updateHeading = async (
                 status,
             });
             await addUpdateQuizSlide(payload);
+        } else if (activeItem.source_type === 'AUDIO' && addUpdateAudioSlide) {
+            if (!activeItem.audio_slide) {
+                setIsEditing(false);
+                return;
+            }
+            await addUpdateAudioSlide({
+                id: activeItem.id,
+                title: heading,
+                description: activeItem.description || null,
+                image_file_id: activeItem.image_file_id || null,
+                status: status as 'DRAFT' | 'PUBLISHED',
+                slide_order: null,
+                notify: false,
+                new_slide: false,
+                audio_slide: {
+                    id: activeItem.audio_slide.id,
+                    audio_file_id: activeItem.audio_slide.audio_file_id,
+                    thumbnail_file_id: activeItem.audio_slide.thumbnail_file_id || null,
+                    audio_length_in_millis: activeItem.audio_slide.audio_length_in_millis,
+                    source_type: activeItem.audio_slide.source_type,
+                    external_url: activeItem.audio_slide.external_url || null,
+                    transcript: activeItem.audio_slide.transcript || null,
+                },
+            });
+            try {
+                const { setActiveItem, items, setItems } =
+                    require('@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store').useContentStore.getState();
+                setActiveItem({ ...activeItem, title: heading });
+                if (Array.isArray(items)) {
+                    setItems(
+                        items.map((item) =>
+                            item.id === activeItem.id ? { ...item, title: heading } : item
+                        )
+                    );
+                }
+            } catch (e) {}
         }
     }
     setIsEditing(false);

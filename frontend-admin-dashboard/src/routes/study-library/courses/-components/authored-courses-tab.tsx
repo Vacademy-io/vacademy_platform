@@ -30,6 +30,9 @@ import { Input } from '@/components/ui/input';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { useDeleteCourse } from '@/services/study-library/course-operations/delete-course';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
+import type { DisplaySettingsData } from '@/types/display-settings';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import {
     AlertDialog,
@@ -182,6 +185,26 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
             (auth: { roles?: string[] }) =>
                 Array.isArray(auth?.roles) && auth.roles.includes('ADMIN')
         );
+
+    // Display settings — gates Copy to Edit / Delete buttons on the card.
+    // When the field is missing from saved/cached settings (older payloads
+    // predate this toggle), default to: visible for admin, hidden for
+    // teacher / sub-org / custom roles.
+    const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
+    useEffect(() => {
+        const roleKey = getActiveRoleDisplaySettingsKey();
+        const cached = getDisplaySettingsFromCache(roleKey);
+        if (cached) {
+            setRoleDisplay(cached);
+            return;
+        }
+        getDisplaySettings(roleKey)
+            .then(setRoleDisplay)
+            .catch(() => setRoleDisplay(null));
+    }, []);
+    const cardSettings = roleDisplay?.authoredCoursesCard;
+    const showCopyToEdit = cardSettings ? cardSettings.showCopyToEdit !== false : Boolean(isAdmin);
+    const showDelete = cardSettings ? cardSettings.showDelete !== false : Boolean(isAdmin);
 
     // Fetch authored courses
     const {
@@ -686,6 +709,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                         {/* Copy Button for Published courses */}
                                         {course.status === 'ACTIVE' &&
                                             !isAdmin &&
+                                            showCopyToEdit &&
                                             canCreateCopy(course) && (
                                                 <Button
                                                     variant="outline"
@@ -709,6 +733,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                             )}
 
                                         {/* Delete Button */}
+                                        {showDelete && (
                                         <AlertDialog
                                             open={deleteDialogOpen === course.id}
                                             onOpenChange={(open) => {
@@ -760,6 +785,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                                 </AlertDialogFooter>
                                             </AlertDialogContent>
                                         </AlertDialog>
+                                        )}
                                     </div>
                                 </div>
                             </div>

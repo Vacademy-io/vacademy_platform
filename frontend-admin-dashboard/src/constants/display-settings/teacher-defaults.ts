@@ -66,6 +66,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         viewCourseConfiguration: true,
         viewCourseOverviewItem: true,
         viewContentNumbering: true,
+        allowViewSlidesInReadOnly: true,
     },
     courseList: {
         tabs: [
@@ -113,6 +114,10 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
     slideView: {
         showCopyTo: true,
         showMoveTo: true,
+    },
+    authoredCoursesCard: {
+        showCopyToEdit: false,
+        showDelete: false,
     },
     courseCreation: {
         showCreateCourseWithAI: false,

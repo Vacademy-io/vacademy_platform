@@ -428,6 +428,10 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             ['viewCourseConfiguration', 'View course configuration'],
                             ['viewCourseOverviewItem', 'View course overview item'],
                             ['viewContentNumbering', 'View content numbering'],
+                            [
+                                'allowViewSlidesInReadOnly',
+                                'Allow viewing slides on published / in-review courses (read-only)',
+                            ],
                         ] as const
                     ).map(([key, label]) => (
                         <div
@@ -451,6 +455,8 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                                 prev.coursePage?.viewCourseOverviewItem ?? true,
                                             viewContentNumbering:
                                                 prev.coursePage?.viewContentNumbering ?? true,
+                                            allowViewSlidesInReadOnly:
+                                                prev.coursePage?.allowViewSlidesInReadOnly ?? true,
                                             [key]: checked,
                                         },
                                     }))
@@ -486,6 +492,46 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                         slideView: {
                                             showCopyTo: prev.slideView?.showCopyTo ?? true,
                                             showMoveTo: prev.slideView?.showMoveTo ?? true,
+                                            [key]: checked,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
+                    ))}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Authored Courses Card</CardTitle>
+                    <CardDescription>
+                        Control which actions appear on the course card under Explore Courses →
+                        Authored Courses.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                    {(
+                        [
+                            ['showCopyToEdit', 'Show "Copy to Edit" button'],
+                            ['showDelete', 'Show delete button'],
+                        ] as const
+                    ).map(([key, label]) => (
+                        <div
+                            key={key}
+                            className="flex items-center justify-between rounded border p-3"
+                        >
+                            <div className="text-sm">{label}</div>
+                            <Switch
+                                checked={settings.authoredCoursesCard?.[key] !== false}
+                                onCheckedChange={(checked) =>
+                                    updateSettings((prev) => ({
+                                        ...prev,
+                                        authoredCoursesCard: {
+                                            showCopyToEdit:
+                                                prev.authoredCoursesCard?.showCopyToEdit ?? false,
+                                            showDelete:
+                                                prev.authoredCoursesCard?.showDelete ?? false,
                                             [key]: checked,
                                         },
                                     }))

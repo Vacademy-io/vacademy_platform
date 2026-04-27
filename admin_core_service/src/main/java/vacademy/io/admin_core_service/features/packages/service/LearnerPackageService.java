@@ -128,7 +128,8 @@ public class LearnerPackageService {
                                         projection.getReadTimeInMinutes(),
                                         projection.getPackageType(),
                                         projection.getSessionId(),
-                                        projection.getSessionName());
+                                        projection.getSessionName(),
+                                        projection.getEnrolledStudentCount());
                         dto.setValidityInDays(projection.getValidityInDays());
                         return dto;
                 }).toList();
@@ -346,7 +347,8 @@ public class LearnerPackageService {
                                 getReadTimeInMinutes(packageId),
                                 projection.getPackageType(),
                                 projection.getSessionId(),
-                                projection.getSessionName());
+                                projection.getSessionName(),
+                                projection.getEnrolledStudentCount());
                 dto.setValidityInDays(projection.getValidityInDays());
 
                 return dto;

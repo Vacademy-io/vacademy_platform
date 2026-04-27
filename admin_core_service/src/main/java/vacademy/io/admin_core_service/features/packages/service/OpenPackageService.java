@@ -190,7 +190,8 @@ public class OpenPackageService {
                                         projection.getReadTimeInMinutes(),
                                         projection.getPackageType(),
                                         projection.getSessionId(),
-                                        projection.getSessionName());
+                                        projection.getSessionName(),
+                                        projection.getEnrolledStudentCount());
                 }).toList();
         }
 
@@ -249,7 +250,8 @@ public class OpenPackageService {
                                 getReadTimeInMinutes(packageId),
                                 projection.getPackageType(),
                                 projection.getSessionId(),
-                                projection.getSessionName());
+                                projection.getSessionName(),
+                                projection.getEnrolledStudentCount());
 
                 return dto;
         }

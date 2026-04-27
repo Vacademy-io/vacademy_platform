@@ -412,7 +412,8 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
             },
             {
                 id: 'daysAgo',
-                label: 'Follow up leads from last how many days?',
+                label: 'Send follow-up exactly how many days after submission?',
+                helpText: 'Targets leads whose submission date is exactly this many days ago. Schedule this workflow daily. To follow up on day 3, 5, and 7 create three separate workflows.',
                 type: 'number',
                 defaultValue: 3,
             },

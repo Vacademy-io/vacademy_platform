@@ -1461,7 +1461,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             // workflow context already; the scheduled query path needs to do the
             // same so {{instituteName}} doesn't render literal in follow-up emails.
             final String instituteName = instituteRepository.findById(instituteId)
-                    .map(vacademy.io.admin_core_service.features.institute.entity.Institute::getInstituteName)
+                    .map(vacademy.io.common.institute.entity.Institute::getInstituteName)
                     .orElse("");
 
             // Fetch custom field values in bulk

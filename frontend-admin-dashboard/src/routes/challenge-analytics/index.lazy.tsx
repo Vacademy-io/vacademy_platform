@@ -105,7 +105,7 @@ function ChallengeAnalyticsDashboard() {
     const { data: heatmapData, isLoading: heatmapLoading } = useCenterHeatmap(
         startDate,
         endDate,
-        activeTab === 'centers'
+        activeTab === 'centers' || activeTab === 'leaderboard'
     );
 
     const leaderboardCustomFieldFilter =
@@ -189,38 +189,44 @@ function ChallengeAnalyticsDashboard() {
         setLeaderboardPage(1);
     }, [leaderboardCustomFieldName, leaderboardCustomFieldValue]);
 
-    // Build the leaderboard filter UI from the institute's configured DROPDOWN
-    // custom fields. The fieldName is what gets passed to the backend (it's the
-    // key used in user.custom_fields), so nothing is hardcoded here — every
-    // institute can decide which fields are available as filters via Settings.
+    // Build center filter options from center-heatmap data.
+    // The heatmap returns all campaigns; we filter to physical center campaigns
+    // (ZOHO FORM type) and use their campaign_name as center options.
+    // The custom field key is detected by matching heatmap center names against
+    // leaderboard users' custom_fields entries.
     const leaderboardFilterFields = useMemo(() => {
-        const fields = instituteDetails?.dropdown_custom_fields || [];
-        return fields
-            .filter(
-                (f) =>
-                    !!f.fieldName &&
-                    !!f.config &&
-                    (f.fieldType || '').toUpperCase() === 'DROPDOWN'
-            )
-            .map((f) => {
-                let options: Array<{ value: string; label: string }> = [];
-                try {
-                    const parsed = JSON.parse(f.config);
-                    if (Array.isArray(parsed)) {
-                        options = parsed
-                            .map((opt: { value?: string; label?: string }) => ({
-                                value: String(opt?.value ?? ''),
-                                label: String(opt?.label ?? opt?.value ?? ''),
-                            }))
-                            .filter((opt) => opt.value);
-                    }
-                } catch {
-                    // Skip fields whose config isn't valid JSON.
+        const heatmap = heatmapData?.center_heatmap || [];
+        if (heatmap.length === 0) return [];
+
+        const EXCLUDED_TYPES = new Set(['REFERRAL', 'SOCIAL MEDIA', 'SOCIAL_MEDIA', 'OPT_OUT', 'OPT OUT', 'ORGANIC', 'WEBSITE']);
+        const centerNames = heatmap
+            .filter((h) => !EXCLUDED_TYPES.has((h.campaign_type || '').toUpperCase().trim()))
+            .map((h) => h.campaign_name)
+            .filter(Boolean)
+            .sort();
+
+        if (centerNames.length === 0) return [];
+
+        // Detect which custom_field key holds the center name by scanning leaderboard entries.
+        const centerNameSet = new Set(centerNames.map((n) => n.toLowerCase()));
+        let detectedKey = 'center name';
+        const entries = leaderboardData?.leaderboard || [];
+        outer: for (const entry of entries) {
+            const cf = entry.user_details?.custom_fields || {};
+            for (const [key, val] of Object.entries(cf)) {
+                if (val && centerNameSet.has(val.toLowerCase())) {
+                    detectedKey = key;
+                    break outer;
                 }
-                return { name: f.fieldName, label: f.fieldName, options };
-            })
-            .filter((f) => f.options.length > 0);
-    }, [instituteDetails]);
+            }
+        }
+
+        return [{
+            name: detectedKey,
+            label: 'Center',
+            options: centerNames.map((v) => ({ value: v, label: v })),
+        }];
+    }, [heatmapData, leaderboardData]);
 
     // Auto-select last day's completion templates for cohort
     useEffect(() => {
@@ -370,7 +376,6 @@ function ChallengeAnalyticsDashboard() {
                             page={leaderboardPage}
                             onPageChange={setLeaderboardPage}
                             filterFields={leaderboardFilterFields}
-                            selectedFieldName={leaderboardCustomFieldName}
                             selectedFieldValue={leaderboardCustomFieldValue}
                             onFilterChange={(name, value) => {
                                 setLeaderboardCustomFieldName(name);

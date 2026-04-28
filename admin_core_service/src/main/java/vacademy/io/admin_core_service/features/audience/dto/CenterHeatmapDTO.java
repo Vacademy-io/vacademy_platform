@@ -27,4 +27,5 @@ public class CenterHeatmapDTO {
     private Long uniqueUsers;
     private Long totalResponses;
     private Double avgResponsesPerUser;
+    private Long optedOutUsers;
 }

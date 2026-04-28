@@ -146,6 +146,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const hasAutoPlayAttempted = useRef(false);
   const [showManualPlayButton, setShowManualPlayButton] = useState(false);
   const isMountedRef = useRef(true);
+  const playerRef = useRef<YouTubePlayer | null>(null);
   const visibilityResumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const seekRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const autoplayVerifyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -154,6 +155,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      playerRef.current = null;
       if (visibilityResumeTimeoutRef.current) {
         clearTimeout(visibilityResumeTimeoutRef.current);
         visibilityResumeTimeoutRef.current = null;
@@ -301,24 +303,32 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     }
   };
 
-  // Safe wrapper for player operations
+  // Safe wrapper for player operations.
+  // Awaits the operation so both sync throws and rejected promises (e.g. from
+  // a destroyed YouTube iframe whose internal `f` is null) are caught here
+  // and never escape as unhandled rejections.
   const safePlayerOperation = async (
-    operation: () => void,
+    operation: () => void | Promise<unknown>,
     operationName: string = "player operation"
   ): Promise<boolean> => {
-    if (!player || !playerReady) {
+    if (!isMountedRef.current) return false;
+    const activePlayer = playerRef.current;
+    if (!activePlayer || !playerReady) {
       console.warn(`${operationName}: Player not ready`);
       return false;
     }
 
-    const iframeReady = await isPlayerIframeReady(player);
-    if (!iframeReady) {
-      console.warn(`${operationName}: Iframe not ready, skipping operation`);
-      return false;
-    }
-
     try {
-      operation();
+      const iframeReady = await isPlayerIframeReady(activePlayer);
+      if (!isMountedRef.current || playerRef.current !== activePlayer) {
+        return false;
+      }
+      if (!iframeReady) {
+        console.warn(`${operationName}: Iframe not ready, skipping operation`);
+        return false;
+      }
+
+      await operation();
       return true;
     } catch (error) {
       console.error(`Error during ${operationName}:`, error);
@@ -342,7 +352,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       if (questionToShow && !showQuestion) {
         // Use the force pause function for immediate pause
-        player.pauseVideo();
+        try {
+          await player.pauseVideo();
+        } catch (e) {
+          console.warn("pauseVideo failed during question check", e);
+        }
         setIsPlayed(false);
         stopProgressTracking();
         stopTimer();
@@ -545,10 +559,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       setVerificationCountdown((prev) => {
         if (prev <= 1) {
           // Time's up, pause the video
-          if (player) {
-            player.pauseVideo();
-            setIsPlayed(false);
-          }
+          void safePlayerOperation(
+            () => playerRef.current?.pauseVideo(),
+            "verificationTimeout.pause"
+          );
+          setIsPlayed(false);
           // Increment missed answer count
           setMissedAnswerCount((prev) => prev + 1);
           // Clear the timer
@@ -566,7 +581,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   }, [player]);
 
   // Handle verification number click
-  const handleVerificationClick = (index: number) => {
+  const handleVerificationClick = async (index: number) => {
     // Clear the verification timer
     if (verificationTimerRef.current) {
       clearInterval(verificationTimerRef.current);
@@ -594,10 +609,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       setWrongAnswerCount((prev) => prev + 1);
 
       // Pause the video
-      if (player) {
-        player.pauseVideo();
-        setIsPlayed(false);
-      }
+      await safePlayerOperation(
+        () => playerRef.current?.pauseVideo(),
+        "wrongAnswer.pause"
+      );
+      setIsPlayed(false);
 
       // Close the verification dialog
       setShowVerification(false);
@@ -742,14 +758,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       setShowQuestion(true);
 
       // Pause the video
-      if (player) {
-        player.pauseVideo();
-        setIsPlayed(false);
-        stopProgressTracking();
-        stopTimer();
-      }
+      void safePlayerOperation(
+        () => playerRef.current?.pauseVideo(),
+        "questionMarker.pause"
+      );
+      setIsPlayed(false);
+      stopProgressTracking();
+      stopTimer();
     },
-    [canNavigateToTime, player, stopProgressTracking, stopTimer]
+    [canNavigateToTime, stopProgressTracking, stopTimer]
   );
 
   // Pause video when tab is switched
@@ -762,7 +779,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         setTabSwitchCount((prev) => prev + 1);
 
         if (player && isPlayed) {
-          player.pauseVideo();
+          void safePlayerOperation(
+            () => playerRef.current?.pauseVideo(),
+            "tabHidden.pause"
+          );
           setIsPlayed(false);
           setWasPausedByTabSwitch(true); // Mark that video was paused by tab switch
         }
@@ -1012,13 +1032,16 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     if (!allowPlayPause) return;
     setIsPlayed(false);
 
-    await safePlayerOperation(() => player?.pauseVideo(), "togglePause");
+    await safePlayerOperation(
+      () => playerRef.current?.pauseVideo(),
+      "togglePause"
+    );
   };
 
   // Direct pause function for question overlay - bypasses state management issues
   const forcePause = async () => {
-    const success = await safePlayerOperation(() => {
-      player?.pauseVideo();
+    const success = await safePlayerOperation(async () => {
+      await playerRef.current?.pauseVideo();
       setIsPlayed(false);
       stopProgressTracking();
       stopTimer();
@@ -1034,19 +1057,23 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const togglePlay = async () => {
     setIsPlayed(true);
 
-    await safePlayerOperation(() => {
+    await safePlayerOperation(async () => {
+      const p = playerRef.current;
+      if (!p) return;
       try {
-        player?.unMute();
+        await p.unMute();
       } catch (e) {
         console.warn("unMute failed (non-fatal)", e);
       }
-      player?.playVideo();
+      await p.playVideo();
     }, "togglePlay");
   };
 
   const onPlayerReady: YouTubeProps["onReady"] = async (
     event: YouTubeEvent
   ) => {
+    if (!isMountedRef.current) return;
+    playerRef.current = event.target;
     setPlayer(event.target);
     setPlayerReady(true);
     try {
@@ -1086,13 +1113,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const handleManualPlay = async () => {
     if (!player || !playerReady) return;
 
-    const success = await safePlayerOperation(() => {
+    const success = await safePlayerOperation(async () => {
+      const p = playerRef.current;
+      if (!p) return;
       try {
-        player.unMute();
+        await p.unMute();
       } catch (e) {
         console.warn("unMute failed during manual play", e);
       }
-      player.playVideo();
+      await p.playVideo();
     }, "manualPlay");
 
     if (success) {
@@ -1122,13 +1151,15 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       // Small delay to ensure iframe is ready
       const autoplayTimeout = setTimeout(async () => {
-        const success = await safePlayerOperation(() => {
+        const success = await safePlayerOperation(async () => {
+          const p = playerRef.current;
+          if (!p) return;
           try {
-            player.unMute(); // Unmute for autoplay
+            await p.unMute(); // Unmute for autoplay
           } catch (e) {
             console.warn("unMute failed during autoplay", e);
           }
-          player.playVideo();
+          await p.playVideo();
         }, "autoplay");
 
         if (success) {
@@ -1219,12 +1250,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         return;
       }
 
-      await safePlayerOperation(() => {
+      await safePlayerOperation(async () => {
+        const p = playerRef.current;
+        if (!p) return;
         if (isPlayed) {
-          player.playVideo();
+          await p.playVideo();
           startProgressTracking();
         } else {
-          player.pauseVideo();
+          await p.pauseVideo();
           setPauseCount((prev) => prev + 1);
           stopProgressTracking();
         }
@@ -1262,7 +1295,8 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   }, [clearUpdateInterval, stopProgressTracking]);
 
   const onStateChange = async (event: YouTubeEvent) => {
-    if (!player) return;
+    if (!isMountedRef.current) return;
+    if (!player || !playerRef.current) return;
 
     // Auto-play after seek completes (event-driven approach)
     if (shouldAutoPlayAfterSeekRef.current) {
@@ -1272,13 +1306,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         console.log(`Player ready after seek (state: ${state}), starting playback...`);
         shouldAutoPlayAfterSeekRef.current = false;
 
-        try {
-          await player.playVideo();
-          setIsPlayed(true);
-          console.log("Auto-play after seek successful");
-        } catch (error) {
-          console.error("Error auto-playing after seek:", error);
-        }
+        await safePlayerOperation(async () => {
+          const p = playerRef.current;
+          if (!p) return;
+          await p.playVideo();
+          if (isMountedRef.current) setIsPlayed(true);
+        }, "autoPlayAfterSeek");
         return; // Let the next state change handle the rest
       }
     }

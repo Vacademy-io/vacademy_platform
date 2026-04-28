@@ -76,14 +76,39 @@ export function ReferralTracking({
     const referralPercentage =
         totalUsers > 0 ? ((referralUsers / totalUsers) * 100).toFixed(1) : '0';
 
+    // Resolve a field value by matching fieldName in custom_field_metadata
+    const getCF = (lead: any, ...fieldNames: string[]): string => {
+        const meta: Record<string, { fieldName?: string }> = lead.custom_field_metadata || {};
+        const values: Record<string, string> = lead.custom_field_values || {};
+        for (const name of fieldNames) {
+            const lower = name.toLowerCase();
+            for (const [id, m] of Object.entries(meta)) {
+                if ((m.fieldName || '').toLowerCase() === lower && values[id]) {
+                    return values[id];
+                }
+            }
+        }
+        return '';
+    };
+
+    const getLeadName = (lead: any) =>
+        lead.user?.full_name ||
+        getCF(lead, 'parent name', 'first name', 'name') || '';
+
+    const getLeadEmail = (lead: any) =>
+        lead.user?.email || getCF(lead, 'email', 'Email', 'alternate email') || '';
+
+    const getLeadPhone = (lead: any) =>
+        lead.user?.mobile_number || getCF(lead, 'phone', 'mobile', 'phone number') || '';
+
     const exportToCSV = () => {
         if (!leadsData?.content) return;
 
         const headers = ['Name', 'Email', 'Phone', 'Source', 'Submitted At'];
         const rows = leadsData.content.map((lead) => [
-            lead.user?.full_name || 'N/A',
-            lead.user?.email || 'N/A',
-            lead.user?.mobile_number || 'N/A',
+            getLeadName(lead) || 'N/A',
+            getLeadEmail(lead) || 'N/A',
+            getLeadPhone(lead) || 'N/A',
             lead.source_type || 'N/A',
             lead.submitted_at_local ? new Date(lead.submitted_at_local).toLocaleString() : 'N/A',
         ]);
@@ -228,7 +253,7 @@ export function ReferralTracking({
                                                     </div>
                                                     <div>
                                                         <p className="font-medium text-gray-800">
-                                                            {lead.user?.full_name || 'Anonymous'}
+                                                            {getLeadName(lead) || 'Anonymous'}
                                                         </p>
                                                         <p className="text-xs text-gray-500">
                                                             ID: {lead.user_id?.substring(0, 8)}...
@@ -238,18 +263,18 @@ export function ReferralTracking({
                                             </td>
                                             <td className="px-4 py-3">
                                                 <div className="space-y-1">
-                                                    {lead.user?.email && (
+                                                    {getLeadEmail(lead) && (
                                                         <div className="flex items-center gap-1 text-xs text-gray-600">
                                                             <Envelope className="size-3" />
                                                             <span className="max-w-[150px] truncate">
-                                                                {lead.user.email}
+                                                                {getLeadEmail(lead)}
                                                             </span>
                                                         </div>
                                                     )}
-                                                    {lead.user?.mobile_number && (
+                                                    {getLeadPhone(lead) && (
                                                         <div className="flex items-center gap-1 text-xs text-gray-600">
                                                             <Phone className="size-3" />
-                                                            <span>{lead.user.mobile_number}</span>
+                                                            <span>{getLeadPhone(lead)}</span>
                                                         </div>
                                                     )}
                                                 </div>

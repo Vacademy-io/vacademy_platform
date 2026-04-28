@@ -62,5 +62,8 @@ public class LeadDetailDTO {
     private String overallStatus;
     private String conversionStatus;
     private String enquiryId;
+
+    // ── Opt-Out Source ──
+    private String sourceAudienceName; // name of the audience the user opted out FROM
 }
 

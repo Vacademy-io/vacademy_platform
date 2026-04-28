@@ -1456,6 +1456,15 @@ public class AudienceService {
                 : customFieldRepository.findAllById(allCustomFieldIds).stream()
                         .collect(Collectors.toMap(CustomFields::getId, cf -> cf, (a, b) -> a));
 
+        // Batch fetch source audience names for OPT_OUT entries
+        Set<String> sourceAudienceIds = content.stream()
+                .filter(r -> "OPT_OUT".equals(r.getSourceType()) && StringUtils.hasText(r.getSourceId()))
+                .map(AudienceResponse::getSourceId)
+                .collect(Collectors.toSet());
+        Map<String, String> sourceAudienceIdToName = sourceAudienceIds.isEmpty() ? Collections.emptyMap()
+                : audienceRepository.findAllById(sourceAudienceIds).stream()
+                        .collect(Collectors.toMap(Audience::getId, Audience::getCampaignName, (a, b) -> a));
+
         return responses.map(response -> {
             // Build custom field values map from batch-fetched data
             List<CustomFieldValues> responseCfValues = cfValuesByResponseId
@@ -1507,6 +1516,8 @@ public class AudienceService {
                     .percentileRank(score != null && score.getPercentileRank() != null
                             ? score.getPercentileRank().doubleValue() : null)
                     .assignedCounselorId(counselorId)
+                    .sourceAudienceName("OPT_OUT".equals(response.getSourceType())
+                            ? sourceAudienceIdToName.get(response.getSourceId()) : null)
                     .build();
         });
     }

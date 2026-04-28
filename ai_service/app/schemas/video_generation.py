@@ -127,6 +127,14 @@ class VideoGenerationRequest(BaseModel):
         default=None,
         description="List of reference files (images/PDFs) to include in generation"
     )
+    routing_overrides: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Sparse override for the auto-routing plan. "
+            "Example: {'tools': {'scrape_url': false}, 'config': {'mute_tts_on_source_clips': true}}. "
+            "User toggles win over router decisions."
+        )
+    )
     orientation: Literal["landscape", "portrait"] = Field(
         default="landscape",
         description="Video orientation: 'landscape' (1920x1080, 16:9) or 'portrait' (1080x1920, 9:16)"

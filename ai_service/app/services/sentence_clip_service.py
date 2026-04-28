@@ -368,6 +368,128 @@ class SentenceClipService:
             timeline_url=timeline_url,
         )
 
+    def silence_sentence(
+        self,
+        video_id: str,
+        sentence_id: str,
+        *,
+        crossfade_ms: int = 50,
+        head_pad_ms: int = 40,
+    ) -> SentenceRegenerateResult:
+        """Mute one sentence: replace its audio range with silence of the
+        same length and clear the sentence's text + words. Total duration
+        and downstream timestamps are preserved (no ripple).
+
+        The sentence stays in `meta.sentences[]` so the editor can later
+        re-narrate the same slot via `regenerate_sentence` — silenced
+        sentences are detected on the frontend by `text === ""` and
+        `audio_url === ""` (or both).
+
+        Reuses the `SentenceRegenerateResult` shape because callers care
+        about the same outcome (updated sentence + new global audio URL).
+        `duration_delta` will be ~0.
+        """
+        record = self.repository.get_by_video_id(video_id)
+        if record is None:
+            raise ValueError(f"video {video_id} not found")
+        s3_urls = dict(record.s3_urls or {})
+        if not s3_urls.get("audio") or not s3_urls.get("timeline"):
+            raise ValueError(
+                "video is missing audio/timeline S3 URLs; cannot silence"
+            )
+
+        with tempfile.TemporaryDirectory(prefix=f"silence-{video_id}-") as tmpdir:
+            tmp = Path(tmpdir)
+
+            timeline = self._download_json(s3_urls["timeline"], tmp / "timeline.json")
+            sentences = self._extract_sentences(timeline)
+            if not sentences:
+                raise ValueError(
+                    "this video has no meta.sentences[] yet — call "
+                    "/sentences/build first to bootstrap them"
+                )
+            idx, target = _find_sentence_by_id(sentences, sentence_id)
+            if target is None:
+                raise ValueError(f"sentence {sentence_id!r} not in timeline")
+
+            old_start = float(target.get("start_time") or 0.0)
+            old_duration = float(target.get("duration") or 0.0)
+            old_end = old_start + old_duration
+
+            # 1. Splice silence into the global MP3.
+            version_tag = _version_tag()
+            new_audio_key = self._versioned_audio_key(video_id, version_tag)
+            silence = self.render_service.silence_audio_range(
+                base_audio_url=s3_urls["audio"],
+                silence_start=old_start,
+                silence_end=old_end,
+                output_key=new_audio_key,
+                crossfade_ms=crossfade_ms,
+                head_pad_ms=head_pad_ms,
+            )
+            new_global_url = silence.get("output_url")
+            new_global_duration = float(silence.get("new_duration") or 0.0)
+            duration_delta = float(silence.get("duration_delta") or 0.0)
+            if not new_global_url:
+                raise RuntimeError(f"silence_audio_range returned no output_url: {silence}")
+
+            # 2. Mark the sentence as silenced. Empty text + audio_url is
+            # the signal the frontend uses to render the slot differently
+            # (greyed region, "Add narration" button).
+            target["text"] = ""
+            target["audio_url"] = ""
+            target["words"] = []
+            # `duration` and `start_time` stay — the silenced slot still
+            # occupies the same range in the global timeline.
+
+            # 3. Splice words.json so caption pass over this range stays
+            # silent. We pass an EMPTY `new_sentence_words` list, which
+            # drops the old words for this range without inserting any.
+            words_url = s3_urls.get("words")
+            if words_url:
+                try:
+                    self._splice_global_words(
+                        words_s3_url=words_url,
+                        old_start=old_start,
+                        old_end=old_end,
+                        new_sentence_words=[],
+                        sentence_start_time=old_start,
+                        duration_delta=duration_delta,  # ~0
+                        tmp_path=tmp / "words.out.json",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to splice global words.json for %s: %s — captions "
+                        "near %.2fs may briefly show stale words until rebuilt",
+                        video_id, exc, old_start,
+                    )
+
+            # 4. Persist timeline + audio URL update on the video record.
+            timeline_url = self._upload_timeline_json(
+                timeline=timeline,
+                timeline_s3_url=s3_urls["timeline"],
+                video_id=video_id,
+                tmp_path=tmp / "timeline.out.json",
+            )
+            try:
+                self.repository.update_files(
+                    video_id=video_id, s3_urls={"audio": new_global_url},
+                )
+            except AttributeError:
+                logger.warning(
+                    "repository.update_files missing; record %s still points at old audio",
+                    video_id,
+                )
+
+        return SentenceRegenerateResult(
+            video_id=video_id,
+            sentence=target,
+            duration_delta=duration_delta,
+            new_global_audio_url=new_global_url,
+            new_global_duration=new_global_duration,
+            timeline_url=timeline_url,
+        )
+
     # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------

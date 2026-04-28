@@ -436,6 +436,61 @@ MUSIC_PLAN_EXTENSION = (
 
 
 # ---------------------------------------------------------------------------
+# STRICT mode — emitted when routing_plan.config.source_clip_priority == "high"
+# (typically: user uploaded source videos and asked us to "cover the demo" /
+#  "use parts of videos" / "do not add extra parts"). The router enables this
+# to keep the Director from drifting into AI-generated filler shots.
+# ---------------------------------------------------------------------------
+STRICT_SOURCE_CLIP_DIRECTOR_EXTENSION = (
+    "\n\n## 🎯 STRICT MODE — INPUT VIDEOS PROVIDED (overrides default shot-mix rules)\n"
+    "The user uploaded source video(s) and the Intent Router determined the video "
+    "should be a guided walkthrough of THEIR footage with infographic accents — "
+    "not an AI explainer that happens to use a clip or two.\n\n"
+    "**HARD RULES (must hold across the full plan):**\n"
+    "- SOURCE_CLIP must be ≥ 60% of all shots.\n"
+    "- Non-SOURCE_CLIP shots are allowed ONLY for: opening title (≤ 8s, first shot), "
+    "closing title (≤ 8s, last shot), or brief callout/transition cards between clips (≤ 6s each, max 1-2 total).\n"
+    "- Cover the source videos chronologically. Do not skip more than ~30% of any individual source video.\n"
+    "- For multi-video runs, sequence by video (Video A then Video B) unless the script structure clearly requires interleaving.\n"
+    "- Never invent steps, screens, or features that are not visible in the source video transcripts/scenes.\n"
+    "- Prefer LONGER SOURCE_CLIPs (4-8s) showing meaningful demo segments over many tiny clips. "
+    "Trim only to remove dead air or off-topic moments.\n"
+)
+
+
+# ---------------------------------------------------------------------------
+# Overlay-mode shot-spec extension — emitted when routing_plan.config.infographic_mode == "overlay"
+# Tells the Director to attach `overlay_slots[]` to each SOURCE_CLIP shot so
+# infographics float on top of the demo instead of sitting beside it.
+# ---------------------------------------------------------------------------
+OVERLAY_INFOGRAPHIC_DIRECTOR_EXTENSION = (
+    "\n\n## 🪟 OVERLAY MODE — INFOGRAPHICS ON TOP OF SOURCE CLIPS\n"
+    "For every SOURCE_CLIP shot, you MUST attach an `overlay_slots` array describing "
+    "the infographic callouts that float over the demo footage. Slots are templated — "
+    "you provide the content and position; the renderer composites them with smooth "
+    "fade+slide animations.\n\n"
+    "**Slot positions (pick 1-2 per shot):**\n"
+    "- `top-right` — small badge card with a step counter, title, and short detail (recommended for demo step-by-step)\n"
+    "- `top-left` — same as top-right but on the opposite corner\n"
+    "- `bottom-banner` — wide caption strip across the bottom (recommended for narrator quotes / single-line takeaways)\n"
+    "- `left-ribbon` — vertical strip on the left edge for sequential metadata (timestamps, section labels)\n\n"
+    "**Slot fields:**\n"
+    "```json\n"
+    "{\n"
+    "  \"position\": \"top-right\",\n"
+    "  \"tag\": \"Step 2 of 5\",          // optional small UPPERCASE eyebrow text\n"
+    "  \"title\": \"Add a learner\",      // required — the headline (≤ 6 words)\n"
+    "  \"detail\": \"Click + and enter the email\",  // optional supporting line (≤ 14 words)\n"
+    "  \"caption\": \"...\"                // ONLY for bottom-banner / left-ribbon (use instead of title/detail)\n"
+    "}\n"
+    "```\n"
+    "**Rules:**\n"
+    "- 1-2 slots per SOURCE_CLIP shot. Don't crowd the screen.\n"
+    "- Keep titles ≤ 6 words and details ≤ 14 words — they sit on top of moving footage.\n"
+    "- For demo walkthroughs, the most natural pattern is one `top-right` step card per clip.\n"
+    "- Non-SOURCE_CLIP shots ignore overlay_slots — only the source-clip layout uses them.\n"
+)
+# ---------------------------------------------------------------------------
 # Director user prompt template
 # ---------------------------------------------------------------------------
 

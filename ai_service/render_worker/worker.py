@@ -362,7 +362,7 @@ class RenderWorker:
                     )
                 # Forward diagnostic lines from worker stdout
                 diag_lines = [l for l in result.stdout.split('\n')
-                              if any(tag in l for tag in ('RENDER-VERSION', 'SIZING-DIAG', 'ANNOT-DIAG', 'VIDEO-DIAG', 'VIVUS-DIAG', 'ROUGHNOTATION-DIAG'))]
+                              if any(tag in l for tag in ('RENDER-VERSION', 'SIZING-DIAG', 'ANNOT-DIAG', 'VIDEO-DIAG', 'VIVUS-DIAG', 'ROUGHNOTATION-DIAG', 'FONT-DIAG', 'AUTO-SHRINK'))]
                 if diag_lines:
                     logger.info(f"Worker {i} diagnostics ({len(diag_lines)} lines):\n" + '\n'.join(diag_lines[:50]))
                 logger.info(f"Worker {i} done: {result.stdout[-200:]}")
@@ -626,7 +626,15 @@ class RenderWorker:
             _comp_mode = "fullscreen"
             _card_bounds = None  # (y0, x0, card_h, card_w, new_h, new_w, oy, ox)
 
-            if _first_overlay is not None:
+            # Explicit hint from the pipeline (overlay infographic mode) — force
+            # fullscreen so callouts on top of full-canvas source video aren't
+            # clobbered by the card-bounds heuristic.
+            _explicit_mode = entry.get("compositing_mode") or ""
+            _force_fullscreen = _explicit_mode == "fullscreen"
+            if _force_fullscreen:
+                logger.info("    Compositing mode: fullscreen (explicit overlay hint from pipeline)")
+
+            if _first_overlay is not None and not _force_fullscreen:
                 _fg = cv2.cvtColor(_first_overlay, cv2.COLOR_BGR2GRAY)
                 _bm = _fg <= 15
                 _br = np.sum(_bm) / _bm.size

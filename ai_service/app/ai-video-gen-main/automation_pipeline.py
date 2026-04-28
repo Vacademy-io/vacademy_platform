@@ -1537,6 +1537,7 @@ class VideoGenerationPipeline:
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
+        routing_plan: Optional[Dict[str, Any]] = None,
         progress_callback: Optional[Any] = None,
     ) -> Dict[str, Any]:
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
@@ -1566,6 +1567,21 @@ class VideoGenerationPipeline:
         # If True, audio mixing replaces TTS with source audio during SOURCE_CLIP
         # shots. Default False: TTS plays continuously (marketing/explainer mode).
         self._mute_tts_on_source_clips = bool(mute_tts_on_source_clips)
+        # Routing plan (from IntentRouterService) — drives:
+        # • script LLM enrichment (narration_fit_to_source)
+        # • Director system prompt (source_clip_priority)
+        # • SOURCE_CLIP card layout (infographic_mode)
+        # • coverage warning (coverage_min_pct)
+        # When None: pipeline behaves as before (medium priority, side mode, no fit, no coverage check).
+        self._routing_plan: Dict[str, Any] = routing_plan or {}
+        _rcfg = (self._routing_plan.get("config") or {}) if isinstance(self._routing_plan, dict) else {}
+        self._routing_config: Dict[str, Any] = {
+            "mute_tts_on_source_clips": bool(_rcfg.get("mute_tts_on_source_clips", False)),
+            "source_clip_priority": str(_rcfg.get("source_clip_priority", "medium")),
+            "infographic_mode": str(_rcfg.get("infographic_mode", "side")),
+            "narration_fit_to_source": bool(_rcfg.get("narration_fit_to_source", False)),
+            "coverage_min_pct": int(_rcfg.get("coverage_min_pct", 0) or 0),
+        }
         # Background music (Lyria) knobs — threaded through from the request.
         # None for enabled = "use tier default"; explicit True/False overrides.
         # Volume is only used when a track is actually generated.
@@ -1898,6 +1914,23 @@ class VideoGenerationPipeline:
                     transcript_text = " ".join(s.get("text", "") for s in _iv_transcript[:20])
                     if transcript_text.strip():
                         _context_parts.append(f"Narration heard: {transcript_text[:500]}")
+
+            # Routing plan: hard duration constraint when narration_fit_to_source is on.
+            # When the user attached source videos and asked us to "use parts of the videos"
+            # / "trim based on need", the narration must not exceed the combined source
+            # duration — otherwise SOURCE_CLIPs get speed-warped or chopped.
+            if self._routing_config.get("narration_fit_to_source") and self._input_video_contexts:
+                _total_src_dur = 0.0
+                for _ivc in self._input_video_contexts:
+                    _ivc_meta = (_ivc.get("context") or {}).get("meta") or {}
+                    _total_src_dur += float(_ivc_meta.get("duration_s", 0) or 0)
+                if _total_src_dur > 0:
+                    _context_parts.append(
+                        f"HARD CONSTRAINT: total source video duration is {_total_src_dur:.0f}s. "
+                        f"Narration must fit within {_total_src_dur:.0f}s (±10%). "
+                        "Do not invent steps, screens, or features that are not visible in the source videos. "
+                        "Every sentence must correspond to something the viewer can actually see."
+                    )
 
             if _context_parts:
                 if _user_has_script:
@@ -4526,6 +4559,8 @@ class VideoGenerationPipeline:
             DIRECTOR_SYSTEM_PROMPT,
             SUPER_ULTRA_DIRECTOR_EXTENSION,
             MUSIC_PLAN_EXTENSION,
+            STRICT_SOURCE_CLIP_DIRECTOR_EXTENSION,
+            OVERLAY_INFOGRAPHIC_DIRECTOR_EXTENSION,
             ACT_PLANNER_SYSTEM_PROMPT,
             build_director_user_prompt,
             build_act_planner_user_prompt,
@@ -4750,6 +4785,21 @@ class VideoGenerationPipeline:
             director_system = director_system + SUPER_ULTRA_DIRECTOR_EXTENSION
         if self._is_background_music_enabled():
             director_system = director_system + MUSIC_PLAN_EXTENSION
+        # Routing-plan-driven extensions:
+        #   • source_clip_priority=high  → strict 60% SOURCE_CLIP rule
+        #   • infographic_mode=overlay  → overlay_slots[] shot-spec
+        if (
+            self._routing_config.get("source_clip_priority") == "high"
+            and self._input_video_contexts
+        ):
+            director_system = director_system + STRICT_SOURCE_CLIP_DIRECTOR_EXTENSION
+            print("🎯 Director: STRICT_SOURCE_CLIP mode active (source_clip_priority=high)")
+        if (
+            self._routing_config.get("infographic_mode") == "overlay"
+            and self._input_video_contexts
+        ):
+            director_system = director_system + OVERLAY_INFOGRAPHIC_DIRECTOR_EXTENSION
+            print("🪟 Director: OVERLAY infographic mode active")
         if self._tier_config.get("director_motion_bias"):
             _is_portrait = _h > _w
             _target_shot_dur = "2-3.5 seconds" if _is_portrait else "2-4 seconds"
@@ -4946,6 +4996,38 @@ class VideoGenerationPipeline:
         director_path = run_dir / "director_plan.json"
         director_path.write_text(json.dumps(director_plan, indent=2, ensure_ascii=False))
         print(f"   ✅ Director planned {len(shots)} shots ({len(non_overlay)} primary + {len(shots) - len(non_overlay)} overlays)")
+
+        # Coverage warning — when routing_plan asks for ≥N% of source-video duration
+        # to be covered by SOURCE_CLIPs but the Director planned less. Soft warning
+        # for now (logs only); upgrade to hard-fail later once we have data.
+        try:
+            _cov_min_pct = int((self._routing_config or {}).get("coverage_min_pct", 0) or 0)
+            if _cov_min_pct > 0 and self._input_video_contexts:
+                _total_src_dur = 0.0
+                for _ivc in self._input_video_contexts:
+                    _ivc_meta = (_ivc.get("context") or {}).get("meta") or {}
+                    _total_src_dur += float(_ivc_meta.get("duration_s", 0) or 0)
+                if _total_src_dur > 0:
+                    _src_clip_dur = 0.0
+                    for _s in shots:
+                        if _s.get("shot_type") == "SOURCE_CLIP":
+                            _ss = float(_s.get("source_start", 0) or 0)
+                            _se = float(_s.get("source_end", 0) or 0)
+                            if _se > _ss:
+                                _src_clip_dur += (_se - _ss)
+                    _cov_pct = (_src_clip_dur / _total_src_dur) * 100.0
+                    if _cov_pct < _cov_min_pct:
+                        print(
+                            f"   [ROUTER] coverage {_cov_pct:.0f}% < threshold {_cov_min_pct}% — "
+                            f"SOURCE_CLIP shots cover {_src_clip_dur:.0f}s of {_total_src_dur:.0f}s "
+                            f"available source video"
+                        )
+                    else:
+                        print(
+                            f"   [ROUTER] coverage {_cov_pct:.0f}% (≥ {_cov_min_pct}% threshold) ✓"
+                        )
+        except Exception as _cov_err:
+            print(f"   [ROUTER] coverage check skipped: {_cov_err}")
 
         # Log / sanity-check Director's self-reported density (super_ultra only)
         density = director_plan.get("shot_density")
@@ -5627,6 +5709,61 @@ class VideoGenerationPipeline:
                         pass
                 return [entry], {}
             # ── end KINETIC_TEXT bypass ──
+
+            # ── Overlay-mode SOURCE_CLIP bypass — full-frame video + floating infographic cards ──
+            # Fired when routing_plan.config.infographic_mode == "overlay" and the
+            # Director attached overlay_slots[] to the shot. Deterministic HTML
+            # (no LLM call) so layout/positions are predictable.
+            if (
+                shot_type == "SOURCE_CLIP"
+                and self._routing_config.get("infographic_mode") == "overlay"
+            ):
+                _ov_slots = shot.get("overlay_slots") or []
+                _ov_src_start = float(shot.get("source_start", 0))
+                _ov_src_end = float(shot.get("source_end", end_time - start_time))
+                _ov_sv_idx = int(shot.get("source_video_index", 0))
+                _ov_src_url = ""
+                if _clip_ctx:
+                    _iv_assets_ov = _clip_ctx.get("assets_urls", {})
+                    _ov_src_url = (
+                        _iv_assets_ov.get("source_video", "")
+                        or _clip_ctx.get("source_public_url", "")
+                        or _clip_ctx.get("source_url", "")
+                    )
+                _accent_ov = (palette or {}).get("accent", "#7dd3fc")
+                _ov_html = self._build_overlay_source_clip_html(
+                    overlay_slots=_ov_slots,
+                    accent_color=_accent_ov,
+                    source_video_url=_ov_src_url,
+                    source_start=_ov_src_start,
+                    source_end=_ov_src_end,
+                )
+                _ov_entry = {
+                    "start": start_time, "end": end_time,
+                    "htmlStartX": 0, "htmlStartY": 0, "htmlEndX": _w, "htmlEndY": _h,
+                    "html": _ov_html,
+                    "id": _entry_id, "index": shot_idx,
+                    "z": shot.get("z", 10),
+                    "_shot_type": shot_type,
+                    "_narration_excerpt": shot.get("narration_excerpt", ""),
+                    "_visual_description": shot.get("visual_description", ""),
+                    "_skill_audio_events": [],
+                    "source_start": _ov_src_start,
+                    "source_end": _ov_src_end,
+                    "source_video_index": _ov_sv_idx,
+                    "_overlay_slots": _ov_slots,
+                }
+                print(
+                    f"   ✅ Shot {shot_idx + 1} SOURCE_CLIP overlay layout "
+                    f"({len(_ov_slots)} slot(s), no LLM)"
+                )
+                if on_segment_done:
+                    try:
+                        on_segment_done([_ov_entry])
+                    except Exception:
+                        pass
+                return [_ov_entry], {}
+            # ── end overlay SOURCE_CLIP bypass ──
 
             # ── Portrait demo SOURCE_CLIP bypass — deterministic side-by-side HTML ──
             # When a portrait (9:16) source video is used in a landscape (16:9) output,
@@ -7108,6 +7245,146 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         "minimal":     "Inter:wght@300;400;600;700",
         "cerulean":    "Inter:wght@400;600;700",
     }
+
+    def _build_overlay_source_clip_html(
+        self,
+        overlay_slots: list,
+        accent_color: str,
+        source_video_url: str,
+        source_start: float,
+        source_end: float,
+    ) -> str:
+        """
+        Deterministic HTML for SOURCE_CLIP shots in overlay infographic mode.
+
+        Layout:
+          - source video fills 100% of canvas (via .source-clip-bounds marker
+            the render worker already detects)
+          - overlay_slots[] are absolutely-positioned cards over the video
+            (top-right, top-left, bottom-banner, left-ribbon)
+          - GSAP fade+slide-in for each slot
+
+        No LLM call — fully templated for predictability.
+        """
+        from html import escape as _esc
+
+        def _slot_html(idx: int, slot: dict) -> str:
+            position = (slot.get("position") or "top-right").lower()
+            tag = _esc(str(slot.get("tag") or ""))
+            title = _esc(str(slot.get("title") or ""))
+            detail = _esc(str(slot.get("detail") or ""))
+            caption = _esc(str(slot.get("caption") or ""))
+            uid = f"ov{idx}"
+
+            if position == "bottom-banner":
+                inner_html = (
+                    f"<div style=\"font-size:1.4rem; font-weight:600; color:#ffffff; "
+                    f"line-height:1.4;\">{caption or title}</div>"
+                    + (f"<div style=\"margin-top:0.4rem; font-size:1rem; "
+                       f"color:rgba(255,255,255,0.85); line-height:1.5;\">{detail}</div>" if detail else "")
+                )
+                return (
+                    f'<div id="{uid}" class="overlay-callout overlay-bottom-banner" '
+                    f'style="position:absolute; left:0; right:0; bottom:0; '
+                    f'padding:1.6rem 6% 1.8rem; '
+                    f'background:linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0.0)); '
+                    f'opacity:0; transform:translateY(20px);">{inner_html}</div>'
+                )
+
+            if position == "left-ribbon":
+                ribbon_text = caption or title or tag
+                return (
+                    f'<div id="{uid}" class="overlay-callout overlay-left-ribbon" '
+                    f'style="position:absolute; top:0; bottom:0; left:0; width:8%; '
+                    f'min-width:88px; background:rgba(15,23,42,0.78); '
+                    f'backdrop-filter:blur(8px); display:flex; align-items:center; '
+                    f'justify-content:center; padding:1rem 0.5rem; '
+                    f'opacity:0; transform:translateX(-20px);">'
+                    f'<div style="writing-mode:vertical-rl; transform:rotate(180deg); '
+                    f'color:#ffffff; font-size:0.95rem; font-weight:600; '
+                    f'letter-spacing:0.18em; text-transform:uppercase;">{ribbon_text}</div>'
+                    f'</div>'
+                )
+
+            # default = corner card (top-right / top-left)
+            corner_pos = "top:6%; left:5%;" if position == "top-left" else "top:6%; right:5%;"
+            translate_in = "-18px" if position == "top-left" else "18px"
+            tag_html = (
+                f'<div class="overlay-tag" style="font-size:0.72rem; letter-spacing:0.16em; '
+                f'text-transform:uppercase; color:{accent_color}; font-weight:700; '
+                f'margin-bottom:0.4rem;">{tag}</div>'
+            ) if tag else ""
+            detail_html = (
+                f'<p style="margin:0.4rem 0 0; font-size:0.95rem; line-height:1.45; '
+                f'color:rgba(255,255,255,0.88); font-family:Inter,system-ui,sans-serif;">{detail}</p>'
+            ) if detail else ""
+            return (
+                f'<div id="{uid}" class="overlay-callout overlay-{position}" '
+                f'style="position:absolute; {corner_pos} max-width:32%; min-width:220px; '
+                f'background:rgba(15,23,42,0.78); backdrop-filter:blur(10px); '
+                f'border:1px solid rgba(255,255,255,0.14); border-radius:14px; '
+                f'padding:1rem 1.2rem; color:#ffffff; '
+                f'box-shadow:0 10px 30px rgba(0,0,0,0.45); '
+                f'opacity:0; transform:translate({translate_in},-8px);">'
+                f'{tag_html}'
+                f'<h3 style="margin:0; font-size:1.4rem; font-weight:700; '
+                f'line-height:1.2; font-family:Inter,system-ui,sans-serif;">{title}</h3>'
+                f'{detail_html}'
+                f'</div>'
+            )
+
+        slots_html = "".join(_slot_html(i, s) for i, s in enumerate(overlay_slots or []))
+
+        # Animation timeline — staggered fade+slide for each callout
+        anim_js_parts = []
+        for i, slot in enumerate(overlay_slots or []):
+            uid = f"ov{i}"
+            position = (slot.get("position") or "top-right").lower()
+            if position == "bottom-banner":
+                anim_js_parts.append(
+                    f"gsap.to('#{uid}',{{opacity:1,y:0,duration:0.55,"
+                    f"ease:'power2.out',delay:{0.2 + i * 0.18}}});"
+                )
+            elif position == "left-ribbon":
+                anim_js_parts.append(
+                    f"gsap.to('#{uid}',{{opacity:1,x:0,duration:0.5,"
+                    f"ease:'power2.out',delay:{0.2 + i * 0.18}}});"
+                )
+            else:
+                anim_js_parts.append(
+                    f"gsap.to('#{uid}',{{opacity:1,x:0,y:0,duration:0.5,"
+                    f"ease:'power2.out',delay:{0.2 + i * 0.18}}});"
+                )
+        anim_js = "".join(anim_js_parts)
+
+        # Source video tag — embedded inside .source-clip-bounds so the renderer
+        # detects the full-canvas black region and composites the source video
+        # to fill the entire frame.
+        video_tag = ""
+        if source_video_url:
+            video_tag = (
+                f'<video data-source-clip="true" data-source-start="{source_start}" '
+                f'src="{source_video_url}#t={source_start},{source_end}" '
+                f'autoplay muted playsinline '
+                f'style="width:100%;height:100%;object-fit:cover;pointer-events:none;"></video>'
+            )
+
+        html_doc = (
+            "<!DOCTYPE html><html><head>"
+            "<style>*{margin:0;padding:0;box-sizing:border-box}</style>"
+            "</head><body style='width:100%;height:100%;background:transparent;overflow:hidden;'>"
+            "<div class='source-overlay-host' "
+            "style='position:absolute; inset:0; background:#000000; overflow:hidden;'>"
+            "<div class='source-clip-bounds' "
+            f"style='position:absolute; inset:0; background:#000000; overflow:hidden;'>{video_tag}</div>"
+            f"{slots_html}"
+            "</div>"
+            "<script>window.addEventListener('load',function(){"
+            f"if(typeof gsap!=='undefined'){{{anim_js}}}"
+            "})</script>"
+            "</body></html>"
+        )
+        return self._ensure_fonts(html_doc)
 
     def _ensure_fonts(self, html: str) -> str:
         # Get colors based on background_type, preferring brand-override'd palette from style_guide
@@ -8923,6 +9200,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     timeline_entry["source_end"] = entry.get("source_end", 0)
                     timeline_entry["source_video_index"] = entry.get("source_video_index", 0)
                     timeline_entry["shot_type"] = "SOURCE_CLIP"
+                    # Overlay-mode hint for the render worker: when an HTML overlay
+                    # has translucent callouts on top of a full-canvas source video,
+                    # the black-region heuristic can mis-classify the layout as
+                    # "card mode" if the callouts cover too much of the canvas.
+                    # An explicit "fullscreen" hint forces brightness-based alpha.
+                    if entry.get("_overlay_slots"):
+                        timeline_entry["compositing_mode"] = "fullscreen"
+                        timeline_entry["overlay_slots"] = entry["_overlay_slots"]
 
                 # Pass through sound cues from the Sound Planner. The cue `t`
                 # values are shot-relative (0 = segment start). We ALSO emit an

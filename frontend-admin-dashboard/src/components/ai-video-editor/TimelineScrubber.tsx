@@ -13,7 +13,8 @@ import {
 import { clamp } from './utils/coord-convert';
 import { useAudioWaveform } from './utils/use-audio-waveform';
 import { SentenceEditPopover } from './SentenceEditPopover';
-import type { Entry, SentenceClip } from '@/components/ai-video-player/types';
+import { SoundCueRemovePopover } from './SoundCueRemovePopover';
+import type { Entry, SentenceClip, SoundCue } from '@/components/ai-video-player/types';
 
 // ── Layout constants ────────────────────────────────────────────────────────
 
@@ -127,6 +128,15 @@ export function TimelineScrubber() {
         anchorViewportTop: number;
     } | null>(null);
 
+    // Currently-active sound-cue popover. Same anchoring story as the
+    // sentence popover above.
+    const [editingCue, setEditingCue] = useState<{
+        cue: SoundCue;
+        entryId: string;
+        anchorViewportX: number;
+        anchorViewportTop: number;
+    } | null>(null);
+
     const navigationMode = meta.navigation;
     const totalDuration = useMemo(
         () => computeTotalDuration(entries, meta.total_duration),
@@ -149,6 +159,26 @@ export function TimelineScrubber() {
         () => (navigationMode === 'time_driven' ? meta.sentences ?? [] : []),
         [navigationMode, meta.sentences],
     );
+
+    // Flatten every shot's sound_cues into a single absolute-time list so
+    // the waveform row can render them as markers. Each cue carries its
+    // owning entryId so the popover knows where to dispatch the removal.
+    // Sorted by absolute_time so visually adjacent markers don't overlap
+    // unpredictably; offsets fall back to entry inTime + cue.t for older
+    // payloads that pre-date `absolute_time`.
+    const soundCues = useMemo(() => {
+        if (navigationMode !== 'time_driven') return [];
+        const out: Array<{ cue: SoundCue; entryId: string; absoluteTime: number }> = [];
+        for (const e of entries) {
+            for (const cue of e.sound_cues ?? []) {
+                const abs = cue.absolute_time ?? (e.inTime ?? 0) + (cue.t ?? 0);
+                if (abs == null || Number.isNaN(abs)) continue;
+                out.push({ cue, entryId: e.id, absoluteTime: abs });
+            }
+        }
+        out.sort((a, b) => a.absoluteTime - b.absoluteTime);
+        return out;
+    }, [entries, navigationMode]);
     const hasWaveform = navigationMode === 'time_driven' && (waveformPeaks.length > 0 || waveformLoading);
 
     // Y-offsets for each channel section
@@ -323,6 +353,31 @@ export function TimelineScrubber() {
         [entries],
     );
 
+    const handleCueClick = useCallback(
+        (e: React.MouseEvent, cue: SoundCue, entryId: string, absoluteTime: number) => {
+            // Cue markers sit ON TOP of sentence regions. Stop propagation so
+            // the underlying sentence-region click + the bar's scrub handler
+            // don't both fire alongside the cue popover.
+            e.stopPropagation();
+            const bar = barRef.current;
+            if (!bar) return;
+            const barRect = bar.getBoundingClientRect();
+            if (totalDuration <= 0 || barRect.width <= 0) return;
+            const offsetX = clamp(
+                (absoluteTime / totalDuration) * barRect.width,
+                0,
+                barRect.width,
+            );
+            setEditingCue({
+                cue,
+                entryId,
+                anchorViewportX: barRect.left + offsetX,
+                anchorViewportTop: barRect.top + RULER_H,
+            });
+        },
+        [totalDuration],
+    );
+
     const handleSentenceClick = useCallback(
         (e: React.MouseEvent, sentence: SentenceClip) => {
             // Stop the click from also being interpreted as a scrub on the bar.
@@ -487,6 +542,41 @@ export function TimelineScrubber() {
                                 style={{ left: scrubPercent }}
                             />
 
+                            {/* Sound-effect markers: small clickable dots positioned at each
+                                cue's absolute_time. Rendered ABOVE sentence regions so they
+                                steal clicks first (handler stops propagation). Visual: a small
+                                amber pill sits above the waveform line so it's distinguishable
+                                from sentence-region borders without obscuring the waveform. */}
+                            {soundCues.map(({ cue, entryId, absoluteTime }) => {
+                                const left = `${(absoluteTime / totalDuration) * 100}%`;
+                                const isActive = editingCue?.cue.id === cue.id;
+                                return (
+                                    <button
+                                        key={`${entryId}:${cue.id}`}
+                                        type="button"
+                                        title={`${cue.role || 'SFX'} · ${absoluteTime.toFixed(2)}s`}
+                                        onClick={(e) =>
+                                            handleCueClick(e, cue, entryId, absoluteTime)
+                                        }
+                                        // 8px square pill with a small downward "tail" via border
+                                        // tricks would be nice but keep the markup minimal: a
+                                        // simple rounded square is unambiguous enough at this size.
+                                        className={[
+                                            'absolute z-10 -translate-x-1/2 cursor-pointer rounded-sm border transition-all',
+                                            isActive
+                                                ? 'border-amber-700 bg-amber-500 shadow-md'
+                                                : 'border-amber-600 bg-amber-400 hover:scale-110 hover:bg-amber-500',
+                                        ].join(' ')}
+                                        style={{
+                                            left,
+                                            top: 2,
+                                            width: 6,
+                                            height: 6,
+                                        }}
+                                    />
+                                );
+                            })}
+
                             {/* Per-sentence regions: subtle hoverable bands so the user can
                                 click a sentence to edit its script. The waveform shows underneath;
                                 hover state is visual-only (opacity/border), it doesn't break the
@@ -496,17 +586,26 @@ export function TimelineScrubber() {
                                 const left = `${(s.start_time / totalDuration) * 100}%`;
                                 const width = `${(s.duration / totalDuration) * 100}%`;
                                 const isEditing = editingSentence?.sentence.id === s.id;
+                                // Silenced sentences (audio replaced with silence,
+                                // text cleared) get a muted gray treatment so the
+                                // user can spot empty slots at a glance.
+                                const isSilenced =
+                                    s.text.trim() === '' && (s.audio_url ?? '') === '';
                                 return (
                                     <button
                                         key={s.id}
                                         type="button"
-                                        title={s.text}
+                                        title={isSilenced ? '(silenced — click to add narration)' : s.text}
                                         onClick={(e) => handleSentenceClick(e, s)}
                                         className={[
-                                            'absolute top-0 bottom-0 cursor-pointer border-l border-transparent transition-colors',
+                                            'absolute top-0 bottom-0 cursor-pointer border-l transition-colors',
                                             isEditing
-                                                ? 'border-indigo-500 bg-indigo-300/40'
-                                                : 'hover:border-indigo-400 hover:bg-indigo-200/30',
+                                                ? isSilenced
+                                                    ? 'border-gray-500 bg-gray-300/40'
+                                                    : 'border-indigo-500 bg-indigo-300/40'
+                                                : isSilenced
+                                                  ? 'border-gray-400 bg-gray-200/40 hover:bg-gray-300/40'
+                                                  : 'border-transparent hover:border-indigo-400 hover:bg-indigo-200/30',
                                             // Right-most border on the last sentence so the
                                             // grid feels closed; intermediate sentences only
                                             // need the left border to mark their start.
@@ -531,6 +630,17 @@ export function TimelineScrubber() {
                             anchorViewportTop={editingSentence.anchorViewportTop}
                             affectedEntryCount={countAffectedEntries(editingSentence.sentence)}
                             onClose={() => setEditingSentence(null)}
+                        />
+                    )}
+
+                    {/* Sound-effect remove popover. Same portal pattern. */}
+                    {editingCue && (
+                        <SoundCueRemovePopover
+                            cue={editingCue.cue}
+                            entryId={editingCue.entryId}
+                            anchorViewportX={editingCue.anchorViewportX}
+                            anchorViewportTop={editingCue.anchorViewportTop}
+                            onClose={() => setEditingCue(null)}
                         />
                     )}
 

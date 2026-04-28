@@ -635,6 +635,50 @@ async def splice_audio_endpoint(request: SpliceAudioRequest, x_render_key: str =
     )
 
 
+class SilenceRangeRequest(BaseModel):
+    base_audio_url: str = Field(..., description="Public S3 URL of the original MP3")
+    silence_start: float = Field(..., ge=0.0, description="Start of the range to silence, in seconds")
+    silence_end: float = Field(..., gt=0.0, description="End of the range to silence, in seconds (exclusive)")
+    output_key: str = Field(..., description="Destination S3 key for the silenced MP3")
+    bucket: Optional[str] = Field(default=None, description="S3 bucket (defaults to AWS_S3_PUBLIC_BUCKET / AWS_BUCKET_NAME env)")
+    crossfade_ms: int = Field(default=50, ge=0, le=2000)
+    head_pad_ms: int = Field(default=40, ge=0, le=500)
+
+
+@app.post("/audio/silence_range", response_model=SpliceAudioResponse)
+async def silence_audio_range_endpoint(
+    request: SilenceRangeRequest, x_render_key: str = Header(""),
+):
+    """Replace a range of the audio with synthesized silence of the same
+    length. Total duration is preserved, downstream timestamps don't move
+    — used by the editor's "mute this sentence" flow.
+    """
+    _verify_key(x_render_key)
+    from audio_ops import AudioOpsError, silence_audio_range
+
+    try:
+        result = silence_audio_range(
+            base_audio_url=request.base_audio_url,
+            silence_start=request.silence_start,
+            silence_end=request.silence_end,
+            output_key=request.output_key,
+            bucket=request.bucket,
+            crossfade_ms=request.crossfade_ms,
+            head_pad_ms=request.head_pad_ms,
+        )
+    except AudioOpsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("silence_audio_range failed")
+        raise HTTPException(status_code=500, detail=f"silence_audio_range failed: {exc}")
+
+    return SpliceAudioResponse(
+        output_url=result.output_url,
+        new_duration=result.new_duration,
+        duration_delta=result.duration_delta,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Transcribe Jobs — Speech-to-text for long recordings
 # ---------------------------------------------------------------------------

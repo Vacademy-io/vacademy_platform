@@ -175,6 +175,7 @@ class VideoGenerationService:
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
+        routing_overrides: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -335,6 +336,7 @@ class VideoGenerationService:
                     background_music_enabled=background_music_enabled,
                     background_music_volume=background_music_volume,
                     sub_shots_enabled=sub_shots_enabled,
+                    routing_overrides=routing_overrides,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -421,6 +423,7 @@ class VideoGenerationService:
         background_music_enabled: Optional[bool] = None,
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
+        routing_overrides: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -669,6 +672,80 @@ class VideoGenerationService:
                         if self.s3_service.download_file(branding_meta_url, branding_meta_path):
                             logger.info(f"[VideoGenService] Successfully downloaded branding_meta.json")
         
+        # ── Intent router — decide which tools to invoke and how the pipeline behaves ──
+        from ..schemas.routing import RoutingPlan
+        routing_plan = RoutingPlan()  # safe default
+        if start_stage_idx == 0 and prompt:
+            try:
+                from .intent_router_service import IntentRouterService, apply_overrides
+                from .web_content_capture_service import extract_urls
+                urls_found = extract_urls(prompt, max_urls=5)
+                router_svc = IntentRouterService(openrouter_key=openrouter_key)
+                routing_plan = await router_svc.route(
+                    prompt=prompt,
+                    input_video_count=len(input_video_ids or []),
+                    attached_file_count=len(reference_files or []),
+                    urls_in_prompt=urls_found,
+                    orientation=orientation,
+                    content_type=content_type,
+                )
+                routing_plan = apply_overrides(routing_plan, routing_overrides)
+                (run_dir / "routing_plan.json").write_text(
+                    routing_plan.model_dump_json(indent=2), encoding="utf-8"
+                )
+                logger.info(f"[VideoGenService] Routing plan: {routing_plan.explanation}")
+            except Exception as e:
+                logger.warning(f"[VideoGenService] Intent router failed (non-fatal): {e}")
+        else:
+            cached_plan = run_dir / "routing_plan.json"
+            if cached_plan.exists():
+                try:
+                    routing_plan = RoutingPlan.model_validate_json(cached_plan.read_text(encoding="utf-8"))
+                except Exception as e:
+                    logger.warning(f"[VideoGenService] Cached routing plan unreadable: {e}")
+
+        # ── Web capture (only if router enabled scrape_url) ──
+        captured_text_context = ""
+        if start_stage_idx == 0 and prompt and routing_plan.is_tool_enabled("scrape_url"):
+            try:
+                from .web_content_capture_service import WebContentCaptureService, extract_urls
+                urls = extract_urls(prompt, max_urls=2)
+                if urls:
+                    logger.info(f"[VideoGenService] scrape_url enabled — capturing {len(urls)} URL(s): {urls}")
+                    capture_svc = WebContentCaptureService(s3_service=self.s3_service)
+                    captured_files, captured_text_context = await capture_svc.capture_urls(urls, run_dir)
+                    if captured_files:
+                        reference_files = (reference_files or []) + captured_files
+                        logger.info(
+                            f"[VideoGenService] Web capture added {len(captured_files)} "
+                            f"reference files, {len(captured_text_context)} chars text"
+                        )
+            except Exception as e:
+                logger.warning(f"[VideoGenService] Web capture failed (non-fatal): {e}")
+
+        # ── Web search (only if router enabled web_search) ──
+        searched_text_context = ""
+        if start_stage_idx == 0 and routing_plan.is_tool_enabled("web_search"):
+            try:
+                ws_tool = routing_plan.get_tool("web_search")
+                query = (ws_tool.params or {}).get("query", "") if ws_tool else ""
+                if query:
+                    from .web_search_service import WebSearchService, format_search_for_context
+                    logger.info(f"[VideoGenService] web_search enabled — query={query!r}")
+                    search_svc = WebSearchService(openrouter_key=openrouter_key)
+                    result = await search_svc.search(query)
+                    searched_text_context = format_search_for_context(result)
+            except Exception as e:
+                logger.warning(f"[VideoGenService] Web search failed (non-fatal): {e}")
+
+        # ── Resolve mute_tts_on_source_clips from routing plan ──
+        # apply_overrides() has already merged any user toggle into routing_plan.config,
+        # so it represents the final user+router decision. The legacy kwarg can only force ON
+        # (its default is False, indistinguishable from "not set"); the plan wins otherwise.
+        if routing_plan.config.mute_tts_on_source_clips and not mute_tts_on_source_clips:
+            mute_tts_on_source_clips = True
+            logger.info("[VideoGenService] mute_tts_on_source_clips=true per routing plan")
+
         # ── Process reference files (images/PDFs) ──
         reference_context = None
         if reference_files:
@@ -693,6 +770,19 @@ class VideoGenerationService:
             except Exception as e:
                 logger.warning(f"[VideoGenService] Reference file processing failed (non-fatal): {e}")
                 reference_context = None
+
+        # ── Merge captured page text + web search results into ReferenceContext ──
+        extra_text_blocks = [b for b in (captured_text_context, searched_text_context) if b]
+        if extra_text_blocks:
+            extra_text = "\n\n".join(extra_text_blocks)
+            if reference_context:
+                reference_context.text_context = (
+                    (reference_context.text_context + "\n\n" + extra_text)
+                    if reference_context.text_context else extra_text
+                )
+            else:
+                from .reference_file_service import ReferenceContext
+                reference_context = ReferenceContext(text_context=extra_text)
 
         # ── Load indexed input video contexts (if provided) ──
         input_video_contexts = None
@@ -920,6 +1010,7 @@ class VideoGenerationService:
                     background_music_enabled=background_music_enabled,
                     background_music_volume=background_music_volume,
                     sub_shots_enabled=sub_shots_enabled,
+                    routing_plan=routing_plan.model_dump() if routing_plan else None,
                     progress_callback=_progress_cb,
                 )
 

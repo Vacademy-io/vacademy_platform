@@ -38,7 +38,7 @@ ssh "$RENDER_SERVER" "mkdir -p $REMOTE_DIR/render_worker $REMOTE_DIR/app/ai-vide
 rsync -avz --progress \
     "$SCRIPT_DIR/main.py" \
     "$SCRIPT_DIR/worker.py" \
-    "$SCRIPT_DIR/audio_ops.py" \
+    "$SCRIPT_DIR/transcribe_worker.py" \
     "$SCRIPT_DIR/requirements.txt" \
     "$SCRIPT_DIR/Dockerfile" \
     "$SCRIPT_DIR/build.sh" \
@@ -106,7 +106,7 @@ docker run -d \
     -e AWS_S3_PUBLIC_BUCKET='vacademy-media-storage-public' \
     -e RENDER_KEY='vsahcraedyeamsyh' \
     -e MAX_CONCURRENT_JOBS='2' \
-    -e OPENROUTER_API_KEY='' \
+    -e OPENROUTER_API_KEY='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' \
     "$IMAGE_NAME"
 
 echo ""

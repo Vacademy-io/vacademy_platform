@@ -194,6 +194,49 @@ def preview_video_cost(
 
 
 @router.post(
+    "/route-preview",
+    summary="Preview the auto-routing plan for a prompt (External, no side effects)",
+)
+async def external_route_preview(
+    payload: dict,
+    institute_id: str = Depends(get_institute_from_api_key),
+):
+    """
+    Returns the RoutingPlan the pipeline would compute for this prompt + context.
+    No side effects: does NOT trigger scrape, search, or generation.
+
+    Body:
+      {
+        "prompt": str,
+        "input_video_count": int,
+        "attached_file_count": int,
+        "orientation": "landscape" | "portrait",
+        "content_type": str
+      }
+    """
+    from ..config import get_settings as _get_settings
+    from ..schemas.routing import RoutePreviewRequest as _RoutePreviewRequest
+    from ..services.intent_router_service import IntentRouterService as _IntentRouter
+    from ..services.web_content_capture_service import extract_urls as _extract_urls
+
+    _ = institute_id  # auth gate; institute_id reserved for future per-tenant rules
+    body = _RoutePreviewRequest.model_validate(payload)
+    settings = _get_settings()
+    api_key = getattr(settings, "openrouter_api_key", "") or ""
+    urls = _extract_urls(body.prompt, max_urls=5)
+    router_svc = _IntentRouter(openrouter_key=api_key)
+    plan = await router_svc.route(
+        prompt=body.prompt,
+        input_video_count=body.input_video_count,
+        attached_file_count=body.attached_file_count,
+        urls_in_prompt=urls,
+        orientation=body.orientation,
+        content_type=body.content_type,
+    )
+    return plan.model_dump()
+
+
+@router.post(
     "/generate",
     summary="Generate AI video (External)",
     response_class=StreamingResponse
@@ -275,6 +318,7 @@ async def generate_video_external(
                         background_music_enabled=p.background_music_enabled,
                         background_music_volume=p.background_music_volume,
                         sub_shots_enabled=p.sub_shots_enabled,
+                        routing_overrides=p.routing_overrides,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -1033,6 +1077,81 @@ async def regenerate_sentence_external(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to regenerate sentence: {exc}")
+
+    return RegenerateSentenceResponse(
+        video_id=result.video_id,
+        sentence=SentenceClipDto(**result.sentence),
+        duration_delta=result.duration_delta,
+        new_global_audio_url=result.new_global_audio_url,
+        new_global_duration=result.new_global_duration,
+        timeline_url=result.timeline_url,
+    )
+
+
+class SilenceSentenceRequest(BaseModel):
+    video_id: str
+    sentence_id: str
+    crossfade_ms: int = Field(default=50, ge=0, le=2000)
+    head_pad_ms: int = Field(default=40, ge=0, le=500)
+
+
+@router.post(
+    "/sentence/silence",
+    response_model=RegenerateSentenceResponse,
+    summary="Mute one sentence — replace its audio with silence of equal length (External)",
+)
+async def silence_sentence_external(
+    payload: SilenceSentenceRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> RegenerateSentenceResponse:
+    """
+    Replace one sentence's audio with synthesized silence of identical
+    length. Total duration and downstream timestamps are preserved — the
+    response's `duration_delta` is ~0.
+
+    The sentence stays in `meta.sentences[]` (with empty `text` + `audio_url`)
+    so the editor can later re-narrate the same slot via /sentence/regenerate.
+
+    Errors:
+      - 400 — sentence not found / sentences[] not built yet.
+      - 503 — render server not configured.
+      - 500 — splice / S3 failure.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Render server not configured. Set RENDER_SERVER_URL.",
+        )
+
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url,
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+    try:
+        result = svc.silence_sentence(
+            video_id=payload.video_id,
+            sentence_id=payload.sentence_id,
+            crossfade_ms=payload.crossfade_ms,
+            head_pad_ms=payload.head_pad_ms,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to silence sentence: {exc}")
 
     return RegenerateSentenceResponse(
         video_id=result.video_id,

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -71,7 +71,11 @@ import {
     QualityTier,
     TtsVoice,
     VideoOrientation,
+    RoutingPlan,
+    RoutingOverrides,
+    RoutingToolName,
     fetchTtsVoices,
+    fetchRoutePreview,
 } from '../-services/video-generation';
 import { useAIModelsList } from '@/hooks/useAiModels';
 import { useAiCreditsQuery, useCreditEstimateQuery } from '@/services/ai-credits/get-ai-credits';
@@ -161,6 +165,14 @@ export function PromptInput({
         Array<{ fileId: string; fileName: string; fileType: 'image' | 'pdf'; url: string; previewUrl?: string }>
     >([]);
     const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+    // URLs the user has dismissed via the "will be captured" chip — stripped from prompt at submit time
+    const [ignoredUrls, setIgnoredUrls] = useState<Set<string>>(new Set());
+    // Smart Plan (Intent Router) state — routerPlan is the latest preview from the backend;
+    // routingOverrides tracks the sparse diff the user creates by clicking toggles.
+    const [routerPlan, setRouterPlan] = useState<RoutingPlan | null>(null);
+    const [routerLoading, setRouterLoading] = useState(false);
+    const [routingOverrides, setRoutingOverrides] = useState<RoutingOverrides>({});
+    const [routerExplanationOpen, setRouterExplanationOpen] = useState(false);
     // Input video (indexed source video) state
     type InputVideoItem = { id: string; name: string; mode: string; duration_seconds: number | null; status: string; progress?: number };
     const [indexedVideos, setIndexedVideos] = useState<InputVideoItem[]>([]);
@@ -397,14 +409,142 @@ export function PromptInput({
         }
     };
 
+    // ── Smart Plan: debounced fetch from /route-preview when context is meaningful ──
+    const trimmedPromptForRouting = prompt.trim();
+    const inputVideoCount = selectedInputVideoIds.length;
+    const attachedFileCount = attachments.length;
+    useEffect(() => {
+        if (!apiKey || trimmedPromptForRouting.length < 10) {
+            setRouterPlan(null);
+            setRouterLoading(false);
+            return;
+        }
+        let cancelled = false;
+        const handle = window.setTimeout(async () => {
+            try {
+                setRouterLoading(true);
+                const plan = await fetchRoutePreview(apiKey, {
+                    prompt: trimmedPromptForRouting,
+                    input_video_count: inputVideoCount,
+                    attached_file_count: attachedFileCount,
+                    orientation: options.orientation,
+                    content_type: options.content_type,
+                });
+                if (!cancelled) setRouterPlan(plan);
+            } catch (err) {
+                if (!cancelled) setRouterPlan(null);
+                // Silent fail — Smart Plan is non-critical UI; backend has its own defaults.
+                console.debug('[RoutePreview] failed', err);
+            } finally {
+                if (!cancelled) setRouterLoading(false);
+            }
+        }, 600);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(handle);
+        };
+    }, [apiKey, trimmedPromptForRouting, inputVideoCount, attachedFileCount, options.orientation, options.content_type]);
+
+    // Resolved view of each tool/config flag (router decision + user override)
+    const isToolEnabled = (name: RoutingToolName): boolean => {
+        const ovr = routingOverrides.tools?.[name];
+        if (typeof ovr === 'boolean') return ovr;
+        const plan = routerPlan?.tools?.find((t) => t.name === name);
+        return !!plan?.enabled;
+    };
+    const isToolOverridden = (name: RoutingToolName): boolean =>
+        typeof routingOverrides.tools?.[name] === 'boolean';
+    const cfgValue = <K extends keyof RoutingPlan['config']>(key: K): RoutingPlan['config'][K] | undefined => {
+        const ovr = routingOverrides.config?.[key];
+        if (ovr !== undefined) return ovr as RoutingPlan['config'][K];
+        return routerPlan?.config?.[key];
+    };
+    const isCfgOverridden = (key: keyof RoutingPlan['config']): boolean =>
+        routingOverrides.config?.[key] !== undefined;
+
+    const toggleTool = (name: RoutingToolName) => {
+        setRoutingOverrides((prev) => {
+            const currentResolved = isToolEnabled(name);
+            const newVal = !currentResolved;
+            const planEnabled = !!routerPlan?.tools?.find((t) => t.name === name)?.enabled;
+            const next = { ...prev, tools: { ...(prev.tools || {}) } };
+            // If the new value matches the router's decision, clear the override
+            // (so the chip's badge flips back to "auto").
+            if (newVal === planEnabled) {
+                delete next.tools![name];
+            } else {
+                next.tools![name] = newVal;
+            }
+            return next;
+        });
+    };
+    const toggleMuteTtsCfg = () => {
+        setRoutingOverrides((prev) => {
+            const planVal = !!routerPlan?.config?.mute_tts_on_source_clips;
+            const currentVal = cfgValue('mute_tts_on_source_clips');
+            const newVal = !(currentVal ?? false);
+            const next = { ...prev, config: { ...(prev.config || {}) } };
+            if (newVal === planVal) {
+                delete next.config!.mute_tts_on_source_clips;
+            } else {
+                next.config!.mute_tts_on_source_clips = newVal;
+            }
+            return next;
+        });
+    };
+    const toggleOverlayCfg = () => {
+        setRoutingOverrides((prev) => {
+            const planVal = routerPlan?.config?.infographic_mode || 'side';
+            const currentVal = cfgValue('infographic_mode') ?? 'side';
+            const newVal: RoutingPlan['config']['infographic_mode'] = currentVal === 'overlay' ? 'side' : 'overlay';
+            const next = { ...prev, config: { ...(prev.config || {}) } };
+            if (newVal === planVal) {
+                delete next.config!.infographic_mode;
+            } else {
+                next.config!.infographic_mode = newVal;
+            }
+            return next;
+        });
+    };
+
+    // Detect URLs in the prompt — backend captures up to 2 of these as references
+    const URL_REGEX = /https?:\/\/[^\s<>"'`)]+/g;
+    const detectedUrls = useMemo<string[]>(() => {
+        if (!prompt) return [];
+        const found = prompt.match(URL_REGEX) || [];
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const raw of found) {
+            const u = raw.replace(/[.,;:!?)]+$/, '');
+            if (!seen.has(u)) {
+                seen.add(u);
+                out.push(u);
+            }
+            if (out.length >= 2) break;
+        }
+        return out;
+    }, [prompt]);
+    const activeUrls = detectedUrls.filter((u) => !ignoredUrls.has(u));
+
     const buildRequest = (): GenerateVideoRequest => {
         const referenceFiles: ReferenceFile[] = attachments.map((a) => ({
             url: a.url,
             name: a.fileName,
             type: a.fileType,
         }));
+        // Strip any URLs the user dismissed via the chip ✕ from the prompt before sending
+        let outboundPrompt = prompt.trim();
+        if (ignoredUrls.size > 0) {
+            for (const u of ignoredUrls) {
+                outboundPrompt = outboundPrompt.split(u).join('').replace(/\s{2,}/g, ' ').trim();
+            }
+        }
+        // Only send routing_overrides if the user actually deviated from router defaults
+        const hasRoutingOverrides =
+            (routingOverrides.tools && Object.keys(routingOverrides.tools).length > 0) ||
+            (routingOverrides.config && Object.keys(routingOverrides.config).length > 0);
         return {
-            prompt: prompt.trim(),
+            prompt: outboundPrompt,
             ...options,
             ...(referenceFiles.length > 0 ? { reference_files: referenceFiles } : {}),
             ...(selectedInputVideoIds.length > 0
@@ -416,6 +556,7 @@ export function PromptInput({
                           : {}),
                   }
                 : {}),
+            ...(hasRoutingOverrides ? { routing_overrides: routingOverrides } : {}),
         };
     };
 
@@ -1613,6 +1754,171 @@ export function PromptInput({
                                     </div>
                                 );
                             })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Smart Plan panel — auto-routed tools + behavior toggles */}
+                {(routerPlan || routerLoading) && (
+                    <div className="flex flex-col gap-1.5 rounded-md border border-violet-200 bg-violet-50/30 px-2 py-1.5 dark:border-violet-800 dark:bg-violet-950/20">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-violet-600">
+                                Smart plan
+                            </span>
+                            {routerLoading && !routerPlan && (
+                                <span className="text-[11px] text-muted-foreground">analyzing prompt…</span>
+                            )}
+                            {/* scrape_url toggle */}
+                            {routerPlan?.tools?.find((t) => t.name === 'scrape_url') && (
+                                <button
+                                    type="button"
+                                    onClick={() => toggleTool('scrape_url')}
+                                    className={`group flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition ${
+                                        isToolEnabled('scrape_url')
+                                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40'
+                                            : 'border-dashed bg-muted/30 text-muted-foreground'
+                                    }`}
+                                    title={routerPlan.tools.find((t) => t.name === 'scrape_url')?.reason || ''}
+                                >
+                                    <Globe className="size-3.5" />
+                                    <span>{isToolEnabled('scrape_url') ? 'Capture website' : 'Skip website'}</span>
+                                    <span className={`ml-1 rounded px-1 text-[9px] uppercase ${
+                                        isToolOverridden('scrape_url') ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-muted text-muted-foreground'
+                                    }`}>{isToolOverridden('scrape_url') ? 'manual' : 'auto'}</span>
+                                </button>
+                            )}
+                            {/* web_search toggle */}
+                            {routerPlan?.tools?.find((t) => t.name === 'web_search') && (
+                                <button
+                                    type="button"
+                                    onClick={() => toggleTool('web_search')}
+                                    className={`group flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition ${
+                                        isToolEnabled('web_search')
+                                            ? 'border-sky-300 bg-sky-50 text-sky-700 dark:bg-sky-950/40'
+                                            : 'border-dashed bg-muted/30 text-muted-foreground'
+                                    }`}
+                                    title={routerPlan.tools.find((t) => t.name === 'web_search')?.reason || ''}
+                                >
+                                    <Sparkles className="size-3.5" />
+                                    <span>{isToolEnabled('web_search') ? 'Web search' : 'Skip search'}</span>
+                                    <span className={`ml-1 rounded px-1 text-[9px] uppercase ${
+                                        isToolOverridden('web_search') ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-muted text-muted-foreground'
+                                    }`}>{isToolOverridden('web_search') ? 'manual' : 'auto'}</span>
+                                </button>
+                            )}
+                            {/* mute_tts_on_source_clips toggle (only meaningful with input videos) */}
+                            {selectedInputVideoIds.length > 0 && routerPlan && (
+                                <button
+                                    type="button"
+                                    onClick={toggleMuteTtsCfg}
+                                    className={`group flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition ${
+                                        cfgValue('mute_tts_on_source_clips')
+                                            ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40'
+                                            : 'border-dashed bg-muted/30 text-muted-foreground'
+                                    }`}
+                                    title="Mute TTS narration during source-clip shots so the demo's original audio plays"
+                                >
+                                    <Volume2 className="size-3.5" />
+                                    <span>{cfgValue('mute_tts_on_source_clips') ? 'Mute TTS on clips' : 'TTS over clips'}</span>
+                                    <span className={`ml-1 rounded px-1 text-[9px] uppercase ${
+                                        isCfgOverridden('mute_tts_on_source_clips') ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-muted text-muted-foreground'
+                                    }`}>{isCfgOverridden('mute_tts_on_source_clips') ? 'manual' : 'auto'}</span>
+                                </button>
+                            )}
+                            {/* infographic_mode = overlay toggle (only meaningful with input videos) */}
+                            {selectedInputVideoIds.length > 0 && routerPlan && (
+                                <button
+                                    type="button"
+                                    onClick={toggleOverlayCfg}
+                                    className={`group flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition ${
+                                        cfgValue('infographic_mode') === 'overlay'
+                                            ? 'border-fuchsia-300 bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-950/40'
+                                            : 'border-dashed bg-muted/30 text-muted-foreground'
+                                    }`}
+                                    title="Float infographics over the demo footage (vs. side-by-side card)"
+                                >
+                                    <Layers className="size-3.5" />
+                                    <span>{cfgValue('infographic_mode') === 'overlay' ? 'Overlay infographics' : 'Side infographics'}</span>
+                                    <span className={`ml-1 rounded px-1 text-[9px] uppercase ${
+                                        isCfgOverridden('infographic_mode') ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300' : 'bg-muted text-muted-foreground'
+                                    }`}>{isCfgOverridden('infographic_mode') ? 'manual' : 'auto'}</span>
+                                </button>
+                            )}
+                            {/* Why? toggle */}
+                            {routerPlan?.explanation && (
+                                <button
+                                    type="button"
+                                    onClick={() => setRouterExplanationOpen((v) => !v)}
+                                    className="ml-auto shrink-0 text-[11px] text-violet-600 hover:underline"
+                                >
+                                    {routerExplanationOpen ? 'Hide why ▴' : 'Why? ▾'}
+                                </button>
+                            )}
+                        </div>
+                        {routerExplanationOpen && routerPlan?.explanation && (
+                            <div className="rounded bg-background/60 p-2 text-[11px] leading-relaxed text-muted-foreground">
+                                {routerPlan.explanation}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* URL capture chips — show when prompt contains URLs */}
+                {detectedUrls.length > 0 && (
+                    <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50/30 px-2 py-1.5 dark:border-emerald-800 dark:bg-emerald-950/20">
+                        <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-emerald-600">
+                            Web capture
+                        </span>
+                        <div className="flex flex-1 items-center gap-1.5 overflow-x-auto">
+                            {detectedUrls.map((url) => {
+                                let host = url;
+                                try { host = new URL(url).host.replace(/^www\./, ''); } catch { /* noop */ }
+                                const isIgnored = ignoredUrls.has(url);
+                                return (
+                                    <div
+                                        key={url}
+                                        className={`group flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+                                            isIgnored
+                                                ? 'border-dashed bg-muted/30 text-muted-foreground line-through'
+                                                : 'bg-background'
+                                        }`}
+                                        title={isIgnored ? `${url} — ignored (still in prompt, not captured)` : `${url} — screenshots + images will be captured and used as references`}
+                                    >
+                                        <Globe className="size-3.5 text-emerald-600" />
+                                        <span className="max-w-[160px] truncate font-medium">
+                                            {host}
+                                        </span>
+                                        {isIgnored ? (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIgnoredUrls((prev) => {
+                                                    const next = new Set(prev);
+                                                    next.delete(url);
+                                                    return next;
+                                                })}
+                                                className="ml-0.5 rounded-full px-1 text-[10px] text-muted-foreground hover:text-emerald-600"
+                                                aria-label={`Re-enable capture for ${host}`}
+                                            >
+                                                undo
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => setIgnoredUrls((prev) => new Set(prev).add(url))}
+                                                className="ml-0.5 rounded-full p-0.5 text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                                                aria-label={`Skip capture for ${host}`}
+                                            >
+                                                <X className="size-3.5" />
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            {activeUrls.length > 0 && (
+                                <span className="shrink-0 text-[10px] text-muted-foreground">
+                                    will be captured (screenshots + images)
+                                </span>
+                            )}
                         </div>
                     </div>
                 )}

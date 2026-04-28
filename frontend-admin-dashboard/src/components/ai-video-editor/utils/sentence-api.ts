@@ -93,6 +93,39 @@ export async function apiRegenerateSentence(
 }
 
 /**
+ * Mute one sentence — replace its audio with synthesized silence of equal
+ * length so the timing slot is preserved. Returns the same shape as
+ * regenerate so callers can apply the response identically. The sentence
+ * stays in `meta.sentences[]` with empty `text` and `audio_url`, which
+ * the editor uses to render it as a "silenced" slot the user can later
+ * re-narrate.
+ */
+export async function apiSilenceSentence(
+    videoId: string,
+    apiKey: string,
+    sentenceId: string,
+): Promise<ApiResult<RegenerateSentenceResponse>> {
+    try {
+        const res = await fetch(
+            `${AI_SERVICE_BASE_URL}/external/video/v1/sentence/silence`,
+            {
+                method: 'POST',
+                headers: headers(apiKey),
+                body: JSON.stringify({
+                    video_id: videoId,
+                    sentence_id: sentenceId,
+                }),
+            },
+        );
+        if (!res.ok) return { ok: false, error: await readError(res) };
+        const data = (await res.json()) as RegenerateSentenceResponse;
+        return { ok: true, data };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+}
+
+/**
  * Trigger a backfill build of meta.sentences[] for an older video.
  * Safe to call on a video that already has sentences[] — the server
  * overwrites them at the same S3 keys.

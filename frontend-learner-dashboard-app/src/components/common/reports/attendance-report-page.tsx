@@ -427,8 +427,7 @@ export default function AttendanceReportPage() {
                                   {" "}
                                   ({ib.chats} chat
                                   {ib.chats === 1 ? "" : "s"}, {ib.raisehand} raise
-                                  {ib.raisehand === 1 ? "" : "s"}, {ib.talks} talk
-                                  {ib.talks === 1 ? "" : "s"}, {ib.emojis} emoji
+                                  {ib.raisehand === 1 ? "" : "s"}, {ib.talkTime} talktime (in sec), {ib.emojis} emoji
                                   {ib.emojis === 1 ? "" : "s"}, {ib.pollVotes} poll
                                   {ib.pollVotes === 1 ? "" : "s"})
                                 </span>

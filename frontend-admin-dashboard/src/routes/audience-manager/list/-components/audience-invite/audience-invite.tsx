@@ -217,6 +217,7 @@ export const AudienceInvite = () => {
                                             customFields: campaign.institute_custom_fields
                                                 ? JSON.stringify(campaign.institute_custom_fields)
                                                 : undefined,
+                                            campaignType: campaign.campaign_type,
                                         } as any,
                                     } as any);
                                 };

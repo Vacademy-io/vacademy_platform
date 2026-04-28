@@ -36,13 +36,16 @@ interface CampaignUsersTableProps {
     campaignId: string;
     campaignName?: string;
     customFieldsJson?: string;
+    campaignType?: string;
 }
 
 export const CampaignUsersTable = ({
     campaignId,
     campaignName,
     customFieldsJson,
+    campaignType,
 }: CampaignUsersTableProps) => {
+    const isOptOut = campaignType?.toUpperCase().includes('OPT_OUT');
     const [page, setPage] = useState(0);
     const pageSize = 10;
     const { instituteDetails } = useInstituteDetailsStore();
@@ -148,11 +151,18 @@ export const CampaignUsersTable = ({
             });
         }
 
+        // For OPT_OUT audiences always show the opted_out_from column
+        if (isOptOut) {
+            allFieldIds.add('opted_out_from');
+        }
+
         return Array.from(allFieldIds);
-    }, [customFields, usersResponse]);
+    }, [customFields, usersResponse, isOptOut]);
 
     const campaignFieldsMap = useMemo(() => {
         const map = new Map<string, { name: string; key?: string }>();
+        // Always seed system-level virtual fields before early return
+        map.set('opted_out_from', { name: 'Opted Out From', key: 'opted_out_from' });
         if (!customFields || customFields.length === 0) {
             return map;
         }
@@ -221,12 +231,24 @@ export const CampaignUsersTable = ({
         }));
 
         if (allCustomFieldsArray.length === 0 && customFields.length === 0) {
-            return campaignUsersColumns;
+            // No custom fields — always show Name, Email, Phone, Opted Out From
+            const defaultFields = [
+                { id: 'full_name', _id: 'full_name', field_id: 'full_name' },
+                { id: 'email', _id: 'email', field_id: 'email' },
+                { id: 'phone_number', _id: 'phone_number', field_id: 'phone_number' },
+                { id: 'opted_out_from', _id: 'opted_out_from', field_id: 'opted_out_from' },
+            ];
+            const defaultFieldsMap = new Map<string, { name: string; key: string }>([
+                ['full_name', { name: 'Full Name', key: 'full_name' }],
+                ['email', { name: 'Email', key: 'email' }],
+                ['phone_number', { name: 'Phone Number', key: 'phone_number' }],
+                ['opted_out_from', { name: 'Opted Out From', key: 'opted_out_from' }],
+            ]);
+            return generateDynamicColumns(defaultFields, customFieldMap, handleDeleteLead, defaultFieldsMap, fieldMetadataMap);
         }
 
         const fieldIdsToUse = allCustomFieldsArray.length > 0 ? allCustomFieldsArray : customFields;
-        const generatedColumns = generateDynamicColumns(fieldIdsToUse, customFieldMap, handleDeleteLead, campaignFieldsMap, fieldMetadataMap);
-        return generatedColumns;
+        return generateDynamicColumns(fieldIdsToUse, customFieldMap, handleDeleteLead, campaignFieldsMap, fieldMetadataMap);
     }, [customFields, allFieldIdsFromAllUsers, customFieldMap, handleDeleteLead, campaignFieldsMap, fieldMetadataMap]);
 
     const tableKey = useMemo(() => {
@@ -254,9 +276,19 @@ export const CampaignUsersTable = ({
                     id: lead.response_id || lead.user_id || `${index}`,
                     submittedAt,
                     index: page * pageSize + index,
+                    // Always populate basic user info so fallback columns work
+                    // when the audience has no custom fields (e.g. opt-out audience)
+                    full_name: user.full_name || (user as any).name || lead.parent_name || null,
+                    email: user.email || lead.parent_email || null,
+                    phone_number: user.mobile_number || lead.parent_mobile || null,
+                    opted_out_from: lead.source_audience_name || null,
                 };
 
                 allFieldIdsFromAllUsers.forEach((fieldId) => {
+                    // Virtual fields are already set in rowData above — skip them
+                    if (fieldId === 'opted_out_from' || fieldId === 'full_name' ||
+                        fieldId === 'email' || fieldId === 'phone_number') return;
+
                     let fieldInfo =
                         customFieldMap.get(fieldId) ||
                         customFieldMap.get(fieldId.toLowerCase()) ||
@@ -566,23 +598,25 @@ export const CampaignUsersTable = ({
                         </p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                                navigate({
-                                    to: '/audience-manager/list/campaign-users/add' as any,
-                                    search: {
-                                        campaignId,
-                                        campaignName,
-                                        customFields: customFieldsJson,
-                                    } as any,
-                                } as any)
-                            }
-                        >
-                            <UserPlus className="mr-2 size-4" />
-                            Add Response
-                        </Button>
+                        {!isOptOut && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    navigate({
+                                        to: '/audience-manager/list/campaign-users/add' as any,
+                                        search: {
+                                            campaignId,
+                                            campaignName,
+                                            customFields: customFieldsJson,
+                                        } as any,
+                                    } as any)
+                                }
+                            >
+                                <UserPlus className="mr-2 size-4" />
+                                Add Response
+                            </Button>
+                        )}
                         <Button
                             variant="outline"
                             size="sm"
@@ -591,14 +625,16 @@ export const CampaignUsersTable = ({
                             <MessageSquare className="mr-2 size-4" />
                             Send Message
                         </Button>
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowBulkImportDialog(true)}
-                        >
-                            <Upload className="mr-2 size-4" />
-                            Import CSV
-                        </Button>
+                        {!isOptOut && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowBulkImportDialog(true)}
+                            >
+                                <Upload className="mr-2 size-4" />
+                                Import CSV
+                            </Button>
+                        )}
                         <Button
                             variant="outline"
                             size="sm"

@@ -17,6 +17,7 @@ const campaignUsersSearchSchema = z.object({
     campaignId: z.string().min(1, 'Campaign ID is required'),
     campaignName: z.string().optional(),
     customFields: z.string().optional(), // JSON string of custom fields
+    campaignType: z.string().optional(),
 });
 
 export const Route = createFileRoute(CAMPAIGN_USERS_ROUTE as any)({
@@ -64,6 +65,7 @@ export function CampaignUsersPage() {
                         campaignId={search.campaignId}
                         campaignName={search.campaignName}
                         customFieldsJson={search.customFields}
+                        campaignType={search.campaignType}
                     />
                 ) : (
                     <div className="flex h-[70vh] w-full flex-col items-center justify-center gap-2">

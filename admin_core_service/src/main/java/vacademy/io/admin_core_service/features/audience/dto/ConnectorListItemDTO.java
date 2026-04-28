@@ -20,6 +20,14 @@ public class ConnectorListItemDTO {
     private String createdAt;
     private String tokenExpiresAt;
 
+    /**
+     * Free-form JSON of default/static values merged into form payloads at webhook time.
+     * Typically used by admins to set per-connector center metadata such as
+     * {"center name": "Baner", "Schedule Link": "...", "School Phone": "..."}.
+     * Editable from the UI via PUT /connectors/{id}.
+     */
+    private String defaultValuesJson;
+
     public static ConnectorListItemDTO from(FormWebhookConnector c) {
         return ConnectorListItemDTO.builder()
                 .id(c.getId())
@@ -32,6 +40,7 @@ public class ConnectorListItemDTO {
                 .createdAt(c.getCreatedAt() != null ? c.getCreatedAt().toString() : null)
                 .tokenExpiresAt(c.getOauthTokenExpiresAt() != null
                         ? c.getOauthTokenExpiresAt().toString() : null)
+                .defaultValuesJson(c.getDefaultValuesJson())
                 .build();
     }
 }

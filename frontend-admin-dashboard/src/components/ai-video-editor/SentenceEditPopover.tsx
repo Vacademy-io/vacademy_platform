@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Mic, X } from 'lucide-react';
+import { Mic, MicOff, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { SentenceClip } from '@/components/ai-video-player/types';
@@ -47,18 +47,31 @@ export function SentenceEditPopover({
     affectedEntryCount,
     onClose,
 }: Props) {
-    const { regenerateSentence, regeneratingSentenceId } = useVideoEditorStore();
+    const { regenerateSentence, silenceSentence, regeneratingSentenceId } =
+        useVideoEditorStore();
     const [draft, setDraft] = useState(sentence.text);
     const [error, setError] = useState<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+    // A silenced sentence is one whose audio was muted via /sentence/silence;
+    // we detect it by an empty text + audio_url pair. The popover's UX
+    // pivots from "Re-narrate" to "Add narration" in that case so the user
+    // understands they're filling an empty slot rather than overwriting
+    // existing words.
+    const isSilenced = sentence.text.trim() === '' && (sentence.audio_url ?? '') === '';
+
     const isRegenerating = regeneratingSentenceId === sentence.id;
     const isAnotherRegenerating =
         regeneratingSentenceId != null && regeneratingSentenceId !== sentence.id;
     const trimmed = draft.trim();
-    const dirty = trimmed.length > 0 && trimmed !== sentence.text.trim();
+    // For silenced sentences any non-empty text is a valid submission;
+    // for regular sentences we require a real change vs the saved text.
+    const dirty = isSilenced
+        ? trimmed.length > 0
+        : trimmed.length > 0 && trimmed !== sentence.text.trim();
     const canSubmit = dirty && !isRegenerating && !isAnotherRegenerating;
+    const canSilence = !isSilenced && !isRegenerating && !isAnotherRegenerating;
 
     // Reset the draft when a different sentence is selected (parent
     // re-renders with the same component instance).
@@ -107,10 +120,26 @@ export function SentenceEditPopover({
         setError(null);
         const result = await regenerateSentence(sentence.id, trimmed);
         if (result.ok) {
-            toast.success('Sentence re-narrated and audio updated');
+            toast.success(
+                isSilenced ? 'Narration added' : 'Sentence re-narrated and audio updated',
+            );
             onClose();
         } else {
             const msg = result.error || 'Re-narration failed';
+            setError(msg);
+            toast.error(msg);
+        }
+    };
+
+    const handleSilence = async () => {
+        if (!canSilence) return;
+        setError(null);
+        const result = await silenceSentence(sentence.id);
+        if (result.ok) {
+            toast.success('Sentence muted — audio replaced with silence');
+            onClose();
+        } else {
+            const msg = result.error || 'Failed to mute sentence';
             setError(msg);
             toast.error(msg);
         }
@@ -134,8 +163,12 @@ export function SentenceEditPopover({
         >
             <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
-                    <Mic className="size-3.5 text-indigo-500" />
-                    <span>Edit sentence</span>
+                    {isSilenced ? (
+                        <MicOff className="size-3.5 text-gray-400" />
+                    ) : (
+                        <Mic className="size-3.5 text-indigo-500" />
+                    )}
+                    <span>{isSilenced ? 'Silenced sentence' : 'Edit sentence'}</span>
                     <span className="text-[10px] font-normal text-gray-400">
                         {sentence.id} · {sentence.duration.toFixed(2)}s
                     </span>
@@ -160,20 +193,46 @@ export function SentenceEditPopover({
                 }}
                 disabled={isRegenerating}
                 rows={3}
-                placeholder="Sentence text…"
+                placeholder={
+                    isSilenced
+                        ? 'Type the new narration for this slot…'
+                        : 'Sentence text…'
+                }
                 className="resize-y rounded border border-gray-200 px-2 py-1.5 text-sm leading-snug text-gray-800 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 disabled:bg-gray-50 disabled:text-gray-500"
             />
 
-            {affectedEntryCount > 0 && (
+            {!isSilenced && affectedEntryCount > 0 && (
                 <p className="text-[11px] text-amber-600">
                     Re-narrating this sentence will also shift {affectedEntryCount}{' '}
                     {affectedEntryCount === 1 ? 'shot' : 'shots'} on the timeline.
                 </p>
             )}
 
+            {isSilenced && (
+                <p className="text-[11px] text-gray-500">
+                    This slot is currently silent ({sentence.duration.toFixed(2)}s). Type
+                    new narration above and press “Add narration” to fill it.
+                </p>
+            )}
+
             {error && <p className="text-[11px] text-red-500">{error}</p>}
 
             <div className="mt-1 flex items-center justify-end gap-2">
+                {/* Silence sits to the LEFT of the primary action so a quick
+                    misclick on the right side doesn't mute by accident.
+                    Hidden once the sentence is already silenced. */}
+                {!isSilenced && (
+                    <button
+                        type="button"
+                        onClick={handleSilence}
+                        disabled={!canSilence}
+                        title="Replace this sentence's audio with silence (preserves timing)"
+                        className="mr-auto flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                        <MicOff className="size-3" />
+                        Silence
+                    </button>
+                )}
                 <button
                     type="button"
                     onClick={onClose}
@@ -188,7 +247,13 @@ export function SentenceEditPopover({
                     disabled={!canSubmit}
                     className="rounded bg-indigo-500 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-600 disabled:cursor-not-allowed disabled:bg-gray-300"
                 >
-                    {isRegenerating ? 'Re-narrating…' : 'Re-narrate'}
+                    {isRegenerating
+                        ? isSilenced
+                            ? 'Adding…'
+                            : 'Re-narrating…'
+                        : isSilenced
+                          ? 'Add narration'
+                          : 'Re-narrate'}
                 </button>
             </div>
         </div>,

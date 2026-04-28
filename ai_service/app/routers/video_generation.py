@@ -17,11 +17,15 @@ from ..schemas.video_generation import (
     VideoStatusResponse,
     VideoUrlsResponse,
 )
+from ..schemas.routing import RoutePreviewRequest, RoutingPlan
 from ..services.video_generation_service import VideoGenerationService
+from ..services.intent_router_service import IntentRouterService
+from ..services.web_content_capture_service import extract_urls
 from ..repositories.ai_video_repository import AiVideoRepository
 from ..services.s3_service import S3Service
 from ..core.security import get_optional_user
 from ..schemas.auth import CustomUserDetails
+from ..config import get_settings
 
 
 router = APIRouter(prefix="/video", tags=["ai-video-generation"])
@@ -42,6 +46,32 @@ def get_video_service(db: Session = Depends(db_dependency)) -> VideoGenerationSe
     except Exception as e:
         logger.error(f"[VIDEO_GEN_ROUTER] Failed to create VideoGenerationService: {e}")
         raise
+
+
+@router.post(
+    "/route-preview",
+    summary="Preview the auto-routing plan for a prompt (no side effects)",
+    response_model=RoutingPlan,
+)
+async def route_preview(payload: RoutePreviewRequest) -> RoutingPlan:
+    """
+    Returns the RoutingPlan the pipeline would compute for this prompt + context.
+
+    No side effects: does NOT trigger scrape, search, or generation. Used by the
+    FE Smart Plan panel to show toggle defaults before the user submits.
+    """
+    settings = get_settings()
+    api_key = getattr(settings, "openrouter_api_key", "") or ""
+    urls = extract_urls(payload.prompt, max_urls=5)
+    router_svc = IntentRouterService(openrouter_key=api_key)
+    return await router_svc.route(
+        prompt=payload.prompt,
+        input_video_count=payload.input_video_count,
+        attached_file_count=payload.attached_file_count,
+        urls_in_prompt=urls,
+        orientation=payload.orientation,
+        content_type=payload.content_type,
+    )
 
 
 @router.post(

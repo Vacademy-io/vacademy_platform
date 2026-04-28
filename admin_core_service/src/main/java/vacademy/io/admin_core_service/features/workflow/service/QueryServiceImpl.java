@@ -1455,6 +1455,15 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         .findLeadsByInstituteAndDateRange(instituteId, start, end));
             }
 
+            // Resolve institute display name once for all leads. Templates use
+            // {{instituteName}} for the email signature ("Best regards, {institute}").
+            // The event-driven AUDIENCE_LEAD_SUBMISSION trigger sets this on the
+            // workflow context already; the scheduled query path needs to do the
+            // same so {{instituteName}} doesn't render literal in follow-up emails.
+            final String instituteName = instituteRepository.findById(instituteId)
+                    .map(vacademy.io.common.institute.entity.Institute::getInstituteName)
+                    .orElse("");
+
             // Fetch custom field values in bulk
             List<String> responseIds = allResponses.stream()
                     .map(AudienceResponse::getId)
@@ -1506,6 +1515,12 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 // parent vs respondent contact info, so without this promotion the
                 // lead has no recipient and gets silently skipped.
                 promoteCustomFieldsToStandardKeys(lead);
+
+                // Make {{instituteName}} resolvable at template render time without
+                // requiring the workflow author to add a templateVars mapping. The
+                // event-driven lead-submission path puts this on the workflow context;
+                // for parity, we put it on each lead item here.
+                lead.put("instituteName", instituteName);
 
                 leads.add(lead);
             }

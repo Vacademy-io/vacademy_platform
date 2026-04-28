@@ -16,6 +16,7 @@ import {
     useCampaigns,
 } from './-hooks/useAnalyticsData';
 import { challengeAnalyticsKeys } from '@/services/challenge-analytics';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 // Components
 import { AnalyticsFilters } from './-components/AnalyticsFilters';
@@ -69,6 +70,13 @@ function ChallengeAnalyticsDashboard() {
     const [leaderboardPage, setLeaderboardPage] = useState(1);
     const [cohortPage, setCohortPage] = useState(1);
 
+    // Leaderboard custom-field filter — chosen by the user from the institute's
+    // configured dropdown custom fields. Empty strings = no filter applied.
+    const [leaderboardCustomFieldName, setLeaderboardCustomFieldName] = useState<string>('');
+    const [leaderboardCustomFieldValue, setLeaderboardCustomFieldValue] = useState<string>('');
+
+    const { instituteDetails } = useInstituteDetailsStore();
+
     // Active tab
     const [activeTab, setActiveTab] = useState('overview');
 
@@ -100,12 +108,18 @@ function ChallengeAnalyticsDashboard() {
         activeTab === 'centers'
     );
 
+    const leaderboardCustomFieldFilter =
+        leaderboardCustomFieldName && leaderboardCustomFieldValue
+            ? { name: leaderboardCustomFieldName, value: leaderboardCustomFieldValue }
+            : undefined;
+
     const { data: leaderboardData, isLoading: leaderboardLoading } = useEngagementLeaderboard(
         startDate,
         endDate,
         leaderboardPage,
         20,
-        activeTab === 'leaderboard'
+        activeTab === 'leaderboard',
+        leaderboardCustomFieldFilter
     );
 
     const { data: cohortData, isLoading: cohortLoading } = useCompletionCohort(
@@ -169,6 +183,44 @@ function ChallengeAnalyticsDashboard() {
         setLeaderboardPage(1);
         setCohortPage(1);
     }, [startDate, endDate]);
+
+    // Reset leaderboard pagination when filter changes
+    useEffect(() => {
+        setLeaderboardPage(1);
+    }, [leaderboardCustomFieldName, leaderboardCustomFieldValue]);
+
+    // Build the leaderboard filter UI from the institute's configured DROPDOWN
+    // custom fields. The fieldName is what gets passed to the backend (it's the
+    // key used in user.custom_fields), so nothing is hardcoded here — every
+    // institute can decide which fields are available as filters via Settings.
+    const leaderboardFilterFields = useMemo(() => {
+        const fields = instituteDetails?.dropdown_custom_fields || [];
+        return fields
+            .filter(
+                (f) =>
+                    !!f.fieldName &&
+                    !!f.config &&
+                    (f.fieldType || '').toUpperCase() === 'DROPDOWN'
+            )
+            .map((f) => {
+                let options: Array<{ value: string; label: string }> = [];
+                try {
+                    const parsed = JSON.parse(f.config);
+                    if (Array.isArray(parsed)) {
+                        options = parsed
+                            .map((opt: { value?: string; label?: string }) => ({
+                                value: String(opt?.value ?? ''),
+                                label: String(opt?.label ?? opt?.value ?? ''),
+                            }))
+                            .filter((opt) => opt.value);
+                    }
+                } catch {
+                    // Skip fields whose config isn't valid JSON.
+                }
+                return { name: f.fieldName, label: f.fieldName, options };
+            })
+            .filter((f) => f.options.length > 0);
+    }, [instituteDetails]);
 
     // Auto-select last day's completion templates for cohort
     useEffect(() => {
@@ -317,6 +369,13 @@ function ChallengeAnalyticsDashboard() {
                             isLoading={leaderboardLoading}
                             page={leaderboardPage}
                             onPageChange={setLeaderboardPage}
+                            filterFields={leaderboardFilterFields}
+                            selectedFieldName={leaderboardCustomFieldName}
+                            selectedFieldValue={leaderboardCustomFieldValue}
+                            onFilterChange={(name, value) => {
+                                setLeaderboardCustomFieldName(name);
+                                setLeaderboardCustomFieldValue(value);
+                            }}
                         />
                     </TabsContent>
 

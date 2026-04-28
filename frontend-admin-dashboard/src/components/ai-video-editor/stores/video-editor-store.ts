@@ -192,6 +192,9 @@ export interface VideoEditorState {
     selectEntry: (id: string | null) => void;
     togglePreviewMode: () => void;
     updateEntryHtml: (entryId: string, newHtml: string) => void;
+    /** Remove one scheduled sound effect from an entry. The entry is
+     *  marked dirty so the deletion is persisted on the next saveChanges. */
+    removeSoundCue: (entryId: string, cueId: string) => void;
     /** Append a new entry to the local timeline (marks it as new for frame/add on save). */
     addEntry: (entry: Entry) => void;
     /** Delete an entry from the timeline */
@@ -255,6 +258,20 @@ export interface VideoEditorState {
     regenerateSentence: (
         sentenceId: string,
         newText: string,
+    ) => Promise<{ ok: boolean; error?: string }>;
+
+    /**
+     * Mute one sentence: server replaces its audio range with silence of
+     * the same length and clears the sentence's text/words. Total
+     * duration is preserved, so no entry/sentence ripple is needed —
+     * only `audioUrl` and the target sentence are updated locally.
+     *
+     * The sentence stays in meta.sentences[] (with empty text + audio_url),
+     * so a later regenerateSentence call on the same id puts new
+     * narration back in the same slot.
+     */
+    silenceSentence: (
+        sentenceId: string,
     ) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -387,6 +404,32 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 ? s.dirtyEntryIds
                 : [...s.dirtyEntryIds, entryId],
         }));
+    },
+
+    removeSoundCue: (entryId, cueId) => {
+        set((s) => {
+            const target = s.entries.find((e) => e.id === entryId);
+            if (!target || !target.sound_cues?.some((c) => c.id === cueId)) {
+                // Nothing to remove — no-op (don't pollute undo history).
+                return s;
+            }
+            return {
+                ...pushPast(s),
+                entries: s.entries.map((e) =>
+                    e.id === entryId
+                        ? {
+                              ...e,
+                              sound_cues: (e.sound_cues ?? []).filter(
+                                  (c) => c.id !== cueId,
+                              ),
+                          }
+                        : e,
+                ),
+                dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
+                    ? s.dirtyEntryIds
+                    : [...s.dirtyEntryIds, entryId],
+            };
+        });
     },
 
     addEntry: (entry) => {
@@ -854,6 +897,49 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entries: updatedEntries,
             };
         });
+        return { ok: true };
+    },
+
+    silenceSentence: async (sentenceId) => {
+        const { videoId, apiKey, regeneratingSentenceId, meta } = get();
+        if (regeneratingSentenceId) {
+            return { ok: false, error: 'Another sentence is already being modified' };
+        }
+        if (!videoId || !apiKey) {
+            return { ok: false, error: 'Video not initialized' };
+        }
+        const sentences = meta.sentences ?? [];
+        const targetIdx = sentences.findIndex((s) => s.id === sentenceId);
+        if (targetIdx === -1) {
+            return { ok: false, error: `Sentence ${sentenceId} not found` };
+        }
+
+        // Reuse the same in-flight flag as regenerateSentence — both are
+        // exclusive operations on the same audio file and shouldn't run
+        // concurrently. The popover treats `regeneratingSentenceId` as
+        // "this sentence is busy" regardless of which mutation it is.
+        set({ regeneratingSentenceId: sentenceId });
+        const { apiSilenceSentence } = await import('../utils/sentence-api');
+        const result = await apiSilenceSentence(videoId, apiKey, sentenceId);
+
+        if (!result.ok) {
+            set({ regeneratingSentenceId: null });
+            return { ok: false, error: result.error };
+        }
+
+        const { sentence: silencedSentence, new_global_audio_url } = result.data;
+        // Silence preserves total length, so no entry/sentence ripple —
+        // only the target sentence and the global audio URL change.
+        set((s) => ({
+            regeneratingSentenceId: null,
+            audioUrl: new_global_audio_url || s.audioUrl,
+            meta: {
+                ...s.meta,
+                sentences: (s.meta.sentences ?? []).map((sent, i) =>
+                    i === targetIdx ? silencedSentence : sent,
+                ),
+            },
+        }));
         return { ok: true };
     },
 }));

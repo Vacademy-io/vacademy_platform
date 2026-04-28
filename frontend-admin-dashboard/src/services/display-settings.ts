@@ -352,6 +352,17 @@ function mergeDisplayWithDefaults(
         showDelete: incoming?.authoredCoursesCard?.showDelete ?? defAuthoredCard.showDelete,
     };
 
+    // Course List Card Settings (toggles for content shown on each course card).
+    // Defaults OFF — only shown when admin explicitly enables it.
+    const defCourseListCard = defaults.courseListCard || {
+        showEnrolledStudentCount: false,
+    };
+    merged.courseListCard = {
+        showEnrolledStudentCount:
+            incoming?.courseListCard?.showEnrolledStudentCount ??
+            defCourseListCard.showEnrolledStudentCount,
+    };
+
     const defCourseCreation = defaults.courseCreation || {
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,

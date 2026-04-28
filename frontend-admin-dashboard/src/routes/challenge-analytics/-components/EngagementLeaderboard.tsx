@@ -1,23 +1,46 @@
-import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
     Trophy,
-    Medal,
     User,
     Envelope,
     Phone,
     Download,
     CaretLeft,
     CaretRight,
+    Funnel,
+    X,
 } from '@phosphor-icons/react';
-import type { LeaderboardResponse, LeaderboardEntry } from '@/types/challenge-analytics';
+import type { LeaderboardResponse } from '@/types/challenge-analytics';
+
+const NO_FIELD_VALUE = '__none__';
+
+export interface LeaderboardFilterField {
+    /** Custom field name — matches the key used in user.custom_fields. */
+    name: string;
+    /** Display label for the dropdown. */
+    label: string;
+    /** Possible values for this field, parsed from CustomField.config. */
+    options: Array<{ value: string; label: string }>;
+}
 
 interface EngagementLeaderboardProps {
     data: LeaderboardResponse | undefined;
     isLoading: boolean;
     page: number;
     onPageChange: (page: number) => void;
+    /** Available custom fields the user can filter by. Empty = no filter UI. */
+    filterFields?: LeaderboardFilterField[];
+    selectedFieldName?: string;
+    selectedFieldValue?: string;
+    onFilterChange?: (fieldName: string, fieldValue: string) => void;
 }
 
 const getRankIcon = (rank: number) => {
@@ -55,7 +78,73 @@ export function EngagementLeaderboard({
     isLoading,
     page,
     onPageChange,
+    filterFields = [],
+    selectedFieldName = '',
+    selectedFieldValue = '',
+    onFilterChange,
 }: EngagementLeaderboardProps) {
+    const showFilter = !!onFilterChange && filterFields.length > 0;
+    const activeField = filterFields.find((f) => f.name === selectedFieldName);
+
+    const filterControls = showFilter ? (
+        <div className="flex flex-wrap items-center gap-2">
+            <Funnel className="size-4 text-gray-500" />
+            <Select
+                value={selectedFieldName || NO_FIELD_VALUE}
+                onValueChange={(val) => {
+                    const next = val === NO_FIELD_VALUE ? '' : val;
+                    onFilterChange?.(next, '');
+                }}
+            >
+                <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Filter by" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectItem value={NO_FIELD_VALUE}>No filter</SelectItem>
+                    {filterFields.map((f) => (
+                        <SelectItem key={f.name} value={f.name}>
+                            {f.label}
+                        </SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+            {activeField ? (
+                <Select
+                    value={selectedFieldValue || NO_FIELD_VALUE}
+                    onValueChange={(val) =>
+                        onFilterChange?.(
+                            activeField.name,
+                            val === NO_FIELD_VALUE ? '' : val
+                        )
+                    }
+                >
+                    <SelectTrigger className="w-[220px]">
+                        <SelectValue placeholder={`Select ${activeField.label}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value={NO_FIELD_VALUE}>All</SelectItem>
+                        {activeField.options.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                                {opt.label}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            ) : null}
+            {selectedFieldName && selectedFieldValue ? (
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onFilterChange?.('', '')}
+                    className="gap-1"
+                >
+                    <X className="size-3" />
+                    Clear
+                </Button>
+            ) : null}
+        </div>
+    ) : null;
+
     if (isLoading) {
         return (
             <Card className="shadow-sm">
@@ -76,15 +165,20 @@ export function EngagementLeaderboard({
     if (!data || !data.leaderboard || data.leaderboard.length === 0) {
         return (
             <Card className="shadow-sm">
-                <CardHeader className="flex flex-row items-center gap-2">
-                    <Trophy className="size-5 text-amber-500" weight="fill" />
-                    <CardTitle className="text-base font-semibold">
-                        Engagement Leaderboard
-                    </CardTitle>
+                <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2">
+                        <Trophy className="size-5 text-amber-500" weight="fill" />
+                        <CardTitle className="text-base font-semibold">
+                            Engagement Leaderboard
+                        </CardTitle>
+                    </div>
+                    {filterControls}
                 </CardHeader>
                 <CardContent>
                     <div className="flex h-[200px] items-center justify-center text-gray-500">
-                        No leaderboard data available
+                        {activeField && selectedFieldValue
+                            ? `No leaderboard data available for ${activeField.label}: "${selectedFieldValue}"`
+                            : 'No leaderboard data available'}
                     </div>
                 </CardContent>
             </Card>
@@ -146,7 +240,8 @@ export function EngagementLeaderboard({
                             <p className="text-xs text-gray-500">Top power users by engagement</p>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                        {filterControls}
                         <span className="text-sm text-gray-500">
                             {pagination.total_users} total users
                         </span>

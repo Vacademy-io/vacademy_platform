@@ -69,6 +69,12 @@ public class TeacherCourseDetailDTO {
      * Package Session Details
      */
     private PackageSessionInfo packageSessionInfo;
+
+    /**
+     * Total enrolled students (ACTIVE + INACTIVE) across all non-deleted
+     * sessions of this package. Excludes DELETED and TERMINATED mappings.
+     */
+    private Long enrolledStudentCount;
     
     /**
      * Session information
@@ -192,14 +198,18 @@ public class TeacherCourseDetailDTO {
         // Extract package session details
         PackageSessionInfo packageSessionInfo = PackageSessionInfo.builder()
             .packageSessionIds((String) result.get("package_session_ids"))
-            .packageSessionCount(result.get("package_session_count") != null ? 
+            .packageSessionCount(result.get("package_session_count") != null ?
                 ((Number) result.get("package_session_count")).intValue() : 0)
             .packageSessionStatuses((String) result.get("package_session_statuses"))
             .build();
-        
+
+        Long enrolledStudentCount = result.get("enrolled_student_count") != null
+            ? ((Number) result.get("enrolled_student_count")).longValue()
+            : 0L;
+
         boolean isCreator = "CREATOR".equals(relationshipType) || "BOTH".equals(relationshipType);
         boolean isFacultyAssigned = assignmentCount > 0;
-        
+
         return TeacherCourseDetailDTO.builder()
             .packageEntity(packageEntity)
             .relationshipType(relationshipType)
@@ -215,6 +225,7 @@ public class TeacherCourseDetailDTO {
             .sessionInfo(sessionInfo)
             .levelInfo(levelInfo)
             .packageSessionInfo(packageSessionInfo)
+            .enrolledStudentCount(enrolledStudentCount)
             .build();
     }
 } 

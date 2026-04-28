@@ -1152,6 +1152,81 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                   root.appendChild(wrapper);
                   window.__activeSnippets.set(e.id, host);
 
+                  // Mirror every external stylesheet AND inline @font-face rule from
+                  // the shadow root into document.head so fonts register globally with
+                  // document.fonts. Shadow-DOM-only stylesheets don't always populate
+                  // the doc-level FontFaceSet reliably, causing fallback fonts to
+                  // render with wrong text metrics (e.g. Montserrat → system sans,
+                  // "PASSWORDS" overflows canvas). Three vectors covered:
+                  //   1. <link rel="stylesheet"> (anywhere in shadow root)
+                  //   2. @import url(...) inside <style> blocks
+                  //   3. @font-face { src: url(...) } inside <style> blocks
+                  // De-dupe by href/url so we don't re-fetch on every segment.
+                  if (!window.__globalLinkCache) window.__globalLinkCache = new Set();
+                  if (!window.__globalFontFaceCache) window.__globalFontFaceCache = new Set();
+                  const __addGlobalStylesheet = (href) => {
+                      if (!href || window.__globalLinkCache.has(href)) return;
+                      window.__globalLinkCache.add(href);
+                      const clone = document.createElement('link');
+                      clone.rel = 'stylesheet';
+                      clone.href = href;
+                      document.head.appendChild(clone);
+                  };
+                  const __addGlobalFontFace = (cssBlock) => {
+                      const key = cssBlock.replace(/\\s+/g, ' ').trim();
+                      if (!key || window.__globalFontFaceCache.has(key)) return;
+                      window.__globalFontFaceCache.add(key);
+                      const styleEl = document.createElement('style');
+                      styleEl.setAttribute('data-snippet-fontface', '1');
+                      styleEl.textContent = cssBlock;
+                      document.head.appendChild(styleEl);
+                  };
+                  // Walk both wrapper and the shadow root itself (renderer adds Google
+                  // Fonts / KaTeX / Prism links directly to root, not inside wrapper).
+                  const __scanLinks = (scope) => {
+                      scope.querySelectorAll('link[rel="stylesheet"]').forEach(l => {
+                          __addGlobalStylesheet(l.getAttribute('href'));
+                      });
+                  };
+                  __scanLinks(wrapper);
+                  // root.querySelectorAll only descends into shadow root direct children,
+                  // not into the wrapper subtree (already covered above).
+                  Array.from(root.children).forEach(child => {
+                      if (child.tagName === 'LINK' && child.rel === 'stylesheet') {
+                          __addGlobalStylesheet(child.getAttribute('href'));
+                      }
+                  });
+                  // Pull @import urls and @font-face blocks out of inline <style> tags
+                  const __importRe = /@import\\s+(?:url\\()?["']?([^"')]+)["']?\\)?[^;]*;?/g;
+                  const __fontFaceRe = /@font-face\\s*\\{[^}]*\\}/g;
+                  const __scanStyles = (scope) => {
+                      scope.querySelectorAll('style').forEach(s => {
+                          const css = s.textContent || '';
+                          let m;
+                          while ((m = __importRe.exec(css)) !== null) {
+                              __addGlobalStylesheet(m[1]);
+                          }
+                          let f;
+                          while ((f = __fontFaceRe.exec(css)) !== null) {
+                              __addGlobalFontFace(f[0]);
+                          }
+                      });
+                  };
+                  __scanStyles(wrapper);
+                  Array.from(root.children).forEach(child => {
+                      if (child.tagName === 'STYLE') {
+                          const css = child.textContent || '';
+                          let m;
+                          while ((m = __importRe.exec(css)) !== null) {
+                              __addGlobalStylesheet(m[1]);
+                          }
+                          let f;
+                          while ((f = __fontFaceRe.exec(css)) !== null) {
+                              __addGlobalFontFace(f[0]);
+                          }
+                      }
+                  });
+
                   // Trigger KaTeX for Math
                   if (window.renderMathInElement) {
                       window.renderMathInElement(wrapper, {
@@ -2623,11 +2698,227 @@ def render_video_from_json(
             _cur_active_ids = {e["id"] for e in active}
             _segment_changed = _cur_active_ids != _prev_active_ids
             if _segment_changed:
-                # Wait for fonts used by new snippets (fast: resolves instantly if cached)
+                # Wait for any <link rel="stylesheet"> in shadow DOMs to finish loading
+                # FIRST — otherwise their @font-face rules haven't been parsed yet, so
+                # document.fonts.ready resolves before those fonts are even discovered,
+                # and we end up rendering with fallback fonts (causing text overflow when
+                # the fallback is wider than the intended font, e.g. Bebas Neue → sans).
+                try:
+                    page.evaluate("""async () => {
+                        const links = [];
+                        document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"], #caption').forEach(host => {
+                            const root = host.shadowRoot;
+                            if (!root) return;
+                            root.querySelectorAll('link[rel="stylesheet"]').forEach(l => links.push(l));
+                        });
+                        // Also check main document head links (just in case)
+                        document.head.querySelectorAll('link[rel="stylesheet"]').forEach(l => links.push(l));
+                        const waits = links.map(l => {
+                            // sheet truthy → already loaded
+                            try { if (l.sheet) return Promise.resolve(); } catch (e) {}
+                            return new Promise(resolve => {
+                                let done = false;
+                                const finish = () => { if (!done) { done = true; resolve(); } };
+                                l.addEventListener('load', finish, { once: true });
+                                l.addEventListener('error', finish, { once: true });
+                                setTimeout(finish, 3000);
+                            });
+                        });
+                        await Promise.all(waits);
+                    }""")
+                except Exception:
+                    pass
+                # Wait for fonts used by new snippets (now that link CSS is parsed,
+                # @font-face rules have registered the fonts as pending)
                 try:
                     page.evaluate("() => document.fonts.ready")
                 except Exception:
                     pass
+                # AUTO-FIT: two-pass cleanup that fixes text getting clipped in renders.
+                # PASS A — parent-bound clipping: when a parent has `overflow: hidden`
+                # and a smaller width than its headline child (caused by async font
+                # loading reflowing the child but not the parent's max-content), force
+                # the parent to fit its content. Common in flex-column align-items:center
+                # wrappers that auto-size to pre-font-load text width.
+                # PASS B — host-bound shrinkage: scale down font-size on headline-class
+                # elements that exceed their host's bounds. Catches LLM-generated HTML
+                # where text fills or overflows the canvas.
+                # Compares against each host's getBoundingClientRect, so it works for
+                # 1080x1920 portrait, 1920x1080 landscape, 720x1280, or any host size.
+                try:
+                    shrink_log = page.evaluate("""() => {
+                        const SAFETY_PX = 8;        // breathing room from host edge
+                        const MIN_FONT_PX = 14;     // never shrink below this absolute floor
+                        const MIN_SCALE = 0.4;      // never shrink below 40% of original
+                        const MAX_PASSES = 3;       // re-measure after each shrink (wrap may help)
+                        // Headline-class selectors only — leave body/labels alone.
+                        const sels = 'h1, h2, h3, .headline, .title, .display, [class*="display-"], [class*="title"], [class*="headline"], [class*="heading"], [class*="slam"]';
+                        const log = [];
+
+                        // ── PASS A: unclip parents that are narrower than their content ──
+                        // When a flex/inline-block parent has overflow:hidden and was sized
+                        // to its child's pre-font-load width, the parent stays narrow after
+                        // the child grows when fonts load. The clipped region cuts the right
+                        // edge of headline text. Walk ancestors of every headline; if an
+                        // ancestor has overflow:hidden AND clientWidth < its child's
+                        // scrollWidth (or rect.right of headline), force max-content sizing.
+                        document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"]').forEach(host => {
+                            const root = host.shadowRoot;
+                            if (!root) return;
+                            const hostRect = host.getBoundingClientRect();
+                            const hostW = hostRect.width;
+                            if (hostW < 100) return;
+                            root.querySelectorAll(sels).forEach(el => {
+                                const elRect = el.getBoundingClientRect();
+                                const elScrollW = el.scrollWidth || 0;
+                                const elContentW = Math.max(elRect.width, elScrollW);
+                                if (elContentW <= 0) return;
+                                // Walk up the ancestor chain (stopping at the shadow root)
+                                let p = el.parentElement;
+                                let safety = 8;
+                                while (p && safety-- > 0) {
+                                    const cs = getComputedStyle(p);
+                                    const overflowsX = cs.overflow === 'hidden' || cs.overflowX === 'hidden' || cs.overflow === 'clip' || cs.overflowX === 'clip';
+                                    if (overflowsX) {
+                                        const pRect = p.getBoundingClientRect();
+                                        // Parent is clipping if its width is smaller than
+                                        // the headline's content width (with small fudge).
+                                        if (pRect.width + 4 < elContentW) {
+                                            // Don't grow beyond the host (canvas).
+                                            const maxAllowed = hostW - SAFETY_PX;
+                                            const targetW = Math.min(elContentW, maxAllowed);
+                                            // Force the parent to expand to fit its child.
+                                            // min-width handles flex/auto-sized parents
+                                            // without breaking explicit width: 100% etc.
+                                            p.style.minWidth = targetW + 'px';
+                                            p.style.maxWidth = 'none';
+                                            log.push({
+                                                phase: 'A',
+                                                id: host.id,
+                                                parent: p.tagName + (p.className && typeof p.className === 'string' ? '.' + p.className.split(' ')[0] : ''),
+                                                pWas: Math.round(pRect.width),
+                                                pNow: Math.round(targetW),
+                                                childContent: Math.round(elContentW)
+                                            });
+                                        }
+                                    }
+                                    p = p.parentElement;
+                                }
+                            });
+                        });
+
+                        // ── PASS B: shrink fonts that exceed the host bounds ──
+                        document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"]').forEach(host => {
+                            const root = host.shadowRoot;
+                            if (!root) return;
+                            const hostRect = host.getBoundingClientRect();
+                            const hostW = hostRect.width;
+                            const hostH = hostRect.height;
+                            if (hostW < 100 || hostH < 100) return; // skip tiny hosts (branding, etc.)
+                            const els = root.querySelectorAll(sels);
+                            els.forEach(el => {
+                                // Skip if user explicitly hid via display:none — no layout
+                                const cs0 = getComputedStyle(el);
+                                if (cs0.display === 'none' || cs0.visibility === 'hidden') return;
+                                // Capture original size BEFORE any shrinking. Track original
+                                // via dataset so re-runs (segment changes) don't compound.
+                                let originalSize;
+                                if (el.dataset.__origFontPx) {
+                                    originalSize = parseFloat(el.dataset.__origFontPx);
+                                    // Restore original first; shrink will re-apply if needed.
+                                    el.style.fontSize = originalSize + 'px';
+                                } else {
+                                    originalSize = parseFloat(cs0.fontSize);
+                                    el.dataset.__origFontPx = String(originalSize);
+                                }
+                                if (!originalSize || originalSize < MIN_FONT_PX + 2) return;
+                                const minAllowed = Math.max(MIN_FONT_PX, originalSize * MIN_SCALE);
+
+                                for (let pass = 0; pass < MAX_PASSES; pass++) {
+                                    const r = el.getBoundingClientRect();
+                                    // Use offsetWidth/scrollWidth for layout-true width
+                                    // (rect.width can be skewed by transforms like
+                                    // translateY/scale used in entrance animations).
+                                    // scrollWidth catches single-line overflow when the
+                                    // block fills its parent but text exceeds it.
+                                    const layoutW = Math.max(el.offsetWidth || 0, el.scrollWidth || 0, r.width);
+                                    if (layoutW <= 0) break;
+                                    // Two ways to overflow:
+                                    //  (a) the element's own box is wider than the host
+                                    //  (b) text scrolls past the element's bounds inside it
+                                    const exceedsHost = layoutW > hostW - SAFETY_PX;
+                                    const textOverflows = el.scrollWidth > el.clientWidth + 1;
+                                    if (!exceedsHost && !textOverflows) break;
+                                    // Choose the worst overflow for ratio
+                                    const overflowingW = exceedsHost ? layoutW : el.scrollWidth;
+                                    const targetW = exceedsHost ? (hostW - SAFETY_PX) : (el.clientWidth - SAFETY_PX);
+                                    if (targetW <= 0) break;
+                                    const ratio = targetW / overflowingW;
+                                    if (ratio >= 0.99) break; // close enough, don't churn
+                                    const cur = parseFloat(getComputedStyle(el).fontSize);
+                                    let next = cur * ratio;
+                                    if (next < minAllowed) next = minAllowed;
+                                    if (Math.abs(next - cur) < 0.5) break; // negligible change
+                                    el.style.fontSize = next + 'px';
+                                    if (pass === 0) {
+                                        log.push({
+                                            phase: 'B',
+                                            id: host.id,
+                                            tag: el.tagName + (el.className ? '.' + (typeof el.className === 'string' ? el.className.split(' ')[0] : '') : ''),
+                                            from: Math.round(originalSize),
+                                            to: Math.round(next),
+                                            origW: Math.round(layoutW),
+                                            hostW: Math.round(hostW),
+                                            reason: exceedsHost ? 'host' : 'self'
+                                        });
+                                    }
+                                    if (next === minAllowed) break; // floor hit
+                                }
+                            });
+                        });
+                        return log;
+                    }""")
+                    if shrink_log:
+                        print(f"[AUTO-SHRINK] {len(shrink_log)} elements resized: {shrink_log}")
+                except Exception as _e:
+                    print(f"[AUTO-SHRINK] error: {_e}")
+                # FONT-DIAG: dump loaded fonts + measured widest text per snippet so
+                # we can tell whether overflow is a missing-font issue or a genuine
+                # "user HTML asks for text wider than canvas" issue.
+                try:
+                    diag = page.evaluate("""() => {
+                        const loaded = [];
+                        document.fonts.forEach(f => {
+                            if (f.status === 'loaded') loaded.push(f.family + ' ' + f.weight);
+                        });
+                        const measurements = [];
+                        document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"]').forEach(host => {
+                            const root = host.shadowRoot;
+                            if (!root) return;
+                            root.querySelectorAll('h1, h2, .headline, .tracking-label').forEach(el => {
+                                const r = el.getBoundingClientRect();
+                                const cs = getComputedStyle(el);
+                                measurements.push({
+                                    id: host.id,
+                                    tag: el.tagName + (el.className ? '.' + el.className.split(' ').join('.') : ''),
+                                    text: (el.textContent || '').trim().slice(0, 40),
+                                    width: Math.round(r.width),
+                                    fontFamily: cs.fontFamily,
+                                    fontSize: cs.fontSize,
+                                    fontWeight: cs.fontWeight,
+                                });
+                            });
+                        });
+                        return {
+                            viewport: window.innerWidth + 'x' + window.innerHeight,
+                            fontsLoaded: loaded.length,
+                            sampleFonts: loaded.slice(0, 10),
+                            measurements
+                        };
+                    }""")
+                    print(f"[FONT-DIAG] {diag}")
+                except Exception as _e:
+                    print(f"[FONT-DIAG] error: {_e}")
                 # Wait for all images in shadow DOMs to finish loading
                 page.evaluate("""() => {
                     const promises = [];

@@ -51,13 +51,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         /**
          * Find all converted leads (with user_id)
          */
-        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL")
+        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
         List<AudienceResponse> findConvertedLeads(@Param("audienceId") String audienceId);
 
         /**
          * Find all unconverted leads (without user_id)
          */
-        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NULL")
+        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
         List<AudienceResponse> findUnconvertedLeads(@Param("audienceId") String audienceId);
 
         /**
@@ -98,7 +98,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
                               AND (COALESCE(:assignedCounselorId, '') = '' OR lu.user_id = :assignedCounselorId)
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE OR lu.user_id IS NULL)
-                              AND (COALESCE(:overallStatusStr, '') = '' OR ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
+                              AND (
+                                (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
+                                OR (COALESCE(:overallStatusStr, '') != '' AND ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
+                              )
                             ORDER BY
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
                                    THEN COALESCE(ls.raw_score, 0) END DESC,
@@ -138,7 +141,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
                               AND (COALESCE(:assignedCounselorId, '') = '' OR lu.user_id = :assignedCounselorId)
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE OR lu.user_id IS NULL)
-                              AND (COALESCE(:overallStatusStr, '') = '' OR ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
+                              AND (
+                                (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
+                                OR (COALESCE(:overallStatusStr, '') != '' AND ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
+                              )
                         """, nativeQuery = true)
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
@@ -165,6 +171,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             SELECT ar FROM AudienceResponse ar
                             JOIN Audience a ON a.id = ar.audienceId
                             WHERE a.instituteId = :instituteId
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
                             ORDER BY ar.submittedAt DESC
                         """)
         Page<AudienceResponse> findAllLeadsForInstitute(
@@ -179,7 +186,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         /**
          * Count converted leads for a campaign
          */
-        @Query("SELECT COUNT(ar) FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL")
+        @Query("SELECT COUNT(ar) FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
         Long countConvertedLeads(@Param("audienceId") String audienceId);
 
         /**
@@ -234,7 +241,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * Find all distinct user IDs from audience responses for given audience IDs
          */
         @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
-                        "WHERE ar.audienceId IN :audienceIds AND ar.userId IS NOT NULL")
+                        "WHERE ar.audienceId IN :audienceIds AND ar.userId IS NOT NULL " +
+                        "AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
         List<String> findDistinctUserIdsByAudienceIds(@Param("audienceIds") List<String> audienceIds);
 
         /**
@@ -249,7 +257,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * Used for filtering audience respondents by specific audiences
          */
         @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
-                        "WHERE ar.audienceId IN :audienceIds AND ar.userId IN :userIds AND ar.userId IS NOT NULL")
+                        "WHERE ar.audienceId IN :audienceIds AND ar.userId IN :userIds AND ar.userId IS NOT NULL " +
+                        "AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
         List<String> findDistinctUserIdsByAudienceIdsAndUserIds(
                         @Param("audienceIds") List<String> audienceIds,
                         @Param("userIds") List<String> userIds);
@@ -260,6 +269,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WHERE a.instituteId = :instituteId
                             AND ar.audienceId = :audienceId
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
                         """)
         List<AudienceResponse> findLeadsByAudienceAndDateRange(
                         @Param("instituteId") String instituteId,
@@ -277,6 +287,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             JOIN Audience a ON a.id = ar.audienceId
                             WHERE a.instituteId = :instituteId
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
                         """)
         List<AudienceResponse> findLeadsByInstituteAndDateRange(
                         @Param("instituteId") String instituteId,
@@ -284,6 +295,26 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("endDate") Timestamp endDate);
 
         Optional<AudienceResponse> findFirstByStudentUserIdAndApplicantIdIsNotNull(String studentUserId);
+
+        /**
+         * Find the most recent audience_response for a user in an institute
+         * that has not yet been opted out and is not itself an opt-out entry.
+         * Used to soft-delete the previous membership when the user opts out.
+         */
+        @Query(value = """
+                            SELECT ar.*
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            WHERE a.institute_id = :instituteId
+                              AND ar.user_id = :userId
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND (ar.source_type IS NULL OR ar.source_type != 'OPT_OUT')
+                            ORDER BY ar.submitted_at DESC
+                            LIMIT 1
+                        """, nativeQuery = true)
+        Optional<AudienceResponse> findMostRecentActiveResponseForUser(
+                        @Param("userId") String userId,
+                        @Param("instituteId") String instituteId);
 
         /**
          * Find audience responses by parent mobile scoped to a specific institute

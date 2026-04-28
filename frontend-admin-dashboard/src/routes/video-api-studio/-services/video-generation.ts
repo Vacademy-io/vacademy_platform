@@ -176,6 +176,65 @@ export interface GenerateVideoRequest {
     mute_tts_on_source_clips?: boolean;
     /** Experimental: split dense shots into 2 focused sub-shots before HTML generation. */
     sub_shots_enabled?: boolean;
+    /** Sparse override for the auto-routing plan. User toggles win over router decisions. */
+    routing_overrides?: RoutingOverrides;
+}
+
+// ── Intent Router types ─────────────────────────────────────────────────
+
+export type RoutingToolName = 'scrape_url' | 'web_search';
+
+export interface RoutingToolDecision {
+    name: RoutingToolName;
+    enabled: boolean;
+    params?: Record<string, unknown>;
+    reason?: string;
+    source?: 'router' | 'user';
+}
+
+export interface RoutingConfig {
+    mute_tts_on_source_clips: boolean;
+    source_clip_priority: 'low' | 'medium' | 'high';
+    infographic_mode: 'side' | 'overlay' | 'sequential';
+    narration_fit_to_source: boolean;
+    coverage_min_pct: number;
+}
+
+export interface RoutingPlan {
+    tools: RoutingToolDecision[];
+    config: RoutingConfig;
+    explanation: string;
+}
+
+export interface RoutingOverrides {
+    tools?: Partial<Record<RoutingToolName, boolean>>;
+    config?: Partial<RoutingConfig>;
+}
+
+export interface RoutePreviewRequest {
+    prompt: string;
+    input_video_count?: number;
+    attached_file_count?: number;
+    orientation?: VideoOrientation;
+    content_type?: ContentType;
+}
+
+export async function fetchRoutePreview(
+    apiKey: string,
+    body: RoutePreviewRequest,
+): Promise<RoutingPlan> {
+    const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/route-preview`, {
+        method: 'POST',
+        headers: {
+            'X-Institute-Key': apiKey,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+        throw new Error(`route-preview failed: ${response.status}`);
+    }
+    return (await response.json()) as RoutingPlan;
 }
 
 export const QUALITY_TIERS: Array<{

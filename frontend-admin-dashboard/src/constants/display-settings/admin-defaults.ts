@@ -106,6 +106,9 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         showCopyToEdit: true,
         showDelete: true,
     },
+    courseListCard: {
+        showEnrolledStudentCount: false,
+    },
     courseCreation: {
         showCreateCourseWithAI: false,
         requirePackageSelectionForNewChapter: true,

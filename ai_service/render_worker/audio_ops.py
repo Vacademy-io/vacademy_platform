@@ -257,6 +257,127 @@ def splice_audio(
         )
 
 
+def silence_audio_range(
+    base_audio_url: str,
+    silence_start: float,
+    silence_end: float,
+    output_key: str,
+    bucket: Optional[str] = None,
+    crossfade_ms: int = 50,
+    head_pad_ms: int = 40,
+) -> SpliceResult:
+    """Replace `[silence_start, silence_end)` in `base_audio_url` with
+    silence of identical length. The total file length and every
+    downstream timestamp stay unchanged — `duration_delta` is ~0.
+
+    Useful for the editor's "mute this sentence" flow: the user wants the
+    timing slot preserved (so shots downstream don't shift) but the audio
+    in that slot replaced with nothing. They can later re-narrate the same
+    slot via /sentence/regenerate, which splices a fresh TTS clip back in.
+
+    Implementation: locally synthesize a stereo MP3 of silence using
+    ffmpeg's `anullsrc` filter, then reuse the same head + new + tail
+    crossfade pipeline as splice_audio.
+    """
+    if silence_end <= silence_start:
+        raise AudioOpsError("silence_end must be > silence_start")
+    if crossfade_ms < 0:
+        raise AudioOpsError("crossfade_ms must be >= 0")
+    if head_pad_ms < 0:
+        raise AudioOpsError("head_pad_ms must be >= 0")
+    _ensure_ffmpeg()
+    bucket_name = _resolve_bucket(bucket)
+    s3 = _get_s3_client()
+    crossfade_s = crossfade_ms / 1000.0
+    pad_s = head_pad_ms / 1000.0
+    silence_duration = silence_end - silence_start
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        base = tmp / "base.mp3"
+        _download_url(base_audio_url, base)
+
+        base_duration = probe_duration(base)
+        if silence_start < 0 or silence_end > base_duration + 0.05:
+            raise AudioOpsError(
+                f"silence range [{silence_start}, {silence_end}] outside base "
+                f"audio duration {base_duration:.2f}s"
+            )
+
+        max_pad = max(0.0, silence_duration / 2.0)
+        effective_pad = min(pad_s, max_pad)
+        head_end = silence_start + effective_pad
+        tail_start = silence_end + effective_pad
+        if tail_start > base_duration:
+            tail_start = base_duration
+
+        # Locally synthesize silence at standard mp3 sample/channel layout.
+        silence_clip = tmp / "silence.mp3"
+        _run_ffmpeg([
+            "ffmpeg", "-y",
+            "-f", "lavfi",
+            "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+            "-t", f"{silence_duration:.3f}",
+            "-b:a", "192k",
+            str(silence_clip),
+        ], what="silence synth")
+
+        head = tmp / "head.mp3"
+        tail = tmp / "tail.mp3"
+        _run_ffmpeg([
+            "ffmpeg", "-y", "-ss", "0", "-to", f"{head_end:.3f}",
+            "-i", str(base), "-c", "copy", str(head),
+        ], what="silence head")
+        _run_ffmpeg([
+            "ffmpeg", "-y", "-ss", f"{tail_start:.3f}",
+            "-i", str(base), "-c", "copy", str(tail),
+        ], what="silence tail")
+
+        # Reuse the splice crossfade pipeline. Same fallback to hard concat
+        # if either side is too short for a crossfade window.
+        output = tmp / "silenced.mp3"
+        head_dur = probe_duration(head)
+        silence_dur = probe_duration(silence_clip)
+        tail_dur = probe_duration(tail)
+        cf_head_new = min(crossfade_s, head_dur, silence_dur) if crossfade_ms else 0
+        cf_new_tail = min(crossfade_s, silence_dur, tail_dur) if crossfade_ms else 0
+
+        if cf_head_new == 0 and cf_new_tail == 0:
+            concat_list = tmp / "concat.txt"
+            concat_list.write_text(
+                "\n".join([
+                    f"file '{head}'",
+                    f"file '{silence_clip}'",
+                    f"file '{tail}'",
+                ]),
+                encoding="utf-8",
+            )
+            _run_ffmpeg([
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(concat_list),
+                "-c", "copy", str(output),
+            ], what="silence concat (no crossfade)")
+        else:
+            filter_parts = [
+                f"[0:a][1:a]acrossfade=d={cf_head_new}:c1=tri:c2=tri[hn]",
+                f"[hn][2:a]acrossfade=d={cf_new_tail}:c1=tri:c2=tri[out]",
+            ]
+            _run_ffmpeg([
+                "ffmpeg", "-y",
+                "-i", str(head), "-i", str(silence_clip), "-i", str(tail),
+                "-filter_complex", ";".join(filter_parts),
+                "-map", "[out]", "-b:a", "192k", str(output),
+            ], what="silence crossfade")
+
+        new_total = probe_duration(output)
+        _upload_to_s3(s3, bucket_name, output_key, output.read_bytes(), "audio/mpeg")
+        return SpliceResult(
+            output_url=_s3_https_url(bucket_name, output_key),
+            new_duration=new_total,
+            duration_delta=new_total - base_duration,
+        )
+
+
 def probe_duration(path: Path) -> float:
     """MP3 duration in seconds via ffprobe, or 0.0 on failure. Public so
     main.py can keep using it for the existing /concat_audio endpoint."""

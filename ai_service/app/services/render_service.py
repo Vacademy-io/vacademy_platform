@@ -239,3 +239,47 @@ class RenderService:
             )
         except Exception as e:
             raise RuntimeError(f"Failed to call splice_audio: {e}")
+
+    def silence_audio_range(
+        self,
+        base_audio_url: str,
+        silence_start: float,
+        silence_end: float,
+        output_key: str,
+        bucket: Optional[str] = None,
+        crossfade_ms: int = 50,
+        head_pad_ms: int = 40,
+    ) -> Dict[str, Any]:
+        """Replace `[silence_start, silence_end)` of `base_audio_url` with
+        synthesized silence of identical length. Total file length is
+        preserved — `duration_delta` will be ~0 — so downstream timestamps
+        don't need to ripple.
+
+        Used by the editor's "mute this sentence" flow. The user can later
+        re-narrate the same range via splice_audio.
+        """
+        payload: dict = {
+            "base_audio_url": base_audio_url,
+            "silence_start": silence_start,
+            "silence_end": silence_end,
+            "output_key": output_key,
+            "crossfade_ms": crossfade_ms,
+            "head_pad_ms": head_pad_ms,
+        }
+        if bucket is not None:
+            payload["bucket"] = bucket
+        try:
+            with httpx.Client(timeout=self._AUDIO_OP_TIMEOUT) as client:
+                resp = client.post(
+                    f"{self.base_url}/audio/silence_range",
+                    json=payload,
+                    headers=self._headers(),
+                )
+                resp.raise_for_status()
+                return resp.json()
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(
+                f"Render server silence_audio_range returned {e.response.status_code}: {e.response.text}"
+            )
+        except Exception as e:
+            raise RuntimeError(f"Failed to call silence_audio_range: {e}")

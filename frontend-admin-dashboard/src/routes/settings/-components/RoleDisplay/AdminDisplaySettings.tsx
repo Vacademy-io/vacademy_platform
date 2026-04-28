@@ -539,6 +539,33 @@ export default function AdminDisplaySettings() {
 
             <Card>
                 <CardHeader>
+                    <CardTitle>Course List Card</CardTitle>
+                    <CardDescription>
+                        Control which details appear on each course card under Explore Courses.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">Show enrolled student count</div>
+                        <Switch
+                            checked={
+                                settings.courseListCard?.showEnrolledStudentCount === true
+                            }
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    courseListCard: {
+                                        showEnrolledStudentCount: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
                     <CardTitle>Course Creation</CardTitle>
                     <CardDescription>
                         Configure AI course creation entry points and chapter setup defaults.

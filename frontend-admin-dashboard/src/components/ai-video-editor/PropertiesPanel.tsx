@@ -99,17 +99,22 @@ interface TransformTabProps {
     entryId: string;
     canvasW: number;
     canvasH: number;
+    inTime?: number | null;
+    exitTime?: number | null;
 }
 
-function TransformTab({ entryId, canvasW, canvasH }: TransformTabProps) {
+function TransformTab({ entryId, canvasW, canvasH, inTime, exitTime }: TransformTabProps) {
     const {
         entryTransforms,
         entryBackgrounds,
         entryTransitions,
+        naturalDurations,
         updateEntryTransform,
         resetEntryTransform,
         updateEntryBackground,
         updateEntryTransition,
+        fitAnimationsToDuration,
+        meta,
     } = useVideoEditorStore();
     const transform = entryTransforms[entryId] ?? DEFAULT_TRANSFORM;
     const background = entryBackgrounds[entryId] ?? '';
@@ -250,6 +255,43 @@ function TransformTab({ entryId, canvasW, canvasH }: TransformTabProps) {
                 unit="°"
                 onChange={(v) => updateEntryTransform(entryId, { rotation: v })}
             />
+            {/* Fit animations to duration — only meaningful for time_driven */}
+            {meta.navigation === 'time_driven' && (() => {
+                const currentDur = (exitTime ?? 0) - (inTime ?? 0);
+                const baseDur = naturalDurations[entryId];
+                const canFit = currentDur > 0 && baseDur != null && baseDur > 0
+                    && Math.abs(currentDur - baseDur) > 0.05;
+                const currentSpeed = baseDur != null && currentDur > 0
+                    ? baseDur / currentDur
+                    : null;
+                return (
+                    <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-medium text-gray-600">
+                                Animation Speed
+                            </span>
+                            {currentSpeed != null && (
+                                <span className="font-mono text-[10px] text-indigo-600">
+                                    {currentSpeed.toFixed(2)}×
+                                </span>
+                            )}
+                        </div>
+                        <div className="text-[10px] text-gray-400">
+                            Natural: {baseDur != null ? `${baseDur.toFixed(1)}s` : '—'}
+                            {' · '}Current: {currentDur > 0 ? `${currentDur.toFixed(1)}s` : '—'}
+                        </div>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 w-full text-xs text-gray-600 disabled:opacity-40"
+                            disabled={!canFit}
+                            onClick={() => fitAnimationsToDuration(entryId)}
+                        >
+                            Fit animations to duration
+                        </Button>
+                    </div>
+                );
+            })()}
             <Button
                 size="sm"
                 variant="outline"
@@ -1376,7 +1418,13 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
             {/* Tab content */}
             <div className={['flex-1', tab === 'code' ? 'overflow-hidden' : 'overflow-y-auto'].join(' ')}>
                 {tab === 'transform' && (
-                    <TransformTab entryId={entryId} canvasW={canvasW} canvasH={canvasH} />
+                    <TransformTab
+                        entryId={entryId}
+                        canvasW={canvasW}
+                        canvasH={canvasH}
+                        inTime={inTime}
+                        exitTime={outTime}
+                    />
                 )}
                 {tab === 'text' && (
                     <TextTab

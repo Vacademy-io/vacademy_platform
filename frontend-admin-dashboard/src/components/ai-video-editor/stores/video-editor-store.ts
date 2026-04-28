@@ -131,6 +131,29 @@ function isIdentity(t: EntryTransform): boolean {
  * data-vx-shot="1" so we can recognize and rewrite it idempotently.
  */
 const SHOT_WRAPPER_OPEN_RE = /^<div\s+data-vx-shot="1"\s+style="[^"]*">/;
+
+// ── Animation timescale injection ────────────────────────────────────────────
+const TIMESCALE_SCRIPT_RE = /<script\s[^>]*data-vx-timescale="[^"]*"[^>]*>[\s\S]*?<\/script>/;
+
+function stripTimescaleScript(html: string): string {
+    return html.replace(TIMESCALE_SCRIPT_RE, '');
+}
+
+/** Inject (or replace) a gsap.globalTimeline.timeScale call at the end of the HTML.
+ *  `baseDur` is the shot's "natural" animation duration — stored as an attribute
+ *  so the script can be reconstructed correctly after a page reload. */
+function injectTimescaleScript(html: string, speed: number, baseDur: number): string {
+    const s = speed.toFixed(4);
+    const d = baseDur.toFixed(3);
+    const script = `<script data-vx-timescale="${s}" data-vx-base-dur="${d}">gsap.globalTimeline.timeScale(${s});</script>`;
+    return stripTimescaleScript(html) + script;
+}
+
+/** Read the stored base duration from a previously injected timescale script. */
+function readTimescaleBaseDur(html: string): number | null {
+    const m = html.match(/data-vx-base-dur="([^"]+)"/);
+    return m?.[1] != null ? parseFloat(m[1]) : null;
+}
 const LEGACY_TRANSFORM_WRAPPER_RE =
     /^<div style="position:absolute;inset:0;transform:[^"]*;transform-origin:center center;overflow:visible;">([\s\S]*)<\/div>$/;
 
@@ -238,6 +261,13 @@ export interface VideoEditorState {
      *  a second regenerate while the first is in flight. */
     regeneratingSentenceId: string | null;
 
+    /** Per-entry "natural" animation duration (seconds) — the duration the HTML
+     *  animations were originally designed for. Snapshotted at load time and used
+     *  by `fitAnimationsToDuration` to compute the correct timeScale ratio.
+     *  Session-only; survives reload via the `data-vx-base-dur` attribute baked
+     *  into the injected timescale script. */
+    naturalDurations: Record<string, number>;
+
     /** `key` of the gap currently being filled by an /shot/insert request.
      *  Drives loading UI in the AddShotPopover. Only one gap-insert can be
      *  in flight at a time — the request is fast enough (single LLM call)
@@ -342,6 +372,15 @@ export interface VideoEditorState {
      * Duration-neutral: gap-filling doesn't shift any timestamps, so no
      * ripple is applied locally either.
      */
+    /**
+     * Inject (or update) a `gsap.globalTimeline.timeScale()` call into the
+     * entry's HTML so its animations fill the current shot duration.
+     * The natural duration (what the animations were designed for) is read from
+     * a `data-vx-base-dur` attribute baked into any previous injection, or
+     * falls back to the session snapshot in `naturalDurations`.
+     */
+    fitAnimationsToDuration: (entryId: string) => void;
+
     insertShot: (
         gap: TimelineGap,
         userHint: string | null
@@ -392,6 +431,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     isSaving: false,
     regeneratingSentenceId: null,
     insertingGapKey: null,
+    naturalDurations: {},
 
     init: (params) => {
         set({
@@ -454,7 +494,20 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 throw new Error('Unrecognized timeline format');
             }
 
-            set({ entries, meta, audioTracks: meta.audio_tracks ?? [], isLoading: false });
+            // Snapshot each entry's natural animation duration. If the HTML already
+            // has a timescale script (from a prior fit), read back the stored base
+            // duration so the ratio stays stable across page reloads.
+            const naturalDurations: Record<string, number> = {};
+            for (const e of entries) {
+                const dur = (e.exitTime ?? e.end ?? 0) - (e.inTime ?? e.start ?? 0);
+                const baseDur = readTimescaleBaseDur(e.html ?? '');
+                if (baseDur != null && baseDur > 0) {
+                    naturalDurations[e.id] = baseDur;
+                } else if (dur > 0) {
+                    naturalDurations[e.id] = dur;
+                }
+            }
+            set({ entries, meta, audioTracks: meta.audio_tracks ?? [], isLoading: false, naturalDurations });
         } catch (err) {
             set({
                 error: err instanceof Error ? err.message : 'Failed to load timeline',
@@ -723,6 +776,29 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             return {
                 ...pushPast(s),
                 entryBackgrounds: next,
+                dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
+                    ? s.dirtyEntryIds
+                    : [...s.dirtyEntryIds, entryId],
+            };
+        });
+    },
+
+    fitAnimationsToDuration: (entryId) => {
+        set((s) => {
+            const entry = s.entries.find((e) => e.id === entryId);
+            if (!entry) return {};
+            const currentDur =
+                (entry.exitTime ?? entry.end ?? 0) - (entry.inTime ?? entry.start ?? 0);
+            if (currentDur <= 0) return {};
+            // Natural duration: read from previously baked attribute, or session snapshot.
+            const baseDur =
+                readTimescaleBaseDur(entry.html ?? '') ?? s.naturalDurations[entryId];
+            if (!baseDur || baseDur <= 0) return {};
+            const speed = baseDur / currentDur;
+            const newHtml = injectTimescaleScript(entry.html, speed, baseDur);
+            return {
+                ...pushPast(s),
+                entries: s.entries.map((e) => (e.id === entryId ? { ...e, html: newHtml } : e)),
                 dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
                     ? s.dirtyEntryIds
                     : [...s.dirtyEntryIds, entryId],

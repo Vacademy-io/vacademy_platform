@@ -11,6 +11,7 @@ public enum SourceTypeEnum {
     LINKEDIN_ADS,   // LinkedIn Ads webhook (future)
     INSTAGRAM_ADS,  // Instagram Ads webhook (future)
     TWITTER_ADS,    // Twitter Ads webhook (future)
-    MANUAL          // Manually added lead
+    MANUAL,         // Manually added lead
+    OPT_OUT         // User opted out — source_id holds the previous audience_id
 }
 

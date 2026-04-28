@@ -10,6 +10,7 @@ public enum WorkflowTriggerEvent {
 
     // Existing - Audience / CRM
     AUDIENCE_LEAD_SUBMISSION,
+    AUDIENCE_OPT_OUT,
 
     // Existing - Fee
     INSTALLMENT_DUE_REMINDER,

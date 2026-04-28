@@ -192,6 +192,8 @@ def _attach_minimal_state(pipeline, *, video_width: int, video_height: int) -> N
     one method on a freshly-constructed instance, so we set them by hand.
     Anything we omit fails closed: getattr defaults inside the per-shot
     function (`_input_video_contexts`, `_emphasis_map`, etc.)."""
+    import threading as _threading_mod
+
     pipeline.video_width = video_width
     pipeline.video_height = video_height
     pipeline.aspect_label = "9:16 portrait" if video_width < video_height else "16:9 landscape"
@@ -218,6 +220,19 @@ def _attach_minimal_state(pipeline, *, video_width: int, video_height: int) -> N
     pipeline._progress_callback = None
     pipeline._background_music_enabled_override = None
     pipeline._background_music_volume_override = None
+    # Thread-safe token accounting. The per-shot path acquires
+    # `_token_lock` after the LLM call to bump cumulative totals — these
+    # are normally created in `pipeline.generate()`, which we don't call.
+    pipeline._token_lock = _threading_mod.Lock()
+    pipeline._cumulative_tokens = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+    }
+    # Stock-video dedup set (super_ultra only); empty is fine for any tier.
+    pipeline._used_pexels_video_ids = set()
+    # Other lazily-initialised state the per-shot path may peek at.
+    pipeline._user_had_script = False
 
 
 def _build_one_shot_director_plan(

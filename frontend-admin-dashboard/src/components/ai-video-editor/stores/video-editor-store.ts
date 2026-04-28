@@ -851,6 +851,10 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                                 video_id: videoId,
                                 frame_index: frameIndex,
                                 new_html: newHtml,
+                                in_time: entry.inTime ?? entry.start ?? null,
+                                exit_time: entry.exitTime ?? entry.end ?? null,
+                                z: entry.z ?? 0,
+                                entry_id: entry.id,
                             }),
                         }
                     );

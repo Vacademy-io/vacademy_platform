@@ -222,21 +222,20 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     // ==================== ANALYTICS LEADERBOARD & COHORT METHODS ====================
 
     /**
-     * Get engagement leaderboard with pagination
-     * Returns: user_id, channel_id (phone), outgoing_count, incoming_count, total_messages
-     * Groups only by channel_id to ensure truly unique phone numbers
+     * Get engagement leaderboard with pagination.
+     * Accepts a list of sender_business_channel_ids to support multi-channel institutes.
      */
     @Query(value = """
-            SELECT 
+            SELECT
                 MAX(nl.user_id) as user_id,
                 nl.channel_id,
                 COUNT(CASE WHEN nl.notification_type = 'WHATSAPP_MESSAGE_OUTGOING' THEN 1 END) as outgoing_count,
                 COUNT(CASE WHEN nl.notification_type = 'WHATSAPP_MESSAGE_INCOMING' THEN 1 END) as incoming_count,
                 COUNT(*) as total_messages,
-                (COUNT(CASE WHEN nl.notification_type = 'WHATSAPP_MESSAGE_OUTGOING' THEN 1 END) + 
+                (COUNT(CASE WHEN nl.notification_type = 'WHATSAPP_MESSAGE_OUTGOING' THEN 1 END) +
                  (COUNT(CASE WHEN nl.notification_type = 'WHATSAPP_MESSAGE_INCOMING' THEN 1 END) * 2)) as engagement_score
             FROM notification_log nl
-            WHERE nl.sender_business_channel_id = :channelId
+            WHERE nl.sender_business_channel_id IN (:channelIds)
                 AND nl.created_at BETWEEN CAST(:startDate AS TIMESTAMP) AND CAST(:endDate AS TIMESTAMP)
                 AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
                 AND nl.user_id IS NOT NULL
@@ -246,7 +245,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
     List<Object[]> getEngagementLeaderboard(
-            @Param("channelId") String channelId,
+            @Param("channelIds") List<String> channelIds,
             @Param("startDate") String startDate,
             @Param("endDate") String endDate,
             @Param("limit") int limit,
@@ -254,37 +253,34 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     );
 
     /**
-     * Get total count of engaged users for pagination
-     * Counts unique channel_ids (phone numbers)
+     * Get total count of engaged users for pagination across all channels of the institute.
      */
     @Query(value = """
             SELECT COUNT(DISTINCT nl.channel_id)
             FROM notification_log nl
-            WHERE nl.sender_business_channel_id = :channelId
+            WHERE nl.sender_business_channel_id IN (:channelIds)
                 AND nl.created_at BETWEEN CAST(:startDate AS TIMESTAMP) AND CAST(:endDate AS TIMESTAMP)
                 AND nl.notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_INCOMING')
                 AND nl.user_id IS NOT NULL
                 AND nl.channel_id IS NOT NULL
             """, nativeQuery = true)
     Long getTotalEngagedUsers(
-            @Param("channelId") String channelId,
+            @Param("channelIds") List<String> channelIds,
             @Param("startDate") String startDate,
             @Param("endDate") String endDate
     );
 
     /**
-     * Get users who completed challenge (received completion template)
-     * Returns: user_id, channel_id (phone), completion_date
-     * Groups only by channel_id to ensure truly unique phone numbers
-     * Supports multiple template identifiers
+     * Get users who completed challenge (received completion template).
+     * Accepts a list of sender_business_channel_ids to support multi-channel institutes.
      */
     @Query(value = """
-            SELECT 
+            SELECT
                 MAX(nl.user_id) as user_id,
                 nl.channel_id,
                 MIN(nl.created_at) as completion_date
             FROM notification_log nl
-            WHERE nl.sender_business_channel_id = :channelId
+            WHERE nl.sender_business_channel_id IN (:channelIds)
                 AND nl.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
                 AND EXISTS (
                     SELECT 1 FROM unnest(CAST(:templateIdentifiers AS text[])) AS template
@@ -298,7 +294,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             LIMIT :limit OFFSET :offset
             """, nativeQuery = true)
     List<Object[]> getCompletionCohort(
-            @Param("channelId") String channelId,
+            @Param("channelIds") List<String> channelIds,
             @Param("templateIdentifiers") String[] templateIdentifiers,
             @Param("startDate") String startDate,
             @Param("endDate") String endDate,
@@ -307,14 +303,12 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     );
 
     /**
-     * Get total count of completed users for pagination
-     * Counts unique channel_ids (phone numbers)
-     * Supports multiple template identifiers
+     * Get total count of completed users for pagination across all channels of the institute.
      */
     @Query(value = """
             SELECT COUNT(DISTINCT nl.channel_id)
             FROM notification_log nl
-            WHERE nl.sender_business_channel_id = :channelId
+            WHERE nl.sender_business_channel_id IN (:channelIds)
                 AND nl.notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
                 AND EXISTS (
                     SELECT 1 FROM unnest(CAST(:templateIdentifiers AS text[])) AS template
@@ -325,7 +319,7 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
                 AND nl.channel_id IS NOT NULL
             """, nativeQuery = true)
     Long getTotalCompletedUsers(
-            @Param("channelId") String channelId,
+            @Param("channelIds") List<String> channelIds,
             @Param("templateIdentifiers") String[] templateIdentifiers,
             @Param("startDate") String startDate,
             @Param("endDate") String endDate

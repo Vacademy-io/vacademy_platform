@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.notification_service.constants.NotificationConstants;
+import vacademy.io.notification_service.features.announcements.client.AdminCoreServiceClient;
 import vacademy.io.notification_service.features.announcements.client.AuthServiceClient;
 import vacademy.io.notification_service.features.announcements.dto.UserAnnouncementPreferenceResponse;
 import vacademy.io.notification_service.features.announcements.dto.UserAnnouncementPreferenceUpdateRequest;
@@ -36,6 +37,7 @@ public class UserAnnouncementPreferenceService {
     private final EmailService emailService;
     private final UserAnnouncementSettingsRepository preferenceRepository;
     private final AuthServiceClient authServiceClient;
+    private final AdminCoreServiceClient adminCoreServiceClient;
 
     @Transactional(readOnly = true)
     public UserAnnouncementPreferenceResponse getPreferences(String username, String instituteId) {
@@ -155,6 +157,15 @@ public class UserAnnouncementPreferenceService {
                             log.info("User {} unsubscribed from WhatsApp notifications", username);
                         }
                     });
+        }
+
+        // Fire-and-forget: move user to opt-out audience in admin_core_service for each opted-out channel
+        if (payload.getEmailSenders() != null
+                && payload.getEmailSenders().stream().anyMatch(u -> Boolean.TRUE.equals(u.getUnsubscribed()))) {
+            adminCoreServiceClient.moveToOptOutAudience(userId, normalizedInstituteId, "EMAIL");
+        }
+        if (Boolean.TRUE.equals(payload.getWhatsappUnsubscribed())) {
+            adminCoreServiceClient.moveToOptOutAudience(userId, normalizedInstituteId, "WHATSAPP");
         }
 
         List<UserAnnouncementSetting> refreshed =

@@ -71,7 +71,9 @@ public class AnalyticsController {
                 startDate,
                 endDate,
                 page,
-                pageSize
+                pageSize,
+                request.getCustomFieldName(),
+                request.getCustomFieldValue()
         );
 
         return ResponseEntity.ok(response);

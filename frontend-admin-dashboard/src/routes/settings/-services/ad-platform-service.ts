@@ -113,6 +113,12 @@ export interface ConnectorListItem {
     producesSourceType: string | null;
     createdAt: string | null;
     tokenExpiresAt: string | null;
+    /**
+     * Stringified JSON of per-connector default values merged into form payloads
+     * at webhook time (e.g. center name, schedule link, school phone). Null/empty
+     * means no defaults are configured.
+     */
+    defaultValuesJson: string | null;
 }
 
 /** List all active ad-platform connectors for an institute. */
@@ -127,6 +133,35 @@ export const listConnectors = async (instituteId: string): Promise<ConnectorList
 /** Deactivate (soft-delete) a connector. */
 export const deactivateConnector = async (connectorId: string): Promise<void> => {
     await authenticatedAxiosInstance.delete(`${BASE}/connectors/${connectorId}`);
+};
+
+/** Fetch a single connector by id (includes defaultValuesJson for editing). */
+export const getConnector = async (connectorId: string): Promise<ConnectorListItem> => {
+    const res = await authenticatedAxiosInstance.get<ConnectorListItem>(
+        `${BASE}/connectors/${connectorId}`
+    );
+    return res.data;
+};
+
+/** Partial update of a connector. Only non-undefined fields are applied server-side. */
+export interface ConnectorUpdateRequest {
+    /**
+     * Stringified JSON object, e.g.
+     * '{"center name": "Baner", "Schedule Link": "https://...", "School Phone": "..."}'.
+     * Pass '{}' to clear all defaults.
+     */
+    defaultValuesJson?: string;
+}
+
+export const updateConnector = async (
+    connectorId: string,
+    payload: ConnectorUpdateRequest
+): Promise<ConnectorListItem> => {
+    const res = await authenticatedAxiosInstance.put<ConnectorListItem>(
+        `${BASE}/connectors/${connectorId}`,
+        payload
+    );
+    return res.data;
 };
 
 /** Fetch custom fields configured for a specific audience (campaign). */

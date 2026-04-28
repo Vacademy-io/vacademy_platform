@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import vacademy.io.notification_service.features.announcements.client.AdminCoreServiceClient;
 import vacademy.io.notification_service.features.announcements.service.UserAnnouncementPreferenceService;
 import vacademy.io.notification_service.features.combot.constants.CombotConstants;
 import vacademy.io.notification_service.features.combot.constants.CombotWebhookKeys;
@@ -57,6 +58,7 @@ public class CombotWebhookService {
     private final ObjectMapper objectMapper;
     private final UserAnnouncementPreferenceService preferenceService;
     private final FlowActionRouter flowActionRouter;
+    private final AdminCoreServiceClient adminCoreServiceClient;
 
     // --- FIX: CIRCULAR DEPENDENCY BREAKER ---
     // 1. Remove 'final' so Lombok doesn't put it in the constructor
@@ -356,14 +358,12 @@ public class CombotWebhookService {
             String userId = user.getId();
 
             if (userId != null) {
-                // 2. Set Unsubscribed
+                // 2. Record opt-out in user_announcement_settings
                 preferenceService.setWhatsAppSubscriptionStatus(userId, instituteId, true, userPhone);
 
-                // 3. Send Confirmation (Optional - basic text message)
-                // Note: Standard API allows sending simple text even outside 24h window if user
-                // initiated
-                // For now, we reuse the template mechanism or just log it.
-                // Ideally, send a "You have successfully unsubscribed" message.
+                // 3. Move user to opt-out audience in admin_core_service (fire-and-forget)
+                adminCoreServiceClient.moveToOptOutAudience(userId, instituteId, "WHATSAPP");
+
                 log.info("Successfully unsubscribed user {} from institute {}", userPhone, instituteId);
             } else {
                 log.warn("Could not resolve user ID for phone {} during opt-out", userPhone);

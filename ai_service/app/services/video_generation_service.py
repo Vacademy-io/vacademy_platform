@@ -1944,7 +1944,11 @@ class VideoGenerationService:
         self,
         video_id: str,
         frame_index: int,
-        new_html: str
+        new_html: str,
+        in_time: float | None = None,
+        exit_time: float | None = None,
+        z: int | None = None,
+        entry_id: str | None = None,
     ) -> Dict[str, Any]:
         """
         Update a specific frame's HTML in the timeline and save back to S3.
@@ -1985,7 +1989,20 @@ class VideoGenerationService:
             if frame_index < 0 or frame_index >= len(entries):
                 raise IndexError(f"Frame index {frame_index} out of range (0-{len(entries)-1})")
 
-            entries[frame_index]["html"] = new_html
+            entry = entries[frame_index]
+            if entry_id is not None and entry.get("id") != entry_id:
+                logger.warning(
+                    "update_video_frame: entry_id mismatch at index %d "
+                    "(expected %s, got %s) — proceeding by index",
+                    frame_index, entry_id, entry.get("id"),
+                )
+            entry["html"] = new_html
+            if in_time is not None:
+                entry["inTime"] = in_time
+            if exit_time is not None:
+                entry["exitTime"] = exit_time
+            if z is not None:
+                entry["z"] = z
 
             # Write (data already points to the modified entries when wrapped)
             file_path.write_text(json.dumps(data, indent=2), encoding='utf-8')

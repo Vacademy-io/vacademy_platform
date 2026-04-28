@@ -411,10 +411,14 @@ class RegenerateFrameResponse(BaseModel):
 
 
 class UpdateFrameRequest(BaseModel):
-    """Request for updating a specific frame's HTML."""
+    """Request for updating a specific frame's HTML and optionally its timing."""
     video_id: str = Field(..., description="Video ID")
     frame_index: int = Field(..., description="Index of the frame to update")
     new_html: str = Field(..., description="New HTML content")
+    in_time: Optional[float] = Field(None, description="New start time in seconds (time_driven)")
+    exit_time: Optional[float] = Field(None, description="New end time in seconds (time_driven)")
+    z: Optional[int] = Field(None, description="Z-index layer")
+    entry_id: Optional[str] = Field(None, description="Client entry ID for verification")
 
 
 class AddFrameRequest(BaseModel):

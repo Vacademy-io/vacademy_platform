@@ -866,7 +866,11 @@ async def update_frame_external(
         result = await service.update_video_frame(
             video_id=payload.video_id,
             frame_index=payload.frame_index,
-            new_html=payload.new_html
+            new_html=payload.new_html,
+            in_time=payload.in_time,
+            exit_time=payload.exit_time,
+            z=payload.z,
+            entry_id=payload.entry_id,
         )
         return result
     except ValueError as e:

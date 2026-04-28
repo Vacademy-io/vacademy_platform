@@ -394,6 +394,21 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                 });
             });
 
+            // Process interactive code editor blocks (MultiLangCodePlugin from admin)
+            const codeEditorDivs = tempDiv.querySelectorAll('div[data-yoopta-type="codeBlock"]');
+            codeEditorDivs.forEach((div) => {
+                const language = div.getAttribute('data-language') || 'python';
+                const codeEl = (div.querySelector('pre code') ?? div.querySelector('pre')) as HTMLElement | null;
+                const code = (codeEl?.innerText || codeEl?.textContent || '').trim();
+                const output = div.getAttribute('data-output') || '';
+                specialBlocks.push({
+                    element: div,
+                    code,
+                    type: 'code',
+                    meta: { language, ...(output ? { output } : {}) },
+                });
+            });
+
             // Process quiz blocks — interactive on learner side
             const quizDivs = tempDiv.querySelectorAll('div[data-yoopta-type="quizBlock"]');
             quizDivs.forEach((div) => {
@@ -485,6 +500,8 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                 const htmlBlock = block as HTMLElement;
                 // Skip if this block is already part of a detected mermaid div
                 if (block.closest('div.mermaid')) return;
+                // Skip code inside an interactive codeBlock div (handled above as a unit)
+                if (block.closest('div[data-yoopta-type="codeBlock"]')) return;
 
                 // Get text content - prefer innerText to preserve line breaks from block elements
                 let codeText = '';
@@ -534,12 +551,23 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                         type: 'mermaid'
                     });
                 } else if (isBlock) {
-                    // It's a code block but not mermaid
-                    // We want to render this with EnhancedCodeBlock
+                    const preEl = (block.tagName === 'CODE' && block.parentElement?.tagName === 'PRE'
+                        ? block.parentElement
+                        : block) as HTMLElement;
+                    const language = preEl.getAttribute('data-language') || '';
+                    // Prefer base64-encoded data-code attribute which preserves newlines exactly
+                    const encodedCode = preEl.getAttribute('data-code') || '';
+                    let actualCode = codeText;
+                    if (encodedCode) {
+                        try {
+                            actualCode = decodeURIComponent(escape(atob(encodedCode)));
+                        } catch { /* fall back to textContent */ }
+                    }
                     specialBlocks.push({
-                        element: block.tagName === 'CODE' && block.parentElement?.tagName === 'PRE' ? block.parentElement : block,
-                        code: codeText,
-                        type: 'code'
+                        element: preEl,
+                        code: actualCode,
+                        type: 'code',
+                        meta: { language },
                     });
                 }
             });
@@ -890,6 +918,7 @@ export const DocumentWithMermaid: React.FC<DocumentWithMermaidProps> = ({
                         <EnhancedCodeBlock
                             key={`code-${index}`}
                             code={section.content}
+                            language={section.meta?.language || ''}
                             className="my-4"
                         />
                     );

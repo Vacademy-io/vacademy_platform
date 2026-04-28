@@ -916,7 +916,7 @@ export function ModularDynamicSignupContainer({
       </SignupStep>
 
       {/* OAuth Providers */}
-      {/* <SignupStep delay={0.2}>
+      <SignupStep delay={0.2}>
         <div className="space-y-2 mb-6">
           {effectiveSettings.providers.google && (
             <motion.button
@@ -946,7 +946,7 @@ export function ModularDynamicSignupContainer({
             </motion.button>
           )}
         </div>
-      </SignupStep> */}
+      </SignupStep>
 
       {/* Divider */}
       {effectiveSettings.providers.emailOtp && (

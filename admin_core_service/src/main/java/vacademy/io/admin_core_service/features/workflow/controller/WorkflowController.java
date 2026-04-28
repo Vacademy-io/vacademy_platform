@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.workflow.service.WorkflowService;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowValidationService;
 import vacademy.io.common.auth.config.PageConstants;
 
+import java.time.Instant;
 import java.util.*;
 
 import static vacademy.io.common.auth.config.PageConstants.DEFAULT_PAGE_NUMBER;
@@ -125,6 +126,42 @@ public class WorkflowController {
         log.info("Test-running workflow: {} with dry-run mode", workflowId);
         Map<String, Object> ctx = sampleContext != null ? new HashMap<>(sampleContext) : new HashMap<>();
         ctx.put("dryRun", true);
+
+        Map<String, Object> result = workflowEngineService.run(workflowId, ctx);
+        return ResponseEntity.ok(result);
+    }
+
+    // =================== Manual "Run Now" Endpoint ===================
+
+    /**
+     * Trigger a workflow on demand in PRODUCTION mode (real emails go out).
+     * Use this to fire a scheduled workflow without waiting for its next
+     * scheduled run, or to re-fire an event-driven workflow with a custom
+     * context payload.
+     *
+     * Differences from {@code /test-run}:
+     *  - Does NOT set {@code dryRun=true} → SendEmail and other handlers
+     *    perform their real side effects (emails sent, records updated, etc).
+     *  - Adds {@code triggeredManually=true} and {@code executionTime} to
+     *    the context for visibility in logs and downstream handlers.
+     *
+     * The optional request body becomes the seed context. For scheduled
+     * workflows you can pass anything the QUERY nodes expect (e.g.
+     * {@code daysAgo}, {@code audienceId}) — same shape as the schedule's
+     * {@code initialContext}.
+     */
+    @PostMapping("/{workflowId}/trigger-now")
+    public ResponseEntity<Map<String, Object>> triggerWorkflowNow(
+            @PathVariable String workflowId,
+            @RequestBody(required = false) Map<String, Object> sampleContext) {
+
+        log.info("Manually triggering workflow (production mode, real emails): {}", workflowId);
+        Map<String, Object> ctx = sampleContext != null ? new HashMap<>(sampleContext) : new HashMap<>();
+        // Defensive: even if a caller passed dryRun=true, strip it — the whole
+        // point of this endpoint is to actually send.
+        ctx.remove("dryRun");
+        ctx.putIfAbsent("triggeredManually", true);
+        ctx.putIfAbsent("executionTime", Instant.now().toEpochMilli());
 
         Map<String, Object> result = workflowEngineService.run(workflowId, ctx);
         return ResponseEntity.ok(result);

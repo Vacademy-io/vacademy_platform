@@ -38,6 +38,10 @@ export interface CommunicationTimelineResponse {
 }
 
 export interface CommunicationTimelineParams {
+    /** User's email address — used as channelId for EMAIL logs. */
+    email?: string;
+    /** User's phone number — used as channelId for WhatsApp logs. */
+    phone?: string;
     page: number;
     size: number;
     channels?: string[];
@@ -47,12 +51,14 @@ export interface CommunicationTimelineParams {
 }
 
 export async function getUserCommunications(
-    userId: string,
     params: CommunicationTimelineParams
 ): Promise<CommunicationTimelineResponse> {
     const searchParams = new URLSearchParams();
     searchParams.set('page', String(params.page));
     searchParams.set('size', String(params.size));
+
+    if (params.email) searchParams.set('email', params.email);
+    if (params.phone) searchParams.set('phone', params.phone);
 
     if (params.channels && params.channels.length > 0) {
         params.channels.forEach((ch) => searchParams.append('channels', ch));
@@ -67,7 +73,7 @@ export async function getUserCommunications(
         searchParams.set('toDate', params.toDate);
     }
 
-    const url = `${BASE_URL}/notification-service/v1/communications/user/${userId}?${searchParams.toString()}`;
+    const url = `${BASE_URL}/notification-service/v1/communications/by-channel?${searchParams.toString()}`;
 
     const response = await authenticatedAxiosInstance.get<CommunicationTimelineResponse>(url);
     return response.data;

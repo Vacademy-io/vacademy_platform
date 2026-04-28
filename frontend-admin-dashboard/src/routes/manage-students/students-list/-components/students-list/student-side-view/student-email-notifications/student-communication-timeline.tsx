@@ -310,26 +310,32 @@ export const StudentCommunicationTimeline = () => {
     const pageSize = 20;
     const { openIndividualSendEmailDialog, openIndividualSendMessageDialog } = useDialogStore();
 
+    const email = selectedStudent?.email || undefined;
+    const phone = selectedStudent?.mobile_number || undefined;
+    const hasContact = !!(email || phone);
+
     const {
         data: timelineData,
         isLoading,
         error,
         refetch,
     } = useQuery({
-        queryKey: ['communication-timeline', selectedStudent?.user_id, page, channelFilter],
+        queryKey: ['communication-timeline', email, phone, page, channelFilter],
         queryFn: () =>
-            getUserCommunications(selectedStudent?.user_id || '', {
+            getUserCommunications({
+                email,
+                phone,
                 page,
                 size: pageSize,
                 channels: channelFilter === 'ALL' ? undefined : [channelFilter],
             }),
-        enabled: !!selectedStudent?.user_id,
+        enabled: hasContact,
         staleTime: 30000,
     });
 
     // ─── Empty / Loading / Error states ─────────────────────────────────────
 
-    if (!selectedStudent?.user_id) {
+    if (!hasContact) {
         return (
             <div className="flex flex-col items-center justify-center py-12">
                 <div className="mb-3 rounded-full bg-neutral-100 p-4">

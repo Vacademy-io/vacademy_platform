@@ -22,7 +22,7 @@ public class CustomFields {
     @Column(name = "id", nullable = false, unique = true)
     private String id;
 
-    @Column(name = "field_key", nullable = false, unique = true, length = 100)
+    @Column(name = "field_key", nullable = false, unique = true, length = 1024)
     private String fieldKey;
 
     @Column(name = "field_name", nullable = false, length = 255)

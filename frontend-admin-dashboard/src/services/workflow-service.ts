@@ -235,6 +235,26 @@ export const testRunWorkflow = async (
     return response.data;
 };
 
+/**
+ * Trigger a workflow on demand in PRODUCTION mode (real emails are sent).
+ * Use this to fire a scheduled workflow without waiting for its next run,
+ * or to re-fire an event-driven workflow with a custom context payload.
+ *
+ * Unlike testRunWorkflow, this does NOT set dryRun, so SendEmail and other
+ * handlers perform their real side effects.
+ */
+export const triggerWorkflowNow = async (
+    workflowId: string,
+    sampleContext?: Record<string, unknown>
+): Promise<Record<string, unknown>> => {
+    const response = await authenticatedAxiosInstance<Record<string, unknown>>({
+        method: 'POST',
+        url: `${WORKFLOW_SERVICE_BASE}/${workflowId}/trigger-now`,
+        data: sampleContext ?? {},
+    });
+    return response.data;
+};
+
 export interface WorkflowTemplateItem {
     id: string;
     name: string;

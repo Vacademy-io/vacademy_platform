@@ -823,7 +823,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 ) AS facultyUserIds,
 
                 /* 2. Return only the current level ID in the array */
-                ARRAY[CAST(l.id AS text)] AS levelIds
+                ARRAY[CAST(l.id AS text)] AS levelIds,
+
+                (SELECT COUNT(*)
+                 FROM student_session_institute_group_mapping ssigm
+                 WHERE ssigm.package_session_id = ps.id
+                   AND ssigm.status IN ('ACTIVE', 'INACTIVE')) AS enrolledStudentCount
 
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
@@ -1045,7 +1050,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             ELSE NULL
                         END
                     ), NULL
-                ) AS facultyUserIds
+                ) AS facultyUserIds,
+
+                (SELECT COUNT(*)
+                 FROM student_session_institute_group_mapping ssigm
+                 WHERE ssigm.package_session_id = ps.id
+                   AND ssigm.status IN ('ACTIVE', 'INACTIVE')) AS enrolledStudentCount
 
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
@@ -1133,7 +1143,12 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     ) AS facultyUserIds,
 
                     /* 2. Return only the current level ID in the array */
-                    ARRAY[CAST(l.id AS text)] AS levelIds
+                    ARRAY[CAST(l.id AS text)] AS levelIds,
+
+                    (SELECT COUNT(*)
+                     FROM student_session_institute_group_mapping ssigm
+                     WHERE ssigm.package_session_id = ps.id
+                       AND ssigm.status IN ('ACTIVE', 'INACTIVE')) AS enrolledStudentCount
 
                 FROM package p
                 JOIN package_session ps ON ps.package_id = p.id
@@ -2794,7 +2809,8 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 -- Package Session details
                 ps_info.package_session_ids,
                 ps_info.package_session_count,
-                ps_info.package_session_statuses
+                ps_info.package_session_statuses,
+                COALESCE(enrollment_info.enrolled_student_count, 0) as enrolled_student_count
             FROM package p
             LEFT JOIN (
                 SELECT
@@ -2822,6 +2838,17 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 AND ps.status != 'INVITED'
                 GROUP BY ps.package_id
             ) ps_info ON ps_info.package_id = p.id
+            LEFT JOIN (
+                SELECT
+                    ps.package_id,
+                    COUNT(*) as enrolled_student_count
+                FROM student_session_institute_group_mapping ssigm
+                JOIN package_session ps ON ps.id = ssigm.package_session_id
+                WHERE ssigm.status IN ('ACTIVE', 'INACTIVE')
+                AND ps.status != 'DELETED'
+                AND ps.status != 'INVITED'
+                GROUP BY ps.package_id
+            ) enrollment_info ON enrollment_info.package_id = p.id
             LEFT JOIN package_session ps_first ON ps_first.package_id = p.id AND ps_first.status != 'DELETED'
                 AND ps_first.status != 'INVITED'
             LEFT JOIN session s ON s.id = ps_first.session_id

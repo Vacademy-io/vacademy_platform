@@ -423,6 +423,10 @@ export default function AdminDisplaySettings() {
                             ['viewCourseConfiguration', 'View course configuration'],
                             ['viewCourseOverviewItem', 'View course overview item'],
                             ['viewContentNumbering', 'View content numbering'],
+                            [
+                                'allowViewSlidesInReadOnly',
+                                'Allow viewing slides on published / in-review courses (read-only)',
+                            ],
                         ] as const
                     ).map(([key, label]) => (
                         <div
@@ -446,6 +450,8 @@ export default function AdminDisplaySettings() {
                                                 prev.coursePage?.viewCourseOverviewItem ?? true,
                                             viewContentNumbering:
                                                 prev.coursePage?.viewContentNumbering ?? true,
+                                            allowViewSlidesInReadOnly:
+                                                prev.coursePage?.allowViewSlidesInReadOnly ?? true,
                                             [key]: checked,
                                         },
                                     }))
@@ -488,6 +494,73 @@ export default function AdminDisplaySettings() {
                             />
                         </div>
                     ))}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Authored Courses Card</CardTitle>
+                    <CardDescription>
+                        Control which actions appear on the course card under Explore Courses →
+                        Authored Courses.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                    {(
+                        [
+                            ['showCopyToEdit', 'Show "Copy to Edit" button'],
+                            ['showDelete', 'Show delete button'],
+                        ] as const
+                    ).map(([key, label]) => (
+                        <div
+                            key={key}
+                            className="flex items-center justify-between rounded border p-3"
+                        >
+                            <div className="text-sm">{label}</div>
+                            <Switch
+                                checked={settings.authoredCoursesCard?.[key] !== false}
+                                onCheckedChange={(checked) =>
+                                    updateSettings((prev) => ({
+                                        ...prev,
+                                        authoredCoursesCard: {
+                                            showCopyToEdit:
+                                                prev.authoredCoursesCard?.showCopyToEdit ?? true,
+                                            showDelete:
+                                                prev.authoredCoursesCard?.showDelete ?? true,
+                                            [key]: checked,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
+                    ))}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Course List Card</CardTitle>
+                    <CardDescription>
+                        Control which details appear on each course card under Explore Courses.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">Show enrolled student count</div>
+                        <Switch
+                            checked={
+                                settings.courseListCard?.showEnrolledStudentCount === true
+                            }
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    courseListCard: {
+                                        showEnrolledStudentCount: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                 </CardContent>
             </Card>
 

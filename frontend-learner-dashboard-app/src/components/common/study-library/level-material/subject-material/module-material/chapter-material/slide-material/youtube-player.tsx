@@ -145,6 +145,29 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   const [isPseudoFullscreen, setIsPseudoFullscreen] = useState(false);
   const hasAutoPlayAttempted = useRef(false);
   const [showManualPlayButton, setShowManualPlayButton] = useState(false);
+  const isMountedRef = useRef(true);
+  const visibilityResumeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const seekRetryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autoplayVerifyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (visibilityResumeTimeoutRef.current) {
+        clearTimeout(visibilityResumeTimeoutRef.current);
+        visibilityResumeTimeoutRef.current = null;
+      }
+      if (seekRetryTimeoutRef.current) {
+        clearTimeout(seekRetryTimeoutRef.current);
+        seekRetryTimeoutRef.current = null;
+      }
+      if (autoplayVerifyTimeoutRef.current) {
+        clearTimeout(autoplayVerifyTimeoutRef.current);
+        autoplayVerifyTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   // Playback speed state
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
@@ -358,7 +381,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   };
 
   // Handle closing the question overlay (skip/close)
-  const handleQuestionClose = () => {
+  const handleQuestionClose = async () => {
     // Mark question as skipped only if it's skippable
     if (currentQuestion && currentQuestion.can_skip) {
       setAnsweredQuestions((prev) => ({
@@ -376,8 +399,11 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     setCurrentQuestion(null);
 
     // Resume video playback
-    if (player) {
-      player.playVideo();
+    const success = await safePlayerOperation(
+      () => player?.playVideo(),
+      "resumeAfterQuestion"
+    );
+    if (success) {
       setIsPlayed(true);
     }
   };
@@ -755,10 +781,21 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         // Tab is back in focus
         // Auto-play if allowPlayPause is false and video was paused by tab switch
         if (player && wasPausedByTabSwitch && !allowPlayPause) {
-          setTimeout(() => {
-            player.playVideo();
-            setIsPlayed(true);
-            setWasPausedByTabSwitch(false);
+          if (visibilityResumeTimeoutRef.current) {
+            clearTimeout(visibilityResumeTimeoutRef.current);
+          }
+          visibilityResumeTimeoutRef.current = setTimeout(async () => {
+            visibilityResumeTimeoutRef.current = null;
+            if (!isMountedRef.current) return;
+            const ok = await safePlayerOperation(
+              () => player?.playVideo(),
+              "visibilityResume"
+            );
+            if (!isMountedRef.current) return;
+            if (ok) {
+              setIsPlayed(true);
+              setWasPausedByTabSwitch(false);
+            }
           }, 500); // Small delay to ensure tab is fully focused
         }
       }
@@ -768,6 +805,10 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (visibilityResumeTimeoutRef.current) {
+        clearTimeout(visibilityResumeTimeoutRef.current);
+        visibilityResumeTimeoutRef.current = null;
+      }
     };
   }, [
     player,
@@ -1092,9 +1133,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
         if (success) {
           // Verify that video actually started playing after a short delay
-          setTimeout(async () => {
+          autoplayVerifyTimeoutRef.current = setTimeout(async () => {
+            autoplayVerifyTimeoutRef.current = null;
+            if (!isMountedRef.current) return;
             try {
               const playerState = await player.getPlayerState();
+              if (!isMountedRef.current) return;
               // PlayerState.PLAYING = 1, if not playing, show manual button
               if (playerState !== 1) {
                 setShowManualPlayButton(true);
@@ -1104,16 +1148,22 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               }
             } catch (error) {
               console.warn("Error checking player state after autoplay", error);
-              setShowManualPlayButton(true);
+              if (isMountedRef.current) setShowManualPlayButton(true);
             }
           }, 1000);
         } else {
           console.warn("Autoplay failed, showing manual play button");
-          setShowManualPlayButton(true);
+          if (isMountedRef.current) setShowManualPlayButton(true);
         }
       }, 500);
 
-      return () => clearTimeout(autoplayTimeout);
+      return () => {
+        clearTimeout(autoplayTimeout);
+        if (autoplayVerifyTimeoutRef.current) {
+          clearTimeout(autoplayVerifyTimeoutRef.current);
+          autoplayVerifyTimeoutRef.current = null;
+        }
+      };
     }
   }, [allowPlayPause, player, playerReady]);
 
@@ -1410,14 +1460,16 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
       // Wait for player to be fully ready before seeking
       const performSeek = async () => {
+        if (!isMountedRef.current) return;
         try {
           // Ensure iframe is ready with retry logic
           const isReady = await isPlayerIframeReady(player);
+          if (!isMountedRef.current) return;
           if (!isReady) {
             if (retryCount < maxRetries) {
               retryCount++;
               console.warn(`Player iframe not ready for initial seek, retry ${retryCount}/${maxRetries}...`);
-              setTimeout(performSeek, 300); // Retry after 300ms
+              seekRetryTimeoutRef.current = setTimeout(performSeek, 300); // Retry after 300ms
               return;
             } else {
               console.error("Player iframe failed to be ready after max retries");
@@ -1427,10 +1479,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
           // Double-check player state
           const playerState = await player.getPlayerState();
+          if (!isMountedRef.current) return;
           console.log(`Player state before seek: ${playerState}`);
 
           // Perform the seek
           const seekSuccess = await seekToTimestamp(totalSeconds, true);
+          if (!isMountedRef.current) return;
 
           if (seekSuccess) {
             hasPerformedInitialSeekRef.current = true;
@@ -1446,9 +1500,14 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       };
 
       // Start the seek process after initial delay
-      const seekTimeout = setTimeout(performSeek, 1000); // Increased to 1 second
+      seekRetryTimeoutRef.current = setTimeout(performSeek, 1000); // Increased to 1 second
 
-      return () => clearTimeout(seekTimeout);
+      return () => {
+        if (seekRetryTimeoutRef.current) {
+          clearTimeout(seekRetryTimeoutRef.current);
+          seekRetryTimeoutRef.current = null;
+        }
+      };
     }
   }, [ms, player, playerReady, isPlayed]);
 

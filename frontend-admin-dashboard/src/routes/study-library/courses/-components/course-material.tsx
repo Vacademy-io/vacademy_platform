@@ -110,6 +110,8 @@ export interface CourseItem {
     instructors: CourseInstructor[];
     session_id?: string;
     session_name?: string;
+    /** Count of ACTIVE student enrollments for this package_session. */
+    enrolled_student_count?: number | null;
 }
 
 export interface AllCoursesApiResponse {
@@ -879,6 +881,10 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                                                 deletingCourseId={deletingCourseId}
                                                 showDeleteButton={!isTeacherNonAdmin}
                                                 hideFilters={isFacultyUser}
+                                                showEnrolledStudentCount={
+                                                    roleDisplay?.courseListCard
+                                                        ?.showEnrolledStudentCount === true
+                                                }
                                             />
                                             <div className="mt-4 flex h-20 flex-col items-center justify-center text-gray-500">
                                                 No{' '}
@@ -920,6 +926,10 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                                     deletingCourseId={deletingCourseId}
                                     showDeleteButton={!isTeacherNonAdmin}
                                     hideFilters={isFacultyUser}
+                                    showEnrolledStudentCount={
+                                        roleDisplay?.courseListCard?.showEnrolledStudentCount ===
+                                        true
+                                    }
                                 />
                             );
                         })()}

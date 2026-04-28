@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.AdConnectorSetupRequest;
 import vacademy.io.admin_core_service.features.audience.dto.ConnectorListItemDTO;
+import vacademy.io.admin_core_service.features.audience.dto.ConnectorUpdateRequest;
 import vacademy.io.admin_core_service.features.audience.dto.MetaPageDTO;
 import vacademy.io.admin_core_service.features.audience.dto.OAuthTokenResult;
 import vacademy.io.admin_core_service.features.audience.dto.PlatformFormField;
@@ -435,6 +436,58 @@ public class MetaOAuthController {
         connectorRepository.save(connector);
         log.info("Deactivated connector id={} vendor={}", connectorId, connector.getVendor());
         return ResponseEntity.ok(Map.of("status", "deactivated"));
+    }
+
+    /**
+     * Fetch a single connector for editing. Returns the same safe DTO as the list endpoint
+     * (no encrypted tokens) plus default_values_json so the admin UI can edit per-center metadata.
+     */
+    @GetMapping("/connectors/{connectorId}")
+    public ResponseEntity<ConnectorListItemDTO> getConnector(@PathVariable String connectorId) {
+        FormWebhookConnector connector = connectorRepository.findById(connectorId)
+                .orElseThrow(() -> new VacademyException("Connector not found"));
+        return ResponseEntity.ok(ConnectorListItemDTO.from(connector));
+    }
+
+    /**
+     * Update editable fields on a connector. Currently exposes default_values_json — the
+     * per-connector metadata (e.g. center name, schedule link, school phone) merged into
+     * form payloads at webhook time. Validates that the body is a JSON object before saving.
+     */
+    @PutMapping("/connectors/{connectorId}")
+    @Transactional
+    public ResponseEntity<ConnectorListItemDTO> updateConnector(
+            @PathVariable String connectorId,
+            @RequestBody ConnectorUpdateRequest request) {
+        FormWebhookConnector connector = connectorRepository.findById(connectorId)
+                .orElseThrow(() -> new VacademyException("Connector not found"));
+
+        if (request.getDefaultValuesJson() != null) {
+            String trimmed = request.getDefaultValuesJson().trim();
+            if (trimmed.isEmpty()) {
+                connector.setDefaultValuesJson(null);
+            } else {
+                com.fasterxml.jackson.databind.JsonNode node;
+                try {
+                    node = objectMapper.readTree(trimmed);
+                } catch (Exception e) {
+                    throw new VacademyException(
+                            "default_values_json must be a valid JSON object: " + e.getMessage());
+                }
+                // The V207 enrichment trigger reads default_values_json as a JSON object
+                // (jsonb_each_text). Reject arrays/primitives so we never persist a shape
+                // that would silently produce no enrichment.
+                if (node == null || !node.isObject()) {
+                    throw new VacademyException(
+                            "default_values_json must be a JSON object (e.g. {\"center name\":\"...\"})");
+                }
+                connector.setDefaultValuesJson(trimmed);
+            }
+        }
+
+        FormWebhookConnector saved = connectorRepository.save(connector);
+        log.info("Updated connector id={} vendor={}", saved.getId(), saved.getVendor());
+        return ResponseEntity.ok(ConnectorListItemDTO.from(saved));
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────

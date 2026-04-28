@@ -220,73 +220,107 @@ public class DailyParticipationService {
     }
 
     /**
-     * Get Engagement Leaderboard - Feature 7
-     * Cached for 5 minutes
+     * Get Engagement Leaderboard - Feature 7.
+     * Cached for 5 minutes. When BOTH customFieldName and customFieldValue are provided,
+     * results are filtered to users whose value at that custom-field key matches (case-insensitive),
+     * and pagination is recomputed over the filtered set. The field name is supplied by the
+     * caller; nothing is hardcoded server-side.
      */
-    @org.springframework.cache.annotation.Cacheable(value = "engagementLeaderboard", key = "#instituteId + '_' + #startDate + '_' + #endDate + '_' + #page + '_' + #pageSize")
+    @org.springframework.cache.annotation.Cacheable(
+            value = "engagementLeaderboard",
+            key = "#instituteId + '_' + #startDate + '_' + #endDate + '_' + #page + '_' + #pageSize + '_' + (#customFieldName == null ? '' : #customFieldName) + '_' + (#customFieldValue == null ? '' : #customFieldValue)"
+    )
     public EngagementLeaderboardResponseDTO getEngagementLeaderboard(
             String instituteId,
             Timestamp startDate,
             Timestamp endDate,
             Integer page,
-            Integer pageSize
+            Integer pageSize,
+            String customFieldName,
+            String customFieldValue
     ) {
-        log.info("Fetching engagement leaderboard for institute: {}, page: {}, pageSize: {}", 
-                instituteId, page, pageSize);
+        log.info("Fetching engagement leaderboard for institute: {}, page: {}, pageSize: {}, customFieldName: {}, customFieldValue: {}",
+                instituteId, page, pageSize, customFieldName, customFieldValue);
 
-        // Step 1: Resolve channel ID from institute ID
-        String channelId = getChannelIdByInstituteId(instituteId);
-        
-        // Step 2: Calculate pagination
-        int offset = (page - 1) * pageSize;
+        // Step 1: Resolve all active channel IDs for the institute (multi-channel safe)
+        List<String> channelIds = getChannelIdsByInstituteId(instituteId);
+
         String startDateStr = startDate != null ? startDate.toString() : "";
         String endDateStr = endDate != null ? endDate.toString() : "";
+        boolean filterByCustomField = customFieldName != null && !customFieldName.isBlank()
+                && customFieldValue != null && !customFieldValue.isBlank();
 
-        // Step 3: Fetch leaderboard data
-        List<Object[]> results = notificationLogRepository.getEngagementLeaderboard(
-                channelId, startDateStr, endDateStr, pageSize, offset);
-        
-        Long totalUsers = notificationLogRepository.getTotalEngagedUsers(
-                channelId, startDateStr, endDateStr);
+        DateRangeDTO dateRangeDto = DateRangeDTO.builder()
+                .startDate(startDateStr)
+                .endDate(endDateStr)
+                .build();
 
-        // Step 4: Extract phone numbers
-        List<String> phoneNumbers = results.stream()
-                .map(row -> (String) row[1]) // channel_id is phone number
-                .collect(Collectors.toList());
+        if (filterByCustomField) {
+            // Pull a wider window so we can filter by the custom field and still return a meaningful page.
+            int fetchLimit = Math.max(pageSize * 50, 500);
+            List<Object[]> rawResults = notificationLogRepository.getEngagementLeaderboard(
+                    channelIds, startDateStr, endDateStr, fetchLimit, 0);
 
-        // Step 5: Fetch user details from admin_core_service
-        Map<String, UserWithCustomFieldsDTO> userDetailsMap = fetchUserDetailsByPhones(phoneNumbers);
+            List<String> phoneNumbers = rawResults.stream()
+                    .map(row -> (String) row[1])
+                    .collect(Collectors.toList());
 
-        // Step 6: Build leaderboard entries
-        List<LeaderboardEntryDTO> leaderboard = new ArrayList<>();
-        int rank = offset + 1;
-        
-        for (Object[] row : results) {
-            String userId = (String) row[0];
-            String phoneNumber = (String) row[1];
-            Long outgoingCount = ((Number) row[2]).longValue();
-            Long incomingCount = ((Number) row[3]).longValue();
-            Long totalMessages = ((Number) row[4]).longValue();
-            Long engagementScore = ((Number) row[5]).longValue(); // Weighted: outgoing + (incoming * 2)
+            Map<String, UserWithCustomFieldsDTO> userDetailsMap = fetchUserDetailsByPhones(phoneNumbers);
 
-            LeaderboardEntryDTO entry = LeaderboardEntryDTO.builder()
-                    .rank(rank++)
-                    .phoneNumber(phoneNumber)
-                    .engagementMetrics(EngagementMetricsDTO.builder()
-                            .totalMessages(totalMessages)
-                            .outgoingMessages(outgoingCount)
-                            .incomingMessages(incomingCount)
-                            .engagementScore(engagementScore) // Weighted engagement score
-                            .build())
-                    .userDetails(userDetailsMap.get(phoneNumber))
+            String fieldKey = customFieldName.trim();
+            String target = customFieldValue.trim();
+            List<Object[]> filtered = rawResults.stream()
+                    .filter(row -> {
+                        String phone = (String) row[1];
+                        UserWithCustomFieldsDTO ud = userDetailsMap.get(phone);
+                        if (ud == null || ud.getCustomFields() == null) return false;
+                        String cf = ud.getCustomFields().get(fieldKey);
+                        return cf != null && cf.trim().equalsIgnoreCase(target);
+                    })
+                    .collect(Collectors.toList());
+
+            long totalUsers = filtered.size();
+            int offset = (page - 1) * pageSize;
+            int end = Math.min(offset + pageSize, filtered.size());
+            List<Object[]> pageRows = offset < filtered.size()
+                    ? filtered.subList(offset, end)
+                    : Collections.emptyList();
+
+            List<LeaderboardEntryDTO> leaderboard = buildLeaderboardEntries(pageRows, userDetailsMap, offset + 1);
+
+            int totalPages = (int) Math.ceil((double) totalUsers / pageSize);
+            PaginationDTO pagination = PaginationDTO.builder()
+                    .currentPage(page)
+                    .pageSize(pageSize)
+                    .totalUsers(totalUsers)
+                    .totalPages(totalPages)
                     .build();
-            
-            leaderboard.add(entry);
+
+            return EngagementLeaderboardResponseDTO.builder()
+                    .instituteId(instituteId)
+                    .dateRange(dateRangeDto)
+                    .pagination(pagination)
+                    .leaderboard(leaderboard)
+                    .build();
         }
 
-        // Step 7: Build pagination
+        // Default path: paginate at the DB layer, no center filter.
+        int offset = (page - 1) * pageSize;
+        List<Object[]> results = notificationLogRepository.getEngagementLeaderboard(
+                channelIds, startDateStr, endDateStr, pageSize, offset);
+
+        Long totalUsers = notificationLogRepository.getTotalEngagedUsers(
+                channelIds, startDateStr, endDateStr);
+
+        List<String> phoneNumbers = results.stream()
+                .map(row -> (String) row[1])
+                .collect(Collectors.toList());
+
+        Map<String, UserWithCustomFieldsDTO> userDetailsMap = fetchUserDetailsByPhones(phoneNumbers);
+
+        List<LeaderboardEntryDTO> leaderboard = buildLeaderboardEntries(results, userDetailsMap, offset + 1);
+
         int totalPages = (int) Math.ceil((double) totalUsers / pageSize);
-        
         PaginationDTO pagination = PaginationDTO.builder()
                 .currentPage(page)
                 .pageSize(pageSize)
@@ -296,13 +330,39 @@ public class DailyParticipationService {
 
         return EngagementLeaderboardResponseDTO.builder()
                 .instituteId(instituteId)
-                .dateRange(DateRangeDTO.builder()
-                        .startDate(startDateStr)
-                        .endDate(endDateStr)
-                        .build())
+                .dateRange(dateRangeDto)
                 .pagination(pagination)
                 .leaderboard(leaderboard)
                 .build();
+    }
+
+    private List<LeaderboardEntryDTO> buildLeaderboardEntries(
+            List<Object[]> rows,
+            Map<String, UserWithCustomFieldsDTO> userDetailsMap,
+            int startRank
+    ) {
+        List<LeaderboardEntryDTO> entries = new ArrayList<>();
+        int rank = startRank;
+        for (Object[] row : rows) {
+            String phoneNumber = (String) row[1];
+            Long outgoingCount = ((Number) row[2]).longValue();
+            Long incomingCount = ((Number) row[3]).longValue();
+            Long totalMessages = ((Number) row[4]).longValue();
+            Long engagementScore = ((Number) row[5]).longValue();
+
+            entries.add(LeaderboardEntryDTO.builder()
+                    .rank(rank++)
+                    .phoneNumber(phoneNumber)
+                    .engagementMetrics(EngagementMetricsDTO.builder()
+                            .totalMessages(totalMessages)
+                            .outgoingMessages(outgoingCount)
+                            .incomingMessages(incomingCount)
+                            .engagementScore(engagementScore)
+                            .build())
+                    .userDetails(userDetailsMap.get(phoneNumber))
+                    .build());
+        }
+        return entries;
     }
 
     /**
@@ -321,9 +381,9 @@ public class DailyParticipationService {
         log.info("Fetching completion cohort for institute: {}, templates: {}, page: {}, pageSize: {}", 
                 instituteId, completionTemplateIdentifiers, page, pageSize);
 
-        // Step 1: Resolve channel ID from institute ID
-        String channelId = getChannelIdByInstituteId(instituteId);
-        
+        // Step 1: Resolve all active channel IDs for the institute (multi-channel safe)
+        List<String> channelIds = getChannelIdsByInstituteId(instituteId);
+
         // Step 2: Calculate pagination
         int offset = (page - 1) * pageSize;
         String startDateStr = startDate != null ? startDate.toString() : "";
@@ -334,10 +394,10 @@ public class DailyParticipationService {
 
         // Step 4: Fetch completion data
         List<Object[]> results = notificationLogRepository.getCompletionCohort(
-                channelId, templateArray, startDateStr, endDateStr, pageSize, offset);
-        
+                channelIds, templateArray, startDateStr, endDateStr, pageSize, offset);
+
         Long totalCompleted = notificationLogRepository.getTotalCompletedUsers(
-                channelId, templateArray, startDateStr, endDateStr);
+                channelIds, templateArray, startDateStr, endDateStr);
 
         // Step 5: Extract phone numbers
         List<String> phoneNumbers = results.stream()
@@ -393,12 +453,16 @@ public class DailyParticipationService {
     }
 
     /**
-     * Helper: Get channel ID from institute ID
+     * Helper: Get all channel IDs for an institute (multi-channel safe).
      */
-    private String getChannelIdByInstituteId(String instituteId) {
-        ChannelToInstituteMapping mapping = channelMappingRepository.findByInstituteId(instituteId)
-                .orElseThrow(() -> new VacademyException("No channel mapping found for institute: " + instituteId));
-        return mapping.getChannelId();
+    private List<String> getChannelIdsByInstituteId(String instituteId) {
+        List<ChannelToInstituteMapping> mappings = channelMappingRepository.findAllByInstituteId(instituteId);
+        if (mappings == null || mappings.isEmpty()) {
+            throw new VacademyException("No channel mapping found for institute: " + instituteId);
+        }
+        return mappings.stream()
+                .map(ChannelToInstituteMapping::getChannelId)
+                .collect(Collectors.toList());
     }
 
     /**

@@ -147,6 +147,14 @@ export interface LeaderboardRequest {
     end_date: string;
     page: number;
     page_size: number;
+    /**
+     * Optional custom-field-based filter. Both must be provided together.
+     * The field name is the institute's CustomFields.field_name (matches the
+     * map key returned in user_details.custom_fields). No field name is
+     * hardcoded — the caller picks which configured custom field to filter by.
+     */
+    custom_field_name?: string;
+    custom_field_value?: string;
 }
 
 // ============================================

@@ -5850,21 +5850,49 @@ class VideoGenerationPipeline:
                     return [_sbs_entry], {}
             # ── end portrait SOURCE_CLIP bypass ──
 
-            # LLM call with retry
+            # LLM call with retry — usage accumulates across ALL attempts so
+            # retry token burns are included in the reported cost (not silently lost).
+            _SIMPLIFY_RETRY_NOTE = (
+                "\n\n⚠️ RETRY — your previous response was truncated or unparseable. "
+                "GENERATE COMPACT HTML ONLY. Hard limits for this retry:\n"
+                "- Entire HTML must be under 5000 tokens. Completeness > quality.\n"
+                "- No complex SVG filters, no long <path d=...> data, no multi-keyframe @keyframes.\n"
+                "- Use only GSAP opacity/transform tweens — nothing fancier.\n"
+                "- The outer JSON MUST close properly with `}`. If content is too long, cut elements.\n"
+                "- Return ONLY the raw JSON object. No markdown fences."
+            )
             max_attempts = 3
+            # Cumulative usage across all attempts — tracks retry token burns
+            usage: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            _base_user_prompt = user_prompt
             for attempt in range(max_attempts):
+                _current_prompt = (
+                    _base_user_prompt + _SIMPLIFY_RETRY_NOTE if attempt > 0 else _base_user_prompt
+                )
+                _attempt_usage: Dict[str, Any] = {}
                 try:
-                    raw, usage = self.html_client.chat(
+                    raw, _attempt_usage = self.html_client.chat(
                         messages=[
                             {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt},
+                            {"role": "user", "content": _current_prompt},
                         ],
                         temperature=self._tier_config.get("html_temperature", 0.7),
-                        max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+                        max_tokens=(
+                            8000 if attempt > 0
+                            else self._tier_config.get("per_shot_max_tokens", 16000)
+                        ),
                     )
+                    # Add this attempt's tokens before JSON parsing so parse failures
+                    # are still counted in the cost.
+                    for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                        usage[_k] = usage.get(_k, 0) + _attempt_usage.get(_k, 0)
                     data = _extract_json_blob(raw)
                     break
                 except (ValueError, Exception) as e:
+                    # For network errors html_client.chat() raises before returning
+                    # _attempt_usage — add whatever partial usage we got.
+                    for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+                        usage[_k] = usage.get(_k, 0) + _attempt_usage.get(_k, 0)
                     if attempt == max_attempts - 1:
                         print(f"   ❌ Shot {shot_idx + 1} failed after {max_attempts} attempts: {e}")
                         self._emit_progress({
@@ -5878,7 +5906,46 @@ class VideoGenerationPipeline:
                             "max_attempts": max_attempts,
                             "message": f"Shot {shot_idx + 1} failed: {str(e)[:120]}",
                         })
-                        return [], {}
+                        # Build minimal fallback instead of leaving a gap in the timeline
+                        _fb_accent = (palette or {}).get("accent", "#6366f1")
+                        _fb_text = (
+                            (shot.get("visual_description") or shot.get("narration_excerpt") or "")
+                            .strip()[:200]
+                        )
+                        _fb_html = (
+                            "<div id='shot-root' style='position:relative;width:100%;height:100%;"
+                            f"overflow:hidden;background:#0f172a;display:flex;align-items:center;"
+                            "justify-content:center;'>"
+                            f"<div style='max-width:80%;text-align:center;font-family:Inter,sans-serif;"
+                            f"font-size:2.4rem;font-weight:600;color:#f1f5f9;line-height:1.4;opacity:0;' id='fb_t'>"
+                            f"{_fb_text}</div>"
+                            f"<div style='position:absolute;bottom:10%;width:6rem;height:4px;"
+                            f"background:{_fb_accent};border-radius:2px;opacity:0;' id='fb_b'></div>"
+                            "<script>window.addEventListener('load',function(){"
+                            "if(typeof gsap!=='undefined'){"
+                            "gsap.to('#fb_t',{opacity:1,y:-10,duration:0.5,delay:0.1,ease:'power2.out'});"
+                            "gsap.to('#fb_b',{opacity:1,duration:0.4,delay:0.4});"
+                            "}})</script></div>"
+                        )
+                        _fb_html = self._ensure_fonts(_fb_html)
+                        _fb_entry = {
+                            "start": start_time, "end": end_time,
+                            "htmlStartX": 0, "htmlStartY": 0, "htmlEndX": _w, "htmlEndY": _h,
+                            "html": _fb_html,
+                            "id": _entry_id, "index": shot_idx,
+                            "z": shot.get("z", 10),
+                            "_shot_type": "FALLBACK",
+                            "_narration_excerpt": shot.get("narration_excerpt", ""),
+                            "_visual_description": shot.get("visual_description", ""),
+                            "_skill_audio_events": [],
+                        }
+                        print(f"   🔄 Shot {shot_idx + 1} → minimal fallback card")
+                        if on_segment_done:
+                            try:
+                                on_segment_done([_fb_entry])
+                            except Exception:
+                                pass
+                        return [_fb_entry], usage
                     self._emit_progress({
                         "type": "shot_error",
                         "shot_index": shot_idx,

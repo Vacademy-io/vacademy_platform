@@ -1,8 +1,11 @@
 import { useRef, useCallback, useMemo, useState, Fragment } from 'react';
+import { Plus } from 'lucide-react';
 import {
     useVideoEditorStore,
     MIN_SHOT_DURATION,
     findRollNeighbour,
+    computeTimelineGaps,
+    TimelineGap,
 } from './stores/video-editor-store';
 import {
     assignChannelGroups,
@@ -14,15 +17,16 @@ import { clamp } from './utils/coord-convert';
 import { useAudioWaveform } from './utils/use-audio-waveform';
 import { SentenceEditPopover } from './SentenceEditPopover';
 import { SoundCueRemovePopover } from './SoundCueRemovePopover';
+import { AddShotPopover } from './AddShotPopover';
 import type { Entry, SentenceClip, SoundCue } from '@/components/ai-video-player/types';
 
 // ── Layout constants ────────────────────────────────────────────────────────
 
-const RULER_H = 20;       // time-ruler row
-const WAVEFORM_H = 32;    // audio waveform row (shown only when audioUrl present)
+const RULER_H = 20; // time-ruler row
+const WAVEFORM_H = 32; // audio waveform row (shown only when audioUrl present)
 const CHANNEL_SEP_H = 13; // coloured channel header separating each channel section
-const TRACK_H = 22;       // height of each track row inside a channel
-const LABEL_W = 48;       // fixed-width left label column (px)
+const TRACK_H = 22; // height of each track row inside a channel
+const LABEL_W = 48; // fixed-width left label column (px)
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -73,7 +77,7 @@ function WaveformBars({ peaks, height }: WaveformProps) {
         <svg
             viewBox={`0 0 ${totalW} ${height}`}
             preserveAspectRatio="none"
-            className="h-full w-full text-indigo-400 opacity-50"
+            className="size-full text-indigo-400 opacity-50"
         >
             {bars}
         </svg>
@@ -137,6 +141,15 @@ export function TimelineScrubber() {
         anchorViewportTop: number;
     } | null>(null);
 
+    // Currently-active "add shot in gap" popover. Anchor coordinates are
+    // captured in viewport space at click time (same pattern as the
+    // sentence/cue popovers above).
+    const [editingGap, setEditingGap] = useState<{
+        gap: TimelineGap;
+        anchorViewportX: number;
+        anchorViewportTop: number;
+    } | null>(null);
+
     const navigationMode = meta.navigation;
     const totalDuration = useMemo(
         () => computeTotalDuration(entries, meta.total_duration),
@@ -157,7 +170,15 @@ export function TimelineScrubber() {
     // been backfilled via /sentences/build.
     const sentences: SentenceClip[] = useMemo(
         () => (navigationMode === 'time_driven' ? meta.sentences ?? [] : []),
-        [navigationMode, meta.sentences],
+        [navigationMode, meta.sentences]
+    );
+
+    // Base-channel gaps: ranges where audio plays but no shot exists.
+    // Surfaced as dashed pills under the entries so the user can spot
+    // and fill them. Skipped in user_driven mode (no time axis).
+    const gaps = useMemo<TimelineGap[]>(
+        () => (navigationMode === 'time_driven' ? computeTimelineGaps(entries, totalDuration) : []),
+        [entries, totalDuration, navigationMode]
     );
 
     // Flatten every shot's sound_cues into a single absolute-time list so
@@ -179,7 +200,8 @@ export function TimelineScrubber() {
         out.sort((a, b) => a.absoluteTime - b.absoluteTime);
         return out;
     }, [entries, navigationMode]);
-    const hasWaveform = navigationMode === 'time_driven' && (waveformPeaks.length > 0 || waveformLoading);
+    const hasWaveform =
+        navigationMode === 'time_driven' && (waveformPeaks.length > 0 || waveformLoading);
 
     // Y-offsets for each channel section
     const channelYOffsets = useMemo(
@@ -193,7 +215,9 @@ export function TimelineScrubber() {
             (acc, g) => acc + CHANNEL_SEP_H + g.trackCount * TRACK_H,
             0
         );
-        return RULER_H + (hasWaveform ? WAVEFORM_H : 0) + Math.max(channelsH, TRACK_H + CHANNEL_SEP_H);
+        return (
+            RULER_H + (hasWaveform ? WAVEFORM_H : 0) + Math.max(channelsH, TRACK_H + CHANNEL_SEP_H)
+        );
     }, [channelGroups, hasWaveform]);
 
     // ── Mouse / touch scrub ────────────────────────────────────────────────
@@ -213,14 +237,14 @@ export function TimelineScrubber() {
         (e: React.MouseEvent | React.TouchEvent) => {
             e.stopPropagation();
             isDragging.current = true;
-            const clientX = 'touches' in e ? (e.touches[0]?.clientX ?? 0) : e.clientX;
+            const clientX = 'touches' in e ? e.touches[0]?.clientX ?? 0 : e.clientX;
             seek(xToTime(clientX));
 
             const onMove = (ev: MouseEvent | TouchEvent) => {
                 if (!isDragging.current) return;
                 const cx =
                     'touches' in ev
-                        ? ((ev as TouchEvent).touches[0]?.clientX ?? 0)
+                        ? (ev as TouchEvent).touches[0]?.clientX ?? 0
                         : (ev as MouseEvent).clientX;
                 seek(xToTime(cx));
             };
@@ -350,7 +374,7 @@ export function TimelineScrubber() {
                 return t >= boundary - epsilon ? n + 1 : n;
             }, 0);
         },
-        [entries],
+        [entries]
     );
 
     const handleCueClick = useCallback(
@@ -363,11 +387,7 @@ export function TimelineScrubber() {
             if (!bar) return;
             const barRect = bar.getBoundingClientRect();
             if (totalDuration <= 0 || barRect.width <= 0) return;
-            const offsetX = clamp(
-                (absoluteTime / totalDuration) * barRect.width,
-                0,
-                barRect.width,
-            );
+            const offsetX = clamp((absoluteTime / totalDuration) * barRect.width, 0, barRect.width);
             setEditingCue({
                 cue,
                 entryId,
@@ -375,7 +395,28 @@ export function TimelineScrubber() {
                 anchorViewportTop: barRect.top + RULER_H,
             });
         },
-        [totalDuration],
+        [totalDuration]
+    );
+
+    const handleGapClick = useCallback(
+        (e: React.MouseEvent, gap: TimelineGap) => {
+            // Stop the click from also being interpreted as a scrub.
+            e.stopPropagation();
+            const bar = barRef.current;
+            if (!bar) return;
+            const barRect = bar.getBoundingClientRect();
+            if (totalDuration <= 0 || barRect.width <= 0) return;
+            // Anchor on the gap's centre — same convention as sentence
+            // and cue popovers so the floating UI feels consistent.
+            const centerTime = (gap.start + gap.end) / 2;
+            const offsetX = clamp((centerTime / totalDuration) * barRect.width, 0, barRect.width);
+            setEditingGap({
+                gap,
+                anchorViewportX: barRect.left + offsetX,
+                anchorViewportTop: barRect.top + RULER_H,
+            });
+        },
+        [totalDuration]
     );
 
     const handleSentenceClick = useCallback(
@@ -390,11 +431,7 @@ export function TimelineScrubber() {
             // points at the same spot regardless of where the user clicked
             // within the region.
             const centerTime = sentence.start_time + sentence.duration / 2;
-            const offsetX = clamp(
-                (centerTime / totalDuration) * barRect.width,
-                0,
-                barRect.width,
-            );
+            const offsetX = clamp((centerTime / totalDuration) * barRect.width, 0, barRect.width);
             // Waveform row top in bar coords = RULER_H. Convert to viewport.
             setEditingSentence({
                 sentence,
@@ -402,7 +439,7 @@ export function TimelineScrubber() {
                 anchorViewportTop: barRect.top + RULER_H,
             });
         },
-        [totalDuration],
+        [totalDuration]
     );
 
     // ── Position helpers ───────────────────────────────────────────────────
@@ -456,7 +493,7 @@ export function TimelineScrubber() {
             <div className="flex" style={{ height: totalH, paddingLeft: 8, paddingRight: 8 }}>
                 {/* ── Left label column ───────────────────────────────── */}
                 <div
-                    className="shrink-0 flex flex-col"
+                    className="flex shrink-0 flex-col"
                     style={{
                         width: LABEL_W,
                         paddingTop: RULER_H + (hasWaveform ? WAVEFORM_H : 0),
@@ -595,10 +632,14 @@ export function TimelineScrubber() {
                                     <button
                                         key={s.id}
                                         type="button"
-                                        title={isSilenced ? '(silenced — click to add narration)' : s.text}
+                                        title={
+                                            isSilenced
+                                                ? '(silenced — click to add narration)'
+                                                : s.text
+                                        }
                                         onClick={(e) => handleSentenceClick(e, s)}
                                         className={[
-                                            'absolute top-0 bottom-0 cursor-pointer border-l transition-colors',
+                                            'absolute bottom-0 top-0 cursor-pointer border-l transition-colors',
                                             isEditing
                                                 ? isSilenced
                                                     ? 'border-gray-500 bg-gray-300/40'
@@ -644,6 +685,46 @@ export function TimelineScrubber() {
                         />
                     )}
 
+                    {/* Add-shot-in-gap popover. Same portal pattern. */}
+                    {editingGap && (
+                        <AddShotPopover
+                            gap={editingGap.gap}
+                            anchorViewportX={editingGap.anchorViewportX}
+                            anchorViewportTop={editingGap.anchorViewportTop}
+                            onClose={() => setEditingGap(null)}
+                        />
+                    )}
+
+                    {/* Base-channel gap pills: dashed amber regions where audio
+                        plays but no shot exists. Click → AddShotPopover. Rendered
+                        BEFORE channel sections so the + button sits behind any
+                        base entries (entries that bleed into a gap by float-rounding
+                        still steal the click); each gap is computed from the
+                        canonical base-entries view, so the bookkeeping stays clean. */}
+                    {gaps.map((gap) => {
+                        const baseGroupIdx = channelGroups.findIndex(
+                            (g) => g.channel.id === 'base'
+                        );
+                        if (baseGroupIdx < 0) return null;
+                        const baseY = channelYOffsets[baseGroupIdx]!;
+                        const top = baseY + CHANNEL_SEP_H + 2;
+                        const height = TRACK_H - 4;
+                        const left = timeToPercent(gap.start);
+                        const width = `${(((gap.end - gap.start) / totalDuration) * 100).toFixed(4)}%`;
+                        return (
+                            <button
+                                key={gap.key}
+                                type="button"
+                                title={`Empty range ${gap.start.toFixed(2)}s → ${gap.end.toFixed(2)}s · click to fill`}
+                                onClick={(e) => handleGapClick(e, gap)}
+                                className="absolute z-0 flex items-center justify-center rounded-sm border border-dashed border-amber-400 bg-amber-50/70 text-amber-600 transition-colors hover:bg-amber-100"
+                                style={{ left, width, top, height }}
+                            >
+                                <Plus className="size-3" />
+                            </button>
+                        );
+                    })}
+
                     {/* Channel sections */}
                     {channelGroups.map((group, gi) => {
                         const channelY = channelYOffsets[gi]!;
@@ -676,7 +757,8 @@ export function TimelineScrubber() {
                                         // Live drag preview: override edges without mutating the store.
                                         if (resizeDrag) {
                                             if (resizeDrag.entryId === entry.id) {
-                                                if (resizeDrag.edge === 'in') start = resizeDrag.time;
+                                                if (resizeDrag.edge === 'in')
+                                                    start = resizeDrag.time;
                                                 else end = resizeDrag.time;
                                             } else if (resizeDrag.neighbourId === entry.id) {
                                                 // Roll neighbour: its opposite edge follows.
@@ -712,8 +794,7 @@ export function TimelineScrubber() {
                                                 top,
                                                 height: TRACK_H - 4,
                                                 background: color,
-                                                opacity:
-                                                    isSelected || isBeingDragged ? 1 : 0.75,
+                                                opacity: isSelected || isBeingDragged ? 1 : 0.75,
                                                 outline:
                                                     isSelected || isBeingDragged
                                                         ? '2px solid #818cf8'
@@ -744,9 +825,7 @@ export function TimelineScrubber() {
                                                     if (resizeDrag) return;
                                                     selectEntry(entry.id);
                                                     if (navigationMode === 'time_driven') {
-                                                        seek(
-                                                            entry.inTime ?? entry.start ?? 0
-                                                        );
+                                                        seek(entry.inTime ?? entry.start ?? 0);
                                                     } else {
                                                         seek(entries.indexOf(entry));
                                                     }

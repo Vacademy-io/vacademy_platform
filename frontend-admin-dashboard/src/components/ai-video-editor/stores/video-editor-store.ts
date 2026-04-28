@@ -31,6 +31,61 @@ export const DEFAULT_TRANSFORM: EntryTransform = { x: 0, y: 0, scale: 1, rotatio
 /** Minimum shot duration (seconds) — edges clamp against this so we can't crush a shot to zero. */
 export const MIN_SHOT_DURATION = 0.2;
 
+/** A span on the timeline where audio plays but no base-channel visual exists.
+ *  These are the user-actionable gaps the "+ Add shot here" affordance fills. */
+export interface TimelineGap {
+    start: number;
+    end: number;
+    /** Stable key derived from rounded start/end seconds. Used as a React key
+     *  and as the in-flight lock key so the popover knows which gap is busy. */
+    key: string;
+}
+
+/**
+ * Find ranges on the timeline where the base z-channel (z < 500) has no entry.
+ * Overlay/UI channels are ignored — those layer on top and aren't what gives
+ * a "no visual" feeling to the viewer. Gaps shorter than `minGapSeconds` are
+ * dropped so we don't litter the UI with sub-second slivers that aren't worth
+ * filling.
+ *
+ * Emits a head-gap (0 → first base entry) and tail-gap (last base entry →
+ * totalDuration) when either is at least `minGapSeconds` long.
+ */
+export function computeTimelineGaps(
+    entries: Entry[],
+    totalDuration: number,
+    minGapSeconds = 1.0
+): TimelineGap[] {
+    if (totalDuration <= 0) return [];
+    const baseEntries = entries
+        .filter((e) => (e.z ?? 0) < 500)
+        .map((e) => ({
+            start: e.inTime ?? e.start ?? 0,
+            end: e.exitTime ?? e.end ?? 0,
+        }))
+        .filter((s) => s.end > s.start)
+        .sort((a, b) => a.start - b.start);
+
+    const gaps: TimelineGap[] = [];
+    let cursor = 0;
+    for (const span of baseEntries) {
+        if (span.start - cursor >= minGapSeconds) {
+            gaps.push(makeGap(cursor, span.start));
+        }
+        cursor = Math.max(cursor, span.end);
+    }
+    if (totalDuration - cursor >= minGapSeconds) {
+        gaps.push(makeGap(cursor, totalDuration));
+    }
+    return gaps;
+}
+
+function makeGap(start: number, end: number): TimelineGap {
+    // Two-decimal rounding keeps the key stable across repeated computations
+    // (totalDuration can drift by float-epsilon during scrubbing).
+    return { start, end, key: `${start.toFixed(2)}-${end.toFixed(2)}` };
+}
+
 /**
  * Find the adjacent entry that shares `edge` with `entry` within the same
  * z-channel (base 0–499, overlay 500–8999, ui ≥9000). Returns `null` when no
@@ -85,7 +140,7 @@ function stripShotWrapper(html: string): string {
         return html.replace(SHOT_WRAPPER_OPEN_RE, '').slice(0, -'</div>'.length);
     }
     const legacy = html.match(LEGACY_TRANSFORM_WRAPPER_RE);
-    return legacy ? (legacy[1] ?? html) : html;
+    return legacy ? legacy[1] ?? html : html;
 }
 
 function injectShotWrapper(
@@ -99,9 +154,7 @@ function injectShotWrapper(
     const hasTransform = t && !isIdentity(t);
     const hasBackground = !!background && background.trim() !== '';
     const tcss =
-        transitions && shotDuration != null
-            ? buildTransitionCss(transitions, shotDuration)
-            : null;
+        transitions && shotDuration != null ? buildTransitionCss(transitions, shotDuration) : null;
     if (!hasTransform && !hasBackground && !tcss) return inner;
 
     const styles: string[] = [
@@ -185,6 +238,12 @@ export interface VideoEditorState {
      *  a second regenerate while the first is in flight. */
     regeneratingSentenceId: string | null;
 
+    /** `key` of the gap currently being filled by an /shot/insert request.
+     *  Drives loading UI in the AddShotPopover. Only one gap-insert can be
+     *  in flight at a time — the request is fast enough (single LLM call)
+     *  that this is fine in practice. */
+    insertingGapKey: string | null;
+
     // Actions
     init: (params: InitParams) => void;
     loadTimeline: () => Promise<void>;
@@ -257,7 +316,7 @@ export interface VideoEditorState {
      */
     regenerateSentence: (
         sentenceId: string,
-        newText: string,
+        newText: string
     ) => Promise<{ ok: boolean; error?: string }>;
 
     /**
@@ -270,8 +329,22 @@ export interface VideoEditorState {
      * so a later regenerateSentence call on the same id puts new
      * narration back in the same slot.
      */
-    silenceSentence: (
-        sentenceId: string,
+    silenceSentence: (sentenceId: string) => Promise<{ ok: boolean; error?: string }>;
+
+    /**
+     * Generate a new HTML shot to fill `[gapStart, gapEnd]` on the
+     * timeline. Server uses the narration in that range as the LLM's
+     * primary script and combines it with the optional `userHint` for
+     * explicit visual intent. On success, the returned entry is inserted
+     * into `entries[]` (sorted by inTime) and tracked as new+dirty so the
+     * next `saveChanges` persists it via `frame/add`.
+     *
+     * Duration-neutral: gap-filling doesn't shift any timestamps, so no
+     * ripple is applied locally either.
+     */
+    insertShot: (
+        gap: TimelineGap,
+        userHint: string | null
     ) => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -318,6 +391,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     future: [],
     isSaving: false,
     regeneratingSentenceId: null,
+    insertingGapKey: null,
 
     init: (params) => {
         set({
@@ -419,11 +493,9 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     e.id === entryId
                         ? {
                               ...e,
-                              sound_cues: (e.sound_cues ?? []).filter(
-                                  (c) => c.id !== cueId,
-                              ),
+                              sound_cues: (e.sound_cues ?? []).filter((c) => c.id !== cueId),
                           }
-                        : e,
+                        : e
                 ),
                 dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
                     ? s.dirtyEntryIds
@@ -557,18 +629,10 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     let t = snap(newTime);
                     if (edge === 'out') {
                         // this.exitTime = neighbour.inTime = t
-                        t = clamp(
-                            t,
-                            inT + MIN_SHOT_DURATION,
-                            nOutT - MIN_SHOT_DURATION
-                        );
+                        t = clamp(t, inT + MIN_SHOT_DURATION, nOutT - MIN_SHOT_DURATION);
                     } else {
                         // this.inTime = neighbour.exitTime = t
-                        t = clamp(
-                            t,
-                            nInT + MIN_SHOT_DURATION,
-                            outT - MIN_SHOT_DURATION
-                        );
+                        t = clamp(t, nInT + MIN_SHOT_DURATION, outT - MIN_SHOT_DURATION);
                     }
                     const nIdx = newEntries.findIndex((e) => e.id === neighbour.id);
                     newEntries[idx] = {
@@ -620,7 +684,10 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 ...pushPast(s),
                 entries: newEntries,
                 dirtyEntryIds: Array.from(dirty),
-                meta: newTotal !== s.meta.total_duration ? { ...s.meta, total_duration: newTotal } : s.meta,
+                meta:
+                    newTotal !== s.meta.total_duration
+                        ? { ...s.meta, total_duration: newTotal }
+                        : s.meta,
             };
         });
     },
@@ -803,9 +870,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     const hasT = t && !isIdentity(t);
                     if (!hasT && !bg && !tr) return e;
                     const dur =
-                        e.inTime != null && e.exitTime != null
-                            ? e.exitTime - e.inTime
-                            : undefined;
+                        e.inTime != null && e.exitTime != null ? e.exitTime - e.inTime : undefined;
                     return { ...e, html: injectShotWrapper(e.html, t, bg, tr, dur) };
                 }),
                 entryTransforms: {},
@@ -936,10 +1001,70 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             meta: {
                 ...s.meta,
                 sentences: (s.meta.sentences ?? []).map((sent, i) =>
-                    i === targetIdx ? silencedSentence : sent,
+                    i === targetIdx ? silencedSentence : sent
                 ),
             },
         }));
+        return { ok: true };
+    },
+
+    insertShot: async (gap, userHint) => {
+        const { videoId, apiKey, insertingGapKey } = get();
+        if (insertingGapKey) {
+            return { ok: false, error: 'Another shot is already being generated' };
+        }
+        if (!videoId || !apiKey) {
+            return { ok: false, error: 'Video not initialized' };
+        }
+        if (!(gap.end > gap.start)) {
+            return { ok: false, error: 'Invalid gap range' };
+        }
+
+        set({ insertingGapKey: gap.key });
+        const { apiInsertShot } = await import('../utils/sentence-api');
+        const result = await apiInsertShot(
+            videoId,
+            apiKey,
+            gap.start,
+            gap.end,
+            userHint?.trim() || null
+        );
+
+        if (!result.ok) {
+            set({ insertingGapKey: null });
+            return { ok: false, error: result.error };
+        }
+
+        const { entry } = result.data;
+        set((s) => {
+            // Insert sorted by inTime so the entries list stays ordered —
+            // matches how the server persisted it.
+            const inserted = entry.inTime ?? entry.start ?? gap.start;
+            const next: Entry[] = [];
+            let placed = false;
+            for (const e of s.entries) {
+                const eStart = e.inTime ?? e.start ?? 0;
+                if (!placed && inserted < eStart) {
+                    next.push(entry);
+                    placed = true;
+                }
+                next.push(e);
+            }
+            if (!placed) next.push(entry);
+            return {
+                ...pushPast(s),
+                insertingGapKey: null,
+                entries: next,
+                // Track as new + dirty so saveChanges calls frame/add.
+                newEntryIds: s.newEntryIds.includes(entry.id)
+                    ? s.newEntryIds
+                    : [...s.newEntryIds, entry.id],
+                dirtyEntryIds: s.dirtyEntryIds.includes(entry.id)
+                    ? s.dirtyEntryIds
+                    : [...s.dirtyEntryIds, entry.id],
+                selectedEntryId: entry.id,
+            };
+        });
         return { ok: true };
     },
 }));

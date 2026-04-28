@@ -1164,6 +1164,94 @@ async def silence_sentence_external(
 
 
 # ---------------------------------------------------------------------------
+# Shot insertion — fill a gap in the timeline with a new HTML shot
+# ---------------------------------------------------------------------------
+
+class InsertShotRequest(BaseModel):
+    video_id: str
+    gap_start: float = Field(..., ge=0.0, description="Absolute timeline seconds where the new shot starts.")
+    gap_end: float = Field(..., gt=0.0, description="Absolute timeline seconds where the new shot ends.")
+    user_hint: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Optional one-line visual instruction. The narration in the gap is always passed to the LLM as context; this hint refines the visual.",
+    )
+
+
+class InsertShotResponse(BaseModel):
+    video_id: str
+    entry: Dict[str, Any]
+    timeline_url: str
+
+
+@router.post(
+    "/shot/insert",
+    response_model=InsertShotResponse,
+    summary="Generate a new HTML shot to fill a gap in the timeline (External)",
+)
+async def insert_shot_external(
+    payload: InsertShotRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> InsertShotResponse:
+    """
+    Generate one HTML shot covering `[gap_start, gap_end]` and insert
+    it into the video's timeline. Audio is untouched — gaps are by
+    definition spans where narration plays but no visual existed, so
+    no splice / ripple is needed.
+
+    The new shot's visuals are conditioned on:
+      - the spoken text inside the gap (extracted from
+        `meta.sentences[]` and `words.json`), so what's drawn matches
+        what's said;
+      - the optional `user_hint` for explicit visual intent;
+      - the original video's `style_guide.json` checkpoint, so colors
+        and fonts match the rest of the video.
+
+    Errors:
+      - 400 — invalid gap (out of range, zero/negative, overlaps an
+              existing entry).
+      - 404 — video not found.
+      - 500 — LLM, S3, or generation failure.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    settings = get_settings()
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url,
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+
+    try:
+        result = svc.insert_shot(
+            video_id=payload.video_id,
+            gap_start=payload.gap_start,
+            gap_end=payload.gap_end,
+            user_hint=payload.user_hint,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to insert shot: {exc}")
+
+    return InsertShotResponse(
+        video_id=result.video_id,
+        entry=result.entry,
+        timeline_url=result.timeline_url,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Video Render (offloaded to dedicated Hetzner render server)
 # ---------------------------------------------------------------------------
 

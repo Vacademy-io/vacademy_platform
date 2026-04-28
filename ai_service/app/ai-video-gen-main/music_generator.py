@@ -85,10 +85,22 @@ def _get_project_id(credentials) -> str:
 
 def _s3_client():
     import boto3
+    # The service uses S3_AWS_ACCESS_KEY / S3_AWS_ACCESS_SECRET (s3_service.py pattern).
+    # Fall back to the standard AWS_ names so both k8s configs and local dev work.
+    _key = (
+        os.environ.get("S3_AWS_ACCESS_KEY")
+        or os.environ.get("AWS_ACCESS_KEY_ID")
+        or None
+    )
+    _secret = (
+        os.environ.get("S3_AWS_ACCESS_SECRET")
+        or os.environ.get("AWS_SECRET_ACCESS_KEY")
+        or None
+    )
     return boto3.client(
         "s3",
-        aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
-        aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+        aws_access_key_id=_key,
+        aws_secret_access_key=_secret,
         region_name=_AWS_REGION,
     )
 

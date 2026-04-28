@@ -15,7 +15,7 @@
  *     timestamps, return the new sentence + duration delta.
  */
 
-import { SentenceClip } from '@/components/ai-video-player/types';
+import { Entry, SentenceClip } from '@/components/ai-video-player/types';
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -69,21 +69,18 @@ export async function apiRegenerateSentence(
     videoId: string,
     apiKey: string,
     sentenceId: string,
-    newText: string,
+    newText: string
 ): Promise<ApiResult<RegenerateSentenceResponse>> {
     try {
-        const res = await fetch(
-            `${AI_SERVICE_BASE_URL}/external/video/v1/sentence/regenerate`,
-            {
-                method: 'POST',
-                headers: headers(apiKey),
-                body: JSON.stringify({
-                    video_id: videoId,
-                    sentence_id: sentenceId,
-                    new_text: newText,
-                }),
-            },
-        );
+        const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/sentence/regenerate`, {
+            method: 'POST',
+            headers: headers(apiKey),
+            body: JSON.stringify({
+                video_id: videoId,
+                sentence_id: sentenceId,
+                new_text: newText,
+            }),
+        });
         if (!res.ok) return { ok: false, error: await readError(res) };
         const data = (await res.json()) as RegenerateSentenceResponse;
         return { ok: true, data };
@@ -103,22 +100,59 @@ export async function apiRegenerateSentence(
 export async function apiSilenceSentence(
     videoId: string,
     apiKey: string,
-    sentenceId: string,
+    sentenceId: string
 ): Promise<ApiResult<RegenerateSentenceResponse>> {
     try {
-        const res = await fetch(
-            `${AI_SERVICE_BASE_URL}/external/video/v1/sentence/silence`,
-            {
-                method: 'POST',
-                headers: headers(apiKey),
-                body: JSON.stringify({
-                    video_id: videoId,
-                    sentence_id: sentenceId,
-                }),
-            },
-        );
+        const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/sentence/silence`, {
+            method: 'POST',
+            headers: headers(apiKey),
+            body: JSON.stringify({
+                video_id: videoId,
+                sentence_id: sentenceId,
+            }),
+        });
         if (!res.ok) return { ok: false, error: await readError(res) };
         const data = (await res.json()) as RegenerateSentenceResponse;
+        return { ok: true, data };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+}
+
+export interface InsertShotResponse {
+    video_id: string;
+    /** New timeline entry, ready to splice into the editor's `entries[]`. */
+    entry: Entry;
+    timeline_url: string;
+}
+
+/**
+ * Generate a new HTML shot to fill a gap in the timeline. The server
+ * builds the shot from the narration in [gap_start, gap_end] plus an
+ * optional one-line user hint, then inserts it into meta.entries[] and
+ * re-uploads the timeline JSON. Audio is untouched (gap-filling is
+ * duration-neutral) so no ripple is needed on the client.
+ */
+export async function apiInsertShot(
+    videoId: string,
+    apiKey: string,
+    gapStart: number,
+    gapEnd: number,
+    userHint: string | null
+): Promise<ApiResult<InsertShotResponse>> {
+    try {
+        const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/shot/insert`, {
+            method: 'POST',
+            headers: headers(apiKey),
+            body: JSON.stringify({
+                video_id: videoId,
+                gap_start: gapStart,
+                gap_end: gapEnd,
+                user_hint: userHint || null,
+            }),
+        });
+        if (!res.ok) return { ok: false, error: await readError(res) };
+        const data = (await res.json()) as InsertShotResponse;
         return { ok: true, data };
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -132,17 +166,14 @@ export async function apiSilenceSentence(
  */
 export async function apiBuildSentences(
     videoId: string,
-    apiKey: string,
+    apiKey: string
 ): Promise<ApiResult<BuildSentencesResponse>> {
     try {
-        const res = await fetch(
-            `${AI_SERVICE_BASE_URL}/external/video/v1/sentences/build`,
-            {
-                method: 'POST',
-                headers: headers(apiKey),
-                body: JSON.stringify({ video_id: videoId }),
-            },
-        );
+        const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/sentences/build`, {
+            method: 'POST',
+            headers: headers(apiKey),
+            body: JSON.stringify({ video_id: videoId }),
+        });
         if (!res.ok) return { ok: false, error: await readError(res) };
         const data = (await res.json()) as BuildSentencesResponse;
         return { ok: true, data };

@@ -111,9 +111,10 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
             @Param("startDateToProvided") boolean startDateToProvided);
 
     /**
-     * Get center heatmap data by fetching audience campaigns and their response
-     * counts
-     * 
+     * Get center heatmap data by fetching audience campaigns and their response counts,
+     * including opt-out user count per center (users who appeared in any OPT_OUT campaign
+     * AND had a response in this center's audience).
+     *
      * @param instituteId Institute ID to filter audiences
      * @param startDate   Optional start date filter (empty string for no filter)
      * @param endDate     Optional end date filter (empty string for no filter)
@@ -129,6 +130,7 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
      *         [7] end_date (Timestamp)
      *         [8] unique_users (Long)
      *         [9] total_responses (Long)
+     *         [10] opted_out_users (Long)
      */
     @Query(value = """
             SELECT
@@ -141,11 +143,19 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
                 a.start_date,
                 a.end_date,
                 COUNT(DISTINCT ar.user_id) as unique_users,
-                COUNT(ar.id) as total_responses
+                COUNT(ar.id) as total_responses,
+                COUNT(DISTINCT CASE WHEN opt_users.user_id IS NOT NULL THEN ar.user_id END) as opted_out_users
             FROM audience a
             LEFT JOIN audience_response ar ON ar.audience_id = a.id
                 AND (COALESCE(:startDate, '') = '' OR ar.created_at >= CAST(:startDate AS TIMESTAMP))
                 AND (COALESCE(:endDate, '') = '' OR ar.created_at <= CAST(:endDate AS TIMESTAMP))
+            LEFT JOIN (
+                SELECT DISTINCT opt_ar.user_id
+                FROM audience_response opt_ar
+                JOIN audience opt_a ON opt_a.id = opt_ar.audience_id
+                    AND opt_a.campaign_type LIKE '%OPT_OUT%'
+                    AND opt_a.institute_id = :instituteId
+            ) opt_users ON opt_users.user_id = ar.user_id
             WHERE a.institute_id = :instituteId
                 AND (COALESCE(:status, '') = '' OR a.status = :status)
             GROUP BY a.id, a.campaign_name, a.campaign_type, a.description,

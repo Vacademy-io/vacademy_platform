@@ -9,7 +9,6 @@ import {
 } from '@/components/ui/select';
 import {
     Trophy,
-    User,
     Envelope,
     Phone,
     Download,
@@ -79,70 +78,36 @@ export function EngagementLeaderboard({
     page,
     onPageChange,
     filterFields = [],
-    selectedFieldName = '',
     selectedFieldValue = '',
     onFilterChange,
 }: EngagementLeaderboardProps) {
-    const showFilter = !!onFilterChange && filterFields.length > 0;
-    const activeField = filterFields.find((f) => f.name === selectedFieldName);
+    // filterFields[0] is the center field built from connector defaultValuesJson.
+    const centerField = filterFields[0] ?? null;
 
-    const filterControls = showFilter ? (
-        <div className="flex flex-wrap items-center gap-2">
-            <Funnel className="size-4 text-gray-500" />
-            <Select
-                value={selectedFieldName || NO_FIELD_VALUE}
-                onValueChange={(val) => {
-                    const next = val === NO_FIELD_VALUE ? '' : val;
-                    onFilterChange?.(next, '');
-                }}
-            >
-                <SelectTrigger className="w-[200px]">
-                    <SelectValue placeholder="Filter by" />
-                </SelectTrigger>
-                <SelectContent>
-                    <SelectItem value={NO_FIELD_VALUE}>No filter</SelectItem>
-                    {filterFields.map((f) => (
-                        <SelectItem key={f.name} value={f.name}>
-                            {f.label}
-                        </SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
-            {activeField ? (
-                <Select
-                    value={selectedFieldValue || NO_FIELD_VALUE}
-                    onValueChange={(val) =>
-                        onFilterChange?.(
-                            activeField.name,
-                            val === NO_FIELD_VALUE ? '' : val
-                        )
-                    }
-                >
-                    <SelectTrigger className="w-[220px]">
-                        <SelectValue placeholder={`Select ${activeField.label}`} />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value={NO_FIELD_VALUE}>All</SelectItem>
-                        {activeField.options.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                                {opt.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            ) : null}
-            {selectedFieldName && selectedFieldValue ? (
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onFilterChange?.('', '')}
-                    className="gap-1"
-                >
-                    <X className="size-3" />
-                    Clear
-                </Button>
-            ) : null}
-        </div>
+    // Single center dropdown — selecting a value filters the leaderboard instantly.
+    const filterControls = centerField && onFilterChange ? (
+        <Select
+            value={selectedFieldValue || NO_FIELD_VALUE}
+            onValueChange={(val) => {
+                if (val === NO_FIELD_VALUE) {
+                    onFilterChange('', '');
+                } else {
+                    onFilterChange(centerField.name, val);
+                }
+            }}
+        >
+            <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All centers" />
+            </SelectTrigger>
+            <SelectContent>
+                <SelectItem value={NO_FIELD_VALUE}>All centers</SelectItem>
+                {centerField.options.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                    </SelectItem>
+                ))}
+            </SelectContent>
+        </Select>
     ) : null;
 
     if (isLoading) {
@@ -176,8 +141,8 @@ export function EngagementLeaderboard({
                 </CardHeader>
                 <CardContent>
                     <div className="flex h-[200px] items-center justify-center text-gray-500">
-                        {activeField && selectedFieldValue
-                            ? `No leaderboard data available for ${activeField.label}: "${selectedFieldValue}"`
+                        {selectedFieldValue
+                            ? `No leaderboard data for center "${selectedFieldValue}"`
                             : 'No leaderboard data available'}
                     </div>
                 </CardContent>
@@ -186,8 +151,6 @@ export function EngagementLeaderboard({
     }
 
     const { leaderboard, pagination } = data;
-    const topThree = leaderboard.slice(0, 3);
-    const rest = leaderboard.slice(3);
 
     const exportToCSV = () => {
         const headers = [
@@ -235,7 +198,7 @@ export function EngagementLeaderboard({
                         </div>
                         <div>
                             <CardTitle className="text-base font-semibold">
-                                Engagement Leaderboard
+                                Engagement Leaderboard 
                             </CardTitle>
                             <p className="text-xs text-gray-500">Top power users by engagement</p>
                         </div>
@@ -253,79 +216,6 @@ export function EngagementLeaderboard({
                 </div>
             </CardHeader>
             <CardContent>
-                {/* Top 3 Podium */}
-                {page === 1 && topThree.length > 0 && (
-                    <div className="mb-6 grid gap-4 md:grid-cols-3">
-                        {topThree.map((entry, index) => (
-                            <div
-                                key={entry.rank}
-                                className={`relative overflow-hidden rounded-xl bg-gradient-to-br ${getRankColor(entry.rank)} p-4 ${
-                                    index === 0 ? 'md:col-start-2 md:row-start-1' : ''
-                                } ${index === 1 ? 'md:col-start-1 md:row-start-1' : ''} ${
-                                    index === 2 ? 'md:col-start-3 md:row-start-1' : ''
-                                }`}
-                            >
-                                <div className="absolute right-2 top-2">
-                                    {getRankIcon(entry.rank)}
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="flex size-10 items-center justify-center rounded-full bg-white/20 text-white">
-                                        <User className="size-5" weight="fill" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <h4
-                                            className={`font-semibold ${entry.rank <= 3 ? 'text-white' : 'text-gray-800'}`}
-                                        >
-                                            {entry.user_details?.custom_fields?.['first name'] &&
-                                            entry.user_details?.custom_fields?.['last name']
-                                                ? `${entry.user_details.custom_fields['first name']} ${entry.user_details.custom_fields['last name']}`
-                                                : entry.user_details?.custom_fields?.[
-                                                      'parent name'
-                                                  ] || 'Anonymous'}
-                                        </h4>
-                                        <p
-                                            className={`text-xs ${entry.rank <= 3 ? 'text-white/80' : 'text-gray-600'}`}
-                                        >
-                                            {entry.user_details?.custom_fields?.['center name'] ||
-                                                'Unknown Center'}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="mt-4 grid grid-cols-2 gap-2">
-                                    <div
-                                        className={`rounded-lg ${entry.rank <= 3 ? 'bg-white/20' : 'bg-gray-100'} p-2`}
-                                    >
-                                        <span
-                                            className={`text-xs ${entry.rank <= 3 ? 'text-white/80' : 'text-gray-500'}`}
-                                        >
-                                            Messages
-                                        </span>
-                                        <p
-                                            className={`font-bold ${entry.rank <= 3 ? 'text-white' : 'text-gray-800'}`}
-                                        >
-                                            {entry.engagement_metrics.total_messages}
-                                        </p>
-                                    </div>
-                                    <div
-                                        className={`rounded-lg ${entry.rank <= 3 ? 'bg-white/20' : 'bg-gray-100'} p-2`}
-                                    >
-                                        <span
-                                            className={`text-xs ${entry.rank <= 3 ? 'text-white/80' : 'text-gray-500'}`}
-                                        >
-                                            Score
-                                        </span>
-                                        <p
-                                            className={`font-bold ${entry.rank <= 3 ? 'text-white' : 'text-gray-800'}`}
-                                        >
-                                            {entry.engagement_metrics.engagement_score}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
                 {/* Leaderboard Table */}
                 <div className="overflow-hidden rounded-lg border">
                     <table className="w-full text-sm">
@@ -355,7 +245,7 @@ export function EngagementLeaderboard({
                             </tr>
                         </thead>
                         <tbody>
-                            {(page === 1 ? rest : leaderboard).map((entry) => (
+                            {leaderboard.map((entry) => (
                                 <tr key={entry.rank} className="border-t hover:bg-gray-50">
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2">

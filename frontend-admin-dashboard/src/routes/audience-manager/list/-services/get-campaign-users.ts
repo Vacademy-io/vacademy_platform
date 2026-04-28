@@ -10,6 +10,10 @@ export interface CampaignLeadUser {
     source_type?: string;
     source_id?: string;
     submitted_at_local?: string;
+    parent_name?: string;
+    parent_email?: string;
+    parent_mobile?: string;
+    source_audience_name?: string;
     user?: {
         id?: string;
         username?: string;

@@ -84,7 +84,7 @@ export function ReferralTracking({
             const lower = name.toLowerCase();
             for (const [id, m] of Object.entries(meta)) {
                 if ((m.fieldName || '').toLowerCase() === lower && values[id]) {
-                    return values[id];
+                    return values[id] ?? '';
                 }
             }
         }

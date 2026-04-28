@@ -12,14 +12,19 @@ import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
 import vacademy.io.admin_core_service.features.audience.enums.SourceTypeEnum;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
+import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -29,6 +34,7 @@ public class AudienceOptOutService {
     private final AudienceResponseRepository audienceResponseRepository;
     private final AudienceRepository audienceRepository;
     private final WorkflowTriggerService workflowTriggerService;
+    private final CustomFieldValuesRepository customFieldValuesRepository;
 
     /**
      * Moves a user to the institute's opt-out audience and fires any configured
@@ -41,7 +47,8 @@ public class AudienceOptOutService {
      * 4. Create a new audience_response in the opt-out audience:
      *    - source_type = 'OPT_OUT'
      *    - source_id   = previous audience_id  (tracks where they came from)
-     * 5. Fire the AUDIENCE_OPT_OUT workflow trigger if one is configured on the opt-out audience.
+     * 5. Copy all custom field values from the previous response to the new opt-out entry.
+     * 6. Fire the AUDIENCE_OPT_OUT workflow trigger if one is configured on the opt-out audience.
      */
     @Transactional
     public void moveUserToOptOutAudience(String userId, String instituteId, String channel) {
@@ -68,9 +75,11 @@ public class AudienceOptOutService {
                 audienceResponseRepository.findMostRecentActiveResponseForUser(userId, instituteId);
 
         String previousAudienceId = null;
+        String previousResponseId = null;
         if (previousOpt.isPresent()) {
             AudienceResponse previous = previousOpt.get();
             previousAudienceId = previous.getAudienceId();
+            previousResponseId = previous.getId();
             previous.setOverallStatus("OPTED_OUT");
             audienceResponseRepository.save(previous);
             log.info("Soft-deleted audience_response {} (audience={}) for user {} via channel {}",
@@ -86,7 +95,38 @@ public class AudienceOptOutService {
         log.info("Created opt-out audience_response for user {} in audience {} (previousAudience={})",
                 userId, optOutAudienceId, previousAudienceId);
 
+        // Copy all custom field values from the previous response so the opt-out
+        // audience retains the user's full profile data (name, phone, center, etc.)
+        if (previousResponseId != null && optOutEntry.getId() != null) {
+            copyCustomFieldValues(previousResponseId, optOutEntry.getId());
+        }
+
         triggerOptOutWorkflow(optOutAudienceId, instituteId, userId, previousAudienceId, channel);
+    }
+
+    private void copyCustomFieldValues(String previousResponseId, String newResponseId) {
+        List<CustomFieldValues> previousValues = customFieldValuesRepository
+                .findBySourceTypeAndSourceId("AUDIENCE_RESPONSE", previousResponseId);
+        if (previousValues.isEmpty()) {
+            log.info("No custom field values to copy from response {}", previousResponseId);
+            return;
+        }
+        List<CustomFieldValues> copies = previousValues.stream()
+                .map(cfv -> {
+                    CustomFieldValues copy = new CustomFieldValues();
+                    copy.setId(UUID.randomUUID().toString());
+                    copy.setCustomFieldId(cfv.getCustomFieldId());
+                    copy.setSourceType("AUDIENCE_RESPONSE");
+                    copy.setSourceId(newResponseId);
+                    copy.setType(cfv.getType());
+                    copy.setTypeId(cfv.getTypeId());
+                    copy.setValue(cfv.getValue());
+                    return copy;
+                })
+                .collect(Collectors.toList());
+        customFieldValuesRepository.saveAll(copies);
+        log.info("Copied {} custom field values from response {} to opt-out response {}",
+                copies.size(), previousResponseId, newResponseId);
     }
 
     private AudienceResponse buildOptOutEntry(Audience optOutAudience, String userId,

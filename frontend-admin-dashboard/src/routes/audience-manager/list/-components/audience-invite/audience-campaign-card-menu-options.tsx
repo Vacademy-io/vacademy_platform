@@ -41,6 +41,7 @@ export const AudienceCampaignCardMenuOptions = ({
     campaign,
     onEdit,
 }: AudienceCampaignCardMenuOptionsProps) => {
+    const isOptOut = campaign.campaign_type?.toUpperCase().includes('OPT_OUT');
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
@@ -143,14 +144,18 @@ export const AudienceCampaignCardMenuOptions = ({
                         <Edit2 className="mr-2 size-4" />
                         Edit
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleAddResponse}>
-                        <UserPlus className="mr-2 size-4" />
-                        Add Response
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setOpenBulkImportDialog(true)}>
-                        <Upload className="mr-2 size-4" />
-                        Bulk Import CSV
-                    </DropdownMenuItem>
+                    {!isOptOut && (
+                        <DropdownMenuItem onClick={handleAddResponse}>
+                            <UserPlus className="mr-2 size-4" />
+                            Add Response
+                        </DropdownMenuItem>
+                    )}
+                    {!isOptOut && (
+                        <DropdownMenuItem onClick={() => setOpenBulkImportDialog(true)}>
+                            <Upload className="mr-2 size-4" />
+                            Bulk Import CSV
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={() => setOpenSendMessageDialog(true)}>
                         <MessageSquare className="mr-2 size-4" />
                         Send Message

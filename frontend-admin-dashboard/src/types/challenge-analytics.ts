@@ -22,6 +22,7 @@ export interface CenterHeatmapItem {
     unique_users: number;
     total_responses: number;
     avg_responses_per_user: number;
+    opted_out_users?: number;
 }
 
 export interface CenterHeatmapResponse {

@@ -85,6 +85,7 @@ public class AudienceAnalyticsService {
         Timestamp endDate = (Timestamp) row[7];
         Long uniqueUsers = row[8] != null ? ((Number) row[8]).longValue() : 0L;
         Long totalResponses = row[9] != null ? ((Number) row[9]).longValue() : 0L;
+        Long optedOutUsers = row[10] != null ? ((Number) row[10]).longValue() : 0L;
 
         // Calculate average responses per user
         Double avgResponsesPerUser = 0.0;
@@ -106,6 +107,7 @@ public class AudienceAnalyticsService {
                 .uniqueUsers(uniqueUsers)
                 .totalResponses(totalResponses)
                 .avgResponsesPerUser(avgResponsesPerUser)
+                .optedOutUsers(optedOutUsers)
                 .build();
     }
 }

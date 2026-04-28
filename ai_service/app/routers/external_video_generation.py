@@ -9,7 +9,7 @@ import json
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional, List
+from typing import Any, Dict, Optional, List
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Header
@@ -1167,6 +1167,44 @@ async def silence_sentence_external(
 # Shot insertion — fill a gap in the timeline with a new HTML shot
 # ---------------------------------------------------------------------------
 
+# HTML LLM routing — mirrors VideoGenerationService's logic so the
+# inserted shot uses the same model the rest of the video was built
+# with. `xiaomi/mimo-v2-flash:free` (the constructor's hard-coded
+# default in VideoGenerationPipeline) is deprecated and 404s, so we
+# always pass a resolved model down to the pipeline here.
+_TIER_FLASH_MODEL = "google/gemini-3-flash-preview"
+_FLASH_TIERS = {"free", "standard", "premium"}
+
+
+def _resolve_html_model(db: Session, quality_tier: str) -> str:
+    """Pick the HTML LLM for an inserted shot.
+
+    Mirrors VideoGenerationService's tier-aware routing:
+      - free/standard/premium → flash (`google/gemini-3-flash-preview`)
+      - ultra/super_ultra     → the AI-Models-Service default for "video"
+
+    Falls back to `_TIER_FLASH_MODEL` end-to-end when no DB default is
+    configured. Never returns None — the pipeline constructor's default
+    (`xiaomi/mimo-v2-flash:free`) is deprecated and 404s, so we always
+    pass an explicit model down.
+    """
+    if quality_tier in _FLASH_TIERS:
+        return _TIER_FLASH_MODEL
+    try:
+        from ..services.ai_models_service import AIModelsService
+        resp = AIModelsService(db).get_models_for_use_case("video")
+        # `default_model` is an AIModelSummary object (or None when no
+        # row in ai_model_defaults and no recommended models exist).
+        default_model = getattr(resp, "default_model", None)
+        if default_model is not None:
+            model_id = getattr(default_model, "model_id", None)
+            if model_id:
+                return str(model_id)
+    except Exception:
+        pass
+    return _TIER_FLASH_MODEL
+
+
 class InsertShotRequest(BaseModel):
     video_id: str
     gap_start: float = Field(..., ge=0.0, description="Absolute timeline seconds where the new shot starts.")
@@ -1232,12 +1270,23 @@ async def insert_shot_external(
         video_gen_root=service.video_gen_root,
     )
 
+    # Resolve the HTML LLM the same way VideoGenerationService does:
+    # default model from AIModelsService, with the same flash override
+    # for low/mid tiers. Without this we'd fall through to the pipeline's
+    # hard-coded `xiaomi/mimo-v2-flash:free` default which is deprecated.
+    record = service.repository.get_by_video_id(payload.video_id)
+    quality_tier = "ultra"
+    if record is not None:
+        quality_tier = str((record.extra_metadata or {}).get("quality_tier") or "ultra")
+    html_model = _resolve_html_model(db, quality_tier)
+
     try:
         result = svc.insert_shot(
             video_id=payload.video_id,
             gap_start=payload.gap_start,
             gap_end=payload.gap_end,
             user_hint=payload.user_hint,
+            html_model=html_model,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

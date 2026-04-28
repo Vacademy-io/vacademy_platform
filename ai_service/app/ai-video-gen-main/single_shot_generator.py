@@ -43,6 +43,7 @@ def generate_one_shot(
     user_hint: Optional[str],
     openrouter_key: str,
     run_dir: Path,
+    html_model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Generate one HTML shot to fill `[gap_start, gap_end]`.
 
@@ -88,7 +89,9 @@ def generate_one_shot(
     speech_text = (speech_text or "").strip()
     user_hint = (user_hint or "").strip() or None
 
-    pipeline = _construct_pipeline(openrouter_key, quality_tier=quality_tier)
+    pipeline = _construct_pipeline(
+        openrouter_key, quality_tier=quality_tier, html_model=html_model,
+    )
     _attach_minimal_state(pipeline, video_width=video_width, video_height=video_height)
 
     sg = style_guide if isinstance(style_guide, dict) else _default_style_guide()
@@ -151,21 +154,36 @@ def _infer_shot_type(speech_text: str, user_hint: Optional[str]) -> str:
     return _DEFAULT_SHOT_TYPE
 
 
-def _construct_pipeline(openrouter_key: str, *, quality_tier: str):
+def _construct_pipeline(
+    openrouter_key: str, *, quality_tier: str, html_model: Optional[str],
+):
     """Build a VideoGenerationPipeline configured only enough for the
     per-shot HTML path. Pexels/Pixabay init is skipped (empty keys); the
     constructor tolerates this and the per-shot path doesn't need stock
-    media for TEXT_DIAGRAM/KINETIC_TITLE/INFOGRAPHIC_SVG shots."""
+    media for TEXT_DIAGRAM/KINETIC_TITLE/INFOGRAPHIC_SVG shots.
+
+    `html_model` overrides the constructor's hard-coded default
+    (`xiaomi/mimo-v2-flash:free`, deprecated). Caller is responsible for
+    resolving the right model — see VideoGenerationService for the
+    tier-aware routing the main pipeline uses."""
     try:
         from automation_pipeline import VideoGenerationPipeline
     except ImportError as exc:
         raise RuntimeError(f"automation_pipeline not importable: {exc}") from exc
-    return VideoGenerationPipeline(
-        openrouter_key=openrouter_key,
-        pexels_api_keys="",
-        pixabay_api_keys="",
-        quality_tier=quality_tier,
-    )
+    kwargs: Dict[str, Any] = {
+        "openrouter_key": openrouter_key,
+        "pexels_api_keys": "",
+        "pixabay_api_keys": "",
+        "quality_tier": quality_tier,
+    }
+    if html_model:
+        # Both `script_model` and `html_model` are set: the per-shot
+        # path only uses html_client, but the script_client is built
+        # eagerly in __init__ so we keep them in sync to avoid quietly
+        # paying for a deprecated default.
+        kwargs["script_model"] = html_model
+        kwargs["html_model"] = html_model
+    return VideoGenerationPipeline(**kwargs)
 
 
 def _attach_minimal_state(pipeline, *, video_width: int, video_height: int) -> None:

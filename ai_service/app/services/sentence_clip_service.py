@@ -523,6 +523,7 @@ class SentenceClipService:
         gap_end: float,
         *,
         user_hint: Optional[str] = None,
+        html_model: Optional[str] = None,
     ) -> ShotInsertResult:
         """Generate a new HTML shot for `[gap_start, gap_end]` and insert
         it into the timeline. Duration-neutral: no audio splice, no
@@ -596,6 +597,7 @@ class SentenceClipService:
                 style_guide=style_guide,
                 user_hint=user_hint,
                 run_dir=tmp / "shot_gen",
+                html_model=html_model,
             )
 
             _insert_entry_sorted(timeline, entry)
@@ -810,6 +812,7 @@ class SentenceClipService:
         style_guide: Optional[Dict[str, Any]],
         user_hint: Optional[str],
         run_dir: Path,
+        html_model: Optional[str],
     ) -> Dict[str, Any]:
         """Call into the single_shot_generator module under ai-video-gen-main.
         Mirrors the import-via-sys.path trick used by `_synthesize_sentence`."""
@@ -834,6 +837,7 @@ class SentenceClipService:
             user_hint=user_hint,
             openrouter_key=openrouter_key,
             run_dir=run_dir,
+            html_model=html_model,
         )
 
     @staticmethod

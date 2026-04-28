@@ -62,7 +62,7 @@ export default defineConfig({
         //     },
         // }),
         svgr({ include: '**/*.svg' }),
-        // flowbiteReact(),
+        flowbiteReact(),
         // Replace CORS-blocked easy-email default images with local SVG placeholders.
         // Each preset thumbnail (IMAGE_08–IMAGE_71) maps to a unique wireframe SVG.
         {

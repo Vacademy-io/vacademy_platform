@@ -689,7 +689,7 @@ export function ModularDynamicLoginContainer({
       </motion.div>
 
       {/* OAuth Providers */}
-      {(effectiveSettings.providers.google || effectiveSettings.providers.github) && (
+      {/* {(effectiveSettings.providers.google || effectiveSettings.providers.github) && (
         <motion.div
           initial={{ y: 10, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -728,7 +728,7 @@ export function ModularDynamicLoginContainer({
             </motion.button>
           )}
         </motion.div>
-      )}
+      )} */}
 
       {/* Spacing between OAuth and forms */}
       {(effectiveSettings.providers.emailOtp || effectiveSettings.providers.usernamePassword) && (

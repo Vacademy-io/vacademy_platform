@@ -157,4 +157,11 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
             @Param("startDate") String startDate,
             @Param("endDate") String endDate,
             @Param("status") String status);
+
+    /**
+     * Find the dedicated opt-out audience for an institute.
+     * The opt-out audience must have campaign_type containing 'OPT_OUT'.
+     */
+    @Query("SELECT a FROM Audience a WHERE a.instituteId = :instituteId AND a.campaignType LIKE '%OPT_OUT%'")
+    Optional<Audience> findOptOutAudienceByInstituteId(@Param("instituteId") String instituteId);
 }

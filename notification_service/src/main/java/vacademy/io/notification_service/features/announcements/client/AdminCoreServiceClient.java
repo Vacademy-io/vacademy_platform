@@ -376,6 +376,29 @@ public class AdminCoreServiceClient {
     }
 
     /**
+     * Notifies admin_core_service that a user has opted out via WhatsApp or email.
+     * admin_core soft-deletes their current audience_response and moves them to the opt-out audience.
+     * Fire-and-forget: failures are logged but do not block the opt-out from being recorded locally.
+     */
+    public void moveToOptOutAudience(String userId, String instituteId, String channel) {
+        if (userId == null || userId.isBlank() || instituteId == null || instituteId.isBlank()) {
+            return;
+        }
+        try {
+            String route = "/admin-core-service/internal/audience/opt-out";
+            java.util.Map<String, String> body = java.util.Map.of(
+                    "userId", userId,
+                    "instituteId", instituteId,
+                    "channel", channel != null ? channel : ""
+            );
+            internalClientUtils.makeHmacRequest(clientName, "POST", adminCoreServiceBaseUrl, route, body);
+            log.info("Audience opt-out move requested for user {} institute {} channel {}", userId, instituteId, channel);
+        } catch (Exception e) {
+            log.warn("Failed to move user {} to opt-out audience (non-blocking): {}", userId, e.getMessage());
+        }
+    }
+
+    /**
      * Centralized recipient resolution API - handles inclusions, exclusions, and custom field filters in one call
      */
     @Retryable(value = {RestClientException.class}, maxAttempts = 3, backoff = @Backoff(delay = 1000))

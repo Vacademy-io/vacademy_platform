@@ -356,4 +356,95 @@ public class CommunicationTimelineService {
         if (text.length() <= maxLen) return text;
         return text.substring(0, maxLen) + "...";
     }
+
+    // ==================== Channel-ID based timeline ====================
+
+    @Transactional(readOnly = true)
+    public Page<UnifiedCommunicationDTO> getUserCommunicationsByChannel(CommunicationTimelineRequest request) {
+        String email = request.getEmail();
+        String phone = request.getPhone();
+
+        boolean hasEmail = email != null && !email.isBlank();
+        boolean hasPhone = phone != null && !phone.isBlank();
+
+        if (!hasEmail && !hasPhone) {
+            throw new IllegalArgumentException("email or phone must be provided");
+        }
+
+        Pageable pageable = PageRequest.of(
+                request.getPage() != null ? request.getPage() : 0,
+                request.getSize() != null ? request.getSize() : 20);
+
+        // Reuse existing logic to resolve which notification types to include per channel
+        List<String> emailTypes = resolveNotificationTypes(List.of("EMAIL"), request.getDirection());
+        List<String> waTypes = resolveNotificationTypes(List.of("WHATSAPP"), request.getDirection());
+
+        boolean fetchEmail = hasEmail && !emailTypes.isEmpty();
+        boolean fetchWa = hasPhone && !waTypes.isEmpty();
+
+        // If the caller filtered to specific channels, honour that
+        List<String> requestedChannels = request.getChannels();
+        if (requestedChannels != null && !requestedChannels.isEmpty()) {
+            boolean wantEmail = requestedChannels.stream().anyMatch(c -> "EMAIL".equalsIgnoreCase(c));
+            boolean wantWhatsApp = requestedChannels.stream().anyMatch(c -> "WHATSAPP".equalsIgnoreCase(c));
+            fetchEmail = fetchEmail && wantEmail;
+            fetchWa = fetchWa && wantWhatsApp;
+        }
+
+        Page<NotificationLog> logs;
+        boolean hasDateRange = request.getFromDate() != null || request.getToDate() != null;
+
+        if (fetchEmail && fetchWa) {
+            logs = hasDateRange
+                    ? notificationLogRepository.findByEmailAndPhoneChannelsAndDateRange(
+                            email, phone, emailTypes, waTypes,
+                            request.getFromDate(), request.getToDate(), pageable)
+                    : notificationLogRepository.findByEmailAndPhoneChannels(
+                            email, phone, emailTypes, waTypes, pageable);
+        } else if (fetchEmail) {
+            logs = hasDateRange
+                    ? notificationLogRepository.findByChannelIdAndTypesAndDateRange(
+                            email, emailTypes, request.getFromDate(), request.getToDate(), pageable)
+                    : notificationLogRepository.findByChannelIdAndNotificationTypeInOrderByNotificationDateDesc(
+                            email, emailTypes, pageable);
+        } else if (fetchWa) {
+            logs = hasDateRange
+                    ? notificationLogRepository.findByChannelIdAndTypesAndDateRange(
+                            phone, waTypes, request.getFromDate(), request.getToDate(), pageable)
+                    : notificationLogRepository.findByChannelIdAndNotificationTypeInOrderByNotificationDateDesc(
+                            phone, waTypes, pageable);
+        } else {
+            return new PageImpl<>(List.of(), pageable, 0);
+        }
+
+        List<String> emailLogIds = logs.getContent().stream()
+                .filter(nl -> "EMAIL".equals(nl.getNotificationType()))
+                .map(NotificationLog::getId)
+                .collect(Collectors.toList());
+
+        Map<String, NotificationLog> latestEmailEvents = new HashMap<>();
+        Map<String, List<NotificationLog>> allEmailEvents = new HashMap<>();
+        if (!emailLogIds.isEmpty()) {
+            try {
+                List<NotificationLog> latestEvents = notificationLogRepository
+                        .findLatestEmailEventsBySourceIdsNative(emailLogIds.toArray(new String[0]));
+                for (NotificationLog event : latestEvents) {
+                    latestEmailEvents.put(event.getSource(), event);
+                }
+                List<NotificationLog> allEvents = notificationLogRepository
+                        .findEmailEventsBySourceIds(emailLogIds);
+                for (NotificationLog event : allEvents) {
+                    allEmailEvents.computeIfAbsent(event.getSource(), k -> new ArrayList<>()).add(event);
+                }
+            } catch (Exception e) {
+                log.warn("Error batch-fetching email events: {}", e.getMessage());
+            }
+        }
+
+        List<UnifiedCommunicationDTO> dtos = logs.getContent().stream()
+                .map(nl -> mapToDTO(nl, latestEmailEvents, allEmailEvents))
+                .collect(Collectors.toList());
+
+        return new PageImpl<>(dtos, pageable, logs.getTotalElements());
+    }
 }

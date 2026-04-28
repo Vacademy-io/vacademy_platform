@@ -16,6 +16,12 @@ public class CommunicationTimelineRequest {
 
     private String userId;
 
+    /** Email address — used as channelId for EMAIL / INBOUND_EMAIL logs. */
+    private String email;
+
+    /** Phone number — used as channelId for WhatsApp logs. */
+    private String phone;
+
     /**
      * Filter by channels: EMAIL, WHATSAPP, PUSH, SMS. Null or empty = all channels.
      */

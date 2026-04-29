@@ -156,8 +156,13 @@ const TYPE_LABELS: Record<string, string> = {
 
 export function EventEntityPicker({ eventAppliedType, value, onChange, multiValue, onMultiChange, instituteId }: EventEntityPickerProps) {
     const [showManual, setShowManual] = useState(false);
+    const [search, setSearch] = useState('');
     const hasDropdownSupport = ['PACKAGE_SESSION', 'AUDIENCE', 'LIVE_SESSION', 'ENROLL_INVITE'].includes(eventAppliedType);
     const { data: options = [], isLoading, isError } = useEntityOptions(eventAppliedType, instituteId);
+
+    const filteredOptions = search
+        ? options.filter((o) => o.label.toLowerCase().includes(search.toLowerCase()))
+        : options;
 
     const typeLabel = TYPE_LABELS[eventAppliedType] ?? eventAppliedType.replace(/_/g, ' ').toLowerCase();
 
@@ -244,14 +249,23 @@ export function EventEntityPicker({ eventAppliedType, value, onChange, multiValu
                 </button>
             </div>
 
+            <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search ${typeLabel}s...`}
+                className="h-8 text-sm"
+            />
+
             <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-300 bg-white">
                 {isLoading && (
                     <div className="px-3 py-2 text-xs text-gray-400">Loading...</div>
                 )}
-                {!isLoading && options.length === 0 && (
-                    <div className="px-3 py-2 text-xs text-gray-400">No {typeLabel}s found</div>
+                {!isLoading && filteredOptions.length === 0 && (
+                    <div className="px-3 py-2 text-xs text-gray-400">
+                        {options.length === 0 ? `No ${typeLabel}s found` : `No matches for "${search}"`}
+                    </div>
                 )}
-                {options.map((opt) => {
+                {filteredOptions.map((opt) => {
                     const checked = selectedIds.includes(opt.id);
                     return (
                         <label

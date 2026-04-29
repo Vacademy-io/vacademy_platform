@@ -259,7 +259,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             JOIN Audience a ON a.id = ar.audienceId
                             WHERE a.instituteId = :instituteId
                             AND ar.audienceId = :audienceId
-                            AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
+                            AND COALESCE(ar.workflowActivateDayAt, ar.submittedAt) >= :startDate
+                            AND COALESCE(ar.workflowActivateDayAt, ar.submittedAt) <= :endDate
                         """)
         List<AudienceResponse> findLeadsByAudienceAndDateRange(
                         @Param("instituteId") String instituteId,
@@ -276,7 +277,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             SELECT ar FROM AudienceResponse ar
                             JOIN Audience a ON a.id = ar.audienceId
                             WHERE a.instituteId = :instituteId
-                            AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
+                            AND COALESCE(ar.workflowActivateDayAt, ar.submittedAt) >= :startDate
+                            AND COALESCE(ar.workflowActivateDayAt, ar.submittedAt) <= :endDate
                         """)
         List<AudienceResponse> findLeadsByInstituteAndDateRange(
                         @Param("instituteId") String instituteId,

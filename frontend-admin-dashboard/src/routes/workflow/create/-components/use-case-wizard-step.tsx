@@ -98,6 +98,15 @@ function QuestionField({
     const { data: templateOptions = [], isLoading: templateLoading } = useEmailTemplateOptions();
     const [creatingSample, setCreatingSample] = useState(false);
     const queryClient = useQueryClient();
+    const [batchSearch, setBatchSearch] = useState('');
+    const [audienceSearch, setAudienceSearch] = useState('');
+
+    const filteredBatches = batchSearch
+        ? batchOptions.filter((o) => o.label.toLowerCase().includes(batchSearch.toLowerCase()))
+        : batchOptions;
+    const filteredAudiences = audienceSearch
+        ? audienceOptions.filter((o) => o.label.toLowerCase().includes(audienceSearch.toLowerCase()))
+        : audienceOptions;
 
     const renderDropdown = (
         options: Array<{ value: string; label: string }>,
@@ -124,6 +133,9 @@ function QuestionField({
         options: Array<{ value: string; label: string }>,
         loading: boolean,
         emptyLabel: string,
+        searchValue?: string,
+        onSearch?: (s: string) => void,
+        totalCount?: number,
     ) => {
         const selected: string[] = Array.isArray(value)
             ? (value as string[])
@@ -138,12 +150,22 @@ function QuestionField({
         };
         return (
             <div className="space-y-2">
+                {onSearch !== undefined && (
+                    <Input
+                        value={searchValue ?? ''}
+                        onChange={(e) => onSearch(e.target.value)}
+                        placeholder="Search..."
+                        className="h-8 text-sm"
+                    />
+                )}
                 <div className="max-h-48 overflow-y-auto rounded-lg border border-gray-300 bg-white">
                     {loading && (
                         <div className="px-3 py-2 text-xs text-gray-400">Loading...</div>
                     )}
                     {!loading && options.length === 0 && (
-                        <div className="px-3 py-2 text-xs text-gray-400">No options available</div>
+                        <div className="px-3 py-2 text-xs text-gray-400">
+                            {totalCount === 0 ? 'No options available' : `No matches for "${searchValue}"`}
+                        </div>
                     )}
                     {options.map((opt) => {
                         const checked = selected.includes(opt.value);
@@ -186,20 +208,36 @@ function QuestionField({
                 <p className="text-xs text-gray-400">{question.helpText}</p>
             )}
 
-            {question.type === 'batch_select' && renderDropdown(batchOptions, batchLoading, '-- Select a batch --', !question.required)}
+            {question.type === 'batch_select' && (
+                <div className="space-y-1.5">
+                    <Input
+                        value={batchSearch}
+                        onChange={(e) => setBatchSearch(e.target.value)}
+                        placeholder="Search batches..."
+                        className="h-8 text-sm"
+                    />
+                    {renderDropdown(filteredBatches, batchLoading, '-- Select a batch --', !question.required)}
+                </div>
+            )}
             {question.type === 'batch_multi_select' && renderMultiSelect(
-                batchOptions,
+                filteredBatches,
                 batchLoading,
                 question.required
                     ? 'Select at least one batch.'
-                    : 'No selection — runs across all active batches in your institute.'
+                    : 'No selection — runs across all active batches in your institute.',
+                batchSearch,
+                setBatchSearch,
+                batchOptions.length,
             )}
             {question.type === 'audience_select' && renderMultiSelect(
-                audienceOptions,
+                filteredAudiences,
                 audienceLoading,
                 question.required
                     ? 'Select at least one campaign.'
-                    : 'No selection — runs across all campaigns.'
+                    : 'No selection — runs across all campaigns.',
+                audienceSearch,
+                setAudienceSearch,
+                audienceOptions.length,
             )}
             {question.type === 'template_select' && (
                 <div className="space-y-2">

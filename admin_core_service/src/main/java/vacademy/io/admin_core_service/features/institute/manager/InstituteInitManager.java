@@ -7,6 +7,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import jakarta.servlet.http.HttpServletRequest;
 import vacademy.io.admin_core_service.features.institute.dto.PaginatedPackageSessionResponse;
 import vacademy.io.admin_core_service.features.institute.dto.BatchesSummaryResponse;
 import vacademy.io.admin_core_service.features.institute.dto.BatchLookupResponse;
@@ -26,7 +29,7 @@ import vacademy.io.admin_core_service.features.subject.repository.SubjectReposit
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.common.auth.enums.Gender;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.auth.repository.UserRoleRepository;
+import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
@@ -34,7 +37,6 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 
 import vacademy.io.common.tracing.PerformanceTracer;
 
-import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -77,7 +79,7 @@ public class InstituteInitManager {
         private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
 
         @Autowired
-        private UserRoleRepository userRoleRepository;
+        private JwtService jwtService;
 
         @Transactional
         public InstituteInfoDTO getInstituteDetails(String instituteId, boolean includeBatches) {
@@ -563,11 +565,34 @@ public class InstituteInitManager {
                                 });
                 if (fromAuthorities) return true;
 
-                // DB fallback: storedAuthorities may be empty if clientId header mismatches UserRole.instituteId
-                if (user.getUserId() == null || instituteId == null) return false;
-                List<String> roleList = Arrays.stream(roles).map(String::toUpperCase).collect(Collectors.toList());
-                return userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
-                                user.getUserId(), instituteId, roleList, List.of("ACTIVE")).isPresent();
+                // JWT fallback: read roles directly from the token (no DB call needed)
+                if (instituteId == null) return false;
+                try {
+                        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                        if (attrs == null) return false;
+                        HttpServletRequest request = attrs.getRequest();
+                        String authHeader = request.getHeader("Authorization");
+                        if (authHeader == null || !authHeader.startsWith("Bearer ")) return false;
+                        String jwt = authHeader.substring(7);
+
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> authorities = jwtService.extractClaim(jwt,
+                                        claims -> (Map<String, Object>) claims.get("authorities"));
+                        if (authorities == null) return false;
+
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> instituteAuth = (Map<String, Object>) authorities.get(instituteId);
+                        if (instituteAuth == null) return false;
+
+                        @SuppressWarnings("unchecked")
+                        List<String> jwtRoles = (List<String>) instituteAuth.get("roles");
+                        if (jwtRoles == null) return false;
+
+                        for (String role : roles) {
+                                if (jwtRoles.stream().anyMatch(r -> role.equalsIgnoreCase(r))) return true;
+                        }
+                } catch (Exception ignored) {}
+                return false;
         }
 
         /**

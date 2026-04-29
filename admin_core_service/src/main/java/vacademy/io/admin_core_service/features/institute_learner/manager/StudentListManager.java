@@ -36,12 +36,15 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentO
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.auth.repository.UserRoleRepository;
+import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.core.utils.DataToCsvConverter;
 import vacademy.io.common.exceptions.VacademyException;
 
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import jakarta.servlet.http.HttpServletRequest;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.*;
@@ -74,7 +77,7 @@ public class StudentListManager {
     PackageSessionLearnerInvitationToPaymentOptionRepository pslipoRepository;
 
     @Autowired
-    UserRoleRepository userRoleRepository;
+    JwtService jwtService;
 
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
@@ -190,7 +193,7 @@ public class StudentListManager {
     }
 
     private boolean hasRole(CustomUserDetails user, String instituteId, String... roles) {
-        // Fast path: check storedAuthorities from JWT/auth-service
+        // Fast path: check storedAuthorities from auth-service
         boolean fromAuthorities = user.getAuthorities().stream()
                 .map(auth -> auth.getAuthority())
                 .anyMatch(authority -> {
@@ -201,11 +204,35 @@ public class StudentListManager {
                 });
         if (fromAuthorities) return true;
 
-        // DB fallback: storedAuthorities may be empty if clientId header mismatches UserRole.instituteId
-        if (user.getUserId() == null || instituteId == null) return false;
-        List<String> roleList = Arrays.stream(roles).map(String::toUpperCase).collect(Collectors.toList());
-        return userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
-                user.getUserId(), instituteId, roleList, List.of("ACTIVE")).isPresent();
+        // JWT fallback: read roles directly from the token (no DB call needed)
+        // storedAuthorities can be empty when clientId header mismatches UserRole.instituteId in auth-service
+        if (instituteId == null) return false;
+        try {
+            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs == null) return false;
+            HttpServletRequest request = attrs.getRequest();
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) return false;
+            String jwt = authHeader.substring(7);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> authorities = jwtService.extractClaim(jwt,
+                    claims -> (Map<String, Object>) claims.get("authorities"));
+            if (authorities == null) return false;
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> instituteAuth = (Map<String, Object>) authorities.get(instituteId);
+            if (instituteAuth == null) return false;
+
+            @SuppressWarnings("unchecked")
+            List<String> jwtRoles = (List<String>) instituteAuth.get("roles");
+            if (jwtRoles == null) return false;
+
+            for (String role : roles) {
+                if (jwtRoles.stream().anyMatch(r -> role.equalsIgnoreCase(r))) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     private boolean hasFacultyAssignedPermission(CustomUserDetails user) {

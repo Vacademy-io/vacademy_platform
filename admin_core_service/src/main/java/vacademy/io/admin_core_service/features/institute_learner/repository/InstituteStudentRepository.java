@@ -339,7 +339,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.parents_to_mother_email, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
-               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
+               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date,
+               ssigm.source, ssigm.type, ssigm.type_id
       """, countQuery = """
       SELECT COUNT(DISTINCT s.id)
       FROM student s
@@ -524,7 +525,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.parents_to_mother_email, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
-               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
+               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date,
+               ssigm.source, ssigm.type, ssigm.type_id
       """, countQuery = """
       SELECT COUNT(DISTINCT s.id)
       FROM student s

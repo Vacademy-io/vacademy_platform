@@ -198,7 +198,7 @@ public class InstituteInitManager {
 
                         // Skip faculty filtering for users with ADMIN/TEACHER role — they should see all package sessions.
                         // Sub-org admins (no ADMIN/TEACHER role, but have FSPSSM) → filtering applies, scoped to their access.
-                        if (user != null && !hasRole(user, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
+                        if (user != null && !hasRole(user, instId, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
                                 List<String> allowedAccessIds = facultyMappingRepository
                                                 .findAccessIdsByUserIdAndInstituteId(
                                                                 user.getUserId(), instId, List.of("ACTIVE"));

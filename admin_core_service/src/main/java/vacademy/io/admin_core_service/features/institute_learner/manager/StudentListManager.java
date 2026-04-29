@@ -330,18 +330,71 @@ public class StudentListManager {
 
     public ResponseEntity<AllStudentV2Response> getLinkedStudentsV2(CustomUserDetails user,
                                                                     StudentListFilter studentListFilter, int pageNo, int pageSize) {
-        // Apply faculty access filter (restricts PS and injects invite filter)
         applyFacultyAccessFilter(user, studentListFilter);
 
-        Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
-        Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
-        List<StudentV2DTO> content = page != null ? mapProjectionsToDTOs(page.getContent()) : new ArrayList<>();
+        boolean hasCustomFieldFilters = studentListFilter.getCustomFieldFilters() != null && !studentListFilter.getCustomFieldFilters().isEmpty();
+        boolean hasEnrollInviteFilter = studentListFilter.getServerEnrollInviteIds() != null && !studentListFilter.getServerEnrollInviteIds().isEmpty();
+        boolean hasNameSearch = StringUtils.hasText(studentListFilter.getName());
+        boolean hasPaymentStatusFilter = studentListFilter.getPaymentStatuses() != null && !studentListFilter.getPaymentStatuses().isEmpty();
 
-        if (!content.isEmpty()) {
-            enrichWithUserCredentials(content);
+        if (hasCustomFieldFilters || hasEnrollInviteFilter || hasNameSearch || hasPaymentStatusFilter) {
+            Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
+            Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
+            List<StudentV2DTO> content = page != null ? mapProjectionsToDTOs(page.getContent()) : new ArrayList<>();
+            if (!content.isEmpty()) enrichWithUserCredentials(content);
+            return ResponseEntity.ok(buildResponse(content, page, pageSize, false));
         }
 
-        return ResponseEntity.ok(buildResponse(content, page, pageSize, false));
+        // Two-phase approach: 1) get IDs (no json_agg, no payment_log join), 2) enrich only this page's IDs
+        Page<String> idPage = instituteStudentRepository.findPagedStudentIdsForV2Filter(
+                studentListFilter.getStatuses(),
+                studentListFilter.getGender(),
+                studentListFilter.getInstituteIds(),
+                studentListFilter.getGroupIds(),
+                studentListFilter.getPackageSessionIds(),
+                studentListFilter.getSources(),
+                studentListFilter.getTypes(),
+                studentListFilter.getTypeIds(),
+                studentListFilter.getDestinationPackageSessionIds(),
+                studentListFilter.getLevelIds(),
+                studentListFilter.getSubOrgUserTypes(),
+                studentListFilter.getStartDate(),
+                studentListFilter.getEndDate(),
+                PageRequest.of(pageNo, pageSize));
+
+        List<String> pagedUserIds = idPage.getContent();
+        if (pagedUserIds.isEmpty()) {
+            return ResponseEntity.ok(AllStudentV2Response.builder()
+                    .content(new ArrayList<>()).pageNo(pageNo).pageSize(pageSize)
+                    .totalElements(0L).totalPages(0).last(true).build());
+        }
+
+        List<StudentListV2Projection> projections = instituteStudentRepository.getStudentV2DataForUserIds(
+                pagedUserIds,
+                studentListFilter.getInstituteIds(),
+                List.of(StatusEnum.ACTIVE.name()));
+
+        Map<String, StudentListV2Projection> projMap = projections.stream()
+                .filter(p -> p.getUserId() != null)
+                .collect(Collectors.toMap(StudentListV2Projection::getUserId, p -> p, (a, b) -> a));
+        List<StudentListV2Projection> ordered = pagedUserIds.stream()
+                .map(projMap::get)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        List<StudentV2DTO> content = mapProjectionsToDTOs(ordered);
+        if (!content.isEmpty()) enrichWithUserCredentials(content);
+
+        long totalElements = idPage.getTotalElements();
+        int totalPages = (int) Math.ceil((double) totalElements / pageSize);
+        return ResponseEntity.ok(AllStudentV2Response.builder()
+                .content(content)
+                .pageNo(pageNo)
+                .pageSize(pageSize)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .last(pageNo >= totalPages - 1)
+                .build());
     }
 
     private Pageable createPageable(StudentListFilter filter, int pageNo, int pageSize) {

@@ -106,7 +106,7 @@ docker run -d \
     -e AWS_S3_PUBLIC_BUCKET='vacademy-media-storage-public' \
     -e RENDER_KEY='vsahcraedyeamsyh' \
     -e MAX_CONCURRENT_JOBS='2' \
-    -e OPENROUTER_API_KEY='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' \
+    -e OPENROUTER_API_KEY='' \
     "$IMAGE_NAME"
 
 echo ""

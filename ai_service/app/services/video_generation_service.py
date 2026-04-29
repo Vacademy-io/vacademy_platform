@@ -2068,6 +2068,10 @@ class VideoGenerationService:
         exit_time: Optional[float],
         z: int = 0,
         entry_id: Optional[str] = None,
+        html_start_x: Optional[int] = None,
+        html_start_y: Optional[int] = None,
+        html_end_x: Optional[int] = None,
+        html_end_y: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Insert a new frame/entry into the video timeline and save back to S3.
@@ -2105,9 +2109,26 @@ class VideoGenerationService:
             entries = data["entries"] if is_wrapped else data
             meta = data.get("meta", {}) if is_wrapped else {}
 
-            # Build the new entry
+            # Resolve default video dimensions from meta so position keys are always present
+            _dims = meta.get("dimensions", {})
+            _default_w = int(_dims.get("width", 1920))
+            _default_h = int(_dims.get("height", 1080))
+
+            # Build the new entry — always include position keys so _load_timeline validation passes
             new_id = entry_id or f"shot-{uuid4().hex[:8]}"
-            new_entry: Dict[str, Any] = {"id": new_id, "html": html, "z": z}
+            _sx = html_start_x if html_start_x is not None else 0
+            _sy = html_start_y if html_start_y is not None else 0
+            _ex = html_end_x if html_end_x is not None else _default_w
+            _ey = html_end_y if html_end_y is not None else _default_h
+            new_entry: Dict[str, Any] = {
+                "id": new_id,
+                "html": html,
+                "z": z,
+                "htmlStartX": _sx,
+                "htmlStartY": _sy,
+                "htmlEndX": _ex,
+                "htmlEndY": _ey,
+            }
 
             if in_time is not None:
                 new_entry["inTime"] = in_time

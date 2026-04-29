@@ -431,6 +431,11 @@ class AddFrameRequest(BaseModel):
     # Optional explicit ID so the frontend can correlate the response
     entry_id: Optional[str] = Field(None, description="Client-generated entry ID (optional)")
     z: Optional[int] = Field(0, description="Z-index layer (0=base, 500+=overlay)")
+    # Position / bounding box (defaults to full-screen when omitted)
+    html_start_x: Optional[int] = Field(None, description="Left edge in pixels (default 0)")
+    html_start_y: Optional[int] = Field(None, description="Top edge in pixels (default 0)")
+    html_end_x: Optional[int] = Field(None, description="Right edge in pixels (default video width)")
+    html_end_y: Optional[int] = Field(None, description="Bottom edge in pixels (default video height)")
 
 
 class AddFrameResponse(BaseModel):

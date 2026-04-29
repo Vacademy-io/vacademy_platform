@@ -13,6 +13,8 @@ public interface EmailAddressMappingRepository extends JpaRepository<EmailAddres
 
     Optional<EmailAddressMapping> findByEmailAddressAndIsActiveTrue(String emailAddress);
 
+    Optional<EmailAddressMapping> findByEmailAddressIgnoreCaseAndIsActiveTrue(String emailAddress);
+
     @Modifying
     @Transactional
     @Query(value = """

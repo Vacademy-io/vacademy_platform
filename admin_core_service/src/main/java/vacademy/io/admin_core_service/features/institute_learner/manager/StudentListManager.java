@@ -36,6 +36,7 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentO
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.core.utils.DataToCsvConverter;
@@ -72,6 +73,9 @@ public class StudentListManager {
     @Autowired
     PackageSessionLearnerInvitationToPaymentOptionRepository pslipoRepository;
 
+    @Autowired
+    UserRoleRepository userRoleRepository;
+
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
     @Value("${spring.application.name}")
@@ -88,14 +92,17 @@ public class StudentListManager {
         // Handle user-selected invite filter (works for ALL users, not just faculty)
         applyUserInviteFilter(filter);
 
-        // Skip faculty filtering for users with ADMIN/TEACHER role — they should see all students.
-        // Sub-org admins (no ADMIN/TEACHER role, but have FSPSSM) → filtering applies, scoped to their access.
-        if (user == null || hasRole(user, "ADMIN", "TEACHER") || !hasFacultyAssignedPermission(user)) {
-            return;
-        }
+        if (user == null) return;
 
         String instituteId = (filter.getInstituteIds() != null && !filter.getInstituteIds().isEmpty())
                 ? filter.getInstituteIds().get(0) : null;
+
+        // Skip faculty filtering for ADMIN/TEACHER — they should see all students.
+        // Sub-org admins (no ADMIN/TEACHER role, but have FSPSSM) → filtering applies.
+        if (hasRole(user, instituteId, "ADMIN", "TEACHER") || !hasFacultyAssignedPermission(user)) {
+            return;
+        }
+
         if (instituteId == null) {
             return;
         }
@@ -182,8 +189,9 @@ public class StudentListManager {
         }
     }
 
-    private boolean hasRole(CustomUserDetails user, String... roles) {
-        return user.getAuthorities().stream()
+    private boolean hasRole(CustomUserDetails user, String instituteId, String... roles) {
+        // Fast path: check storedAuthorities from JWT/auth-service
+        boolean fromAuthorities = user.getAuthorities().stream()
                 .map(auth -> auth.getAuthority())
                 .anyMatch(authority -> {
                     for (String role : roles) {
@@ -191,6 +199,13 @@ public class StudentListManager {
                     }
                     return false;
                 });
+        if (fromAuthorities) return true;
+
+        // DB fallback: storedAuthorities may be empty if clientId header mismatches UserRole.instituteId
+        if (user.getUserId() == null || instituteId == null) return false;
+        List<String> roleList = Arrays.stream(roles).map(String::toUpperCase).collect(Collectors.toList());
+        return userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
+                user.getUserId(), instituteId, roleList, List.of("ACTIVE")).isPresent();
     }
 
     private boolean hasFacultyAssignedPermission(CustomUserDetails user) {

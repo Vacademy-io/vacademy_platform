@@ -97,7 +97,7 @@ public class InboundEmailService {
                 return;
             }
 
-            // 5. Institute lookup — first matching active address wins (case-insensitive)
+            // 5. Institute lookup — best-effort, does not block saving
             String instituteId = null;
             for (String toAddr : toAddresses) {
                 Optional<EmailAddressMapping> mapping =
@@ -108,8 +108,7 @@ public class InboundEmailService {
                 }
             }
             if (instituteId == null) {
-                log.warn("No active email_address_mapping found for To={}, discarding inbound email", toAddresses);
-                return;
+                log.warn("No active email_address_mapping found for To={}, saving log without instituteId", toAddresses);
             }
 
             // 6. Reply linking via In-Reply-To → original outbound EMAIL log

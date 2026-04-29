@@ -87,7 +87,7 @@ public class InboundEmailService {
             // 3. Dedup: skip if we already stored this inbound email
             if (messageId != null && !notificationLogRepository
                     .findBySourceIdAndNotificationType(messageId, "INBOUND_EMAIL").isEmpty()) {
-                log.debug("Duplicate inbound email messageId={}, skipping", messageId);
+                log.info("Duplicate inbound email messageId={}, skipping", messageId);
                 return;
             }
 
@@ -97,18 +97,18 @@ public class InboundEmailService {
                 return;
             }
 
-            // 5. Institute lookup — first matching active address wins
+            // 5. Institute lookup — first matching active address wins (case-insensitive)
             String instituteId = null;
             for (String toAddr : toAddresses) {
                 Optional<EmailAddressMapping> mapping =
-                        emailAddressMappingRepository.findByEmailAddressAndIsActiveTrue(toAddr);
+                        emailAddressMappingRepository.findByEmailAddressIgnoreCaseAndIsActiveTrue(toAddr);
                 if (mapping.isPresent()) {
                     instituteId = mapping.get().getInstituteId();
                     break;
                 }
             }
             if (instituteId == null) {
-                log.debug("No email_address_mapping found for To={}, discarding inbound email", toAddresses);
+                log.warn("No active email_address_mapping found for To={}, discarding inbound email", toAddresses);
                 return;
             }
 

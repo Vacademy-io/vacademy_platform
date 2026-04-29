@@ -29,6 +29,7 @@ public class CommunicationTimelineService {
     private static final Map<String, String[]> TYPE_TO_CHANNEL_DIRECTION = Map.of(
             "EMAIL", new String[]{"EMAIL", "OUTBOUND"},
             "INBOUND_EMAIL", new String[]{"EMAIL", "INBOUND"},
+            "EMAIL_EVENT", new String[]{"EMAIL", "OUTBOUND"},
             "WHATSAPP_MESSAGE_OUTGOING", new String[]{"WHATSAPP", "OUTBOUND"},
             "WHATSAPP_MESSAGE_INCOMING", new String[]{"WHATSAPP", "INBOUND"},
             "WHATSAPP_OUTGOING", new String[]{"WHATSAPP", "OUTBOUND"}
@@ -160,7 +161,9 @@ public class CommunicationTimelineService {
                 .senderInfo(nl.getSenderBusinessChannelId());
 
         // Channel-specific mapping
-        if ("EMAIL".equals(channel)) {
+        if ("EMAIL_EVENT".equals(nl.getNotificationType())) {
+            mapEmailEventFields(builder, nl);
+        } else if ("EMAIL".equals(channel)) {
             mapEmailFields(builder, nl, latestEmailEvents, allEmailEvents);
         } else if ("WHATSAPP".equals(channel)) {
             mapWhatsAppFields(builder, nl);
@@ -253,6 +256,26 @@ public class CommunicationTimelineService {
                         .status("RECEIVED")
                         .timestamp(nl.getNotificationDate())
                         .details("Email received")
+                        .build()
+        ));
+    }
+
+    private void mapEmailEventFields(
+            UnifiedCommunicationDTO.UnifiedCommunicationDTOBuilder builder,
+            NotificationLog nl) {
+
+        String eventType = extractEmailEventType(nl.getBody());
+        String status = normalizeEmailStatus(eventType);
+
+        builder.title("Email Event: " + status);
+        builder.bodyPreview(truncate(nl.getBody(), 150));
+        builder.fullBody(nl.getBody());
+        builder.status(status);
+        builder.statusTimeline(List.of(
+                UnifiedCommunicationDTO.StatusEvent.builder()
+                        .status(status)
+                        .timestamp(nl.getNotificationDate())
+                        .details(nl.getBody())
                         .build()
         ));
     }

@@ -26,7 +26,6 @@ import vacademy.io.admin_core_service.features.subject.repository.SubjectReposit
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.common.auth.enums.Gender;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
@@ -34,7 +33,6 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 
 import vacademy.io.common.tracing.PerformanceTracer;
 
-import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -75,9 +73,6 @@ public class InstituteInitManager {
 
         @Autowired
         private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
-
-        @Autowired
-        private UserRoleRepository userRoleRepository;
 
         @Transactional
         public InstituteInfoDTO getInstituteDetails(String instituteId, boolean includeBatches) {
@@ -193,9 +188,9 @@ public class InstituteInitManager {
                                         () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
                                                         activeStatuses));
 
-                        // Skip faculty filtering for ADMIN/TEACHER — they see all package sessions.
-                        // Sub-org admins (no ADMIN/TEACHER role, have FSPSSM) → filtering applies.
-                        if (user != null && !hasRole(user, instId, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
+                        // Skip faculty filtering for users with ADMIN/TEACHER role — they should see all package sessions.
+                        // Sub-org admins (no ADMIN/TEACHER role, but have FSPSSM) → filtering applies, scoped to their access.
+                        if (user != null && !hasRole(user, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
                                 List<String> allowedAccessIds = facultyMappingRepository
                                                 .findAccessIdsByUserIdAndInstituteId(
                                                                 user.getUserId(), instId, List.of("ACTIVE"));
@@ -551,9 +546,8 @@ public class InstituteInitManager {
                                 .build();
         }
 
-        private boolean hasRole(CustomUserDetails user, String instituteId, String... roles) {
-                // Fast path: check storedAuthorities from auth-service
-                boolean fromAuthorities = user.getAuthorities().stream()
+        private boolean hasRole(CustomUserDetails user, String... roles) {
+                return user.getAuthorities().stream()
                                 .map(auth -> auth.getAuthority())
                                 .anyMatch(authority -> {
                                         for (String role : roles) {
@@ -561,13 +555,6 @@ public class InstituteInitManager {
                                         }
                                         return false;
                                 });
-                if (fromAuthorities) return true;
-
-                // DB fallback: storedAuthorities may be empty if clientId header mismatches UserRole.instituteId
-                if (user.getUserId() == null || instituteId == null) return false;
-                List<String> roleList = Arrays.stream(roles).map(String::toUpperCase).collect(Collectors.toList());
-                return userRoleRepository.findFirstByUserIdAndInstituteIdAndRoleNamesAndStatuses(
-                                user.getUserId(), instituteId, roleList, List.of("ACTIVE")).isPresent();
         }
 
         /**

@@ -44,6 +44,7 @@ import { Route as TagNamePageSlugRouteImport } from './routes/$tagName/$pageSlug
 import { Route as UserProfileEditIndexRouteImport } from './routes/user-profile/edit/index'
 import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-library/live-class/index'
 import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-library/courses/index'
+import { Route as ReportsAttendanceIndexRouteImport } from './routes/reports/attendance/index'
 import { Route as RegisterLiveClassIndexRouteImport } from './routes/register/live-class/index'
 import { Route as PlanningPlanningLogsIndexRouteImport } from './routes/planning/planning-logs/index'
 import { Route as PlanningActivityLogsIndexRouteImport } from './routes/planning/activity-logs/index'
@@ -267,6 +268,11 @@ const StudyLibraryCoursesIndexRoute =
     path: '/study-library/courses/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ReportsAttendanceIndexRoute = ReportsAttendanceIndexRouteImport.update({
+  id: '/reports/attendance/',
+  path: '/reports/attendance/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RegisterLiveClassIndexRoute = RegisterLiveClassIndexRouteImport.update({
   id: '/register/live-class/',
   path: '/register/live-class/',
@@ -578,6 +584,7 @@ export interface FileRoutesByFullPath {
   '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
+  '/reports/attendance': typeof ReportsAttendanceIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
   '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
   '/user-profile/edit': typeof UserProfileEditIndexRoute
@@ -658,6 +665,7 @@ export interface FileRoutesByTo {
   '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
+  '/reports/attendance': typeof ReportsAttendanceIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
   '/study-library/live-class': typeof StudyLibraryLiveClassIndexRoute
   '/user-profile/edit': typeof UserProfileEditIndexRoute
@@ -740,6 +748,7 @@ export interface FileRoutesById {
   '/planning/activity-logs/': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs/': typeof PlanningPlanningLogsIndexRoute
   '/register/live-class/': typeof RegisterLiveClassIndexRoute
+  '/reports/attendance/': typeof ReportsAttendanceIndexRoute
   '/study-library/courses/': typeof StudyLibraryCoursesIndexRoute
   '/study-library/live-class/': typeof StudyLibraryLiveClassIndexRoute
   '/user-profile/edit/': typeof UserProfileEditIndexRoute
@@ -823,6 +832,7 @@ export interface FileRouteTypes {
     | '/planning/activity-logs'
     | '/planning/planning-logs'
     | '/register/live-class'
+    | '/reports/attendance'
     | '/study-library/courses'
     | '/study-library/live-class'
     | '/user-profile/edit'
@@ -903,6 +913,7 @@ export interface FileRouteTypes {
     | '/planning/activity-logs'
     | '/planning/planning-logs'
     | '/register/live-class'
+    | '/reports/attendance'
     | '/study-library/courses'
     | '/study-library/live-class'
     | '/user-profile/edit'
@@ -984,6 +995,7 @@ export interface FileRouteTypes {
     | '/planning/activity-logs/'
     | '/planning/planning-logs/'
     | '/register/live-class/'
+    | '/reports/attendance/'
     | '/study-library/courses/'
     | '/study-library/live-class/'
     | '/user-profile/edit/'
@@ -1065,6 +1077,7 @@ export interface RootRouteChildren {
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningLogsIndexRoute: typeof PlanningPlanningLogsIndexRoute
   RegisterLiveClassIndexRoute: typeof RegisterLiveClassIndexRoute
+  ReportsAttendanceIndexRoute: typeof ReportsAttendanceIndexRoute
   StudyLibraryCoursesIndexRoute: typeof StudyLibraryCoursesIndexRoute
   StudyLibraryLiveClassIndexRoute: typeof StudyLibraryLiveClassIndexRoute
   UserProfileEditIndexRoute: typeof UserProfileEditIndexRoute
@@ -1333,6 +1346,13 @@ declare module '@tanstack/react-router' {
       path: '/study-library/courses'
       fullPath: '/study-library/courses'
       preLoaderRoute: typeof StudyLibraryCoursesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reports/attendance/': {
+      id: '/reports/attendance/'
+      path: '/reports/attendance'
+      fullPath: '/reports/attendance'
+      preLoaderRoute: typeof ReportsAttendanceIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/register/live-class/': {
@@ -1716,6 +1736,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningLogsIndexRoute: PlanningPlanningLogsIndexRoute,
   RegisterLiveClassIndexRoute: RegisterLiveClassIndexRoute,
+  ReportsAttendanceIndexRoute: ReportsAttendanceIndexRoute,
   StudyLibraryCoursesIndexRoute: StudyLibraryCoursesIndexRoute,
   StudyLibraryLiveClassIndexRoute: StudyLibraryLiveClassIndexRoute,
   UserProfileEditIndexRoute: UserProfileEditIndexRoute,

@@ -176,6 +176,15 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         String rawPhone = findValueCaseInsensitive(fields, "phone_number");
         String rawName = findValueCaseInsensitive(fields, "full_name");
 
+        // Normalize phone: Meta Graph API returns "+919876543210" — strip non-digits,
+        // prepend country code 91 for 10-digit Indian numbers.
+        if (rawPhone != null && !rawPhone.isBlank()) {
+            String cleaned = rawPhone.replaceAll("[^0-9]", "");
+            String normalizedPhone = cleaned.length() == 10 ? "91" + cleaned : cleaned;
+            rawPhone = normalizedPhone;
+            fields.replaceAll((k, v) -> k.equalsIgnoreCase("phone_number") ? normalizedPhone : v);
+        }
+
         // Apply field mapping from connector (transforms keys for audience custom fields)
         Map<String, String> mappedFields = applyFieldMapping(fields, connector.getFieldMappingJson());
 

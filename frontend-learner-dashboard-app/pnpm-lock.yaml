@@ -27,8 +27,8 @@ importers:
         specifier: ^7.0.0
         version: 7.0.1(@capacitor/core@7.4.2)
       '@capacitor/browser':
-        specifier: ^8.0.2
-        version: 8.0.2(@capacitor/core@7.4.2)
+        specifier: ^7.0.1
+        version: 7.0.5(@capacitor/core@7.4.2)
       '@capacitor/cli':
         specifier: ^7.0.1
         version: 7.4.2
@@ -810,10 +810,10 @@ packages:
     engines: {node: '>=10.3.0'}
     hasBin: true
 
-  '@capacitor/browser@8.0.2':
-    resolution: {integrity: sha512-oJEtVP5huwPJ8GgOCH3OewhsBPTW6aVtWg8hU6g65MxBdhkcAKyzYrhsyXupC5GaMxltqLf1JzKETMmGkh6tDw==}
+  '@capacitor/browser@7.0.5':
+    resolution: {integrity: sha512-YF/kC1m1e6c81X/agtAnYItVlqiQ/nXLG+Q3QXNDuiMoRynqa3Guu8ZaV9kWvqQcHoE2w18xz7WGpPOuh+R1fA==}
     peerDependencies:
-      '@capacitor/core': '>=8.0.0'
+      '@capacitor/core': '>=7.0.0'
 
   '@capacitor/cli@5.7.8':
     resolution: {integrity: sha512-qN8LDlREMhrYhOvVXahoJVNkP8LP55/YPRJrzTAFrMqlNJC18L3CzgWYIblFPnuwfbH/RxbfoZT/ydkwgVpMrw==}
@@ -8596,7 +8596,7 @@ snapshots:
       - supports-color
       - typescript
 
-  '@capacitor/browser@8.0.2(@capacitor/core@7.4.2)':
+  '@capacitor/browser@7.0.5(@capacitor/core@7.4.2)':
     dependencies:
       '@capacitor/core': 7.4.2
 

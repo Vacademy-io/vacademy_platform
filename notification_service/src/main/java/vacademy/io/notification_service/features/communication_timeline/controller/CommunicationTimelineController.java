@@ -62,4 +62,48 @@ public class CommunicationTimelineController {
             return ResponseEntity.internalServerError().build();
         }
     }
+
+    /**
+     * Get unified communication timeline queried by channel_id.
+     * EMAIL logs are matched by the user's email address; WhatsApp logs by phone number.
+     *
+     * GET /notification-service/v1/communications/by-channel?email=&phone=&page=0&size=20&channels=EMAIL,WHATSAPP
+     */
+    @GetMapping("/by-channel")
+    public ResponseEntity<Page<UnifiedCommunicationDTO>> getUserCommunicationsByChannel(
+            @RequestParam(required = false) String email,
+            @RequestParam(required = false) String phone,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) List<String> channels,
+            @RequestParam(required = false, defaultValue = "ALL") String direction,
+            @RequestParam(required = false) String fromDate,
+            @RequestParam(required = false) String toDate) {
+
+        try {
+            log.info("Fetching channel-based communication timeline: email={}, phone={}, page={}, size={}, channels={}",
+                    email, phone, page, size, channels);
+
+            CommunicationTimelineRequest request = CommunicationTimelineRequest.builder()
+                    .email(email)
+                    .phone(phone)
+                    .page(page)
+                    .size(size)
+                    .channels(channels)
+                    .direction(direction)
+                    .fromDate(fromDate != null ? LocalDateTime.parse(fromDate) : null)
+                    .toDate(toDate != null ? LocalDateTime.parse(toDate) : null)
+                    .build();
+
+            Page<UnifiedCommunicationDTO> response = communicationTimelineService.getUserCommunicationsByChannel(request);
+            return ResponseEntity.ok(response);
+
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid channel-based request: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            log.error("Error fetching channel-based communication timeline: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
 }

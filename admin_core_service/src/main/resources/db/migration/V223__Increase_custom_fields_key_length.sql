@@ -1,0 +1,1 @@
+ALTER TABLE custom_fields ALTER COLUMN field_key TYPE VARCHAR(1024);

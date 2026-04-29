@@ -441,6 +441,62 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("toDate") LocalDateTime toDate,
             Pageable pageable);
 
+    // ==================== CHANNEL-ID BASED COMMUNICATION TIMELINE ====================
+
+    /** Single channel: channelId (email or phone) + type set, paginated DESC. */
+    Page<NotificationLog> findByChannelIdAndNotificationTypeInOrderByNotificationDateDesc(
+            String channelId, List<String> notificationTypes, Pageable pageable);
+
+    /** Single channel with date range. */
+    @Query("""
+                SELECT nl FROM NotificationLog nl
+                WHERE nl.channelId = :channelId
+                AND nl.notificationType IN :types
+                AND (:fromDate IS NULL OR nl.notificationDate >= :fromDate)
+                AND (:toDate IS NULL OR nl.notificationDate <= :toDate)
+                ORDER BY nl.notificationDate DESC
+            """)
+    Page<NotificationLog> findByChannelIdAndTypesAndDateRange(
+            @Param("channelId") String channelId,
+            @Param("types") List<String> types,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            Pageable pageable);
+
+    /** Combined email + phone query — email matched to emailTypes, phone matched to phoneTypes. */
+    @Query("""
+                SELECT nl FROM NotificationLog nl
+                WHERE (nl.channelId = :email AND nl.notificationType IN :emailTypes)
+                   OR (nl.channelId = :phone AND nl.notificationType IN :phoneTypes)
+                ORDER BY nl.notificationDate DESC
+            """)
+    Page<NotificationLog> findByEmailAndPhoneChannels(
+            @Param("email") String email,
+            @Param("phone") String phone,
+            @Param("emailTypes") List<String> emailTypes,
+            @Param("phoneTypes") List<String> phoneTypes,
+            Pageable pageable);
+
+    /** Combined email + phone query with date range. */
+    @Query("""
+                SELECT nl FROM NotificationLog nl
+                WHERE (
+                    (nl.channelId = :email AND nl.notificationType IN :emailTypes)
+                    OR (nl.channelId = :phone AND nl.notificationType IN :phoneTypes)
+                )
+                AND (:fromDate IS NULL OR nl.notificationDate >= :fromDate)
+                AND (:toDate IS NULL OR nl.notificationDate <= :toDate)
+                ORDER BY nl.notificationDate DESC
+            """)
+    Page<NotificationLog> findByEmailAndPhoneChannelsAndDateRange(
+            @Param("email") String email,
+            @Param("phone") String phone,
+            @Param("emailTypes") List<String> emailTypes,
+            @Param("phoneTypes") List<String> phoneTypes,
+            @Param("fromDate") LocalDateTime fromDate,
+            @Param("toDate") LocalDateTime toDate,
+            Pageable pageable);
+
     // ==================== WHATSAPP INBOX METHODS ====================
 
     /**

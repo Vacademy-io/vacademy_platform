@@ -438,17 +438,12 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
         }
     };
 
-    // Thumbnail component that handles async URL fetching
     const CourseThumbnail: React.FC<{ course: DisplayCourse }> = ({ course }) => {
         const { getPublicUrl } = useFileUpload();
         const [imageUrl, setImageUrl] = useState<string>('');
         const [isLoading, setIsLoading] = useState(false);
 
-        // Priority: course preview image > banner > thumbnail (matches All Courses behavior)
-        const mediaId =
-            course.coursePreviewImageMediaId ||
-            course.courseBannerMediaId ||
-            course.thumbnailFileId;
+        const mediaId = course.coursePreviewImageMediaId;
 
         useEffect(() => {
             if (mediaId) {
@@ -571,7 +566,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
                                 className="animate-fade-in group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white p-0 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md"
                                 onClick={() => handleViewCourse(course)}
                             >
-                                {/* Course Banner Image */}
+                                {/* Course Preview Image */}
                                 <CourseThumbnail course={course} />
 
                                 <div className="flex flex-1 flex-col gap-1 p-3">

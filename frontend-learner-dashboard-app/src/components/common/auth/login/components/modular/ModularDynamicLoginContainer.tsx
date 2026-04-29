@@ -728,7 +728,7 @@ export function ModularDynamicLoginContainer({
             </motion.button>
           )}
         </motion.div>
-      )}
+      )} 
 
       {/* Spacing between OAuth and forms */}
       {(effectiveSettings.providers.emailOtp || effectiveSettings.providers.usernamePassword) && (

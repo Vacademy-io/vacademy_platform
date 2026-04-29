@@ -81,6 +81,7 @@ public class InstituteInitManager {
         @Autowired
         private JwtService jwtService;
 
+
         @Transactional
         public InstituteInfoDTO getInstituteDetails(String instituteId, boolean includeBatches) {
                 return buildInstituteInfoDTO(instituteId, true, includeBatches, null);
@@ -195,9 +196,9 @@ public class InstituteInitManager {
                                         () -> packageSessionRepository.findPackageSessionsByInstituteId(instId,
                                                         activeStatuses));
 
-                        // Skip faculty filtering for ADMIN/TEACHER — they see all package sessions.
-                        // Sub-org admins (no ADMIN/TEACHER role, have FSPSSM) → filtering applies.
-                        if (user != null && !hasRole(user, instId, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
+                        // Skip faculty filtering for users with ADMIN/TEACHER role — they should see all package sessions.
+                        // Sub-org admins (no ADMIN/TEACHER role, but have FSPSSM) → filtering applies, scoped to their access.
+                        if (user != null && !hasRole(user, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
                                 List<String> allowedAccessIds = facultyMappingRepository
                                                 .findAccessIdsByUserIdAndInstituteId(
                                                                 user.getUserId(), instId, List.of("ACTIVE"));

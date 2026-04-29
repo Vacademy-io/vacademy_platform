@@ -839,6 +839,10 @@ async def add_frame_external(
             exit_time=payload.exit_time,
             z=payload.z or 0,
             entry_id=payload.entry_id,
+            html_start_x=payload.html_start_x,
+            html_start_y=payload.html_start_y,
+            html_end_x=payload.html_end_x,
+            html_end_y=payload.html_end_y,
         )
         return result
     except ValueError as e:

@@ -1739,26 +1739,37 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
 
 
 def _load_timeline(json_path: Path) -> List[Dict[str, Any]]:
-    data = json.loads(json_path.read_text())
+    raw = json.loads(json_path.read_text())
     # Support both new format {"meta": {...}, "entries": [...]} and old flat list [...]
-    if isinstance(data, dict) and "entries" in data:
-        data = data["entries"]
+    if isinstance(raw, dict) and "entries" in raw:
+        _dims = raw.get("meta", {}).get("dimensions", {})
+        _default_w = int(_dims.get("width", 1920))
+        _default_h = int(_dims.get("height", 1080))
+        data = raw["entries"]
+    else:
+        _default_w = 1920
+        _default_h = 1080
+        data = raw
     if not isinstance(data, list):
         raise ValueError("JSON root must be a list of entries (or a dict with 'entries' key)")
     # normalize/validate
     timeline: List[Dict[str, Any]] = []
     for idx, item in enumerate(data):
-        for k in ("inTime", "exitTime", "htmlStartX", "htmlStartY", "htmlEndX", "htmlEndY", "html"):
+        for k in ("inTime", "exitTime", "html"):
             if k not in item:
                 raise ValueError(f"Timeline item {idx} missing key: {k}")
+        _x = int(item.get("htmlStartX", 0))
+        _y = int(item.get("htmlStartY", 0))
+        _ex = int(item.get("htmlEndX", _default_w))
+        _ey = int(item.get("htmlEndY", _default_h))
         entry = {
             "id": str(item.get("id") or f"snippet-{idx}"),
             "inTime": float(item["inTime"]),
             "exitTime": float(item["exitTime"]),
-            "x": int(item["htmlStartX"]),
-            "y": int(item["htmlStartY"]),
-            "w": int(item["htmlEndX"]) - int(item["htmlStartX"]),
-            "h": int(item["htmlEndY"]) - int(item["htmlStartY"]),
+            "x": _x,
+            "y": _y,
+            "w": _ex - _x,
+            "h": _ey - _y,
             "html": str(item["html"]),
         }
         if "z" in item:

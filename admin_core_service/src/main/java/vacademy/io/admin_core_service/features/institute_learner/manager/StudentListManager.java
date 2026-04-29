@@ -79,6 +79,7 @@ public class StudentListManager {
     @Autowired
     JwtService jwtService;
 
+
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
     @Value("${spring.application.name}")

@@ -14,7 +14,6 @@ import vacademy.io.common.auth.config.SharedConfigurationReference;
 @EnableAsync
 @EnableScheduling
 public class AdminCoreServiceApplication {
-
     public static void main(String[] args) {
         SpringApplication.run(AdminCoreServiceApplication.class, args);
     }

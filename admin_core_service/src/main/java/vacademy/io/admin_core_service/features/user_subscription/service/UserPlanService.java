@@ -78,6 +78,9 @@ public class UserPlanService {
     private AuthService authService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.auth_service.service.AsyncEnrollmentEmailService asyncEnrollmentEmailService;
+
+    @Autowired
     private StudentSessionRepository studentSessionRepository;
 
     @Autowired
@@ -436,6 +439,10 @@ public class UserPlanService {
                         userPlan.getId());
                 return;
             }
+
+            // Send credential email asynchronously to avoid blocking the payment webhook thread
+            String learndashBaseUrl = getLearndashBaseUrlFromPackageSessions(packageSessionIds);
+            asyncEnrollmentEmailService.sendCredentialEmailForPaidEnrollment(userDTO, instituteId, learndashBaseUrl);
 
             // Send dynamic enrollment notification
             dynamicNotificationService.sendDynamicNotification(
@@ -1324,6 +1331,29 @@ public class UserPlanService {
                 .nextPaymentAttemptDate(nextPayment)
                 .finalExpiryDate(finalExpiry)
                 .build();
+    }
+
+    private String getLearndashBaseUrlFromPackageSessions(List<String> packageSessionIds) {
+        if (packageSessionIds == null || packageSessionIds.isEmpty()) {
+            return null;
+        }
+        try {
+            List<PackageSession> sessions = packageSessionRepository.findPackageSessionsByIds(packageSessionIds);
+            for (PackageSession ps : sessions) {
+                if (ps.getPackageEntity() == null) continue;
+                String courseSetting = ps.getPackageEntity().getCourseSetting();
+                if (!StringUtils.hasText(courseSetting)) continue;
+                com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(courseSetting);
+                com.fasterxml.jackson.databind.JsonNode urlNode = root
+                        .path("setting").path("LMS_SETTING").path("data").path("data").path("learndash_base_url");
+                if (!urlNode.isMissingNode() && urlNode.isTextual() && StringUtils.hasText(urlNode.asText())) {
+                    return urlNode.asText();
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Could not extract learndash_base_url from package sessions: {}", e.getMessage());
+        }
+        return null;
     }
 
     public UserPlan save(UserPlan userPlan) {

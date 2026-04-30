@@ -399,25 +399,19 @@ export const YouTubePlayer: React.FC<YouTubePlayerProps> = ({ videoUrl }) => {
 
     // Update current time for tracking
     useEffect(() => {
-        let interval: NodeJS.Timeout | null = null;
-
-        if (playerRef.current) {
-            interval = setInterval(() => {
-                try {
-                    const player = playerRef.current;
-                    if (player && player.getPlayerState && player.getPlayerState() !== 2) {
-                        // not paused
-                        setCurrentTime(player.getCurrentTime());
-                    }
-                } catch (e) {
-                    console.error('Error getting player state:', e);
+        const interval = setInterval(() => {
+            try {
+                const player = playerRef.current;
+                if (player && player.getPlayerState && player.getPlayerState() !== 2) {
+                    // not paused
+                    setCurrentTime(player.getCurrentTime());
                 }
-            }, 1000);
-        }
+            } catch (e) {
+                console.error('Error getting player state:', e);
+            }
+        }, 1000);
 
-        return () => {
-            if (interval) clearInterval(interval);
-        };
+        return () => clearInterval(interval);
     }, []);
 
     // Update ref whenever state changes

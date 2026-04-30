@@ -40,11 +40,11 @@ const QuizQuestionDialogAddPreview = ({
     const { setActiveItem, getSlideById, updateActiveSlideQuestions } = useContentStore();
 
     useEffect(() => {
-        console.log(`[QuizDialog] 🧠 Dialog rendered | Preview mode =`, previewQuestionDialog);
+
     }, [previewQuestionDialog]);
 
     const handleClose = () => {
-        console.log('[QuizDialog] ❌ Closing dialog & resetting form');
+
         setCurrentQuestionIndex(0);
         quizQuestionForm.reset({
             questionPaperId: '1',
@@ -74,7 +74,7 @@ const QuizQuestionDialogAddPreview = ({
         }
 
         const slideId = await onCreate();
-        console.log(`[QuizDialog] 📥 Slide ID received:`, slideId);
+
 
         if (slideId) {
             const newSlide = getSlideById(slideId);
@@ -131,7 +131,7 @@ const QuizQuestionDialogAddPreview = ({
                             layoutVariant="default"
                             className="mr-3"
                             onClick={() => {
-                                console.log('[QuizDialog] 🔙 User clicked Close button');
+
                                 setPreviewQuestionDialog(false);
                             }}
                         >

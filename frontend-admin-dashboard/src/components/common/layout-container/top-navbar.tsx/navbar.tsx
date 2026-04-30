@@ -176,15 +176,18 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
             { queryKey: ['SYSTEM_ALERTS', userId] },
             (old) => markPagedItemsRead(old) ?? old
         );
-        queryClient.setQueriesData<{ pages: PagedResponse<SystemAlertItem>[]; pageParams: unknown[] }>(
-            { queryKey: ['SYSTEM_ALERTS_INFINITE', userId] },
-            (old) =>
-                old
-                    ? {
-                          ...old,
-                          pages: old.pages.map((p) => markPagedItemsRead(p) as PagedResponse<SystemAlertItem>),
-                      }
-                    : old
+        queryClient.setQueriesData<{
+            pages: PagedResponse<SystemAlertItem>[];
+            pageParams: unknown[];
+        }>({ queryKey: ['SYSTEM_ALERTS_INFINITE', userId] }, (old) =>
+            old
+                ? {
+                      ...old,
+                      pages: old.pages.map(
+                          (p) => markPagedItemsRead(p) as PagedResponse<SystemAlertItem>
+                      ),
+                  }
+                : old
         );
 
         await markSystemAlertsAsRead(unreadIds, userId);
@@ -307,7 +310,6 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
         learnerPortalUrl,
         instructorPortalUrl,
     ].some((link) => {
-        console.log(link);
         return !!link;
     });
 

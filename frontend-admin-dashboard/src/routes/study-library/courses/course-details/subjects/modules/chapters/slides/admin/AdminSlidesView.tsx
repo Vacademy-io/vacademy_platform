@@ -28,6 +28,7 @@ import { SidebarProvider } from '@/components/ui/sidebar';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useLearnerViewStore } from '../-stores/learner-view-store';
+import { useContentStore } from '../-stores/chapter-sidebar-store';
 import { Eye, UserGear } from '@phosphor-icons/react';
 
 const SlideMaterial = React.lazy(() =>
@@ -64,6 +65,13 @@ export function AdminSlidesView({
     const chapterName = useChapterName(chapterId);
     const { updateSlideOrder } = useSlidesMutations(chapterId);
     const { setNavHeading } = useNavHeadingStore();
+    const { resetChapterSidebarStore } = useContentStore();
+
+    useEffect(() => {
+        return () => {
+            resetChapterSidebarStore();
+        };
+    }, [resetChapterSidebarStore]);
 
     // useIntroJsTour({
     //     key: StudyLibraryIntroKey.addSlidesStep,
@@ -107,7 +115,7 @@ export function AdminSlidesView({
                     slideOrderPayload: slideOrderPayload,
                 });
             } catch (error) {
-                console.log('error updating slide order: ', error);
+                console.error('Error updating slide order: ', error);
             }
         },
         [chapterId, updateSlideOrder]
@@ -315,8 +323,8 @@ export function AdminSlidesView({
     }, [heading, setNavHeading]);
 
     const getCurrentEditorHTMLContentRef = useRef<() => string>(() => '');
-    const saveDraftRef = useRef(async (slide: Slide) => {
-        console.log('slide for saving draft: ', slide);
+    const saveDraftRef = useRef(async (_slide: Slide) => {
+        // Default stub — overridden by SlideMaterial via ref callback
     });
 
     return (

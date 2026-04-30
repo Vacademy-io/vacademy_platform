@@ -128,7 +128,6 @@ export function MultiLangCodeBlock({
                 }
 
                 const data = await res.json();
-                console.log('API Response:', data); // Debug log
 
                 let output = '';
                 if (data.run && data.run.stdout) {

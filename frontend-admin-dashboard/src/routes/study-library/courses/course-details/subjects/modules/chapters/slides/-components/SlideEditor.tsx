@@ -36,6 +36,8 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
 }) => {
     const excalidrawRef = useRef<ExcalidrawImperativeAPI | null>(null);
     const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const rescheduleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const isMountedRef = useRef(true);
     const [loadedData, setLoadedData] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -80,16 +82,21 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
         }
     }, [slideId, USER_ID, INSTITUTE_ID]);
 
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+
     // Load data from S3 using fileId
     useEffect(() => {
         const loadData = async () => {
-            console.log(`[SlideEditor ${slideId}] Loading data with fileId: ${fileId}`);
             setIsLoading(true);
             setError(null);
 
             try {
                 if (fileId) {
-                    console.log(`[SlideEditor ${slideId}] Loading from S3 fileId: ${fileId}`);
                     const publicUrl = await getPublicUrl(fileId);
                     const response = await fetch(publicUrl);
 
@@ -100,15 +107,13 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                     const excalidrawData = await response.json();
                     setLoadedData(excalidrawData);
                     setLastLoadedFileId(fileId);
-                    console.log(`[SlideEditor ${slideId}] S3 data loaded:`, excalidrawData);
                 } else {
-                    console.log(`[SlideEditor ${slideId}] No fileId provided, showing empty state`);
                     setLoadedData(null);
                     setLastLoadedFileId(undefined);
                 }
                 setHasLoadedInitialData(true);
             } catch (error) {
-                console.error(`[SlideEditor ${slideId}] Error loading slide data:`, error);
+                console.error(`[SlideEditor] Error loading slide data:`, error);
                 setError(error instanceof Error ? error.message : 'An unknown error occurred');
                 setHasLoadedInitialData(true); // Set this even on error to prevent retries
             } finally {
@@ -118,7 +123,6 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
 
         // Reset hasLoadedInitialData if fileId has changed significantly
         if (fileId !== lastLoadedFileId) {
-            console.log(`[SlideEditor ${slideId}] FileId changed from ${lastLoadedFileId} to ${fileId}, reloading...`);
             setHasLoadedInitialData(false);
             // Track the previous fileId to prevent emergency saves during normal operations
             lastFileIdRef.current = lastLoadedFileId;
@@ -134,6 +138,9 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
         (elements: readonly OrderedExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
             if (debounceTimeoutRef.current) {
                 clearTimeout(debounceTimeoutRef.current);
+            }
+            if (rescheduleTimeoutRef.current) {
+                clearTimeout(rescheduleTimeoutRef.current);
             }
 
             // Use longer delay if intensive operations are detected
@@ -162,9 +169,8 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                     ); // Files being loaded or recently created
 
                 if (isPerformingIntensiveOperation) {
-                    console.log(`[SlideEditor ${slideId}] Skipping auto-save - intensive operation in progress`);
                     // Reschedule the save for later
-                    setTimeout(() => {
+                    rescheduleTimeoutRef.current = setTimeout(() => {
                         saveToS3(elements, appState, files);
                     }, 2000); // Check again in 2 seconds
                     return;
@@ -180,24 +186,16 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                     lastModified: Date.now(),
                 };
 
-                console.log(`[SlideEditor ${slideId}] Auto-saving data:`, {
-                    elementsCount: elements.length,
-                    hasFiles: Object.keys(files).length > 0,
-                    excalidrawData: excalidrawData
-                });
-
                 try {
                     // Try to update existing file first, otherwise create new
                     const uploadedFileId = await uploadToS3(excalidrawData, fileId);
-                    if (uploadedFileId) {
-                        console.log(`[SlideEditor ${slideId}] Data saved to S3 with fileId:`, uploadedFileId);
-                        
+                    if (uploadedFileId && isMountedRef.current) {
                         // Always trigger onChange to update the database with the fileId
                         // The parent component will handle whether this causes a re-render
                         onChange?.(elements as any[], appState, files, uploadedFileId);
                     }
                 } catch (error) {
-                    console.error(`[SlideEditor ${slideId}] Error saving to S3:`, error);
+                    console.error(`[SlideEditor] Error saving to S3:`, error);
                 } finally {
                     setIsAutoSaving(false);
                 }
@@ -208,12 +206,6 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
 
     const handleChange = useCallback(
         (elements: readonly OrderedExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-            console.log(`[SlideEditor ${slideId}] Change detected:`, {
-                elementsCount: elements.length,
-                editable: editable,
-                hasFiles: Object.keys(files).length > 0
-            });
-            
             // Detect if Excalidraw is performing intensive operations
             const isPerformingIntensiveOperation = 
                 appState.isLoading || // General loading state
@@ -245,8 +237,12 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
         return () => {
             if (debounceTimeoutRef.current) {
                 clearTimeout(debounceTimeoutRef.current);
+            }
+            if (rescheduleTimeoutRef.current) {
+                clearTimeout(rescheduleTimeoutRef.current);
+            }
                 
-                // Only run emergency save if:
+            // Only run emergency save if:
                 // 1. Not already auto-saving
                 // 2. FileId hasn't recently changed (indicating normal operation)
                 // 3. This appears to be actual navigation, not a rebuild
@@ -260,10 +256,6 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                         const files = excalidrawRef.current.getFiles();
                         
                         if (elements.length > 0) {
-                            console.log(`[SlideEditor ${slideId}] Component unmounting, saving immediately:`, {
-                                elementsCount: elements.length
-                            });
-                            
                             const excalidrawData = {
                                 isExcalidraw: true,
                                 elements,
@@ -274,24 +266,16 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                             
                             // Immediate save without debounce
                             uploadToS3(excalidrawData, fileId).then((uploadedFileId) => {
-                                if (uploadedFileId) {
-                                    console.log(`[SlideEditor ${slideId}] Emergency save completed:`, uploadedFileId);
+                                if (uploadedFileId && isMountedRef.current) {
                                     onChange?.(elements as any[], appState, files, uploadedFileId);
                                 }
                             }).catch((error) => {
-                                console.error(`[SlideEditor ${slideId}] Emergency save failed:`, error);
+                                console.error(`[SlideEditor] Emergency save failed:`, error);
                             });
                         }
                     } catch (error) {
-                        console.error(`[SlideEditor ${slideId}] Error during emergency save:`, error);
+                        console.error(`[SlideEditor] Error during emergency save:`, error);
                     }
-                } else {
-                    console.log(`[SlideEditor ${slideId}] Skipping emergency save:`, {
-                        hasRef: !!excalidrawRef.current,
-                        editable,
-                        isAutoSaving,
-                        fileIdRecentlyChanged
-                    });
                 }
             }
         };
@@ -325,7 +309,6 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
             appState: defaultAppState,
         };
         
-        console.log(`[SlideEditor ${slideId}] Initial data prepared:`, finalData);
         return finalData;
     };
 
@@ -398,9 +381,7 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                     key={`excalidraw-${slideId}`}
                     excalidrawAPI={(api) => {
                         excalidrawRef.current = api;
-                        // Trigger onEditorReady immediately when API is available
                         if (onEditorReady) {
-                            console.log(`[SlideEditor ${slideId}] API callback triggered, calling onEditorReady`);
                             onEditorReady(getCurrentState);
                         }
                     }}
@@ -444,9 +425,7 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                 key={`excalidraw-${slideId}`}
                 excalidrawAPI={(api) => {
                     excalidrawRef.current = api;
-                    // Trigger onEditorReady immediately when API is available
                     if (onEditorReady) {
-                        console.log(`[SlideEditor ${slideId}] API callback triggered, calling onEditorReady`);
                         onEditorReady(getCurrentState);
                     }
                 }}

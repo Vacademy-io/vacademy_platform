@@ -156,18 +156,19 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ss.start_time AS startTime,
         ss.last_entry_time AS lastEntryTime,
         ss.daily_attendance AS dailyAttendance,
-        fbl.details AS feedbackDetails
+        fbl.details AS feedbackDetails,
+        lsp.source_id AS packageSessionId
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m
         ON m.package_session_id = lsp.source_id
-        AND lsp.source_type = 'BATCH' 
+        AND lsp.source_type = 'BATCH'
         AND m.status = 'ACTIVE'
     JOIN student s
         ON s.user_id = m.user_id
     JOIN session_schedules ss
         ON ss.session_id = lsp.session_id
     JOIN live_session ls
-        ON ls.id = lsp.session_id 
+        ON ls.id = lsp.session_id
     LEFT JOIN live_session_logs lsl
         ON lsl.user_source_id = s.user_id
         AND lsl.user_source_type = 'USER'
@@ -263,18 +264,19 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ss.start_time AS startTime,
         ss.last_entry_time AS lastEntryTime,
         ss.daily_attendance AS dailyAttendance,
-        fbl.details AS feedbackDetails
+        fbl.details AS feedbackDetails,
+        lsp.source_id AS packageSessionId
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m
         ON m.package_session_id = lsp.source_id
-        AND lsp.source_type = 'BATCH' 
+        AND lsp.source_type = 'BATCH'
         AND m.status = 'ACTIVE'
     JOIN student s
         ON s.user_id = m.user_id
     JOIN session_schedules ss
         ON ss.session_id = lsp.session_id
     JOIN live_session ls
-        ON ls.id = lsp.session_id 
+        ON ls.id = lsp.session_id
     LEFT JOIN live_session_logs lsl
         ON lsl.user_source_id = s.user_id
         AND lsl.user_source_type = 'USER'

@@ -487,11 +487,15 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ON sub_org.id = ssigm.sub_org_id
       WHERE (
           to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
-          OR s.full_name LIKE :name || '%'
-          OR s.username LIKE :name || '%'
-          OR ssigm.institute_enrollment_number LIKE :name || '%'
+          OR s.full_name ILIKE '%' || :name || '%'
+          OR s.username ILIKE '%' || :name || '%'
+          OR s.email ILIKE '%' || :name || '%'
+          OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
           OR s.user_id LIKE :name || '%'
-          OR s.mobile_number LIKE :name || '%'
+          OR (
+              :name ~ '[0-9]'
+              AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+          )
       )
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:statuses IS NULL OR ssigm.status IN (:statuses))
@@ -547,11 +551,15 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       ) last_pl ON last_pl.user_plan_id = up.id
       WHERE (
           to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
-          OR s.full_name LIKE :name || '%'
-          OR s.username LIKE :name || '%'
-          OR ssigm.institute_enrollment_number LIKE :name || '%'
+          OR s.full_name ILIKE '%' || :name || '%'
+          OR s.username ILIKE '%' || :name || '%'
+          OR s.email ILIKE '%' || :name || '%'
+          OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
           OR s.user_id LIKE :name || '%'
-          OR s.mobile_number LIKE :name || '%'
+          OR (
+              :name ~ '[0-9]'
+              AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+          )
       )
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:statuses IS NULL OR ssigm.status IN (:statuses))
@@ -1257,6 +1265,112 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("endDate") LocalDate endDate,
       Pageable pageable);
 
+  // ── Lightweight name-search variant: returns only user IDs, no aggregation JOINs ──
+
+  @Query(nativeQuery = true, value = """
+      SELECT user_id
+      FROM (
+          SELECT ssigm.user_id, MAX(ssigm.enrolled_date) AS last_enrolled
+          FROM student s
+          JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
+          WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+            AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+            AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
+            AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
+            AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+            AND (:#{#sources == null || #sources.isEmpty()} = true OR ssigm.source IN (:sources))
+            AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
+            AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
+            AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+            AND (
+              CAST(:startDate AS DATE) IS NULL OR CAST(:endDate AS DATE) IS NULL
+              OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
+            )
+            AND (
+              :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
+              OR (
+                ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
+                AND EXISTS (
+                  SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                  WHERE TRIM(role) IN (:subOrgUserTypes)
+                )
+              )
+            )
+            AND (
+              to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
+              OR s.full_name ILIKE '%' || :name || '%'
+              OR s.username ILIKE '%' || :name || '%'
+              OR s.email ILIKE '%' || :name || '%'
+              OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
+              OR s.user_id LIKE :name || '%'
+              OR (
+                  :name ~ '[0-9]'
+                  AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+              )
+            )
+          GROUP BY ssigm.user_id
+      ) t
+      ORDER BY last_enrolled DESC NULLS LAST
+      """,
+      countQuery = """
+      SELECT COUNT(DISTINCT ssigm.user_id)
+      FROM student s
+      JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
+      WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+        AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+        AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
+        AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
+        AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+        AND (:#{#sources == null || #sources.isEmpty()} = true OR ssigm.source IN (:sources))
+        AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
+        AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
+        AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+        AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+        AND (
+          CAST(:startDate AS DATE) IS NULL OR CAST(:endDate AS DATE) IS NULL
+          OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
+        )
+        AND (
+          :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
+          OR (
+            ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
+            AND EXISTS (
+              SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+              WHERE TRIM(role) IN (:subOrgUserTypes)
+            )
+          )
+        )
+        AND (
+          to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
+          OR s.full_name ILIKE '%' || :name || '%'
+          OR s.username ILIKE '%' || :name || '%'
+          OR s.email ILIKE '%' || :name || '%'
+          OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
+          OR s.user_id LIKE :name || '%'
+          OR (
+              :name ~ '[0-9]'
+              AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+          )
+        )
+      """)
+  Page<String> findPagedStudentIdsWithNameSearch(
+      @Param("name") String name,
+      @Param("statuses") List<String> statuses,
+      @Param("gender") List<String> gender,
+      @Param("instituteIds") List<String> instituteIds,
+      @Param("groupIds") List<String> groupIds,
+      @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("sources") List<String> sources,
+      @Param("types") List<String> types,
+      @Param("typeIds") List<String> typeIds,
+      @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
+      @Param("levelIds") List<String> levelIds,
+      @Param("subOrgUserTypes") List<String> subOrgUserTypes,
+      @Param("startDate") LocalDate startDate,
+      @Param("endDate") LocalDate endDate,
+      Pageable pageable);
+
   // ── Paginated combined user IDs (institute users UNION audience respondents) ──
 
   @Query(nativeQuery = true, value = """
@@ -1296,7 +1410,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               CAST(:nameSearch AS TEXT) IS NULL
               OR s.full_name ILIKE '%' || :nameSearch || '%'
               OR s.email ILIKE '%' || :nameSearch || '%'
-              OR s.mobile_number LIKE :nameSearch || '%'
+              OR (
+                  :nameSearch ~ '[0-9]'
+                  AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+              )
             )
           GROUP BY ssigm.user_id
 
@@ -1349,7 +1466,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
               CAST(:nameSearch AS TEXT) IS NULL
               OR s.full_name ILIKE '%' || :nameSearch || '%'
               OR s.email ILIKE '%' || :nameSearch || '%'
-              OR s.mobile_number LIKE :nameSearch || '%'
+              OR (
+                  :nameSearch ~ '[0-9]'
+                  AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+              )
             )
 
           UNION

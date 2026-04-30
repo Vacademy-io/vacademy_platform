@@ -108,17 +108,20 @@ public class AuthService {
 
         String userIdentifier = instituteSettingsService.getUserIdentifier(instituteId);
 
-        if ("PHONE".equalsIgnoreCase(userIdentifier) && StringUtils.hasText(registerRequest.getMobileNumber())) {
-            if (!registerRequest.getMobileNumber().isEmpty()) {
-                optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
-            }
+        // Bug 3 fix: when PHONE is the identifier, use phone as the sole lookup key —
+        // do NOT fall back to email/username, which would silently merge unrelated users.
+        boolean usePhoneAsIdentifier = "PHONE".equalsIgnoreCase(userIdentifier)
+                && StringUtils.hasText(registerRequest.getMobileNumber());
+
+        if (usePhoneAsIdentifier) {
+            optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
         }
 
-        if (optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {
+        if (!usePhoneAsIdentifier && optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {
             optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         }
 
-        if (optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
+        if (!usePhoneAsIdentifier && optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
             optionalUser = userRepository.findByUsername(registerRequest.getUsername());
         }
 
@@ -126,27 +129,27 @@ public class AuthService {
         User user;
         if (isAlreadyPresent) {
             user = optionalUser.get();
-            // Update email if the existing user doesn't have one but the request provides
-            // one
+            // Bug 2 fix: only fill in fields the existing user does not already have —
+            // never clobber existing profile data with new registration input.
             if (StringUtils.hasText(normalizedEmail) && !StringUtils.hasText(user.getEmail()))
                 user.setEmail(normalizedEmail);
-            if (StringUtils.hasText(registerRequest.getFullName()))
+            if (StringUtils.hasText(registerRequest.getFullName()) && !StringUtils.hasText(user.getFullName()))
                 user.setFullName(registerRequest.getFullName());
-            if (StringUtils.hasText(registerRequest.getAddressLine()))
+            if (StringUtils.hasText(registerRequest.getAddressLine()) && !StringUtils.hasText(user.getAddressLine()))
                 user.setAddressLine(registerRequest.getAddressLine());
-            if (StringUtils.hasText(registerRequest.getCity()))
+            if (StringUtils.hasText(registerRequest.getCity()) && !StringUtils.hasText(user.getCity()))
                 user.setCity(registerRequest.getCity());
-            if (StringUtils.hasText(registerRequest.getPinCode()))
+            if (StringUtils.hasText(registerRequest.getPinCode()) && !StringUtils.hasText(user.getPinCode()))
                 user.setPinCode(registerRequest.getPinCode());
-            if (StringUtils.hasText(registerRequest.getMobileNumber()))
+            if (StringUtils.hasText(registerRequest.getMobileNumber()) && !StringUtils.hasText(user.getMobileNumber()))
                 user.setMobileNumber(registerRequest.getMobileNumber());
-            if (registerRequest.getDateOfBirth() != null)
+            if (registerRequest.getDateOfBirth() != null && user.getDateOfBirth() == null)
                 user.setDateOfBirth(registerRequest.getDateOfBirth());
-            if (StringUtils.hasText(registerRequest.getGender()))
+            if (StringUtils.hasText(registerRequest.getGender()) && !StringUtils.hasText(user.getGender()))
                 user.setGender(registerRequest.getGender());
-            if (StringUtils.hasText(registerRequest.getProfilePicFileId()))
+            if (StringUtils.hasText(registerRequest.getProfilePicFileId()) && !StringUtils.hasText(user.getProfilePicFileId()))
                 user.setProfilePicFileId(registerRequest.getProfilePicFileId());
-            if (StringUtils.hasText(registerRequest.getLinkedParentId()))
+            if (StringUtils.hasText(registerRequest.getLinkedParentId()) && !StringUtils.hasText(user.getLinkedParentId()))
                 user.setLinkedParentId(registerRequest.getLinkedParentId());
             if (!user.isRootUser())
                 user.setRootUser(true);
@@ -178,6 +181,11 @@ public class AuthService {
         List<Role> allRoles = getAllUserRoles(registerRequest.getRoles());
         Set<UserRole> userRoleSet = new HashSet<>();
         for (Role role : allRoles) {
+            // Bug 4 fix: for existing users, skip roles that are already active to prevent
+            // duplicate user_role rows (orphanRemoval=false means old rows are never deleted).
+            if (isAlreadyPresent && userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(user.getId(), instituteId, role.getName())) {
+                continue;
+            }
             UserRole userRole = new UserRole();
             userRole.setRole(role);
             userRole.setStatus(UserRoleStatus.ACTIVE.name());
@@ -185,8 +193,13 @@ public class AuthService {
             userRole.setUser(user);
             userRoleSet.add(userRole);
         }
-        user.setRoles(userRoleSet);
-        user = userRepository.save(user);
+        if (isAlreadyPresent) {
+            // Save only the new roles directly; do not replace the existing collection.
+            userRoleRepository.saveAll(userRoleSet);
+        } else {
+            user.setRoles(userRoleSet);
+            user = userRepository.save(user);
+        }
         if (sendWelcomeMail) {
             if (isAlreadyPresent) {
                 sendKeepingCredentialsWelcomeMailToUser(user, instituteId, userRoleSet);
@@ -384,17 +397,20 @@ public class AuthService {
 
         String userIdentifier = instituteSettingsService.getUserIdentifier(instituteId);
 
-        if ("PHONE".equalsIgnoreCase(userIdentifier) && StringUtils.hasText(registerRequest.getMobileNumber())) {
-            if (!registerRequest.getMobileNumber().isEmpty()) {
-                optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
-            }
+        // Bug 3 fix: when PHONE is the identifier, use phone as the sole lookup key —
+        // do NOT fall back to email/username, which would silently merge unrelated users.
+        boolean usePhoneAsIdentifier = "PHONE".equalsIgnoreCase(userIdentifier)
+                && StringUtils.hasText(registerRequest.getMobileNumber());
+
+        if (usePhoneAsIdentifier) {
+            optionalUser = userRepository.findLatestUserByMobileNumber(registerRequest.getMobileNumber());
         }
 
-        if (optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {
+        if (!usePhoneAsIdentifier && optionalUser.isEmpty() && StringUtils.hasText(normalizedEmail)) {
             optionalUser = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail);
         }
 
-        if (optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
+        if (!usePhoneAsIdentifier && optionalUser.isEmpty() && StringUtils.hasText(registerRequest.getUsername())) {
             optionalUser = userRepository.findByUsername(registerRequest.getUsername());
         }
 
@@ -402,27 +418,27 @@ public class AuthService {
         User user;
         if (isAlreadyPresent) {
             user = optionalUser.get();
-            // Update email if the existing user doesn't have one but the request provides
-            // one
+            // Bug 2 fix: only fill in fields the existing user does not already have —
+            // never clobber existing profile data with new registration input.
             if (StringUtils.hasText(normalizedEmail) && !StringUtils.hasText(user.getEmail()))
                 user.setEmail(normalizedEmail);
-            if (StringUtils.hasText(registerRequest.getFullName()))
+            if (StringUtils.hasText(registerRequest.getFullName()) && !StringUtils.hasText(user.getFullName()))
                 user.setFullName(registerRequest.getFullName());
-            if (StringUtils.hasText(registerRequest.getAddressLine()))
+            if (StringUtils.hasText(registerRequest.getAddressLine()) && !StringUtils.hasText(user.getAddressLine()))
                 user.setAddressLine(registerRequest.getAddressLine());
-            if (StringUtils.hasText(registerRequest.getCity()))
+            if (StringUtils.hasText(registerRequest.getCity()) && !StringUtils.hasText(user.getCity()))
                 user.setCity(registerRequest.getCity());
-            if (StringUtils.hasText(registerRequest.getPinCode()))
+            if (StringUtils.hasText(registerRequest.getPinCode()) && !StringUtils.hasText(user.getPinCode()))
                 user.setPinCode(registerRequest.getPinCode());
-            if (StringUtils.hasText(registerRequest.getMobileNumber()))
+            if (StringUtils.hasText(registerRequest.getMobileNumber()) && !StringUtils.hasText(user.getMobileNumber()))
                 user.setMobileNumber(registerRequest.getMobileNumber());
-            if (registerRequest.getDateOfBirth() != null)
+            if (registerRequest.getDateOfBirth() != null && user.getDateOfBirth() == null)
                 user.setDateOfBirth(registerRequest.getDateOfBirth());
-            if (StringUtils.hasText(registerRequest.getGender()))
+            if (StringUtils.hasText(registerRequest.getGender()) && !StringUtils.hasText(user.getGender()))
                 user.setGender(registerRequest.getGender());
-            if (StringUtils.hasText(registerRequest.getProfilePicFileId()))
+            if (StringUtils.hasText(registerRequest.getProfilePicFileId()) && !StringUtils.hasText(user.getProfilePicFileId()))
                 user.setProfilePicFileId(registerRequest.getProfilePicFileId());
-            if (StringUtils.hasText(registerRequest.getLinkedParentId()))
+            if (StringUtils.hasText(registerRequest.getLinkedParentId()) && !StringUtils.hasText(user.getLinkedParentId()))
                 user.setLinkedParentId(registerRequest.getLinkedParentId());
             if (!user.isRootUser())
                 user.setRootUser(true);
@@ -454,6 +470,11 @@ public class AuthService {
         List<Role> allRoles = getAllUserRoles(registerRequest.getRoles());
         Set<UserRole> userRoleSet = new HashSet<>();
         for (Role role : allRoles) {
+            // Bug 4 fix: for existing users, skip roles that are already active to prevent
+            // duplicate user_role rows (orphanRemoval=false means old rows are never deleted).
+            if (isAlreadyPresent && userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(user.getId(), instituteId, role.getName())) {
+                continue;
+            }
             UserRole userRole = new UserRole();
             userRole.setRole(role);
             userRole.setStatus(UserRoleStatus.ACTIVE.name());
@@ -461,8 +482,13 @@ public class AuthService {
             userRole.setUser(user);
             userRoleSet.add(userRole);
         }
-        user.setRoles(userRoleSet);
-        user = userRepository.save(user);
+        if (isAlreadyPresent) {
+            // Save only the new roles directly; do not replace the existing collection.
+            userRoleRepository.saveAll(userRoleSet);
+        } else {
+            user.setRoles(userRoleSet);
+            user = userRepository.save(user);
+        }
         if (sendWelcomeMail) {
             if (isAlreadyPresent) {
                 sendLearnerEnrollmentExistingUserEmail(user, instituteId, userRoleSet, overrideLoginUrl);

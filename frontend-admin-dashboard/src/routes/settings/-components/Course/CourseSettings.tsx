@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle, Loader2, Settings } from 'lucide-react';
 import { saveCourseSettings } from '@/services/course-settings';
 import { CourseSettingsData } from '@/types/course-settings';
 import { useCourseSettings } from '@/hooks/useCourseSettings';
+import UserIdentifierSettings from '../UserIdentifierSettings';
 
 const CourseSettings = () => {
     const { settings, loading, error: contextError, refreshSettings } = useCourseSettings();
@@ -85,6 +86,8 @@ const CourseSettings = () => {
                     </AlertDescription>
                 </Alert>
             )}
+
+            <UserIdentifierSettings />
         </div>
     );
 };

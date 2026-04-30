@@ -29,6 +29,11 @@ export const useStudentFilters = () => {
         }))
     );
     const [currentSession, setCurrentSession] = useState<DropdownItemType>(() => {
+        const urlSessionId = searchParams.session as string | undefined;
+        if (urlSessionId) {
+            const urlSession = sessionList.find((s) => s.id === urlSessionId);
+            if (urlSession) return urlSession;
+        }
         const defaultSession = sessionList[0] || { id: '', name: '' };
         return selectedSession && sessionList.find((session) => session.id === selectedSession.id)
             ? { id: selectedSession.id, name: selectedSession.session_name }
@@ -73,8 +78,12 @@ export const useStudentFilters = () => {
     }, [instituteDetails]);
 
     const [appliedFilters, setAppliedFilters] = useState<StudentFilterRequest>(() => {
-        // Compute initial package session IDs at initialization time
-        const initialSessionId = selectedSession?.id || getAllSessions()[0]?.id || '';
+        // URL session param takes highest priority so refresh preserves the selected session
+        const initialSessionId =
+            (searchParams.session as string) ||
+            selectedSession?.id ||
+            getAllSessions()[0]?.id ||
+            '';
         const initialPksIds = (instituteDetails?.batches_for_sessions || [])
             .filter((batch) => batch.session.id === initialSessionId)
             .map((batch) => batch.id);
@@ -144,6 +153,15 @@ export const useStudentFilters = () => {
                 const sessionItem = { id: session.id, name: session.session_name };
                 setCurrentSession(sessionItem);
                 setSelectedSession(session);
+                // Sync package_session_ids with the URL session immediately so the
+                // first API call uses the correct session, not the default/store session.
+                const sessionPksIds = (instituteDetails?.batches_for_sessions || [])
+                    .filter((batch) => batch.session.id === session.id)
+                    .map((batch) => batch.id);
+                setAppliedFilters((prev) => ({
+                    ...prev,
+                    package_session_ids: sessionPksIds,
+                }));
             }
         } else if (currentSession?.id) {
             // Set session in URL if not present
@@ -318,9 +336,12 @@ export const useStudentFilters = () => {
             const rolesToApply = roleFilter?.value.map((option) => option.id) || [];
 
             const batchFilter = initialFilters.find((filter) => filter.id === 'batch');
+            // Use the URL session ID if present — currentSession state is stale here because
+            // setCurrentSession called above hasn't re-rendered yet.
+            const resolvedSessionId = (searchParams.session as string) || currentSession.id;
             let pksids = batchFilter?.value.map((option) => option.id) ||
                 (instituteDetails?.batches_for_sessions || [])
-                    .filter((batch) => batch.session.id === currentSession.id)
+                    .filter((batch) => batch.session.id === resolvedSessionId)
                     .map((batch) => batch.id);
 
             // Special handling for Invited/Pending statuses:

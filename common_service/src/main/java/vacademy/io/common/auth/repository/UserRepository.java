@@ -316,18 +316,21 @@ public interface UserRepository extends CrudRepository<User, String> {
       @Param("query") String query);
 
   /**
-   * Find the latest user by mobile number using flexible matching.
-   * Handles various formats: +917999742868, 7999742868, 917999742868
-   * Works with any country code.
+   * Find the latest user by mobile number using exact digit-normalized matching.
+   * Handles country code variants (+917999742868, 917999742868, 7999742868) by
+   * comparing normalized digits exactly, or matching on the last 10 digits when
+   * both numbers are at least 10 digits long.  The old bidirectional LIKE approach
+   * produced false positives (e.g. stored "868" matching input "9742868").
    */
   @Query(value = """
       SELECT u.* FROM users u
       WHERE u.mobile_number IS NOT NULL AND TRIM(u.mobile_number) != ''
       AND (
-          u.mobile_number LIKE CONCAT('%', :digitsOnly)
+          REGEXP_REPLACE(u.mobile_number, '[^0-9]', '', 'g') = :digitsOnly
           OR (
-              NULLIF(REGEXP_REPLACE(u.mobile_number, '[^0-9]', '', 'g'), '') IS NOT NULL
-              AND :digitsOnly LIKE CONCAT('%', REGEXP_REPLACE(u.mobile_number, '[^0-9]', '', 'g'))
+              LENGTH(:digitsOnly) >= 10
+              AND LENGTH(REGEXP_REPLACE(u.mobile_number, '[^0-9]', '', 'g')) >= 10
+              AND RIGHT(REGEXP_REPLACE(u.mobile_number, '[^0-9]', '', 'g'), 10) = RIGHT(:digitsOnly, 10)
           )
       )
       ORDER BY u.created_at DESC

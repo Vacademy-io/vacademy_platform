@@ -155,6 +155,7 @@ public class AttendanceReportService {
                 student.setDateOfBirth(record.getDateOfBirth());
                 student.setInstituteEnrollmentNumber(record.getInstituteEnrollmentNumber());
                 student.setEnrollmentStatus(record.getEnrollmentStatus());
+                student.setPackageSessionId(record.getPackageSessionId());
                 student.setSessions(new ArrayList<>());
                 return student;
             });
@@ -173,13 +174,13 @@ public class AttendanceReportService {
 
             groupedData.get(record.getStudentId()).getSessions().add(details);
         }
-        
+
         // Calculate attendance percentage for each student
         for (StudentAttendanceDTO student : groupedData.values()) {
             double attendancePercentage = calculateAttendancePercentage(student.getSessions());
             student.setAttendancePercentage(attendancePercentage);
         }
-        
+
         return new PageImpl<>(
                 new ArrayList<>(groupedData.values()),
                 pageable,

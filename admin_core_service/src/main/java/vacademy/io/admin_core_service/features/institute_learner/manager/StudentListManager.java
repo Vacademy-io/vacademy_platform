@@ -337,7 +337,8 @@ public class StudentListManager {
         boolean hasNameSearch = StringUtils.hasText(studentListFilter.getName());
         boolean hasPaymentStatusFilter = studentListFilter.getPaymentStatuses() != null && !studentListFilter.getPaymentStatuses().isEmpty();
 
-        if (hasCustomFieldFilters || hasEnrollInviteFilter || hasNameSearch || hasPaymentStatusFilter) {
+        // Complex filters (custom fields, payment status, invite filter) require full JOIN query
+        if (hasCustomFieldFilters || hasEnrollInviteFilter || hasPaymentStatusFilter) {
             Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
             Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
             List<StudentV2DTO> content = page != null ? mapProjectionsToDTOs(page.getContent()) : new ArrayList<>();
@@ -346,21 +347,41 @@ public class StudentListManager {
         }
 
         // Two-phase approach: 1) get IDs (no json_agg, no payment_log join), 2) enrich only this page's IDs
-        Page<String> idPage = instituteStudentRepository.findPagedStudentIdsForV2Filter(
-                studentListFilter.getStatuses(),
-                studentListFilter.getGender(),
-                studentListFilter.getInstituteIds(),
-                studentListFilter.getGroupIds(),
-                studentListFilter.getPackageSessionIds(),
-                studentListFilter.getSources(),
-                studentListFilter.getTypes(),
-                studentListFilter.getTypeIds(),
-                studentListFilter.getDestinationPackageSessionIds(),
-                studentListFilter.getLevelIds(),
-                studentListFilter.getSubOrgUserTypes(),
-                studentListFilter.getStartDate(),
-                studentListFilter.getEndDate(),
-                PageRequest.of(pageNo, pageSize));
+        Page<String> idPage;
+        if (hasNameSearch) {
+            idPage = instituteStudentRepository.findPagedStudentIdsWithNameSearch(
+                    studentListFilter.getName(),
+                    studentListFilter.getStatuses(),
+                    studentListFilter.getGender(),
+                    studentListFilter.getInstituteIds(),
+                    studentListFilter.getGroupIds(),
+                    studentListFilter.getPackageSessionIds(),
+                    studentListFilter.getSources(),
+                    studentListFilter.getTypes(),
+                    studentListFilter.getTypeIds(),
+                    studentListFilter.getDestinationPackageSessionIds(),
+                    studentListFilter.getLevelIds(),
+                    studentListFilter.getSubOrgUserTypes(),
+                    studentListFilter.getStartDate(),
+                    studentListFilter.getEndDate(),
+                    PageRequest.of(pageNo, pageSize));
+        } else {
+            idPage = instituteStudentRepository.findPagedStudentIdsForV2Filter(
+                    studentListFilter.getStatuses(),
+                    studentListFilter.getGender(),
+                    studentListFilter.getInstituteIds(),
+                    studentListFilter.getGroupIds(),
+                    studentListFilter.getPackageSessionIds(),
+                    studentListFilter.getSources(),
+                    studentListFilter.getTypes(),
+                    studentListFilter.getTypeIds(),
+                    studentListFilter.getDestinationPackageSessionIds(),
+                    studentListFilter.getLevelIds(),
+                    studentListFilter.getSubOrgUserTypes(),
+                    studentListFilter.getStartDate(),
+                    studentListFilter.getEndDate(),
+                    PageRequest.of(pageNo, pageSize));
+        }
 
         List<String> pagedUserIds = idPage.getContent();
         if (pagedUserIds.isEmpty()) {

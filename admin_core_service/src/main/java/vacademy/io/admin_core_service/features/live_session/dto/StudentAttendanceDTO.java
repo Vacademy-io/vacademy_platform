@@ -20,6 +20,6 @@ public class StudentAttendanceDTO {
     private String enrollmentStatus;
     private List<AttendanceDetailsDTO> sessions;
     private Double attendancePercentage;
-    // Getters & setters
+    private String packageSessionId;
 }
 

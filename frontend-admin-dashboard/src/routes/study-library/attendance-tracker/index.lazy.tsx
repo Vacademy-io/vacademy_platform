@@ -59,7 +59,8 @@ interface AttendanceStudent {
     id: string; // studentId
     name: string;
     username?: string;
-    batch: string; // batchSessionId or label
+    batch: string; // resolved batch name or "All Batches"
+    packageSessionId?: string;
     mobileNumber: string;
     email: string;
     attendedClasses: number;
@@ -217,6 +218,7 @@ function RouteComponent() {
 function AttendanceTrackerContent() {
     const [startDate, setStartDate] = useState<Date | undefined>(subDays(new Date(), 7));
     const [endDate, setEndDate] = useState<Date | undefined>(new Date());
+    const [searchInput, setSearchInput] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedLiveSessions, setSelectedLiveSessions] = useState<string[]>([]);
     const [attendanceFilter, setAttendanceFilter] = useState('All');
@@ -254,6 +256,22 @@ function AttendanceTrackerContent() {
         );
 
         return [{ label: 'All Batches', value: null }, ...extractedBatches];
+    }, [batches]);
+
+    // Map packageSessionId → { batchName, packageId } for fast lookup
+    const batchInfoMap = useMemo(() => {
+        const map = new Map<string, { batchName: string; packageId: string }>();
+        if (batches && Array.isArray(batches)) {
+            for (const batchData of batches as batchWithStudentDetails[]) {
+                for (const batch of batchData.batches) {
+                    map.set(batch.package_session_id, {
+                        batchName: `${batch.batch_name} (${batch.invite_code})`,
+                        packageId: batchData.package_dto.id,
+                    });
+                }
+            }
+        }
+        return map;
     }, [batches]);
 
     // Reset batch selection when session changes, and re-enable the one-shot auto-select below
@@ -318,6 +336,15 @@ function AttendanceTrackerContent() {
         setEndDate(dateRange.to);
     }, [dateRange]);
 
+    // Debounce search input so the API only fires after the user stops typing
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setSearchQuery(searchInput);
+            setPage(0);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [searchInput]);
+
     const filterRequest = useMemo(
         () => ({
             name: searchQuery,
@@ -372,11 +399,16 @@ function AttendanceTrackerContent() {
                         status: sess.attendanceStatus === 'PRESENT' ? 'Present' : sess.attendanceStatus === 'ABSENT' ? 'Absent' : 'Unmarked',
                     }));
 
+                    const batchInfo = student.packageSessionId
+                        ? batchInfoMap.get(student.packageSessionId)
+                        : null;
+
                     return {
                         id: student.studentId,
                         name: student.fullName,
                         username: student.instituteEnrollmentNumber || '',
-                        batch: selectedBatchLabel,
+                        batch: batchInfo?.batchName || selectedBatchLabel,
+                        packageSessionId: student.packageSessionId,
                         mobileNumber: student.mobileNumber,
                         email: student.email,
                         attendedClasses: attended,
@@ -389,7 +421,7 @@ function AttendanceTrackerContent() {
         });
 
         return allStudents;
-    }, [attendanceData, selectedBatchLabel]);
+    }, [attendanceData, selectedBatchLabel, batchInfoMap]);
 
     // Function to clear all filters
     const clearFilters = () => {
@@ -397,6 +429,7 @@ function AttendanceTrackerContent() {
         setEndDate(undefined);
         setDateRange({});
         setSearchQuery('');
+        setSearchInput('');
         setSelectedBatchId(null);
         setSelectedLiveSessions([]);
         setAttendanceFilter('All');
@@ -412,6 +445,11 @@ function AttendanceTrackerContent() {
     // Populates the shared StudentSidebar context with a minimal StudentTable —
     // sub-components (StudentOverview etc.) refetch full details by user_id.
     const handleViewDetailsClick = (student: AttendanceStudent) => {
+        const packageSessionId = student.packageSessionId || selectedBatchId || '';
+        const resolvedPackageId = packageSessionId
+            ? batchInfoMap.get(packageSessionId)?.packageId
+            : undefined;
+
         const minimalStudent: StudentTable = {
             id: student.id,
             user_id: student.id,
@@ -421,7 +459,8 @@ function AttendanceTrackerContent() {
             mobile_number: student.mobileNumber,
             institute_enrollment_id: student.username || '',
             institute_enrollment_number: student.username || '',
-            package_session_id: selectedBatchId || '',
+            package_session_id: packageSessionId,
+            package_id: resolvedPackageId,
             status: 'ACTIVE',
             face_file_id: null,
             address_line: '',
@@ -625,8 +664,8 @@ function AttendanceTrackerContent() {
                                     <Input
                                         type="text"
                                         placeholder="Search students..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        value={searchInput}
+                                        onChange={(e) => setSearchInput(e.target.value)}
                                         className="h-9 w-full rounded-md border border-neutral-300 bg-white py-2 pl-10 pr-3 text-sm text-neutral-900 placeholder:text-neutral-500 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                                     />
                                 </div>
@@ -639,7 +678,7 @@ function AttendanceTrackerContent() {
                                 />
                             </div>
 
-                            {(searchQuery ||
+                            {(searchInput ||
                                 startDate ||
                                 endDate ||
                                 selectedBatchId ||

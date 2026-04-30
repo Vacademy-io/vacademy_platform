@@ -36,11 +36,15 @@ import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentO
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.core.utils.DataToCsvConverter;
 import vacademy.io.common.exceptions.VacademyException;
 
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import jakarta.servlet.http.HttpServletRequest;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.util.*;
@@ -72,6 +76,10 @@ public class StudentListManager {
     @Autowired
     PackageSessionLearnerInvitationToPaymentOptionRepository pslipoRepository;
 
+    @Autowired
+    JwtService jwtService;
+
+
     @Value("${auth.server.baseurl}")
     private String authServerBaseUrl;
     @Value("${spring.application.name}")
@@ -88,14 +96,17 @@ public class StudentListManager {
         // Handle user-selected invite filter (works for ALL users, not just faculty)
         applyUserInviteFilter(filter);
 
-        // Skip faculty filtering for users with ADMIN/TEACHER role — they should see all students.
-        // Sub-org admins (no ADMIN/TEACHER role, but have FSPSSM) → filtering applies, scoped to their access.
-        if (user == null || hasRole(user, "ADMIN", "TEACHER") || !hasFacultyAssignedPermission(user)) {
-            return;
-        }
+        if (user == null) return;
 
         String instituteId = (filter.getInstituteIds() != null && !filter.getInstituteIds().isEmpty())
                 ? filter.getInstituteIds().get(0) : null;
+
+        // Skip faculty filtering for ADMIN/TEACHER — they should see all students.
+        // Sub-org admins (no ADMIN/TEACHER role, but have FSPSSM) → filtering applies.
+        if (hasRole(user, instituteId, "ADMIN", "TEACHER") || !hasFacultyAssignedPermission(user)) {
+            return;
+        }
+
         if (instituteId == null) {
             return;
         }
@@ -182,8 +193,9 @@ public class StudentListManager {
         }
     }
 
-    private boolean hasRole(CustomUserDetails user, String... roles) {
-        return user.getAuthorities().stream()
+    private boolean hasRole(CustomUserDetails user, String instituteId, String... roles) {
+        // Fast path: check storedAuthorities from auth-service
+        boolean fromAuthorities = user.getAuthorities().stream()
                 .map(auth -> auth.getAuthority())
                 .anyMatch(authority -> {
                     for (String role : roles) {
@@ -191,6 +203,37 @@ public class StudentListManager {
                     }
                     return false;
                 });
+        if (fromAuthorities) return true;
+
+        // JWT fallback: read roles directly from the token (no DB call needed)
+        // storedAuthorities can be empty when clientId header mismatches UserRole.instituteId in auth-service
+        if (instituteId == null) return false;
+        try {
+            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs == null) return false;
+            HttpServletRequest request = attrs.getRequest();
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader == null || !authHeader.startsWith("Bearer ")) return false;
+            String jwt = authHeader.substring(7);
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> authorities = jwtService.extractClaim(jwt,
+                    claims -> (Map<String, Object>) claims.get("authorities"));
+            if (authorities == null) return false;
+
+            @SuppressWarnings("unchecked")
+            Map<String, Object> instituteAuth = (Map<String, Object>) authorities.get(instituteId);
+            if (instituteAuth == null) return false;
+
+            @SuppressWarnings("unchecked")
+            List<String> jwtRoles = (List<String>) instituteAuth.get("roles");
+            if (jwtRoles == null) return false;
+
+            for (String role : roles) {
+                if (jwtRoles.stream().anyMatch(r -> role.equalsIgnoreCase(r))) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     private boolean hasFacultyAssignedPermission(CustomUserDetails user) {
@@ -287,18 +330,92 @@ public class StudentListManager {
 
     public ResponseEntity<AllStudentV2Response> getLinkedStudentsV2(CustomUserDetails user,
                                                                     StudentListFilter studentListFilter, int pageNo, int pageSize) {
-        // Apply faculty access filter (restricts PS and injects invite filter)
         applyFacultyAccessFilter(user, studentListFilter);
 
-        Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
-        Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
-        List<StudentV2DTO> content = page != null ? mapProjectionsToDTOs(page.getContent()) : new ArrayList<>();
+        boolean hasCustomFieldFilters = studentListFilter.getCustomFieldFilters() != null && !studentListFilter.getCustomFieldFilters().isEmpty();
+        boolean hasEnrollInviteFilter = studentListFilter.getServerEnrollInviteIds() != null && !studentListFilter.getServerEnrollInviteIds().isEmpty();
+        boolean hasNameSearch = StringUtils.hasText(studentListFilter.getName());
+        boolean hasPaymentStatusFilter = studentListFilter.getPaymentStatuses() != null && !studentListFilter.getPaymentStatuses().isEmpty();
 
-        if (!content.isEmpty()) {
-            enrichWithUserCredentials(content);
+        // Complex filters (custom fields, payment status, invite filter) require full JOIN query
+        if (hasCustomFieldFilters || hasEnrollInviteFilter || hasPaymentStatusFilter) {
+            Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
+            Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
+            List<StudentV2DTO> content = page != null ? mapProjectionsToDTOs(page.getContent()) : new ArrayList<>();
+            if (!content.isEmpty()) enrichWithUserCredentials(content);
+            return ResponseEntity.ok(buildResponse(content, page, pageSize, false));
         }
 
-        return ResponseEntity.ok(buildResponse(content, page, pageSize, false));
+        // Two-phase approach: 1) get IDs (no json_agg, no payment_log join), 2) enrich only this page's IDs
+        Page<String> idPage;
+        if (hasNameSearch) {
+            idPage = instituteStudentRepository.findPagedStudentIdsWithNameSearch(
+                    studentListFilter.getName(),
+                    studentListFilter.getStatuses(),
+                    studentListFilter.getGender(),
+                    studentListFilter.getInstituteIds(),
+                    studentListFilter.getGroupIds(),
+                    studentListFilter.getPackageSessionIds(),
+                    studentListFilter.getSources(),
+                    studentListFilter.getTypes(),
+                    studentListFilter.getTypeIds(),
+                    studentListFilter.getDestinationPackageSessionIds(),
+                    studentListFilter.getLevelIds(),
+                    studentListFilter.getSubOrgUserTypes(),
+                    studentListFilter.getStartDate(),
+                    studentListFilter.getEndDate(),
+                    PageRequest.of(pageNo, pageSize));
+        } else {
+            idPage = instituteStudentRepository.findPagedStudentIdsForV2Filter(
+                    studentListFilter.getStatuses(),
+                    studentListFilter.getGender(),
+                    studentListFilter.getInstituteIds(),
+                    studentListFilter.getGroupIds(),
+                    studentListFilter.getPackageSessionIds(),
+                    studentListFilter.getSources(),
+                    studentListFilter.getTypes(),
+                    studentListFilter.getTypeIds(),
+                    studentListFilter.getDestinationPackageSessionIds(),
+                    studentListFilter.getLevelIds(),
+                    studentListFilter.getSubOrgUserTypes(),
+                    studentListFilter.getStartDate(),
+                    studentListFilter.getEndDate(),
+                    PageRequest.of(pageNo, pageSize));
+        }
+
+        List<String> pagedUserIds = idPage.getContent();
+        if (pagedUserIds.isEmpty()) {
+            return ResponseEntity.ok(AllStudentV2Response.builder()
+                    .content(new ArrayList<>()).pageNo(pageNo).pageSize(pageSize)
+                    .totalElements(0L).totalPages(0).last(true).build());
+        }
+
+        List<StudentListV2Projection> projections = instituteStudentRepository.getStudentV2DataForUserIds(
+                pagedUserIds,
+                studentListFilter.getInstituteIds(),
+                List.of(StatusEnum.ACTIVE.name()));
+
+        Map<String, StudentListV2Projection> projMap = projections.stream()
+                .filter(p -> p.getUserId() != null)
+                .collect(Collectors.toMap(StudentListV2Projection::getUserId, p -> p, (a, b) -> a));
+        List<StudentListV2Projection> ordered = pagedUserIds.stream()
+                .map(projMap::get)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        List<StudentV2DTO> content = mapProjectionsToDTOs(ordered);
+        if (!content.isEmpty()) enrichWithUserCredentials(content);
+
+        long totalElements = idPage.getTotalElements();
+        int totalPages = (int) Math.ceil((double) totalElements / pageSize);
+        return ResponseEntity.ok(AllStudentV2Response.builder()
+                .content(content)
+                .pageNo(pageNo)
+                .pageSize(pageSize)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .last(pageNo >= totalPages - 1)
+                .build());
     }
 
     private Pageable createPageable(StudentListFilter filter, int pageNo, int pageSize) {

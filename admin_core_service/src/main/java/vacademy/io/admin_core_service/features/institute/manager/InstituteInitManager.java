@@ -7,6 +7,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
+import jakarta.servlet.http.HttpServletRequest;
 import vacademy.io.admin_core_service.features.institute.dto.PaginatedPackageSessionResponse;
 import vacademy.io.admin_core_service.features.institute.dto.BatchesSummaryResponse;
 import vacademy.io.admin_core_service.features.institute.dto.BatchLookupResponse;
@@ -26,6 +29,7 @@ import vacademy.io.admin_core_service.features.subject.repository.SubjectReposit
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.common.auth.enums.Gender;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.dto.*;
 import vacademy.io.common.institute.entity.Institute;
@@ -73,6 +77,10 @@ public class InstituteInitManager {
 
         @Autowired
         private FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
+
+        @Autowired
+        private JwtService jwtService;
+
 
         @Transactional
         public InstituteInfoDTO getInstituteDetails(String instituteId, boolean includeBatches) {
@@ -190,7 +198,7 @@ public class InstituteInitManager {
 
                         // Skip faculty filtering for users with ADMIN/TEACHER role — they should see all package sessions.
                         // Sub-org admins (no ADMIN/TEACHER role, but have FSPSSM) → filtering applies, scoped to their access.
-                        if (user != null && !hasRole(user, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
+                        if (user != null && !hasRole(user, instId, "ADMIN", "TEACHER") && hasFacultyAssignedPermission(user)) {
                                 List<String> allowedAccessIds = facultyMappingRepository
                                                 .findAccessIdsByUserIdAndInstituteId(
                                                                 user.getUserId(), instId, List.of("ACTIVE"));
@@ -546,8 +554,9 @@ public class InstituteInitManager {
                                 .build();
         }
 
-        private boolean hasRole(CustomUserDetails user, String... roles) {
-                return user.getAuthorities().stream()
+        private boolean hasRole(CustomUserDetails user, String instituteId, String... roles) {
+                // Fast path: check storedAuthorities from auth-service
+                boolean fromAuthorities = user.getAuthorities().stream()
                                 .map(auth -> auth.getAuthority())
                                 .anyMatch(authority -> {
                                         for (String role : roles) {
@@ -555,6 +564,36 @@ public class InstituteInitManager {
                                         }
                                         return false;
                                 });
+                if (fromAuthorities) return true;
+
+                // JWT fallback: read roles directly from the token (no DB call needed)
+                if (instituteId == null) return false;
+                try {
+                        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                        if (attrs == null) return false;
+                        HttpServletRequest request = attrs.getRequest();
+                        String authHeader = request.getHeader("Authorization");
+                        if (authHeader == null || !authHeader.startsWith("Bearer ")) return false;
+                        String jwt = authHeader.substring(7);
+
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> authorities = jwtService.extractClaim(jwt,
+                                        claims -> (Map<String, Object>) claims.get("authorities"));
+                        if (authorities == null) return false;
+
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> instituteAuth = (Map<String, Object>) authorities.get(instituteId);
+                        if (instituteAuth == null) return false;
+
+                        @SuppressWarnings("unchecked")
+                        List<String> jwtRoles = (List<String>) instituteAuth.get("roles");
+                        if (jwtRoles == null) return false;
+
+                        for (String role : roles) {
+                                if (jwtRoles.stream().anyMatch(r -> role.equalsIgnoreCase(r))) return true;
+                        }
+                } catch (Exception ignored) {}
+                return false;
         }
 
         /**

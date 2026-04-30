@@ -1,35 +1,33 @@
 package vacademy.io.admin_core_service.features.audience.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.audience.dto.UserLeadProfileDTO;
 import vacademy.io.admin_core_service.features.audience.dto.combined.*;
 import vacademy.io.admin_core_service.features.audience.enums.CustomFieldValueSourceType;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceRepository;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.dto.CustomFieldValueMap;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
+import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
+import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.common.auth.dto.UserDTO;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import vacademy.io.admin_core_service.features.audience.dto.UserLeadProfileDTO;
-import vacademy.io.admin_core_service.features.common.dto.CustomFieldValueMap;
-import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
-import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -64,140 +62,108 @@ public class DistinctUserAudienceService {
     @Autowired
     private UserLeadProfileService userLeadProfileService;
 
-    /**
-     * Get all users for an institute (from both institute users and audience respondents)
-     * with their custom fields
-     */
+    @Autowired
+    private ObjectMapper objectMapper;
+
     public CombinedUserAudienceResponseDTO getCombinedUsersWithCustomFields(CombinedUserAudienceRequestDTO request) {
         logger.info("Getting combined users for institute: {}", request.getInstituteId());
 
-        // Determine which sources to include (default: both if not specified)
         boolean includeInstituteUsers = request.getIncludeInstituteUsers() == null || request.getIncludeInstituteUsers();
         boolean includeAudienceRespondents = request.getIncludeAudienceRespondents() == null || request.getIncludeAudienceRespondents();
 
-        // Step 1: Get user IDs from institute users (if requested)
-        List<String> instituteUserIds = new ArrayList<>();
-        if (includeInstituteUsers) {
-            instituteUserIds = instituteStudentRepository.findDistinctUserIdsByInstituteId(request.getInstituteId());
-            logger.info("Found {} institute users", instituteUserIds.size());
-        } else {
-            logger.info("Skipping institute users (includeInstituteUsers = false)");
+        int page = request.getPage() != null ? request.getPage() : 0;
+        int size = request.getSize() != null ? request.getSize() : 20;
+
+        // ── Resolve audience IDs ──────────────────────────────────────────────
+        List<String> audienceIds = resolveAudienceIds(request, includeAudienceRespondents);
+
+        // ── Extract name search ───────────────────────────────────────────────
+        String nameSearch = (request.getUserFilter() != null
+                && StringUtils.hasText(request.getUserFilter().getNameSearch()))
+                ? request.getUserFilter().getNameSearch() : null;
+
+        if (!includeInstituteUsers && !includeAudienceRespondents) {
+            return emptyResponse(request, audienceIds);
         }
 
-        // Step 2: Get audience IDs based on filters
-        List<String> audienceIds = new ArrayList<>();
-        if (includeAudienceRespondents) {
-            CampaignFilterDTO campaignFilter = request.getCampaignFilter();
-            
-            if (campaignFilter != null && !CollectionUtils.isEmpty(campaignFilter.getAudienceIds())) {
-                // Use specific audience IDs if provided
-                audienceIds = campaignFilter.getAudienceIds();
-                logger.info("Using filtered audience IDs: {}", audienceIds.size());
-            } else {
-                // Apply campaign filters to get audience IDs
-                audienceIds = audienceRepository.findAudienceIdsWithFilters(
-                        request.getInstituteId(),
-                        campaignFilter != null ? campaignFilter.getCampaignName() : null,
-                        campaignFilter != null ? campaignFilter.getCampaignStatus() : null,
-                        campaignFilter != null ? campaignFilter.getCampaignType() : null,
-                        campaignFilter != null ? campaignFilter.getStartDateFromLocal() : null,
-                        campaignFilter != null && campaignFilter.getStartDateFromLocal() != null,
-                        campaignFilter != null ? campaignFilter.getStartDateToLocal() : null,
-                        campaignFilter != null && campaignFilter.getStartDateToLocal() != null
-                );
-                logger.info("Found {} audiences matching filters", audienceIds.size());
-            }
-        } else {
-            logger.info("Skipping audience respondents (includeAudienceRespondents = false)");
+        // ── Step 1: Paginated user IDs from DB ────────────────────────────────
+        // The UNION ALL query handles both institute users and audience respondents.
+        // When a source is excluded, pass an empty list so its part returns nothing.
+        List<String> effectiveAudienceIds = includeAudienceRespondents ? audienceIds : null;
+        List<String> effectiveStatuses = includeInstituteUsers ? request.getStatuses() : List.of("__EXCLUDE__");
+        List<String> effectivePackageSessionIds = includeInstituteUsers ? request.getPackageSessionIds() : List.of("__EXCLUDE__");
+
+        Page<String> userPage = instituteStudentRepository.findPagedCombinedUserIds(
+                request.getInstituteId(),
+                effectiveStatuses,
+                effectivePackageSessionIds,
+                includeInstituteUsers ? request.getPaymentStatuses() : null,
+                includeInstituteUsers ? request.getSubOrgUserTypes() : null,
+                nameSearch,
+                effectiveAudienceIds,
+                PageRequest.of(page, size));
+
+        List<String> pagedUserIds = userPage.getContent();
+        long totalCount = userPage.getTotalElements();
+
+        logger.info("DB returned {} user IDs for page {}, total {}", pagedUserIds.size(), page, totalCount);
+
+        if (pagedUserIds.isEmpty()) {
+            return emptyResponse(request, audienceIds);
         }
 
-        // Step 3: Get all user IDs from audience responses
-        List<String> audienceRespondentUserIds = new ArrayList<>();
-        if (includeAudienceRespondents && !CollectionUtils.isEmpty(audienceIds)) {
-            audienceRespondentUserIds = audienceResponseRepository.findDistinctUserIdsByAudienceIds(audienceIds);
-            logger.info("Found {} audience respondents", audienceRespondentUserIds.size());
-        }
-
-        // Step 4: Merge and deduplicate user IDs
-        Set<String> allUserIds = new LinkedHashSet<>();
-        Set<String> instituteUserIdSet = new HashSet<>(instituteUserIds);
-        Set<String> audienceRespondentUserIdSet = new HashSet<>(audienceRespondentUserIds);
-        
-        allUserIds.addAll(instituteUserIds);
-        allUserIds.addAll(audienceRespondentUserIds);
-        
-        logger.info("Total unique users after deduplication: {}", allUserIds.size());
-
-        if (allUserIds.isEmpty()) {
-            return CombinedUserAudienceResponseDTO.builder()
-                    .users(new ArrayList<>())
-                    .totalElements(0L)
-                    .totalPages(0)
-                    .currentPage(request.getPage() != null ? request.getPage() : 0)
-                    .pageSize(request.getSize() != null ? request.getSize() : 20)
-                    .isLast(true)
-                    .filteredAudienceIds(audienceIds)
-                    .build();
-        }
-
-        // Step 5: Fetch full user details from auth service
-        List<UserDTO> userDTOs = authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(allUserIds));
-        logger.info("Fetched {} user details from auth service", userDTOs.size());
-
-        // Create a map for quick lookup
+        // ── Step 2: Auth service call for ONLY these user IDs ────────────────
+        List<UserDTO> userDTOs = authService.getUsersFromAuthServiceByUserIds(pagedUserIds);
         Map<String, UserDTO> userIdToUserDTO = userDTOs.stream()
                 .filter(Objects::nonNull)
                 .collect(Collectors.toMap(UserDTO::getId, u -> u, (a, b) -> a));
 
-        // Step 6: Fetch all custom fields for these users
-        Map<String, List<CustomFieldDTO>> userIdToCustomFields = fetchCustomFieldsForUsers(
-                request.getInstituteId(),
-                new ArrayList<>(allUserIds)
-        );
+        // ── Step 3: V2 enrollment enrichment for ONLY these user IDs ─────────
+        List<StudentListV2Projection> v2List = instituteStudentRepository.getStudentV2DataForUserIds(
+                pagedUserIds,
+                List.of(request.getInstituteId()),
+                List.of(StatusEnum.ACTIVE.name()));
 
-        // Step 6.5: Fetch v2 enrichment data for institute users (same query as Linked Course Contacts)
-        // Also applies enrollment filters (status, batch, payment status, role)
+        // Per user: prefer ACTIVE enrollment, then first seen
         Map<String, StudentListV2Projection> v2DataByUserId = new HashMap<>();
-        boolean hasEnrollmentFilters = hasActiveEnrollmentFilters(request);
-        if (includeInstituteUsers && !instituteUserIds.isEmpty()) {
-            v2DataByUserId = fetchV2EnrichmentForInstituteUsers(request);
-        }
-
-        // If enrollment filters are active, restrict institute users to only those matching
-        if (hasEnrollmentFilters && !v2DataByUserId.isEmpty()) {
-            Set<String> matchedInstituteUserIds = v2DataByUserId.keySet();
-            allUserIds.retainAll(matchedInstituteUserIds);
-            allUserIds.addAll(audienceRespondentUserIds); // keep audience users unaffected
-            instituteUserIdSet.retainAll(matchedInstituteUserIds);
-            logger.info("After enrollment filters: {} users remain", allUserIds.size());
-        } else if (hasEnrollmentFilters && v2DataByUserId.isEmpty()) {
-            // Enrollment filters active but no matches — remove all institute users
-            allUserIds.removeAll(instituteUserIds);
-            allUserIds.addAll(audienceRespondentUserIds);
-            instituteUserIdSet.clear();
-            logger.info("Enrollment filters active but no matches, {} audience-only users remain", allUserIds.size());
-        }
-
-        // Step 6.6: Batch fetch lead profiles for all users
-        Map<String, UserLeadProfileDTO> leadProfilesByUserId = userLeadProfileService
-                .getProfilesForUsers(new ArrayList<>(allUserIds));
-        logger.info("Fetched lead profiles for {} users", leadProfilesByUserId.size());
-
-        // Step 7: Build response DTOs
-        List<UserWithCustomFieldsDTO> users = new ArrayList<>();
-        for (String userId : allUserIds) {
-            UserDTO userDTO = userIdToUserDTO.get(userId);
-            if (userDTO == null) {
-                continue; // Skip if user not found
+        for (StudentListV2Projection p : v2List) {
+            if (p.getUserId() == null) continue;
+            StudentListV2Projection existing = v2DataByUserId.get(p.getUserId());
+            if (existing == null) {
+                v2DataByUserId.put(p.getUserId(), p);
+            } else if ("ACTIVE".equalsIgnoreCase(p.getStatus()) && !"ACTIVE".equalsIgnoreCase(existing.getStatus())) {
+                v2DataByUserId.put(p.getUserId(), p);
             }
+        }
+
+        // ── Step 4: Custom fields for ONLY these user IDs ─────────────────────
+        Map<String, List<CustomFieldDTO>> userIdToCustomFields = fetchCustomFieldsForUsers(
+                request.getInstituteId(), pagedUserIds);
+
+        // ── Step 5: Lead profiles for ONLY these user IDs ─────────────────────
+        Map<String, UserLeadProfileDTO> leadProfilesByUserId = userLeadProfileService
+                .getProfilesForUsers(pagedUserIds);
+
+        // ── Step 6: Audience membership for these user IDs ────────────────────
+        Set<String> instituteUserIdSet = v2DataByUserId.keySet();
+        Set<String> audienceUserIdSet = new HashSet<>();
+        if (includeAudienceRespondents && !CollectionUtils.isEmpty(audienceIds)) {
+            audienceUserIdSet.addAll(
+                    audienceResponseRepository.findDistinctUserIdsByAudienceIdsAndUserIds(audienceIds, pagedUserIds));
+        }
+
+        // ── Step 7: Build DTOs in page order ─────────────────────────────────
+        List<UserWithCustomFieldsDTO> users = new ArrayList<>();
+        for (String userId : pagedUserIds) {
+            UserDTO userDTO = userIdToUserDTO.get(userId);
+            if (userDTO == null) continue;
 
             UserWithCustomFieldsDTO.UserWithCustomFieldsDTOBuilder builder = UserWithCustomFieldsDTO.builder()
                     .user(userDTO)
                     .isInstituteUser(instituteUserIdSet.contains(userId))
-                    .isAudienceRespondent(audienceRespondentUserIdSet.contains(userId))
+                    .isAudienceRespondent(audienceUserIdSet.contains(userId))
                     .customFields(userIdToCustomFields.getOrDefault(userId, new ArrayList<>()));
 
-            // Enrich with lead profile data
             UserLeadProfileDTO leadProfile = leadProfilesByUserId.get(userId);
             if (leadProfile != null) {
                 builder.leadScore(leadProfile.getBestScore())
@@ -207,55 +173,36 @@ public class DistinctUserAudienceService {
                        .assignedCounselorName(leadProfile.getAssignedCounselorName());
             }
 
-            // Enrich with v2 data for institute users
-            StudentListV2Projection v2Data = v2DataByUserId.get(userId);
-            if (v2Data != null) {
-                builder.status(v2Data.getStatus())
-                       .faceFileId(v2Data.getFaceFileId())
-                       .subOrgName(v2Data.getSubOrgName())
-                       .subOrgId(v2Data.getSubOrgId())
-                       .commaSeparatedOrgRoles(v2Data.getCommaSeparatedOrgRoles())
-                       .packageSessionId(v2Data.getPackageSessionId())
-                       .instituteEnrollmentNumber(v2Data.getInstituteEnrollmentNumber())
-                       .paymentStatus(v2Data.getPaymentStatus())
-                       .instituteId(v2Data.getInstituteId())
-                       .fathersName(v2Data.getFathersName())
-                       .mothersName(v2Data.getMothersName())
-                       .parentsMobileNumber(v2Data.getParentsMobileNumber())
-                       .parentsEmail(v2Data.getParentsEmail())
-                       .parentsToMotherMobileNumber(v2Data.getParentsToMotherMobileNumber())
-                       .parentsToMotherEmail(v2Data.getParentsToMotherEmail())
-                       .linkedInstituteName(v2Data.getLinkedInstituteName())
-                       .customFieldsMap(parseCustomFieldsJson(v2Data.getCustomFieldsJson()));
+            StudentListV2Projection v2 = v2DataByUserId.get(userId);
+            if (v2 != null) {
+                builder.status(v2.getStatus())
+                       .faceFileId(v2.getFaceFileId())
+                       .subOrgName(v2.getSubOrgName())
+                       .subOrgId(v2.getSubOrgId())
+                       .commaSeparatedOrgRoles(v2.getCommaSeparatedOrgRoles())
+                       .packageSessionId(v2.getPackageSessionId())
+                       .instituteEnrollmentNumber(v2.getInstituteEnrollmentNumber())
+                       .paymentStatus(v2.getPaymentStatus())
+                       .instituteId(v2.getInstituteId())
+                       .fathersName(v2.getFathersName())
+                       .mothersName(v2.getMothersName())
+                       .parentsMobileNumber(v2.getParentsMobileNumber())
+                       .parentsEmail(v2.getParentsEmail())
+                       .parentsToMotherMobileNumber(v2.getParentsToMotherMobileNumber())
+                       .parentsToMotherEmail(v2.getParentsToMotherEmail())
+                       .linkedInstituteName(v2.getLinkedInstituteName())
+                       .customFieldsMap(parseCustomFieldsJson(v2.getCustomFieldsJson()));
             }
 
             users.add(builder.build());
         }
 
-        // Step 8: Apply filters
-        users = applyFilters(users, request);
-
-        // Step 9: Sort
-        users = applySorting(users, request);
-
-        // Step 10: Apply pagination
-        int page = request.getPage() != null ? request.getPage() : 0;
-        int size = request.getSize() != null ? request.getSize() : 20;
-        
-        int totalElements = users.size();
-        int totalPages = (int) Math.ceil((double) totalElements / size);
-        int fromIndex = page * size;
-        int toIndex = Math.min(fromIndex + size, totalElements);
-        
-        List<UserWithCustomFieldsDTO> paginatedUsers = fromIndex < totalElements 
-                ? users.subList(fromIndex, toIndex) 
-                : new ArrayList<>();
-
-        logger.info("Returning {} users (page {} of {})", paginatedUsers.size(), page, totalPages);
+        int totalPages = (int) Math.ceil((double) totalCount / size);
+        logger.info("Returning {} users (page {} of {})", users.size(), page, totalPages);
 
         return CombinedUserAudienceResponseDTO.builder()
-                .users(paginatedUsers)
-                .totalElements((long) totalElements)
+                .users(users)
+                .totalElements(totalCount)
                 .totalPages(totalPages)
                 .currentPage(page)
                 .pageSize(size)
@@ -264,94 +211,84 @@ public class DistinctUserAudienceService {
                 .build();
     }
 
-    /**
-     * Fetch custom fields for all users based on institute custom field definitions
-     * Returns ALL institute custom fields for each user (with null values if not set)
-     */
-    private Map<String, List<CustomFieldDTO>> fetchCustomFieldsForUsers(String instituteId, List<String> userIds) {
-        if (CollectionUtils.isEmpty(userIds)) {
-            return new HashMap<>();
-        }
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
-        // Step 1: Fetch ALL active custom field definitions for the institute
+    private List<String> resolveAudienceIds(CombinedUserAudienceRequestDTO request, boolean includeAudienceRespondents) {
+        if (!includeAudienceRespondents) return new ArrayList<>();
+        CampaignFilterDTO campaignFilter = request.getCampaignFilter();
+        if (campaignFilter != null && !CollectionUtils.isEmpty(campaignFilter.getAudienceIds())) {
+            return campaignFilter.getAudienceIds();
+        }
+        return audienceRepository.findAudienceIdsWithFilters(
+                request.getInstituteId(),
+                campaignFilter != null ? campaignFilter.getCampaignName() : null,
+                campaignFilter != null ? campaignFilter.getCampaignStatus() : null,
+                campaignFilter != null ? campaignFilter.getCampaignType() : null,
+                campaignFilter != null ? campaignFilter.getStartDateFromLocal() : null,
+                campaignFilter != null && campaignFilter.getStartDateFromLocal() != null,
+                campaignFilter != null ? campaignFilter.getStartDateToLocal() : null,
+                campaignFilter != null && campaignFilter.getStartDateToLocal() != null);
+    }
+
+    private CombinedUserAudienceResponseDTO emptyResponse(CombinedUserAudienceRequestDTO request, List<String> audienceIds) {
+        return CombinedUserAudienceResponseDTO.builder()
+                .users(new ArrayList<>())
+                .totalElements(0L)
+                .totalPages(0)
+                .currentPage(request.getPage() != null ? request.getPage() : 0)
+                .pageSize(request.getSize() != null ? request.getSize() : 20)
+                .isLast(true)
+                .filteredAudienceIds(audienceIds)
+                .build();
+    }
+
+    private Map<String, List<CustomFieldDTO>> fetchCustomFieldsForUsers(String instituteId, List<String> userIds) {
+        if (CollectionUtils.isEmpty(userIds)) return new HashMap<>();
+
         List<Object[]> instituteCustomFieldsData = instituteCustomFieldRepository
                 .findAllActiveCustomFieldsWithDetailsByInstituteId(instituteId);
-        
-        logger.info("Found {} active custom field definitions for institute", instituteCustomFieldsData.size());
 
-        // Build a template list of all custom fields (ordered and deduplicated by custom_field_id)
         Map<String, CustomFieldDTO> uniqueCustomFieldsMap = new LinkedHashMap<>();
-        Map<String, CustomFields> customFieldIdToDefinition = new HashMap<>();
-        
         for (Object[] data : instituteCustomFieldsData) {
             InstituteCustomField icf = (InstituteCustomField) data[0];
             CustomFields cf = (CustomFields) data[1];
-            
-            // Store the custom field definition
-            customFieldIdToDefinition.put(cf.getId(), cf);
-            
-            // Only add if not already present (deduplication by custom_field_id)
             if (!uniqueCustomFieldsMap.containsKey(cf.getId())) {
-                CustomFieldDTO templateDTO = CustomFieldDTO.builder()
+                uniqueCustomFieldsMap.put(cf.getId(), CustomFieldDTO.builder()
                         .customFieldId(cf.getId())
                         .fieldKey(cf.getFieldKey())
                         .fieldName(cf.getFieldName())
                         .fieldType(cf.getFieldType())
                         .value(null)
-                        .build();
-                
-                uniqueCustomFieldsMap.put(cf.getId(), templateDTO);
+                        .build());
             }
         }
-        
-        // Convert to ordered list
         List<CustomFieldDTO> customFieldTemplate = new ArrayList<>(uniqueCustomFieldsMap.values());
-        logger.info("Built template with {} unique custom fields", customFieldTemplate.size());
 
-        // Step 2: Fetch actual custom field values for institute users (source_type = 'USER', source_id = user_id)
         List<CustomFieldValues> userCustomFieldValues = customFieldValuesRepository
                 .findBySourceTypeAndSourceIdIn("USER", userIds);
 
-        logger.info("Found {} custom field values for institute users", userCustomFieldValues.size());
-
-        // Step 3: Fetch custom fields for audience responses
         List<String> responseIds = audienceResponseRepository.findResponseIdsByUserIds(userIds);
-        logger.info("Found {} audience response IDs for users", responseIds.size());
-
         List<CustomFieldValues> audienceCustomFieldValues = new ArrayList<>();
         if (!CollectionUtils.isEmpty(responseIds)) {
             audienceCustomFieldValues = customFieldValuesRepository
                     .findBySourceTypeAndSourceIdIn("AUDIENCE_RESPONSE", responseIds);
-            logger.info("Found {} custom field values for audience responses", audienceCustomFieldValues.size());
         }
 
-        // Step 4: Create a map from response_id to user_id for audience responses
         Map<String, String> responseIdToUserId = new HashMap<>();
         if (!CollectionUtils.isEmpty(responseIds)) {
-            List<vacademy.io.admin_core_service.features.audience.entity.AudienceResponse> responses = 
-                    audienceResponseRepository.findAllById(responseIds);
-            responseIdToUserId = responses.stream()
-                    .filter(ar -> ar.getUserId() != null)
-                    .collect(Collectors.toMap(
-                            vacademy.io.admin_core_service.features.audience.entity.AudienceResponse::getId, 
-                            vacademy.io.admin_core_service.features.audience.entity.AudienceResponse::getUserId, 
-                            (a, b) -> a));
+            audienceResponseRepository.findAllById(responseIds).forEach(ar -> {
+                if (ar.getUserId() != null) responseIdToUserId.put(ar.getId(), ar.getUserId());
+            });
         }
 
-        // Step 5: Build a map of userId -> customFieldId -> value
         Map<String, Map<String, String>> userCustomFieldValueMap = new HashMap<>();
-        
-        // Process USER type custom field values
         for (CustomFieldValues cfv : userCustomFieldValues) {
             if (CustomFieldValueSourceType.USER.name().equals(cfv.getSourceType())) {
-                String userId = cfv.getSourceId();
                 userCustomFieldValueMap
-                        .computeIfAbsent(userId, k -> new HashMap<>())
+                        .computeIfAbsent(cfv.getSourceId(), k -> new HashMap<>())
                         .put(cfv.getCustomFieldId(), cfv.getValue());
             }
         }
-        
-        // Process AUDIENCE_RESPONSE type custom field values
         for (CustomFieldValues cfv : audienceCustomFieldValues) {
             if (CustomFieldValueSourceType.AUDIENCE_RESPONSE.name().equals(cfv.getSourceType())) {
                 String userId = responseIdToUserId.get(cfv.getSourceId());
@@ -363,217 +300,32 @@ public class DistinctUserAudienceService {
             }
         }
 
-        // Step 6: Build custom fields for each user using the template
-        Map<String, List<CustomFieldDTO>> userIdToCustomFields = new HashMap<>();
-        
+        Map<String, List<CustomFieldDTO>> result = new HashMap<>();
         for (String userId : userIds) {
-            List<CustomFieldDTO> userCustomFields = new ArrayList<>();
             Map<String, String> userValues = userCustomFieldValueMap.getOrDefault(userId, new HashMap<>());
-            
-            // For each custom field in template, create a DTO with actual value or null
-            for (CustomFieldDTO template : customFieldTemplate) {
-                String value = userValues.get(template.getCustomFieldId());
-                
-                CustomFieldDTO customFieldDTO = CustomFieldDTO.builder()
-                        .customFieldId(template.getCustomFieldId())
-                        .fieldKey(template.getFieldKey())
-                        .fieldName(template.getFieldName())
-                        .fieldType(template.getFieldType())
-                        .value(value) // Will be null if not set
-                        .build();
-                
-                userCustomFields.add(customFieldDTO);
-            }
-            
-            userIdToCustomFields.put(userId, userCustomFields);
+            List<CustomFieldDTO> fields = customFieldTemplate.stream()
+                    .map(t -> CustomFieldDTO.builder()
+                            .customFieldId(t.getCustomFieldId())
+                            .fieldKey(t.getFieldKey())
+                            .fieldName(t.getFieldName())
+                            .fieldType(t.getFieldType())
+                            .value(userValues.get(t.getCustomFieldId()))
+                            .build())
+                    .collect(Collectors.toList());
+            result.put(userId, fields);
         }
-
-        logger.info("Built custom fields for {} users with {} fields each", userIds.size(), customFieldTemplate.size());
-        return userIdToCustomFields;
+        return result;
     }
 
-    /**
-     * Check if enrollment-specific filters are active in the request.
-     */
-    private boolean hasActiveEnrollmentFilters(CombinedUserAudienceRequestDTO request) {
-        return !CollectionUtils.isEmpty(request.getStatuses())
-                || !CollectionUtils.isEmpty(request.getPackageSessionIds())
-                || !CollectionUtils.isEmpty(request.getPaymentStatuses())
-                || !CollectionUtils.isEmpty(request.getSubOrgUserTypes());
-    }
-
-    /**
-     * Fetch enrichment data from the v2 student query for institute users.
-     * Uses the same repository method as the Linked Course Contacts (v2) API.
-     * Passes enrollment filters (status, batch, payment status, role) to the query.
-     * Groups by userId and picks the best enrollment (prefers ACTIVE status).
-     */
-    private Map<String, StudentListV2Projection> fetchV2EnrichmentForInstituteUsers(CombinedUserAudienceRequestDTO request) {
-        // Extract gender from userFilter if present
-        List<String> genders = (request.getUserFilter() != null && !CollectionUtils.isEmpty(request.getUserFilter().getGenders()))
-                ? request.getUserFilter().getGenders() : null;
-
-        // Call the same v2 repo method used by StudentListManager/Linked Course Contacts
-        Pageable pageable = PageRequest.of(0, Integer.MAX_VALUE);
-        Page<StudentListV2Projection> v2Page = instituteStudentRepository.getAllStudentV2WithFilterRaw(
-                request.getStatuses(),                      // statuses
-                genders,                                     // gender
-                List.of(request.getInstituteId()),           // instituteIds
-                null,                                        // groupIds
-                request.getPackageSessionIds(),              // packageSessionIds
-                request.getPaymentStatuses(),                // paymentStatuses
-                List.of(StatusEnum.ACTIVE.name()),           // customFieldStatus
-                request.getSubOrgUserTypes(),                // subOrgUserTypes
-                null,                                        // startDate
-                null,                                        // endDate
-                pageable
-        );
-
-        if (v2Page == null || v2Page.isEmpty()) {
-            return new HashMap<>();
-        }
-
-        // Group by userId, prefer ACTIVE enrollment, then most recent
-        Map<String, StudentListV2Projection> bestPerUser = new HashMap<>();
-        for (StudentListV2Projection p : v2Page.getContent()) {
-            String userId = p.getUserId();
-            if (userId == null) continue;
-
-            StudentListV2Projection existing = bestPerUser.get(userId);
-            if (existing == null) {
-                bestPerUser.put(userId, p);
-            } else {
-                // Prefer ACTIVE status over others
-                boolean newIsActive = "ACTIVE".equalsIgnoreCase(p.getStatus());
-                boolean existingIsActive = "ACTIVE".equalsIgnoreCase(existing.getStatus());
-                if (newIsActive && !existingIsActive) {
-                    bestPerUser.put(userId, p);
-                }
-            }
-        }
-
-        logger.info("Fetched v2 enrichment data for {} institute users", bestPerUser.size());
-        return bestPerUser;
-    }
-
-    /**
-     * Parse custom fields JSON from v2 projection into a Map.
-     */
     private Map<String, String> parseCustomFieldsJson(String json) {
         if (json == null || json.equals("[]")) return new HashMap<>();
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            List<CustomFieldValueMap> list = mapper.readValue(json, new TypeReference<List<CustomFieldValueMap>>() {});
+            List<CustomFieldValueMap> list = objectMapper.readValue(json, new TypeReference<List<CustomFieldValueMap>>() {});
             Map<String, String> map = new HashMap<>();
-            for (CustomFieldValueMap cf : list) {
-                map.put(cf.getCustomFieldId(), cf.getValue());
-            }
+            for (CustomFieldValueMap cf : list) map.put(cf.getCustomFieldId(), cf.getValue());
             return map;
         } catch (JsonProcessingException e) {
             return new HashMap<>();
         }
-    }
-
-    /**
-     * Apply filters to the user list
-     */
-    private List<UserWithCustomFieldsDTO> applyFilters(List<UserWithCustomFieldsDTO> users, CombinedUserAudienceRequestDTO request) {
-        List<UserWithCustomFieldsDTO> filtered = users;
-
-        UserFilterDTO userFilter = request.getUserFilter();
-        if (userFilter == null) {
-            return filtered; // No filters to apply
-        }
-
-        // Name search
-        if (StringUtils.hasText(userFilter.getNameSearch())) {
-            String searchLower = userFilter.getNameSearch().toLowerCase();
-            filtered = filtered.stream()
-                    .filter(u -> u.getUser() != null && (
-                            (u.getUser().getFullName() != null && u.getUser().getFullName().toLowerCase().contains(searchLower)) ||
-                            (u.getUser().getUsername() != null && u.getUser().getUsername().toLowerCase().contains(searchLower)) ||
-                            (u.getUser().getEmail() != null && u.getUser().getEmail().toLowerCase().contains(searchLower))))
-                    .collect(Collectors.toList());
-        }
-
-        // Email filter
-        if (!CollectionUtils.isEmpty(userFilter.getEmails())) {
-            Set<String> emailSet = new HashSet<>(userFilter.getEmails());
-            filtered = filtered.stream()
-                    .filter(u -> u.getUser() != null && u.getUser().getEmail() != null && emailSet.contains(u.getUser().getEmail()))
-                    .collect(Collectors.toList());
-        }
-
-        // Mobile number filter
-        if (!CollectionUtils.isEmpty(userFilter.getMobileNumbers())) {
-            Set<String> mobileSet = new HashSet<>(userFilter.getMobileNumbers());
-            filtered = filtered.stream()
-                    .filter(u -> u.getUser() != null && u.getUser().getMobileNumber() != null && mobileSet.contains(u.getUser().getMobileNumber()))
-                    .collect(Collectors.toList());
-        }
-
-        // Region filter
-        if (!CollectionUtils.isEmpty(userFilter.getRegions())) {
-            Set<String> regionSet = new HashSet<>(userFilter.getRegions());
-            filtered = filtered.stream()
-                    .filter(u -> u.getUser() != null && u.getUser().getRegion() != null && regionSet.contains(u.getUser().getRegion()))
-                    .collect(Collectors.toList());
-        }
-
-        // Gender filter
-        if (!CollectionUtils.isEmpty(userFilter.getGenders())) {
-            Set<String> genderSet = new HashSet<>(userFilter.getGenders());
-            filtered = filtered.stream()
-                    .filter(u -> u.getUser() != null && u.getUser().getGender() != null && genderSet.contains(u.getUser().getGender()))
-                    .collect(Collectors.toList());
-        }
-
-        return filtered;
-    }
-
-    /**
-     * Apply sorting to the user list
-     */
-    private List<UserWithCustomFieldsDTO> applySorting(List<UserWithCustomFieldsDTO> users, CombinedUserAudienceRequestDTO request) {
-        String sortBy = request.getSortBy();
-        String sortDirection = request.getSortDirection();
-
-        if (!StringUtils.hasText(sortBy)) {
-            sortBy = "created_at";
-        }
-        if (!StringUtils.hasText(sortDirection)) {
-            sortDirection = "DESC";
-        }
-
-        boolean ascending = "ASC".equalsIgnoreCase(sortDirection);
-
-        Comparator<UserWithCustomFieldsDTO> comparator;
-        switch (sortBy.toLowerCase()) {
-            case "full_name":
-            case "name":
-                comparator = Comparator.comparing(u -> u.getUser() != null && u.getUser().getFullName() != null ? u.getUser().getFullName() : "", 
-                        String.CASE_INSENSITIVE_ORDER);
-                break;
-            case "email":
-                comparator = Comparator.comparing(u -> u.getUser() != null && u.getUser().getEmail() != null ? u.getUser().getEmail() : "", 
-                        String.CASE_INSENSITIVE_ORDER);
-                break;
-            case "mobile_number":
-                comparator = Comparator.comparing(u -> u.getUser() != null && u.getUser().getMobileNumber() != null ? u.getUser().getMobileNumber() : "");
-                break;
-            case "lead_score":
-                comparator = Comparator.comparing(u -> u.getLeadScore() != null ? u.getLeadScore() : 0);
-                break;
-            default:
-                // Since createdAt is not available in UserDTO, sort by userId as fallback
-                comparator = Comparator.comparing(u -> u.getUser() != null && u.getUser().getId() != null ? u.getUser().getId() : "");
-                break;
-        }
-
-        if (!ascending) {
-            comparator = comparator.reversed();
-        }
-
-        return users.stream().sorted(comparator).collect(Collectors.toList());
     }
 }

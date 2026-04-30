@@ -3,8 +3,10 @@ package vacademy.io.admin_core_service.features.slide.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.common.entity.RichTextData;
 import vacademy.io.admin_core_service.features.common.service.RichTextDataService;
 import vacademy.io.admin_core_service.features.slide.dto.AssignmentSlideDTO;
+import vacademy.io.admin_core_service.features.slide.dto.AssignmentSlideQuestionDTO;
 import vacademy.io.admin_core_service.features.slide.dto.SlideDTO;
 import vacademy.io.admin_core_service.features.slide.entity.AssignmentSlide;
 import vacademy.io.admin_core_service.features.slide.entity.AssignmentSlideQuestion;
@@ -18,6 +20,8 @@ import vacademy.io.common.exceptions.VacademyException;
 import java.sql.Date;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -119,16 +123,47 @@ public class AssignmentSlideService {
             assignmentSlide.setPassingMarks(dto.getPassingMarks());
         }
 
-        List<AssignmentSlideQuestion> existingQuestions = assignmentSlide.getAssignmentSlideQuestions();
-        existingQuestions.clear();
+        updateQuestionsInPlace(assignmentSlide, dto.getQuestions());
+    }
 
-        if (dto.getQuestions() != null && !dto.getQuestions().isEmpty()) {
-            for (var questionDTO : dto.getQuestions()) {
+    private void updateQuestionsInPlace(AssignmentSlide assignmentSlide, List<AssignmentSlideQuestionDTO> questionDTOs) {
+        List<AssignmentSlideQuestion> existingQuestions = assignmentSlide.getAssignmentSlideQuestions();
+
+        if (questionDTOs == null || questionDTOs.isEmpty()) {
+            existingQuestions.clear();
+            return;
+        }
+
+        Map<String, AssignmentSlideQuestion> existingById = existingQuestions.stream()
+                .filter(q -> q.getId() != null)
+                .collect(Collectors.toMap(AssignmentSlideQuestion::getId, q -> q));
+
+        Set<String> incomingIds = questionDTOs.stream()
+                .map(AssignmentSlideQuestionDTO::getId)
+                .filter(id -> id != null && !id.isEmpty())
+                .collect(Collectors.toSet());
+
+        existingQuestions.removeIf(q -> q.getId() == null || !incomingIds.contains(q.getId()));
+
+        for (AssignmentSlideQuestionDTO questionDTO : questionDTOs) {
+            String dtoId = questionDTO.getId();
+            if (dtoId != null && existingById.containsKey(dtoId)) {
+                AssignmentSlideQuestion existing = existingById.get(dtoId);
+                existing.setQuestionOrder(questionDTO.getQuestionOrder());
+                existing.setStatus(questionDTO.getStatus());
+                existing.setQuestionType(questionDTO.getQuestionType());
+                if (questionDTO.getTextData() != null) {
+                    if (existing.getTextData() != null) {
+                        existing.getTextData().setContent(questionDTO.getTextData().getContent());
+                        existing.getTextData().setType(questionDTO.getTextData().getType());
+                    } else {
+                        existing.setTextData(new RichTextData(questionDTO.getTextData()));
+                    }
+                }
+            } else {
                 existingQuestions.add(new AssignmentSlideQuestion(questionDTO, assignmentSlide));
             }
         }
-
-        assignmentSlideRepository.save(assignmentSlide);
     }
 
     /**

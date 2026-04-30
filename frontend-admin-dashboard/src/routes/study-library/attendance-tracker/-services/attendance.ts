@@ -42,6 +42,7 @@ export interface ContentType {
     studentId: string;
     instituteEnrollmentNumber: string;
     sessions: SessionType[];
+    packageSessionId?: string;
 }
 
 export interface AttendanceResponseType {

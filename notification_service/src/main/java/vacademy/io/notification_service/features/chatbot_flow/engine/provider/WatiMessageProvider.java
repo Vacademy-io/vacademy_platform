@@ -276,7 +276,8 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
                     // Some WATI endpoints use "result", others use "ok"
                     boolean hasResult = respJson.has("result");
                     boolean hasOk = respJson.has("ok");
-                    if (hasResult && !respJson.path("result").asBoolean(true)) {
+                    JsonNode resultNode = respJson.path("result");
+                    if (hasResult && resultNode.isBoolean() && !resultNode.booleanValue()) {
                         String info = respJson.path("info").asText("unknown error");
                         throw new RuntimeException("WATI API result=false: " + info);
                     }
@@ -318,7 +319,8 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
                     JsonNode respJson = objectMapper.readTree(response.getBody());
                     boolean hasResult = respJson.has("result");
                     boolean hasOk = respJson.has("ok");
-                    if (hasResult && !respJson.path("result").asBoolean(true)) {
+                    JsonNode resultNode = respJson.path("result");
+                    if (hasResult && resultNode.isBoolean() && !resultNode.booleanValue()) {
                         String info = respJson.path("info").asText("unknown error");
                         throw new RuntimeException("WATI API result=false: " + info);
                     }

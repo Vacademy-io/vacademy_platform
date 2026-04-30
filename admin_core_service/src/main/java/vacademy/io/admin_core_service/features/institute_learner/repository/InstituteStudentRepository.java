@@ -271,7 +271,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.comma_separated_org_roles AS "commaSeparatedOrgRoles",
           s.tnc_accepted AS "tncAccepted",
           s.tnc_file_id AS "tncFileId",
-          s.tnc_accepted_date AS "tncAcceptedDate"
+          s.tnc_accepted_date AS "tncAcceptedDate",
+          ssigm.source AS "source",
+          ssigm.type AS "type",
+          ssigm.type_id AS "typeId"
       FROM student s
       JOIN student_session_institute_group_mapping ssigm
           ON s.user_id = ssigm.user_id
@@ -286,13 +289,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           AND cfv.custom_field_id = cf.id
       LEFT JOIN user_plan up
           ON up.id = ssigm.user_plan_id
-      LEFT JOIN LATERAL (
-          SELECT pl.payment_status
+      LEFT JOIN (
+          SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
           FROM payment_log pl
-          WHERE pl.user_plan_id = up.id
-          ORDER BY pl.date DESC NULLS LAST
-          LIMIT 1
-      ) last_pl ON TRUE
+          WHERE pl.user_plan_id IN (
+              SELECT ssigm2.user_plan_id
+              FROM student_session_institute_group_mapping ssigm2
+              WHERE (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm2.institute_id IN (:instituteIds))
+                AND ssigm2.user_plan_id IS NOT NULL
+          )
+          ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+      ) last_pl ON last_pl.user_plan_id = up.id
       LEFT JOIN enroll_invite ei
           ON ei.id = up.enroll_invite_id
       LEFT JOIN institutes sub_org
@@ -332,7 +339,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.parents_to_mother_email, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
-               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
+               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date,
+               ssigm.source, ssigm.type, ssigm.type_id
       """, countQuery = """
       SELECT COUNT(DISTINCT s.id)
       FROM student s
@@ -340,13 +348,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ON s.user_id = ssigm.user_id
       LEFT JOIN user_plan up
           ON up.id = ssigm.user_plan_id
-      LEFT JOIN LATERAL (
-          SELECT pl.payment_status
+      LEFT JOIN (
+          SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
           FROM payment_log pl
-          WHERE pl.user_plan_id = up.id
-          ORDER BY pl.date DESC NULLS LAST
-          LIMIT 1
-      ) last_pl ON TRUE
+          WHERE pl.user_plan_id IN (
+              SELECT ssigm2.user_plan_id
+              FROM student_session_institute_group_mapping ssigm2
+              WHERE (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm2.institute_id IN (:instituteIds))
+                AND ssigm2.user_plan_id IS NOT NULL
+          )
+          ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+      ) last_pl ON last_pl.user_plan_id = up.id
       WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
         AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
         AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
@@ -440,7 +452,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.comma_separated_org_roles AS "commaSeparatedOrgRoles",
           s.tnc_accepted AS "tncAccepted",
           s.tnc_file_id AS "tncFileId",
-          s.tnc_accepted_date AS "tncAcceptedDate"
+          s.tnc_accepted_date AS "tncAcceptedDate",
+          ssigm.source AS "source",
+          ssigm.type AS "type",
+          ssigm.type_id AS "typeId"
       FROM student s
       JOIN student_session_institute_group_mapping ssigm
           ON s.user_id = ssigm.user_id
@@ -455,24 +470,32 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           AND cfv.custom_field_id = cf.id
       LEFT JOIN user_plan up
           ON up.id = ssigm.user_plan_id
-      LEFT JOIN LATERAL (
-          SELECT pl.payment_status
+      LEFT JOIN (
+          SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
           FROM payment_log pl
-          WHERE pl.user_plan_id = up.id
-          ORDER BY pl.date DESC NULLS LAST
-          LIMIT 1
-      ) last_pl ON TRUE
+          WHERE pl.user_plan_id IN (
+              SELECT ssigm2.user_plan_id
+              FROM student_session_institute_group_mapping ssigm2
+              WHERE (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm2.institute_id IN (:instituteIds))
+                AND ssigm2.user_plan_id IS NOT NULL
+          )
+          ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+      ) last_pl ON last_pl.user_plan_id = up.id
       LEFT JOIN enroll_invite ei
           ON ei.id = up.enroll_invite_id
       LEFT JOIN institutes sub_org
           ON sub_org.id = ssigm.sub_org_id
       WHERE (
           to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
-          OR s.full_name LIKE :name || '%'
-          OR s.username LIKE :name || '%'
-          OR ssigm.institute_enrollment_number LIKE :name || '%'
+          OR s.full_name ILIKE '%' || :name || '%'
+          OR s.username ILIKE '%' || :name || '%'
+          OR s.email ILIKE '%' || :name || '%'
+          OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
           OR s.user_id LIKE :name || '%'
-          OR s.mobile_number LIKE :name || '%'
+          OR (
+              :name ~ '[0-9]'
+              AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+          )
       )
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:statuses IS NULL OR ssigm.status IN (:statuses))
@@ -506,7 +529,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.parents_to_mother_email, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
-               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
+               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date,
+               ssigm.source, ssigm.type, ssigm.type_id
       """, countQuery = """
       SELECT COUNT(DISTINCT s.id)
       FROM student s
@@ -514,20 +538,28 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ON s.user_id = ssigm.user_id
       LEFT JOIN user_plan up
           ON up.id = ssigm.user_plan_id
-      LEFT JOIN LATERAL (
-          SELECT pl.payment_status
+      LEFT JOIN (
+          SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
           FROM payment_log pl
-          WHERE pl.user_plan_id = up.id
-          ORDER BY pl.date DESC NULLS LAST
-          LIMIT 1
-      ) last_pl ON TRUE
+          WHERE pl.user_plan_id IN (
+              SELECT ssigm2.user_plan_id
+              FROM student_session_institute_group_mapping ssigm2
+              WHERE (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm2.institute_id IN (:instituteIds))
+                AND ssigm2.user_plan_id IS NOT NULL
+          )
+          ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+      ) last_pl ON last_pl.user_plan_id = up.id
       WHERE (
           to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
-          OR s.full_name LIKE :name || '%'
-          OR s.username LIKE :name || '%'
-          OR ssigm.institute_enrollment_number LIKE :name || '%'
+          OR s.full_name ILIKE '%' || :name || '%'
+          OR s.username ILIKE '%' || :name || '%'
+          OR s.email ILIKE '%' || :name || '%'
+          OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
           OR s.user_id LIKE :name || '%'
-          OR s.mobile_number LIKE :name || '%'
+          OR (
+              :name ~ '[0-9]'
+              AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+          )
       )
         AND (:instituteIds IS NULL OR ssigm.institute_id IN (:instituteIds))
         AND (:statuses IS NULL OR ssigm.status IN (:statuses))
@@ -745,7 +777,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.comma_separated_org_roles AS "commaSeparatedOrgRoles",
           s.tnc_accepted AS "tncAccepted",
           s.tnc_file_id AS "tncFileId",
-          s.tnc_accepted_date AS "tncAcceptedDate"
+          s.tnc_accepted_date AS "tncAcceptedDate",
+          ssigm.source AS "source",
+          ssigm.type AS "type",
+          ssigm.type_id AS "typeId"
       FROM student s
       JOIN student_session_institute_group_mapping ssigm
           ON s.user_id = ssigm.user_id
@@ -762,13 +797,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           )
       LEFT JOIN user_plan up
           ON up.id = ssigm.user_plan_id
-      LEFT JOIN LATERAL (
-          SELECT pl.payment_status
+      LEFT JOIN (
+          SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
           FROM payment_log pl
-          WHERE pl.user_plan_id = up.id
-          ORDER BY pl.date DESC NULLS LAST
-          LIMIT 1
-      ) last_pl ON TRUE
+          WHERE pl.user_plan_id IN (
+              SELECT ssigm2.user_plan_id
+              FROM student_session_institute_group_mapping ssigm2
+              WHERE (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm2.institute_id IN (:instituteIds))
+                AND ssigm2.user_plan_id IS NOT NULL
+          )
+          ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+      ) last_pl ON last_pl.user_plan_id = up.id
       LEFT JOIN enroll_invite ei
           ON ei.id = up.enroll_invite_id
       LEFT JOIN institutes sub_org
@@ -813,7 +852,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.parents_to_mother_email, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name, ssigm.desired_level_id,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
-               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
+               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date,
+               ssigm.source, ssigm.type, ssigm.type_id
       """, countQuery = """
       SELECT COUNT(DISTINCT s.id)
       FROM student s
@@ -821,13 +861,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ON s.user_id = ssigm.user_id
       LEFT JOIN user_plan up
           ON up.id = ssigm.user_plan_id
-      LEFT JOIN LATERAL (
-          SELECT pl.payment_status
+      LEFT JOIN (
+          SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
           FROM payment_log pl
-          WHERE pl.user_plan_id = up.id
-          ORDER BY pl.date DESC NULLS LAST
-          LIMIT 1
-      ) last_pl ON TRUE
+          WHERE pl.user_plan_id IN (
+              SELECT ssigm2.user_plan_id
+              FROM student_session_institute_group_mapping ssigm2
+              WHERE (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm2.institute_id IN (:instituteIds))
+                AND ssigm2.user_plan_id IS NOT NULL
+          )
+          ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+      ) last_pl ON last_pl.user_plan_id = up.id
       WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
         AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
         AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
@@ -932,7 +976,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ssigm.comma_separated_org_roles AS "commaSeparatedOrgRoles",
           s.tnc_accepted AS "tncAccepted",
           s.tnc_file_id AS "tncFileId",
-          s.tnc_accepted_date AS "tncAcceptedDate"
+          s.tnc_accepted_date AS "tncAcceptedDate",
+          ssigm.source AS "source",
+          ssigm.type AS "type",
+          ssigm.type_id AS "typeId"
       FROM student s
       JOIN student_session_institute_group_mapping ssigm
           ON s.user_id = ssigm.user_id
@@ -949,13 +996,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           )
       LEFT JOIN user_plan up
           ON up.id = ssigm.user_plan_id
-      LEFT JOIN LATERAL (
-          SELECT pl.payment_status
+      LEFT JOIN (
+          SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
           FROM payment_log pl
-          WHERE pl.user_plan_id = up.id
-          ORDER BY pl.date DESC NULLS LAST
-          LIMIT 1
-      ) last_pl ON TRUE
+          WHERE pl.user_plan_id IN (
+              SELECT ssigm2.user_plan_id
+              FROM student_session_institute_group_mapping ssigm2
+              WHERE (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm2.institute_id IN (:instituteIds))
+                AND ssigm2.user_plan_id IS NOT NULL
+          )
+          ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+      ) last_pl ON last_pl.user_plan_id = up.id
       LEFT JOIN enroll_invite ei
           ON ei.id = up.enroll_invite_id
       LEFT JOIN institutes sub_org
@@ -1017,7 +1068,8 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                s.parents_to_mother_email, ssigm.institute_enrollment_number,
                ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json, up.payment_option_json, ssigm.destination_package_session_id, ssigm.user_plan_id, up.enroll_invite_id, ei.name, ssigm.desired_level_id,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
-               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
+               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date,
+               ssigm.source, ssigm.type, ssigm.type_id
       """, countQuery = """
       SELECT COUNT(DISTINCT s.id)
       FROM student s
@@ -1025,13 +1077,17 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           ON s.user_id = ssigm.user_id
       LEFT JOIN user_plan up
           ON up.id = ssigm.user_plan_id
-      LEFT JOIN LATERAL (
-          SELECT pl.payment_status
+      LEFT JOIN (
+          SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
           FROM payment_log pl
-          WHERE pl.user_plan_id = up.id
-          ORDER BY pl.date DESC NULLS LAST
-          LIMIT 1
-      ) last_pl ON TRUE
+          WHERE pl.user_plan_id IN (
+              SELECT ssigm2.user_plan_id
+              FROM student_session_institute_group_mapping ssigm2
+              WHERE (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm2.institute_id IN (:instituteIds))
+                AND ssigm2.user_plan_id IS NOT NULL
+          )
+          ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+      ) last_pl ON last_pl.user_plan_id = up.id
       WHERE (
           (s.full_name IS NOT NULL AND s.full_name != '' AND s.full_name ILIKE '%' || :name || '%')
           OR (s.username IS NOT NULL AND s.username != '' AND s.username ILIKE '%' || :name || '%')
@@ -1125,4 +1181,419 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
    * Find all student records for a specific user ID
    */
   List<Student> findByUserId(String userId);
+
+  // ── Lightweight paginated student user IDs (no payment_log/custom-field JOIN) ──
+  // Only used when paymentStatuses filter is NOT active. The join to payment_log was
+  // identified as the bottleneck (full scan per ssigm row when user_plan_id index is missing).
+
+  @Query(nativeQuery = true, value = """
+      SELECT user_id
+      FROM (
+          SELECT ssigm.user_id, MAX(ssigm.enrolled_date) AS last_enrolled
+          FROM student s
+          JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
+          WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+            AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+            AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
+            AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
+            AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+            AND (:#{#sources == null || #sources.isEmpty()} = true OR ssigm.source IN (:sources))
+            AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
+            AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
+            AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+            AND (
+              CAST(:startDate AS DATE) IS NULL OR CAST(:endDate AS DATE) IS NULL
+              OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
+            )
+            AND (
+              :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
+              OR (
+                ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
+                AND EXISTS (
+                  SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                  WHERE TRIM(role) IN (:subOrgUserTypes)
+                )
+              )
+            )
+          GROUP BY ssigm.user_id
+      ) t
+      ORDER BY last_enrolled DESC NULLS LAST
+      """,
+      countQuery = """
+      SELECT COUNT(DISTINCT ssigm.user_id)
+      FROM student s
+      JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
+      WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+        AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+        AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
+        AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
+        AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+        AND (:#{#sources == null || #sources.isEmpty()} = true OR ssigm.source IN (:sources))
+        AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
+        AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
+        AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+        AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+        AND (
+          CAST(:startDate AS DATE) IS NULL OR CAST(:endDate AS DATE) IS NULL
+          OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
+        )
+        AND (
+          :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
+          OR (
+            ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
+            AND EXISTS (
+              SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+              WHERE TRIM(role) IN (:subOrgUserTypes)
+            )
+          )
+        )
+      """)
+  Page<String> findPagedStudentIdsForV2Filter(
+      @Param("statuses") List<String> statuses,
+      @Param("gender") List<String> gender,
+      @Param("instituteIds") List<String> instituteIds,
+      @Param("groupIds") List<String> groupIds,
+      @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("sources") List<String> sources,
+      @Param("types") List<String> types,
+      @Param("typeIds") List<String> typeIds,
+      @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
+      @Param("levelIds") List<String> levelIds,
+      @Param("subOrgUserTypes") List<String> subOrgUserTypes,
+      @Param("startDate") LocalDate startDate,
+      @Param("endDate") LocalDate endDate,
+      Pageable pageable);
+
+  // ── Lightweight name-search variant: returns only user IDs, no aggregation JOINs ──
+
+  @Query(nativeQuery = true, value = """
+      SELECT user_id
+      FROM (
+          SELECT ssigm.user_id, MAX(ssigm.enrolled_date) AS last_enrolled
+          FROM student s
+          JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
+          WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+            AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+            AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
+            AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
+            AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+            AND (:#{#sources == null || #sources.isEmpty()} = true OR ssigm.source IN (:sources))
+            AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
+            AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
+            AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+            AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+            AND (
+              CAST(:startDate AS DATE) IS NULL OR CAST(:endDate AS DATE) IS NULL
+              OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
+            )
+            AND (
+              :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
+              OR (
+                ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
+                AND EXISTS (
+                  SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                  WHERE TRIM(role) IN (:subOrgUserTypes)
+                )
+              )
+            )
+            AND (
+              to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
+              OR s.full_name ILIKE '%' || :name || '%'
+              OR s.username ILIKE '%' || :name || '%'
+              OR s.email ILIKE '%' || :name || '%'
+              OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
+              OR s.user_id LIKE :name || '%'
+              OR (
+                  :name ~ '[0-9]'
+                  AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+              )
+            )
+          GROUP BY ssigm.user_id
+      ) t
+      ORDER BY last_enrolled DESC NULLS LAST
+      """,
+      countQuery = """
+      SELECT COUNT(DISTINCT ssigm.user_id)
+      FROM student s
+      JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
+      WHERE (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+        AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
+        AND (:#{#instituteIds == null || #instituteIds.isEmpty()} = true OR ssigm.institute_id IN (:instituteIds))
+        AND (:#{#groupIds == null || #groupIds.isEmpty()} = true OR ssigm.group_id IN (:groupIds))
+        AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+        AND (:#{#sources == null || #sources.isEmpty()} = true OR ssigm.source IN (:sources))
+        AND (:#{#types == null || #types.isEmpty()} = true OR ssigm.type IN (:types))
+        AND (:#{#typeIds == null || #typeIds.isEmpty()} = true OR ssigm.type_id IN (:typeIds))
+        AND (:#{#destinationPackageSessionIds == null || #destinationPackageSessionIds.isEmpty()} = true OR ssigm.destination_package_session_id IN (:destinationPackageSessionIds))
+        AND (:#{#levelIds == null || #levelIds.isEmpty()} = true OR ssigm.desired_level_id IN (:levelIds))
+        AND (
+          CAST(:startDate AS DATE) IS NULL OR CAST(:endDate AS DATE) IS NULL
+          OR (ssigm.enrolled_date >= CAST(:startDate AS DATE) AND ssigm.enrolled_date <= CAST(:endDate AS DATE))
+        )
+        AND (
+          :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
+          OR (
+            ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
+            AND EXISTS (
+              SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+              WHERE TRIM(role) IN (:subOrgUserTypes)
+            )
+          )
+        )
+        AND (
+          to_tsvector('simple', concat(s.full_name, ' ', s.username)) @@ plainto_tsquery('simple', :name)
+          OR s.full_name ILIKE '%' || :name || '%'
+          OR s.username ILIKE '%' || :name || '%'
+          OR s.email ILIKE '%' || :name || '%'
+          OR ssigm.institute_enrollment_number ILIKE '%' || :name || '%'
+          OR s.user_id LIKE :name || '%'
+          OR (
+              :name ~ '[0-9]'
+              AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:name, '[^0-9]', '', 'g') || '%'
+          )
+        )
+      """)
+  Page<String> findPagedStudentIdsWithNameSearch(
+      @Param("name") String name,
+      @Param("statuses") List<String> statuses,
+      @Param("gender") List<String> gender,
+      @Param("instituteIds") List<String> instituteIds,
+      @Param("groupIds") List<String> groupIds,
+      @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("sources") List<String> sources,
+      @Param("types") List<String> types,
+      @Param("typeIds") List<String> typeIds,
+      @Param("destinationPackageSessionIds") List<String> destinationPackageSessionIds,
+      @Param("levelIds") List<String> levelIds,
+      @Param("subOrgUserTypes") List<String> subOrgUserTypes,
+      @Param("startDate") LocalDate startDate,
+      @Param("endDate") LocalDate endDate,
+      Pageable pageable);
+
+  // ── Paginated combined user IDs (institute users UNION audience respondents) ──
+
+  @Query(nativeQuery = true, value = """
+      SELECT user_id
+      FROM (
+          SELECT ssigm.user_id, MIN(ssigm.created_at) AS sort_date
+          FROM student_session_institute_group_mapping ssigm
+          JOIN student s ON s.user_id = ssigm.user_id
+          LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+          LEFT JOIN (
+              SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
+              FROM payment_log pl
+              WHERE pl.user_plan_id IN (
+                  SELECT ssigm2.user_plan_id
+                  FROM student_session_institute_group_mapping ssigm2
+                  WHERE ssigm2.institute_id = :instituteId
+                    AND ssigm2.user_plan_id IS NOT NULL
+              )
+              ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+          ) last_pl ON last_pl.user_plan_id = up.id
+          WHERE ssigm.institute_id = :instituteId
+            AND (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+            AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+            AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
+            AND (
+              :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
+              OR (
+                ssigm.comma_separated_org_roles IS NOT NULL
+                AND ssigm.comma_separated_org_roles != ''
+                AND EXISTS (
+                  SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                  WHERE TRIM(role) IN (:subOrgUserTypes)
+                )
+              )
+            )
+            AND (
+              CAST(:nameSearch AS TEXT) IS NULL
+              OR s.full_name ILIKE '%' || :nameSearch || '%'
+              OR s.email ILIKE '%' || :nameSearch || '%'
+              OR (
+                  :nameSearch ~ '[0-9]'
+                  AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+              )
+            )
+          GROUP BY ssigm.user_id
+
+          UNION ALL
+
+          SELECT ar.user_id, MIN(ar.created_at) AS sort_date
+          FROM audience_response ar
+          JOIN audience a ON a.id = ar.audience_id
+          WHERE a.institute_id = :instituteId
+            AND ar.user_id IS NOT NULL
+            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
+          GROUP BY ar.user_id
+      ) all_sources
+      GROUP BY user_id
+      ORDER BY MIN(sort_date) DESC NULLS LAST
+      """,
+      countQuery = """
+      SELECT COUNT(*) FROM (
+          SELECT DISTINCT ssigm.user_id
+          FROM student_session_institute_group_mapping ssigm
+          JOIN student s ON s.user_id = ssigm.user_id
+          LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+          LEFT JOIN (
+              SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
+              FROM payment_log pl
+              WHERE pl.user_plan_id IN (
+                  SELECT ssigm2.user_plan_id
+                  FROM student_session_institute_group_mapping ssigm2
+                  WHERE ssigm2.institute_id = :instituteId
+                    AND ssigm2.user_plan_id IS NOT NULL
+              )
+              ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+          ) last_pl ON last_pl.user_plan_id = up.id
+          WHERE ssigm.institute_id = :instituteId
+            AND (:#{#statuses == null || #statuses.isEmpty()} = true OR ssigm.status IN (:statuses))
+            AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
+            AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
+            AND (
+              :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
+              OR (
+                ssigm.comma_separated_org_roles IS NOT NULL AND ssigm.comma_separated_org_roles != ''
+                AND EXISTS (
+                  SELECT 1 FROM unnest(string_to_array(ssigm.comma_separated_org_roles, ',')) AS role
+                  WHERE TRIM(role) IN (:subOrgUserTypes)
+                )
+              )
+            )
+            AND (
+              CAST(:nameSearch AS TEXT) IS NULL
+              OR s.full_name ILIKE '%' || :nameSearch || '%'
+              OR s.email ILIKE '%' || :nameSearch || '%'
+              OR (
+                  :nameSearch ~ '[0-9]'
+                  AND REGEXP_REPLACE(s.mobile_number, '[^0-9]', '', 'g') LIKE '%' || REGEXP_REPLACE(:nameSearch, '[^0-9]', '', 'g') || '%'
+              )
+            )
+
+          UNION
+
+          SELECT DISTINCT ar.user_id
+          FROM audience_response ar
+          JOIN audience a ON a.id = ar.audience_id
+          WHERE a.institute_id = :instituteId
+            AND ar.user_id IS NOT NULL
+            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
+      ) total
+      """)
+  Page<String> findPagedCombinedUserIds(
+      @Param("instituteId") String instituteId,
+      @Param("statuses") List<String> statuses,
+      @Param("packageSessionIds") List<String> packageSessionIds,
+      @Param("paymentStatuses") List<String> paymentStatuses,
+      @Param("subOrgUserTypes") List<String> subOrgUserTypes,
+      @Param("nameSearch") String nameSearch,
+      @Param("audienceIds") List<String> audienceIds,
+      Pageable pageable);
+
+  // ── V2 enrichment for a specific set of user IDs (used after pagination) ──
+
+  @Query(nativeQuery = true, value = """
+      WITH last_payments AS (
+          SELECT DISTINCT ON (pl.user_plan_id) pl.user_plan_id, pl.payment_status
+          FROM payment_log pl
+          WHERE pl.user_plan_id IN (
+              SELECT ssigm2.user_plan_id
+              FROM student_session_institute_group_mapping ssigm2
+              WHERE ssigm2.user_id IN (:userIds)
+                AND ssigm2.institute_id IN (:instituteIds)
+                AND ssigm2.user_plan_id IS NOT NULL
+          )
+          ORDER BY pl.user_plan_id, pl.date DESC NULLS LAST
+      )
+      SELECT
+          s.full_name         AS "fullName",
+          s.email             AS "email",
+          s.username          AS "username",
+          s.mobile_number     AS "phone",
+          ssigm.package_session_id AS "packageSessionId",
+          CAST(GREATEST(0, COALESCE(EXTRACT(DAY FROM (ssigm.expiry_date - ssigm.enrolled_date)), 0)) AS int) AS "accessDays",
+          last_pl.payment_status AS "paymentStatus",
+          CAST(
+            COALESCE(
+              json_agg(
+                DISTINCT jsonb_build_object('custom_field_id', cf.id, 'value', cfv.value)
+              ) FILTER (WHERE cf.id IS NOT NULL), '[]'
+            ) AS text
+          ) AS "customFieldsJson",
+          s.user_id AS "userId",
+          s.id AS "id",
+          s.address_line AS "addressLine",
+          s.region AS "region",
+          s.city AS "city",
+          s.pin_code AS "pinCode",
+          s.date_of_birth AS "dateOfBirth",
+          s.gender AS "gender",
+          s.fathers_name AS "fathersName",
+          s.mothers_name AS "mothersName",
+          s.parents_mobile_number AS "parentsMobileNumber",
+          s.parents_email AS "parentsEmail",
+          s.linked_institute_name AS "linkedInstituteName",
+          s.created_at AS "createdAt",
+          s.updated_at AS "updatedAt",
+          s.face_file_id AS "faceFileId",
+          ssigm.expiry_date AS "expiryDate",
+          s.parents_to_mother_mobile_number AS "parentsToMotherMobileNumber",
+          s.parents_to_mother_email AS "parentsToMotherEmail",
+          ssigm.institute_enrollment_number AS "instituteEnrollmentNumber",
+          ssigm.institute_id AS "instituteId",
+          ssigm.group_id AS "groupId",
+          ssigm.status AS "status",
+          up.plan_json AS "paymentPlanJson",
+          up.payment_option_json AS "paymentOptionJson",
+          ssigm.destination_package_session_id AS "destinationPackageSessionId",
+          ssigm.user_plan_id AS "userPlanId",
+          up.enroll_invite_id AS "enrollInviteId",
+          ei.name AS "enrollInviteName",
+          ssigm.source AS "source",
+          ssigm.type AS "type",
+          ssigm.type_id AS "typeId",
+          ssigm.desired_level_id AS "desiredLevelId",
+          ssigm.sub_org_id AS "subOrgId",
+          sub_org.name AS "subOrgName",
+          ssigm.comma_separated_org_roles AS "commaSeparatedOrgRoles",
+          s.tnc_accepted AS "tncAccepted",
+          s.tnc_file_id AS "tncFileId",
+          s.tnc_accepted_date AS "tncAcceptedDate"
+      FROM student s
+      JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id
+      LEFT JOIN institute_custom_fields icf
+          ON icf.institute_id = ssigm.institute_id
+          AND (:#{#customFieldStatus == null || #customFieldStatus.isEmpty()} = true OR icf.status IN (:customFieldStatus))
+      LEFT JOIN custom_fields cf ON cf.id = icf.custom_field_id
+      LEFT JOIN custom_field_values cfv
+          ON cfv.source_type IN ('STUDENT_SESSION_INSTITUTE_GROUP_MAPPING', 'STUDENT_SESSION_MAPPING')
+          AND cfv.source_id = ssigm.id
+          AND cfv.custom_field_id = cf.id
+      LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+      LEFT JOIN last_payments last_pl ON last_pl.user_plan_id = up.id
+      LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      LEFT JOIN institutes sub_org ON sub_org.id = ssigm.sub_org_id
+      WHERE ssigm.user_id IN (:userIds)
+        AND ssigm.institute_id IN (:instituteIds)
+      GROUP BY s.id, s.username, s.full_name, s.email, s.mobile_number,
+               ssigm.package_session_id, ssigm.enrolled_date, ssigm.expiry_date,
+               last_pl.payment_status, s.user_id, s.address_line, s.region, s.city,
+               s.pin_code, s.date_of_birth, s.gender, s.fathers_name, s.mothers_name,
+               s.parents_mobile_number, s.parents_email, s.linked_institute_name,
+               s.created_at, s.updated_at, s.face_file_id, s.parents_to_mother_mobile_number,
+               s.parents_to_mother_email, ssigm.institute_enrollment_number,
+               ssigm.institute_id, ssigm.group_id, ssigm.status, up.plan_json,
+               up.payment_option_json, ssigm.destination_package_session_id,
+               ssigm.user_plan_id, up.enroll_invite_id, ei.name,
+               ssigm.source, ssigm.type, ssigm.type_id, ssigm.desired_level_id,
+               ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
+               s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
+      """)
+  List<StudentListV2Projection> getStudentV2DataForUserIds(
+      @Param("userIds") List<String> userIds,
+      @Param("instituteIds") List<String> instituteIds,
+      @Param("customFieldStatus") List<String> customFieldStatus);
 }

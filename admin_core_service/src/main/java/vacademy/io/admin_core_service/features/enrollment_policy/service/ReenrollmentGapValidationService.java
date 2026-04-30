@@ -243,16 +243,19 @@ public class ReenrollmentGapValidationService {
 
     /**
      * Gets the end date from a mapping.
-     * Uses expiryDate from mapping, or UserPlan endDate if available.
+     * Uses expiryDate from mapping, or current date for ACTIVE unlimited enrollments.
      */
     private Date getEndDate(StudentSessionInstituteGroupMapping mapping) {
-        // First check mapping's expiryDate
         if (mapping.getExpiryDate() != null) {
             return mapping.getExpiryDate();
         }
 
-        // If UserPlan is linked, we could check UserPlan.endDate
-        // For now, return null if no expiryDate
+        // If ACTIVE with no expiry, the enrollment is still ongoing (unlimited access).
+        // Return current date so the gap check fires: daysSinceLastEnd=0 < gapInDays → blocked.
+        if ("ACTIVE".equalsIgnoreCase(mapping.getStatus())) {
+            return new Date();
+        }
+
         return null;
     }
 

@@ -277,7 +277,6 @@ const SlideEditor: React.FC<SlideEditorProps> = ({
                         console.error(`[SlideEditor] Error during emergency save:`, error);
                     }
                 }
-            }
         };
     }, [slideId, uploadToS3, onChange, fileId]);
 

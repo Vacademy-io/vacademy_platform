@@ -63,6 +63,7 @@ public class BulkAssignmentService {
     private final CustomFieldValueService customFieldValueService;
     private final StudentRegistrationManager studentRegistrationManager;
     private final SubOrgAutoLinkService subOrgAutoLinkService;
+    private final vacademy.io.admin_core_service.features.learner.service.LearnerCouponService learnerCouponService;
     private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
     private final PaymentLogRepository paymentLogRepository;
     private final InvoiceService invoiceService;
@@ -449,6 +450,15 @@ public class BulkAssignmentService {
                     .build();
 
             mappingId = studentRegistrationManager.linkStudentToInstitute(student, details);
+
+            // Generate USER-source coupon code so referral links carry the user's
+            // own ref instead of the hardcoded "xyz" fallback (same as manual flow).
+            try {
+                learnerCouponService.generateCouponCodeForLearner(userId, instituteId,
+                        config.getEnrollInvite() != null ? config.getEnrollInvite().getInviteCode() : null);
+            } catch (Exception e) {
+                log.warn("Failed to generate coupon code for userId={}: {}", userId, e.getMessage());
+            }
 
             // Trigger enrollment workflow (same as manual flow)
             try {

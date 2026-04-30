@@ -57,7 +57,7 @@ public class DynamicNotificationService {
 
     /**
      * If the institute's setting JSON contains
-     *   EMAIL_SETTING.data.REFERRAL_EMAIL.invite_code = "xxxxxx"
+     *   setting.EMAIL_SETTING.data.REFERRAL_EMAIL.invite_code = "xxxxxx"
      * resolve and return that EnrollInvite for use in referral / invitation
      * link generation. Otherwise return the supplied fallback unchanged.
      */
@@ -68,7 +68,11 @@ public class DynamicNotificationService {
             String settingJson = institute.getSetting();
             if (settingJson == null || settingJson.isBlank()) return fallback;
             JsonNode codeNode = objectMapper.readTree(settingJson)
-                    .path("EMAIL_SETTING").path("data").path("REFERRAL_EMAIL").path("invite_code");
+                    .path("setting")
+                    .path("EMAIL_SETTING")
+                    .path("data")
+                    .path("REFERRAL_EMAIL")
+                    .path("invite_code");
             if (codeNode.isMissingNode() || codeNode.isNull()) return fallback;
             String code = codeNode.asText();
             if (code == null || code.isBlank()) return fallback;

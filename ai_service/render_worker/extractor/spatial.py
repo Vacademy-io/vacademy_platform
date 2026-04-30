@@ -70,6 +70,31 @@ def create_spatial_db(path: Path) -> sqlite3.Connection:
             bbox_w    REAL, bbox_h REAL,
             label     TEXT
         );
+
+        -- Full-video face samples (~1fps, podcast mode only).
+        -- Distinct from `frames` which only covers the 30-60s highlight window.
+        CREATE TABLE IF NOT EXISTS full_video_faces (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            t         REAL NOT NULL,
+            face_x    REAL, face_y REAL,
+            face_w    REAL, face_h REAL,
+            detected  INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS idx_full_video_faces_t ON full_video_faces(t);
+
+        -- Stable face position segments derived from full_video_faces.
+        -- One row per time range where the face stayed roughly in one region.
+        CREATE TABLE IF NOT EXISTS face_segments (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            t_start         REAL NOT NULL,
+            t_end           REAL NOT NULL,
+            bbox_x          REAL, bbox_y REAL,
+            bbox_w          REAL, bbox_h REAL,
+            free_regions    TEXT,         -- comma-separated list
+            sample_count    INTEGER,
+            detection_rate  REAL
+        );
+        CREATE INDEX IF NOT EXISTS idx_face_segments_range ON face_segments(t_start, t_end);
     """)
     return conn
 
@@ -145,6 +170,34 @@ def write_ui_cutouts(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> No
            (id, asset_path, t_start, t_end, bbox_x, bbox_y, bbox_w, bbox_h, label)
            VALUES (:id, :asset_path, :t_start, :t_end,
                    :bbox_x, :bbox_y, :bbox_w, :bbox_h, :label)""",
+        rows,
+    )
+    conn.commit()
+
+
+def write_full_video_faces(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Batch insert full-video face samples (1fps full-video scan)."""
+    if not rows:
+        return
+    conn.executemany(
+        """INSERT INTO full_video_faces
+           (t, face_x, face_y, face_w, face_h, detected)
+           VALUES (:t, :face_x, :face_y, :face_w, :face_h, :detected)""",
+        rows,
+    )
+    conn.commit()
+
+
+def write_face_segments(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Batch insert clustered face segments."""
+    if not rows:
+        return
+    conn.executemany(
+        """INSERT INTO face_segments
+           (t_start, t_end, bbox_x, bbox_y, bbox_w, bbox_h,
+            free_regions, sample_count, detection_rate)
+           VALUES (:t_start, :t_end, :bbox_x, :bbox_y, :bbox_w, :bbox_h,
+                   :free_regions, :sample_count, :detection_rate)""",
         rows,
     )
     conn.commit()

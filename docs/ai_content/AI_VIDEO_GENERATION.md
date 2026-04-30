@@ -92,6 +92,11 @@ Both playback paths consume **identical** HTML/CSS/JS. The pipeline generates on
 | `app/ai-video-gen-main/skill_registry.py` | Filesystem-discovered registry for motion-primitive skills. Loads `skills/**/skill.py`, validates METADATA/PARAMS_SCHEMA/render(), caches once per process. Exposes `get_registry()`, `build_catalog_for_shot()`, `validate_params()`. |
 | `app/ai-video-gen-main/skill_composer.py` | Pure function `compose(shot_html, ctx)` that scans for `<skill>` tags, validates params, renders each skill, and substitutes inline. Aggregates CSS/JS into the final HTML. |
 | `app/ai-video-gen-main/skills/**/skill.py` | Individual motion primitive modules (6 shipped — `bar_chart_grow`, `number_counter`, `typewriter_text`, `equation_term_reveal`, `stagger_list`, `ring_progress`). Drop-in: add a folder, no pipeline changes. |
+| `app/ai-video-gen-main/shot_template_registry.py` | Filesystem-discovered registry for full-shot composition templates. Mirrors `skill_registry`. Loads `shot_templates/**/template.py`, exposes `get_registry()`, `build_catalog_for_director()`, `validate_params()`. |
+| `app/ai-video-gen-main/shot_template_composer.py` | Pure function `compose(shot, ctx)` that renders a full shot from a `template_id`. Skips the per-shot LLM call entirely. Hard-blocks specialized shot types (`KINETIC_TEXT`, `KINETIC_TITLE`, `SOURCE_CLIP`) so dedicated builders always win. |
+| `app/ai-video-gen-main/shot_templates/**/template.py` | Full-shot composition modules (4 shipped — `split_comparison`, `three_up_grid`, `quote_callout`, `stat_block_with_context`). Drop-in: add a folder, no pipeline changes. |
+| `app/ai-video-gen-main/transition_picker.py` | Pure deterministic picker that resolves each shot's `transition_in` from `(prev_shot, shot, act_boundary)`. Replaces blind LLM picks. Honors the Act Planner's `transition_out` field (which used to be dropped). |
+| `app/ai-video-gen-main/subject_extractor.py` | One Gemini Flash call per video that identifies recurring subjects across the Director plan and returns `{shot_index → subject_id}`. Drives image-to-image continuity. |
 | `app/ai-video-gen-main/pexels_service.py` | Pexels stock photo + video client. Exposes `search_videos()` (legacy single-pick) and `search_video_candidates()` (returns N candidates for LLM ranking). |
 | `app/ai-video-gen-main/pixabay_service.py` | Pixabay stock photo + video client. Mirrors the PexelsService surface (`search_photos`, `search_videos`, `search_video_candidates`) so the pipeline can swap providers transparently. Used for illustrations / diagrams / educational imagery where Pexels is thin. |
 | `app/ai-video-gen-main/generate_video.py` | The Playwright render engine. Loads HTML, advances GSAP timeline, screenshots each frame, emits MP4. Not called from `ai_service` — runs as its own render server. |
@@ -328,15 +333,17 @@ Defined at [automation_pipeline.py:268](../../ai_service/app/ai-video-gen-main/a
 
 **Director tokens & advanced flags (2026-04):**
 
-| Tier | `director_max_tokens` | Shot pack | Emphasis map | Few-shot | Shot density | Two-pass | Anim validator | Stock video rank | Skill library |
-|------|----------------------:|-----------|--------------|----------|--------------|----------|----------------|------------------|---------------|
-| `premium` | 20,000 | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `ultra` | 32,000 | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
-| `super_ultra` | 40,000 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Tier | `director_max_tokens` | Shot pack | Shot templates | Transition picker | Emphasis map | Few-shot | Shot density | Two-pass | Anim validator | Stock video rank | Skill library | Image continuity |
+|------|----------------------:|-----------|----------------|-------------------|--------------|----------|--------------|----------|----------------|------------------|---------------|------------------|
+| `premium` | 20,000 | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `ultra` | 32,000 | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `super_ultra` | 40,000 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 - **`use_director`**: enables the three-stage LLM flow (script → director plan → per-shot HTML) vs legacy single-stage. Premium+ uses the director.
 - **`director_max_tokens`**: output cap for the Director call. Bumped from 8k/12k/14k → 20k/32k/40k to handle 50+ shot plans without truncation.
 - **`shot_pack_enabled`**: injects a shared design-token pack (colors, fonts, spacing, eases, layout grid) into every shot prompt. Kills cross-shot drift. See §3.8.
+- **`shot_templates_enabled`**: injects the shot-template catalog into the Director prompt and skips the per-shot LLM call when the Director sets `template_id` on a shot. Net cost: −5% to −15% LLM tokens (templates are deterministic). See §3.14.
+- **`transition_picker_enabled`**: replaces the Director's blind `transition_in` choices with a deterministic content-aware picker, and propagates the Act Planner's `transition_out` field across act boundaries. See §3.15.
 - **`director_emphasis_map`**: computes audio-derived silence gaps + long-word peaks + sentence starts and injects them into the Director prompt so it can anchor shot boundaries on real pacing signals. See §3.7.
 - **`director_few_shot`**: appends `SUPER_ULTRA_DIRECTOR_EXTENSION` (two hand-written worked examples — portrait travel reel + landscape physics explainer) to the Director system prompt.
 - **`director_shot_density`**: requires the Director to emit `shot_density` ("fast"/"medium"/"slow") + `pacing_rationale` fields. Pipeline compares self-report to actual avg shot duration and logs a mismatch warning.
@@ -344,9 +351,10 @@ Defined at [automation_pipeline.py:268](../../ai_service/app/ai-video-gen-main/a
 - **`shot_animation_validator`**: post-generation scan that counts GSAP tweens in the shot HTML and checks sync-point honoring. Fires ONE corrective regeneration if the shot is thin. See §3.8.
 - **`stock_video_ranking`**: fetches 5-6 Pexels candidates per shot, dedupes against `_used_pexels_video_ids`, and runs a small LLM ranker against the shot's narration/visual direction to pick the best clip. See §3.10.
 - **`skill_library_enabled`**: injects a filtered skill catalog into the per-shot system prompt and runs the skill composer on the returned HTML. Ultra and super_ultra only. See §3.13.
+- **`image_continuity_enabled`**: runs `subject_extractor` after the Director plan to identify recurring subjects, then threads each subject's first-shot S3 URL into Seedream as `reference_image_url` for subsequent shots. Image-to-image continuity. Ultra and super_ultra only. See §3.16.
 - **`kinetic_text_shots`**: pipeline builds `KINETIC_TEXT` shots deterministically (word-by-word sync) instead of asking the LLM. Super_ultra only.
 - **`director_motion_bias`**: director is instructed to target reel-pace (2–4s shots, 50%+ motion-graphics types). Super_ultra only.
-- **`crossfade_duration`**: pipeline inserts 0.35s crossfade transitions between shots on `premium`+.
+- **`crossfade_duration`**: pipeline inserts 0.35s crossfade transitions between shots on `premium`+. The browser player applies the same crossfade-window opacity ramp as the renderer for parity (`AIVideoPlayer.tsx` extends the active-frame range by `crossfade_duration` and computes per-frame opacity from the playhead).
 
 ### 3.4 Visual style — Director-owned per-shot (2026-04)
 
@@ -867,9 +875,223 @@ Console output:
 #### 3.13.5 Roadmap beyond Phase 1
 
 - **Phase 2 — Director-aware**: Director plan schema gains `skills: [...]` per shot; per-shot prompt tells the LLM which skill IDs will render into which placeholder element IDs; telemetry logs which skills fire, which fail validation, which are ignored entirely.
-- **Phase 3 — Transitions as skills**: new `transitions/` subdirectory (`zoom_through`, `vignette_fade`, `whip_pan`, `hard_cut`, `kinetic_title_interstitial`). The Director picks `transition_out` per shot from this catalog and the composer wires shot N's exit tween into shot N+1's entry.
-- **Phase 4 — Shot templates**: `shot_templates/` with `split_comparison`, `stat_block_with_context`, `three_up_grid`, `quote_callout`. Full shot compositions the Director can invoke instead of writing custom HTML.
+- **Phase 3 — Transitions as skills**: ✅ shipped — see §3.15. Three transitions added (`whip_pan`, `zoom_through`, `vignette_fade`); `kinetic_title_interstitial` is reserved for the act-planning step.
+- **Phase 4 — Shot templates**: ✅ shipped — see §3.14. Four templates ship in v1: `split_comparison`, `three_up_grid`, `quote_callout`, `stat_block_with_context`.
 - **Phase 5 (ongoing)**: `camera_moves/`, `filters/`, `audio_cues/`, per-institute `brand_packs/`. Each new category is a new subdirectory with its own loader, same base protocol.
+
+→ For authoring new skills or shot templates, see [SKILLS_AND_TEMPLATES_AUTHORING.md](./SKILLS_AND_TEMPLATES_AUTHORING.md).
+
+### 3.14 Shot templates — full-shot compositions (Phase 4, premium / ultra / super_ultra)
+
+Where a **skill** is a reusable HTML+CSS+JS snippet the per-shot LLM can drop into any shot via a `<skill>` tag, a **shot template** is the composition for an *entire shot*. When the Director sets `template_id` on a shot, the per-shot LLM call is **skipped entirely** — `shot_template_composer.compose(shot, ctx)` produces the full HTML deterministically.
+
+This is net-cheaper than freeform HTML generation (no LLM call for templated shots, ~5–15% token savings) and kills compositional drift (every "split comparison" shot in every video uses the same proven layout, hierarchy, and animation rhythm).
+
+#### 3.14.1 The architecture
+
+```
+shot_templates/
+  split_comparison/template.py           ← METADATA + PARAMS_SCHEMA + render(shot, params, ctx)
+  three_up_grid/template.py
+  quote_callout/template.py
+  stat_block_with_context/template.py
+
+shot_template_registry.py   ← discovers shot_templates/, loads each template.py via importlib,
+                              caches once per process. Exposes get_registry(),
+                              build_catalog_for_director(tier, canvas), validate_params(template_id, params).
+shot_template_composer.py   ← pure compose(shot, ctx) → renders one full shot, or returns
+                              {skipped: True, reason: "..."} so the caller can fall through to LLM.
+```
+
+Every template exports:
+
+- **`METADATA`** — `id`, `version`, `title`, `description`, `use_when`, `compatible_shot_types`, `requires_tier`, `requires_canvas`, `example_params`.
+- **`PARAMS_SCHEMA`** — loose JSON Schema (`required` keys + `properties.<name>.type`).
+- **`render(shot, params, ctx) -> dict`** — returns `{"html", "css", "js", "audio_events"}`. The composer wraps the fragments into an outer `<div id="shot-root">` container with the resolved transition tween.
+
+#### 3.14.2 The 4 starter templates
+
+| Template | Use case | What it composes |
+|---|---|---|
+| `split_comparison` | Before/after, X vs Y, this/that, two contrasting concepts | Two-column grid with center divider; synchronized reveal of left/right cells, accent rules underneath each side. Best 4–7s shot duration. |
+| `three_up_grid` | "Three reasons", "three pillars", parallel triplets | 2–4 numbered cells (01/02/03) with staggered slide-up. Best 5–8s. |
+| `quote_callout` | Pull-quote, testimonial, narrator emphasis | Slam-text line-by-line reveal with optional one-word accent + small caps attribution. Best 4–7s. |
+| `stat_block_with_context` | Hero stat with framing | Eyebrow label → animated number (with prefix/suffix, decimals, locale-formatted, tabular nums) → headline → italic context line. Composes the same number-roll pattern as the `number_counter` skill. Best 3–6s. |
+
+#### 3.14.3 How the Director invokes a template
+
+The Director's system prompt (`DIRECTOR_SYSTEM_PROMPT` + `build_catalog_for_director(tier, canvas)`) lists every available template with its `compatible_shot_types`, `use_when`, and an `example_params` JSON. The Director optionally emits `template_id` + `template_params` on shots that cleanly fit:
+
+```json
+{
+  "shot_index": 3,
+  "shot_type": "TEXT_DIAGRAM",
+  "start_time": 11.0,
+  "end_time": 16.5,
+  "narration_excerpt": "Two paths emerged.",
+  "transition_in": "fade",
+  "template_id": "split_comparison",
+  "template_params": {
+    "headline": "Two paths.",
+    "left_label": "BEFORE", "left_text": "Pen and paper", "left_caption": "1990s",
+    "right_label": "AFTER", "right_text": "Always-on cloud", "right_caption": "Today"
+  }
+}
+```
+
+When `template_id` is **not** set, the shot follows the normal LLM-driven HTML generation path. Templates and freeform HTML coexist freely in the same plan.
+
+#### 3.14.4 Composition flow
+
+In `_shot_task` — right after `shot_type` extraction and before the system-prompt build, **before** any retry / skill-compose / animation-validator code — the template bypass fires:
+
+1. Read `shot.get("template_id")`. If absent, fall through to the LLM path.
+2. Resolve `transition_in` and look up `transition_css_block` from `prompts.TRANSITION_CSS_BLOCKS`.
+3. Build `ctx = {shot_index, canvas_w, canvas_h, tier, shot_type, shot_pack, transition_in, transition_css_block}`.
+4. Call `shot_template_composer.compose(shot, ctx)`.
+5. On success: run the rendered HTML through `_ensure_fonts()`, build the entry, write the per-shot cache file, return.
+6. On `skipped`: log the reason and fall through to the normal LLM path.
+
+#### 3.14.5 Hard-blocked specialized shot types
+
+Even if the Director sets `template_id` on a `KINETIC_TEXT`, `KINETIC_TITLE`, or `SOURCE_CLIP` shot, the composer **skips** with reason `"refusing specialized shot_type"`. Those types have dedicated builders later in `_shot_task` (word-driven kinetic text, zoom-in convention, source-video compositing) that produce richer output than any generic template could. The blocklist lives at [shot_template_composer.py:27-33](../../ai_service/app/ai-video-gen-main/shot_template_composer.py#L27).
+
+#### 3.14.6 Renderer parity — no `window.addEventListener('load')`
+
+Templates run in two contexts: an iframe in the browser player and a shadow-root-scoped `<div>` in the Playwright render server. **Shadow roots have no `load` event.** The composer therefore emits inline scripts as plain IIFEs with a `typeof gsap` guard — no `window.addEventListener('load', …)` wrapper — so the same HTML works in both contexts. This is invariant 8.9 below.
+
+#### 3.14.7 Fallback behavior
+
+Any of these conditions causes the composer to return `{skipped: True}` and the pipeline falls through to the normal LLM path:
+
+- `template_id` not set or not a string
+- Unknown `template_id` (not in registry)
+- Shot type is in the specialized blocklist (`KINETIC_TEXT`/`KINETIC_TITLE`/`SOURCE_CLIP`)
+- Shot type not in the template's `compatible_shot_types` (and the template doesn't declare `"*"`)
+- `template_params` is not a dict
+- Required params missing or wrong types
+- The template's `render()` raised
+- The template returned an empty `html`
+
+The pipeline never crashes on a malformed template invocation.
+
+Console output:
+```
+   📐 Shot 4 template: split_comparison v1.0.0 rendered (no LLM)
+   ⚠️ Shot 7 template 'three_up_grid' skipped: missing required param 'items' — falling back to LLM
+```
+
+### 3.15 Transition picker — content-aware, deterministic (premium / ultra / super_ultra)
+
+Today's `crossfade_duration: 0.35` already overlaps adjacent shots in the renderer's active-set window. What changes here is **which transition runs inside each shot's `<script>` block**. Previously the Director picked `transition_in` per shot blindly; the picker now resolves it based on the actual neighbour pair plus act boundaries.
+
+#### 3.15.1 Where it runs
+
+After `_run_director` validates and gap-fills the shot list, [transition_picker.apply_to_plan(director_plan, act_plan)](../../ai_service/app/ai-video-gen-main/transition_picker.py#L120) walks every shot and rewrites `shot["transition_in"]` in place. The mutated plan is what `_shot_task` reads downstream. Pure function, no LLM call, never raises — bad picks fall through to `fade`.
+
+#### 3.15.2 Rule order (first match wins)
+
+| Match | Picked transition |
+|---|---|
+| First shot, type = `KINETIC_TITLE` | `zoom_in` |
+| First shot, otherwise | director's stated choice (normalized) |
+| Act boundary (Act Planner emitted `transition_out`) | mapped from the act-planner vocabulary (`hard_cut`/`kinetic_title_interstitial`/`zoom_through`/`vignette_fade`) |
+| Shot type = `KINETIC_TEXT` | `cut` (entrances are word-driven) |
+| Shot type = `KINETIC_TITLE` | `zoom_in` (or respect director if it chose `wipe_right`/`fade`/`vignette_fade`) |
+| Cross-family pair (cinematic ↔ infographic ↔ product) | `vignette_fade` 0.5s |
+| Same shot type + `VIDEO_HERO`/`IMAGE_HERO` chain | `whip_pan` 0.3s |
+| `PRODUCT_HERO` → `PRODUCT_HERO` | `fade` |
+| `DATA_STORY` → `DATA_STORY` | `slide_left` |
+| `INFOGRAPHIC_SVG` → `INFOGRAPHIC_SVG` | `wipe_right` |
+| Otherwise | director's stated choice (normalized) |
+
+Family lookup at [transition_picker._FAMILY](../../ai_service/app/ai-video-gen-main/transition_picker.py#L34). Act Planner mapping at `_ACT_TRANSITION_MAP`. Unknown transition strings normalize to `fade` via `transition_picker.normalize`.
+
+#### 3.15.3 New entries in `TRANSITION_CSS_BLOCKS`
+
+[prompts.py:1520-1560](../../ai_service/app/ai-video-gen-main/prompts.py#L1520) gains three:
+
+- `whip_pan` — fast horizontal blur + translate (`x:'40%' → '0%'`, `filter:'blur(8px)' → 'blur(0px)'`, 0.30s, `power3.out`).
+- `zoom_through` — incoming starts at `scale:0.7`, opacity 0; ramps to `scale:1, opacity:1` over 0.45s (`power3.out`).
+- `vignette_fade` — fade plus a brief radial-gradient overlay that rises, holds, then auto-removes. Overlay is appended to `#shot-root` (resolved via `document.getElementById`, which the renderer rewrites to `__sd_getElementById`) so the overlay stays inside the shot's shadow root.
+
+#### 3.15.4 Browser-player ↔ renderer opacity parity
+
+The renderer's `_active_entries_at` already populates `entry["opacity"]` over the crossfade window ([generate_video.py:2065-2102](../../ai_service/app/ai-video-gen-main/generate_video.py#L2065)). The browser player previously did not — only z-index sorting. Both `AIVideoPlayer.tsx` files (admin and learner) now:
+
+1. Expand the active-frame range by `CROSSFADE_DURATION` on both sides.
+2. Compute `opacity` per active frame from the current playhead using the same math as the renderer.
+3. Apply `opacity` to the iframe wrapper style.
+
+`Frame.opacity?: number` is added to both apps' `types.ts` Entry interface. Hardcoded constant `0.35` matches the existing premium+ tier flag default.
+
+#### 3.15.5 Console output
+
+```
+   🎬 Shot 1 transition: cut → whip_pan (VIDEO_HERO → VIDEO_HERO sequence → whip_pan)
+   🎬 Shot 4 transition: fade → vignette_fade (cross-family cinematic → infographic → vignette_fade)
+   🎬 Shot 7 transition: zoom_in → vignette_fade (act boundary transition_out=kinetic_title_interstitial → vignette_fade)
+```
+
+### 3.16 Image continuity — image-to-image conditioning (ultra / super_ultra)
+
+Recurring subjects (a specific 1965 Mustang, a named character, a brand product) now look visually consistent across shots. The pipeline runs one Gemini Flash call per video to identify recurring subjects, then threads each subject's first-shot S3 URL into Seedream as a multimodal `image_url` reference for subsequent shots.
+
+#### 3.16.1 The flow
+
+1. **After the Director plan finalizes** (post-transition-picker, [automation_pipeline.py:_run_director](../../ai_service/app/ai-video-gen-main/automation_pipeline.py)), call [`subject_extractor.extract_subjects(shots, self.html_client.chat)`](../../ai_service/app/ai-video-gen-main/subject_extractor.py#L70). Returns `{shot_index → subject_id}` for shots that share a subject (singletons absent). Stash on `self._subject_id_for_shot`.
+2. **Initialize per-run state** for thread-safe coordination: `self._subject_refs: Dict[str, str]` (subject_id → S3 URL), `self._subject_ready_events: Dict[str, threading.Event]`, `self._subject_first_claimed: Set[str]`, `self._subject_meta_lock: threading.Lock`.
+3. **In `_process_generated_images`**: each task gets a `subject_id` field (looked up from `_subject_id_for_shot[seg_idx]`, with a per-img `data-subject-id="..."` override hook).
+4. **In `process_image_task`**:
+    - Acquire `_subject_meta_lock`. Check `self._subject_refs[sid]`:
+      - If a URL exists → use it as `reference_image_url`.
+      - If absent and the subject hasn't been claimed → claim, create a `threading.Event`, mark this task as "first-for-subject", drop the lock, and proceed to generation **without** a reference.
+      - If absent but already claimed → drop the lock, `event.wait(timeout=120)`, then re-read the cached URL.
+    - Call `_call_image_generation_llm(prompt, reference_image_url=ref_url)`. The function builds the multimodal-content array shape (`[{type:"text", text:...}, {type:"image_url", image_url:{url: ref_url}}]`) when `reference_image_url` is non-null.
+    - **Always** set the event before exiting the first-for-subject path — including on `_ImageGenRateLimitError` (with claim release for the requeue), other exceptions, and "no image bytes" results. Without this, subsequent waiters and the retry of the same task deadlock until 120s timeout.
+    - On the first-for-subject success path: `_remove_background` (if cutout) → upload to S3 via [`_upload_subject_reference(image_bytes, subject_id, run_dir)`](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) (PUT to `s3://vacademy-media-storage-public/SUBJECT_REFS/{run_id}/{subject_id}.png`, public-read ACL) → cache the URL → set the event → return the result dict normally.
+
+#### 3.16.2 Seedream multimodal payload
+
+When `reference_image_url` is provided, the OpenRouter call uses the array-content shape (confirmed working with `bytedance-seed/seedream-4.5`):
+
+```json
+{
+  "model": "bytedance-seed/seedream-4.5",
+  "modalities": ["image"],
+  "messages": [{"role": "user", "content": [
+    {"type": "text", "text": "<prompt>\n\nReference: match the subject's identity, colors, and proportions from the attached image..."},
+    {"type": "image_url", "image_url": {"url": "https://vacademy-media-storage-public.s3.amazonaws.com/SUBJECT_REFS/<run>/<sid>.png"}}
+  ]}]
+}
+```
+
+When `reference_image_url` is `None`, the call falls back to the legacy text-only string-content shape — old behavior, identical to pre-2026-05.
+
+#### 3.16.3 Director instruction (`data-subject-id`)
+
+The shot-type cards' `IMAGE_PROMPT_GUIDELINES` now describe an explicit `data-subject-id="stable_slug"` attribute on `<img>` tags. The Director can use this for subjects that are obvious narratively but might be missed by the heuristic extractor. The `_process_generated_images` task creator probes for the attribute and overrides the auto-extracted mapping when present. See [shot_type_cards.py:81-87](../../ai_service/app/ai-video-gen-main/shot_type_cards.py#L81).
+
+#### 3.16.4 Console output
+
+```
+   🎯 Subject extraction: 2 recurring subject(s) across 6 shots
+      • 'mustang_red' (1965 Mustang in candy red) → shots [1, 3, 5]
+      • 'dr_chen' (Dr Chen, narrator) → shots [0, 2]
+   🎨 Generating image seg=1 [subject:mustang_red/first]: 1965 Ford Mustang...
+   🎯 Cached reference for subject 'mustang_red': https://vacademy-media-storage-public.s3.amazonaws.com/SUBJECT_REFS/.../mustang_red.png
+   🎨 Generating image seg=3 [subject:mustang_red/ref]: The Mustang from above...
+```
+
+#### 3.16.5 Fallback behavior
+
+Every layer degrades gracefully to today's text-only behavior:
+
+- Subject extractor LLM fails (network, parse, exception) → empty mapping → all tasks pass `reference_image_url=None` → text-only Seedream calls (current behavior).
+- First-shot Seedream call fails or returns no bytes → event is still set so waiters proceed → they generate without a reference.
+- S3 upload fails → URL not cached → subsequent shots of the same subject generate without a reference. First shot still ships normally.
+- 429 on the first-shot call → the claim is **released** (`_subject_first_claimed.discard(sid)`) so the requeued retry can re-claim. Existing waiters get the event signal and proceed text-only.
+- Cache resume: if shot N was the first-for-subject and is now loaded from `_shot_cache_dir`, the in-memory `_subject_refs` map is empty for that run. Subsequent shots re-claim "first" and re-generate. No broken output, just no continuity for that subject on a resumed run.
 
 ---
 
@@ -1277,6 +1499,31 @@ Every shot uses exactly 2 text levels:
 
 **Exception**: `illustrated_svg` allows a 3rd level — italic serif `Fig. 1 — caption` style via `.tech-annotation-caption`. This is the only place a body paragraph is permitted, and it reads as "textbook annotation" not content.
 
+### 8.9 Never wrap shot scripts in `window.addEventListener('load', …)`
+
+In the browser player, each shot lives inside a separate `<iframe>` so a `load` event fires reliably. **In the render server, each shot lives inside a shadow root attached to a `<div>` — there is no shadow-scoped `load` event.** Inline scripts wrapped in a `load` listener never fire and the shot ships as a static frame in the MP4.
+
+The correct pattern is a plain IIFE with a `typeof gsap` guard:
+
+```html
+<script>
+  (function(){
+    if (typeof gsap === 'undefined') return;
+    gsap.fromTo('#shot-root', {opacity:0}, {opacity:1, duration:0.4});
+  })();
+</script>
+```
+
+GSAP, Anime.js, MotionPath, KaTeX, and the rest are loaded by the outer harness (the iframe's `<head>` in browser playback, the page's global scope in the renderer) **before** any shot's HTML is parsed, so an immediately-invoked script can call them safely.
+
+This rule applies to:
+- Per-shot LLM-generated `<script>` blocks (already enforced via `CORE_PREAMBLE`)
+- The transition CSS blocks in `prompts.py::TRANSITION_CSS_BLOCKS` (no wrapper)
+- The shot-template composer at `shot_template_composer.py` (no wrapper — explicit IIFE pattern in the source comments)
+- Any future skill or template emitting `js`
+
+**Corollary** for transitions that need to manipulate DOM (e.g. `vignette_fade` adds an overlay): always append to `document.getElementById('shot-root')`, never to `document.body`. The renderer rewrites `document.getElementById` to a shadow-aware `__sd_getElementById` so the overlay correctly lands inside the shot's shadow root and tears down at shot exit.
+
 ---
 
 ## 9. Credit accounting & rate limiting
@@ -1318,6 +1565,17 @@ When making changes that touch the pipeline or render engine:
 12. **Render test** — trigger `POST /render/{video_id}` and verify the MP4 matches the browser player output.
 13. **History round-trip** — generate a video, refresh the page, verify history entry shows the correct `orientation`, `quality_tier` (pulled from `item.metadata`). Old videos may still carry `visual_style` in metadata; the frontend reads it for display but new videos don't surface it in the UI.
 14. **Frame regen** — edit a frame via `/frame/regenerate` and verify the new HTML still has `_ensure_fonts` CSS classes available (regen doesn't re-run `_ensure_fonts`; relies on the CSS baked into the full timeline — known gap).
+15. **Shot template registry dry-run** — `python -c "from shot_template_registry import get_registry; print(sorted(get_registry().keys()))"` should list all 4 shipped templates without import errors.
+16. **Shot template smoke test** — feed a sample shot dict with `template_id` + `template_params` into `shot_template_composer.compose(shot, ctx)` for each shipped template; confirm `skipped == False` and the returned HTML contains `id="shot-root"`.
+17. **Template adoption check** — for a "compare X vs Y" prompt at premium+, confirm at least one shot lands as a template (look for `📐 Shot N template: split_comparison rendered (no LLM)`). If templates never fire, the Director isn't picking them — check the catalog appears in `director_system` (search the run's debug output).
+18. **Specialized-shot-type guard** — set `template_id` on a `KINETIC_TEXT` shot in a hand-crafted Director plan and confirm the composer skips with `refusing specialized shot_type 'KINETIC_TEXT'`.
+19. **Transition picker dry-run** — `python -c "from transition_picker import pick; print(pick({'shot_type':'VIDEO_HERO'}, {'shot_type':'INFOGRAPHIC_SVG','transition_in':'cut'}))"` should return `('vignette_fade', 'cross-family ...')`.
+20. **Transition picker telemetry** — long super_ultra video with two-pass act planner should show `🎬 Shot N transition: ...` log lines, including at least one act-boundary override (e.g. `act boundary transition_out=...`).
+21. **Browser-player crossfade parity** — open a generated video in `/video-api-studio/console`. Adjacent shots (premium+) should crossfade visibly over ~0.35s, not hard-cut. Compare to the rendered MP4 — opacity ramps should be visually identical.
+22. **Subject-extractor smoke test** — `python -c "from subject_extractor import _parse_subjects_json; print(_parse_subjects_json('{\"subjects\": [{\"id\": \"x\", \"shot_indices\": [0,1]}]}'))"` should return a dict with the parsed subjects.
+23. **Image continuity end-to-end** — generate an ultra+ video for a recurring subject prompt (e.g. "the story of the 1965 Mustang"). Expect: `🎯 Subject extraction: 1 recurring subject(s) ...`, the first subject shot logged with `[subject:.../first]`, an S3 upload `🎯 Cached reference for subject ...`, subsequent shots logged with `[subject:.../ref]`. Visually verify the subject identity stays consistent across shots.
+24. **Image continuity 429 path** — temporarily mock `_call_image_generation_llm` to raise `_ImageGenRateLimitError` on the first task of a subject. Confirm: subsequent tasks unblock immediately (don't stall the full 120s), the requeued retry re-claims the first-shot slot, and the run completes without deadlock.
+25. **Image continuity LLM failure** — temporarily mock `subject_extractor.extract_subjects` to raise. Run an ultra+ generation. Confirm `⚠️ Subject extraction failed ... — falling back to text-only image gen` log line and the run completes with text-only image generation.
 
 ---
 
@@ -1347,6 +1605,14 @@ When making changes that touch the pipeline or render engine:
 | Background task keeps running after browser closes | Intended behaviour | Reconnect via `GET /status/{video_id}` polling |
 | 402 Insufficient credits | Credit balance < reserved amount | Top up via AI credits purchase flow |
 | 429 Too many requests | Rate limit or concurrency cap | Wait / reduce concurrent requests |
+| Shot template never fires (Director ignores `template_id`) | Tier flag off OR catalog missing from system prompt | Check `shot_templates_enabled` on the tier; grep for `📐 SHOT TEMPLATE CATALOG` in the run's `director_system` output |
+| Shot template renders as static frame in MP4 but animates in browser | Inline `<script>` wrapped in `window.addEventListener('load', …)` — that event doesn't fire in shadow DOM | Re-emit as a plain IIFE with a `typeof gsap` guard; never use `window.addEventListener('load')` (see invariant 8.9) |
+| Vignette overlay appears outside the shot in MP4 | `document.body.appendChild` escapes shadow scope — the overlay lands on the host document | Append to `document.getElementById('shot-root')` instead so the renderer's `__sd_getElementById` rewrite scopes it correctly |
+| `🎬 Shot N transition:` log lines missing | `transition_picker_enabled` flag off, or `transition_picker.py` import failed | Check the tier flag; run `python -c "from transition_picker import pick"` to confirm the module imports |
+| Browser player hard-cuts between shots while MP4 crossfades | The browser player isn't computing opacity. Confirm `Frame.opacity` flows through `AIVideoPlayer.tsx` and `frame.opacity ?? 1` is applied to the iframe wrapper style | See [AIVideoPlayer.tsx](../../frontend-admin-dashboard/src/components/ai-video-player/AIVideoPlayer.tsx) `activeFrames` useMemo |
+| Image-to-image call returns no bytes | Seedream rejected the multimodal payload OR the reference URL isn't publicly readable | Check the `_subject_refs` URL is HTTP 200 + non-private (`vacademy-media-storage-public` bucket has public-read ACL); fall back to text-only by clearing the cached URL |
+| Recurring subject still drifts visually | Subject extractor missed the connection, OR the first reference was poor quality | Check the `🎯 Subject extraction:` log line for which shots got grouped; if missed, add explicit `data-subject-id="..."` on the `<img>` tags in the Director plan |
+| Subject-continuity tasks stall ~120s on 429 | Pre-fix bug — should now release the first-shot claim and re-claim on retry | Confirm the latest `automation_pipeline.py` includes the `try / except _ImageGenRateLimitError` block in `process_image_task` (search for `_subject_first_claimed.discard`) |
 
 ---
 
@@ -1354,12 +1620,14 @@ When making changes that touch the pipeline or render engine:
 
 ### 12.1 Skill library roadmap (phases 2-5)
 
-Phase 1 (6 motion primitives, passive LLM discovery) is shipped. Next:
+Phase 1 (6 motion primitives, passive LLM discovery) is shipped. Phase 3 (3 new transitions + content-aware picker) is shipped (§3.15). Phase 4 (4 shot templates) is shipped (§3.14). Image-to-image continuity (§3.16) is shipped on top of the same registry pattern. Next:
 
 1. **Phase 2 — Director-aware skill planning**: Director plan schema gains `skills: [...]` per shot. The per-shot HTML LLM is told explicitly which skill IDs will render into which placeholder element IDs, and it writes the surround HTML. Telemetry logs skill usage rates.
-2. **Phase 3 — Transitions as skills**: new `skills/transitions/` category (`zoom_through`, `vignette_fade`, `whip_pan`, `hard_cut`, `kinetic_title_interstitial`). Composer wires cross-shot entry/exit tweens.
-3. **Phase 4 — Shot templates**: `skills/shot_templates/` with full shot compositions the Director can invoke as a unit (`split_comparison`, `stat_block_with_context`, `three_up_grid`, `quote_callout`).
+2. **Phase 3 — Transitions as skills**: ✅ shipped — `whip_pan`, `zoom_through`, `vignette_fade` plus deterministic picker. Future: full `skills/transitions/` category subdirectory with versioned modules (currently the transitions live as inline strings in `prompts.py::TRANSITION_CSS_BLOCKS`).
+3. **Phase 4 — Shot templates**: ✅ shipped — `split_comparison`, `three_up_grid`, `quote_callout`, `stat_block_with_context`. Next batch candidates: `hero_title_subhead_supporting`, `process_chain_horizontal`, `data_callout_with_chart` (wraps `bar_chart_grow`).
 4. **Phase 5 — Extension categories**: `camera_moves/`, `filters/`, `audio_cues/`, per-institute `brand_packs/`. Each adds a new subdirectory with the same base protocol.
+
+See [SKILLS_AND_TEMPLATES_AUTHORING.md](./SKILLS_AND_TEMPLATES_AUTHORING.md) for the authoring guide.
 
 ### 12.2 Director improvements
 
@@ -1400,6 +1668,11 @@ Phase 1 (6 motion primitives, passive LLM discovery) is shipped. Next:
 | **Skill / motion primitive** | A pre-built, parameterized HTML/CSS/JS snippet the LLM can invoke via a `<skill data-skill-id="..." data-params='...'></skill>` tag. The composer substitutes the tag with rendered code. Ultra/super_ultra only. |
 | **Skill composer** | Pure function `compose(shot_html, ctx)` that scans for `<skill>` tags, validates params, renders each skill via its `render(params, ctx)` function, and aggregates CSS/JS into the final HTML. |
 | **Skill registry** | Filesystem-discovered dict of all skills loaded from `skills/**/skill.py`. Cached once per process. |
+| **Shot template** | A pre-built composition for an *entire shot*. The Director invokes one by setting `template_id` + `template_params` on a shot; the per-shot LLM call is skipped and `shot_template_composer.compose(shot, ctx)` produces the HTML deterministically. Premium/ultra/super_ultra. |
+| **Shot template composer** | Pure function `compose(shot, ctx)` that resolves `template_id` to a registered template module and returns a complete `<div id="shot-root">` HTML. Returns `{skipped: True, reason}` instead of raising for any malformed invocation; caller falls through to the LLM path. |
+| **Shot template registry** | Filesystem-discovered dict of all templates loaded from `shot_templates/**/template.py`. Cached once per process. |
+| **Transition picker** | Pure deterministic function in `transition_picker.py` that resolves each shot's `transition_in` from `(prev_shot, shot, act_boundary)` after the Director plan finalizes. Honors the Act Planner's `transition_out` (which used to be dropped). |
+| **Subject continuity / image-to-image** | A flow that identifies recurring subjects across the shot plan via a Gemini Flash call (`subject_extractor`), uploads the first generated image of each subject to S3, and threads the URL into Seedream as `reference_image_url` for subsequent shots. Ultra/super_ultra only. |
 | **Animation density validator** | Post-generation scanner (super_ultra only) that counts GSAP tweens and checks sync-point honoring. Fires one corrective regeneration if a shot is thin. |
 | **Shot visual family** | A grouping of shot types by visual character (cinematic photo / pure SVG / product stage / motion graphics / overlay). The Director can mix families freely across a timeline. |
 | **Shot density** | Super_ultra Director's self-reported pacing label (`fast`/`medium`/`slow`). Validated against actual average shot duration. |
@@ -1411,4 +1684,4 @@ Phase 1 (6 motion primitives, passive LLM discovery) is shipped. Next:
 
 ---
 
-**Maintainers**: if you change anything in `automation_pipeline.py::run()`, `_ensure_fonts()`, `shot_type_cards.py::SHOT_TYPE_CARDS`, `director_prompts.py::DIRECTOR_SYSTEM_PROMPT`, `skill_registry.py`, `skill_composer.py`, `QUALITY_TIERS`, or the external API contract, update this doc in the same commit. Adding a new skill under `skills/**/skill.py` does NOT require a doc update — skills are discovered at runtime.
+**Maintainers**: if you change anything in `automation_pipeline.py::run()`, `_ensure_fonts()`, `shot_type_cards.py::SHOT_TYPE_CARDS`, `director_prompts.py::DIRECTOR_SYSTEM_PROMPT`, `skill_registry.py`, `skill_composer.py`, `shot_template_registry.py`, `shot_template_composer.py`, `transition_picker.py`, `subject_extractor.py`, `prompts.py::TRANSITION_CSS_BLOCKS`, `QUALITY_TIERS`, or the external API contract, update this doc in the same commit. Adding a new skill under `skills/**/skill.py` or a new template under `shot_templates/**/template.py` does NOT require a doc update — they are discovered at runtime. See [SKILLS_AND_TEMPLATES_AUTHORING.md](./SKILLS_AND_TEMPLATES_AUTHORING.md) for the authoring guide.

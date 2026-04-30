@@ -72,11 +72,11 @@ public class BbbHealthCheckService {
     // -----------------------------------------------------------------------
 
     /**
-     * Scheduled start — Mon-Sat at 12:20 PM IST.
+     * Scheduled start — Mon-Sat at 2:00 PM IST.
      * Reads servers_to_start from admin_core_service, then dispatches the
      * GitHub Actions workflow with server_count parameter.
      */
-    @Scheduled(cron = "0 20 12 * * MON-SAT", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 00 14 * * MON-SAT", zone = "Asia/Kolkata")
     public void scheduledStart() {
         log.info("[BBB Pool] Scheduled START triggered");
 
@@ -126,10 +126,10 @@ public class BbbHealthCheckService {
     }
 
     /**
-     * Scheduled stop — Mon-Sat at 2:15 AM IST.
+     * Scheduled stop — Mon-Sat at 11:55 PM IST.
      * Stops ALL running servers (snapshot + delete).
      */
-    @Scheduled(cron = "0 15 02 * * MON-SAT", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 55 23 * * MON-SAT", zone = "Asia/Kolkata")
     public void scheduledStop() {
         log.info("[BBB Pool] Scheduled STOP triggered");
         triggerPoolAction("stop", "all", 0);

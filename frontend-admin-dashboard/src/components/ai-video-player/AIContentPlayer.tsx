@@ -225,6 +225,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
         cues: soundCues,
         masterClockSec: currentTime,
         isPlaying,
+        narrationAudioRef: audioRef,
     });
 
     // Map page index to audio time range {start, end}

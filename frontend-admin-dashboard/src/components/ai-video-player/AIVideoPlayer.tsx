@@ -189,6 +189,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         cues: soundCues,
         masterClockSec: currentTime,
         isPlaying,
+        narrationAudioRef: audioRef,
     });
 
     // Load timeline data
@@ -597,33 +598,55 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         }
     }, [activeSourceClip, currentTime, isPlaying]);
 
-    // Get ALL active frames at current time, sorted by z-index (lowest first for stacking)
+    // Get ALL active frames at current time, sorted by z-index (lowest first for stacking).
+    // Also computes per-frame opacity for the crossfade window so two adjacent shots
+    // can blend smoothly — matching the renderer's _active_entries_at logic at
+    // generate_video.py:2065-2102 (browser-player ↔ MP4 parity).
     const activeFrames = useMemo(() => {
         if (frames.length === 0) {
             console.log('⚠️ AIVideoPlayer: No frames available for rendering');
             return [];
         }
 
-        // Find all frames that are active at the current time
+        // Crossfade duration — matches the pipeline's premium+ `crossfade_duration`
+        // tier flag default (0.35s).
+        const CROSSFADE_DURATION = 0.35;
+
+        // Include frames whose extended (±crossfade) window covers the current time.
         const active = frames.filter(
-            (frame) => currentTime >= frame.inTime && currentTime < frame.exitTime
+            (frame) =>
+                currentTime >= frame.inTime - CROSSFADE_DURATION &&
+                currentTime < frame.exitTime + CROSSFADE_DURATION
         );
 
         // Sort by z-index (lowest first, so highest z renders on top when stacked)
         active.sort((a, b) => (a.z || 0) - (b.z || 0));
 
-        // Process HTML for each active frame
-        const processedFrames = active.map((frame, index) => ({
-            ...frame,
-            processedHtml: frame.html
-                ? processHtmlContent(
-                      frame.html,
-                      (timelineMeta.content_type as any) || 'VIDEO',
-                      index > 0,
-                      timelineMeta.palette
-                  )
-                : '',
-        }));
+        // Process HTML for each active frame, plus compute crossfade opacity.
+        const processedFrames = active.map((frame, index) => {
+            // Mirror of generate_video.py:2094-2099: opacity is 1 inside [inTime,
+            // exitTime); ramps in/out over CROSSFADE_DURATION before/after.
+            let opacity = 1;
+            if (currentTime < frame.inTime) {
+                const t = currentTime - (frame.inTime - CROSSFADE_DURATION);
+                opacity = Math.max(0, Math.min(1, t / CROSSFADE_DURATION));
+            } else if (currentTime >= frame.exitTime) {
+                const t = frame.exitTime + CROSSFADE_DURATION - currentTime;
+                opacity = Math.max(0, Math.min(1, t / CROSSFADE_DURATION));
+            }
+            return {
+                ...frame,
+                opacity,
+                processedHtml: frame.html
+                    ? processHtmlContent(
+                          frame.html,
+                          (timelineMeta.content_type as any) || 'VIDEO',
+                          index > 0,
+                          timelineMeta.palette
+                      )
+                    : '',
+            };
+        });
 
         console.log(`🎬 AIVideoPlayer: Active frames at ${currentTime.toFixed(2)}s:`, {
             count: processedFrames.length,
@@ -796,6 +819,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                                         top: 0,
                                         left: 0,
                                         zIndex: frame.z || 0,
+                                        opacity: frame.opacity ?? 1,
                                         pointerEvents: frame.id?.startsWith('branding-watermark')
                                             ? 'none'
                                             : 'auto',

@@ -43,6 +43,7 @@ export interface Entry {
     htmlEndY?: number;
     audio_url?: string; // Optional per-entry audio (for user_driven)
     sound_cues?: SoundCue[]; // Sound Planner cues — scheduled via useSoundScheduler
+    opacity?: number; // Crossfade opacity (0..1) — set per-frame at render time during transition windows
     entry_meta?: {
         text?: string;
         audio_text?: string;

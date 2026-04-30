@@ -1361,8 +1361,20 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                                 const g = { ...window.gsap }; // shallow clone
                                 
                                 const resolveGsap = (target) => {
+                                    if (target == null) return target;
                                     if (typeof target === 'string') {
                                         return Array.from(scope.querySelectorAll(target));
+                                    }
+                                    if (Array.isArray(target)) {
+                                        const out = [];
+                                        for (const t of target) {
+                                            if (typeof t === 'string') {
+                                                for (const el of scope.querySelectorAll(t)) out.push(el);
+                                            } else if (t) {
+                                                out.push(t);
+                                            }
+                                        }
+                                        return out;
                                     }
                                     return target;
                                 };
@@ -2568,7 +2580,7 @@ def render_video_from_json(
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
         # ── Build version marker ── (bump this when deploying changes)
-        print(f"[RENDER-VERSION] generate_video.py build=2026-04-11-v13 (root-to-host-rewrite, fps={fps})")
+        print(f"[RENDER-VERSION] generate_video.py build=2026-04-30-v14 (gsap-array-targets, fps={fps})")
         # Wait for fonts to load before rendering frames
         try:
             page.evaluate("() => document.fonts.ready")

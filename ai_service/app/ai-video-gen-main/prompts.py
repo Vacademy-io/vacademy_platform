@@ -1527,5 +1527,31 @@ TRANSITION_CSS_BLOCKS: dict = {
     "zoom_out":    "gsap.fromTo('#shot-root',{scale:1.15,opacity:0},{scale:1,opacity:1,duration:0.45,ease:'power3.out'});",
     "wipe_right":  "gsap.set('#shot-root',{clipPath:'inset(0 100% 0 0)'});gsap.to('#shot-root',{clipPath:'inset(0 0% 0 0)',duration:0.5,ease:'power3.inOut'});",
     "dissolve_up": "gsap.fromTo('#shot-root',{y:'20px',opacity:0},{y:'0px',opacity:1,duration:0.55,ease:'power2.out'});",
+    # Whip-pan: fast horizontal blur + translate. Best for two same-family
+    # cinematic shots where we want to keep the momentum (e.g. VIDEO_HERO
+    # → VIDEO_HERO across an act).
+    "whip_pan":    "gsap.fromTo('#shot-root',{x:'40%',opacity:0,filter:'blur(8px)'},{x:'0%',opacity:1,filter:'blur(0px)',duration:0.30,ease:'power3.out'});",
+    # Zoom-through: the incoming shot enters from a small scale and rises
+    # in opacity; pairs with the outgoing shot's zoom-out exit applied via
+    # the renderer's overlap window.
+    "zoom_through":"gsap.fromTo('#shot-root',{scale:0.7,opacity:0},{scale:1,opacity:1,duration:0.45,ease:'power3.out'});",
+    # Vignette-fade: opacity fade with a brief radial darkening overlay.
+    # The overlay is appended INSIDE #shot-root (rather than document.body)
+    # so the renderer's shadow-DOM scoping keeps it inside the shot — the
+    # render-server renderer rewrites `document.getElementById` to a
+    # shadow-aware `__sd_getElementById`, so the overlay correctly lands in
+    # the right shadow root and tears down at shot exit.
+    "vignette_fade":(
+        "(function(){var host=document.getElementById('shot-root')||document.body;"
+        "var ov=document.createElement('div');ov.style.cssText="
+        "'position:absolute;inset:0;background:radial-gradient(circle at center,"
+        "rgba(0,0,0,0) 30%,rgba(0,0,0,0.85) 100%);pointer-events:none;opacity:0;"
+        "z-index:9999';host.appendChild(ov);"
+        "gsap.fromTo('#shot-root',{opacity:0},{opacity:1,duration:0.5,ease:'power2.out'});"
+        "gsap.to(ov,{opacity:1,duration:0.18,ease:'power2.out'});"
+        "gsap.to(ov,{opacity:0,duration:0.32,delay:0.18,ease:'power2.in',"
+        "onComplete:function(){if(ov&&ov.remove)ov.remove();}});"
+        "})();"
+    ),
 }
 

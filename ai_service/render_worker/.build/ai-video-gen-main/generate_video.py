@@ -1046,8 +1046,20 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                                 const g = { ...window.gsap }; // shallow clone
                                 
                                 const resolveGsap = (target) => {
+                                    if (target == null) return target;
                                     if (typeof target === 'string') {
                                         return Array.from(scope.querySelectorAll(target));
+                                    }
+                                    if (Array.isArray(target)) {
+                                        const out = [];
+                                        for (const t of target) {
+                                            if (typeof t === 'string') {
+                                                for (const el of scope.querySelectorAll(t)) out.push(el);
+                                            } else if (t) {
+                                                out.push(t);
+                                            }
+                                        }
+                                        return out;
                                     }
                                     return target;
                                 };

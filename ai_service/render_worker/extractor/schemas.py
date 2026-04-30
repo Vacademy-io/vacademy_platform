@@ -27,6 +27,9 @@ class Sentence(BaseModel):
     end: float
     words: list[WordTimestamp] = Field(default_factory=list)
     energy_mean: Optional[float] = None
+    pitch_mean_hz: Optional[float] = None
+    pitch_std_hz: Optional[float] = None
+    speech_rate_wps: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -45,6 +48,8 @@ class ProsodySummary(BaseModel):
     mean_pitch_hz: float
     pause_count: int
     pauses: list[dict] = Field(default_factory=list)  # [{start, end, duration_s}]
+    energy_series: list[dict] = Field(default_factory=list)  # downsampled [{t, rms}] @ 1s
+    pitch_series: list[dict] = Field(default_factory=list)   # downsampled [{t, hz}] @ 1s, NaN→null
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +83,22 @@ class SpeakerForeground(BaseModel):
     has_alpha: bool = True
     typical_bbox_norm: Optional[list[float]] = None  # [x, y, w, h]
     free_regions: list[str] = Field(default_factory=list)  # ["top_left", "top_right", ...]
+
+
+class FaceSegment(BaseModel):
+    """Time-bounded segment where the speaker's face is in a stable position.
+
+    Built by clustering consecutive 1fps face-detection samples across the
+    FULL video. Used by future placement pipelines to decide which canvas
+    region is safe for an overlay (infographic, lower-third, etc.) at any
+    given timestamp.
+    """
+    t_start: float
+    t_end: float
+    bbox_norm: list[float]   # [x, y, w, h] — averaged over the segment
+    free_regions: list[str] = Field(default_factory=list)  # ["top_left", ...]
+    sample_count: int = 0    # number of frames that contributed to this segment
+    detection_rate: float = 1.0  # fraction of sampled frames where a face was detected
 
 
 # ---------------------------------------------------------------------------
@@ -143,4 +164,5 @@ class VideoContext(BaseModel):
     prosody: Optional[ProsodySummary] = None
     scenes: list[SceneBoundary] = Field(default_factory=list)
     foreground: Optional[SpeakerForeground] = None
+    face_segments: list[FaceSegment] = Field(default_factory=list)  # full-video face track (podcast mode)
     demo_only: Optional[DemoContext] = None

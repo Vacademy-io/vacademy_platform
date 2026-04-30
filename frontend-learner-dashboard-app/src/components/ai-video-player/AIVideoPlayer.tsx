@@ -145,6 +145,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     cues: soundCues,
     masterClockSec: currentTime,
     isPlaying,
+    narrationAudioRef: audioRef,
   });
 
   // Stable navigation callback with re-entrancy guard
@@ -376,9 +377,15 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
     }
 
     if (isTimeDriven) {
-      // Time-driven: show frames active at current time
+      // Time-driven: show frames active at current time. Active range is
+      // expanded by CROSSFADE_DURATION on both sides so two adjacent shots
+      // can blend during the overlap (matches the renderer's behavior at
+      // generate_video.py:2065-2102).
+      const CROSSFADE_DURATION = 0.35;
       const active = frames.filter(
-        (frame) => currentTime >= frame.inTime && currentTime <= frame.exitTime
+        (frame) =>
+          currentTime >= frame.inTime - CROSSFADE_DURATION &&
+          currentTime <= frame.exitTime + CROSSFADE_DURATION
       );
 
       let framesToShow = active;
@@ -391,7 +398,9 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
         }
       }
 
-      // OPTIMIZATION: Only update state if the frames have actually changed
+      // OPTIMIZATION: Only update state if the frame *membership* has changed.
+      // Per-frame opacity is computed at render time based on currentTime so we
+      // don't need to push it through state.
       setActiveFrames(prev => {
         if (prev.length === framesToShow.length && prev.every((f, i) => f.id === framesToShow[i].id)) {
           return prev;
@@ -910,12 +919,26 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 meta.palette
               ) : frame.html;
 
+              // Crossfade opacity — mirror of generate_video.py:2094-2099. Computed
+              // at render time using the current playhead so adjacent shots blend
+              // smoothly. Same constant as the active-set filter above.
+              const CROSSFADE_DURATION = 0.35;
+              let frameOpacity = 1;
+              if (currentTime < frame.inTime) {
+                const t = currentTime - (frame.inTime - CROSSFADE_DURATION);
+                frameOpacity = Math.max(0, Math.min(1, t / CROSSFADE_DURATION));
+              } else if (currentTime > frame.exitTime) {
+                const t = frame.exitTime + CROSSFADE_DURATION - currentTime;
+                frameOpacity = Math.max(0, Math.min(1, t / CROSSFADE_DURATION));
+              }
+
               const frameStyle = {
                 left: 0,
                 top: 0,
                 width: '100%',
                 height: '100%',
                 zIndex: frame.z || 0,
+                opacity: frameOpacity,
               };
 
               return (

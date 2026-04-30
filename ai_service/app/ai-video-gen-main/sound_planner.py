@@ -164,9 +164,16 @@ def plan_sounds(
 
     ordered = sorted(entries, key=lambda e: float(e.get("start", 0)))
 
-    for entry in ordered:
-        entry["sound_cues"] = []
+    # Initialize sound_cues on every entry up front so transition cues for
+    # shot N can be appended to entry N-1 *after* it has already been
+    # finalized. The loop appends to its own entry's list, and the next
+    # iteration's transition rule appends to the previous entry's list.
+    for e in ordered:
+        e["sound_cues"] = []
+
+    for i, entry in enumerate(ordered):
         if total_cues >= max_per_video:
+            prev_shot_type = str(entry.get("_shot_type", "") or "")
             continue
 
         shot_type = str(entry.get("_shot_type", "") or "")
@@ -178,17 +185,37 @@ def plan_sounds(
 
         cues: List[Dict[str, Any]] = []
 
-        # ── Rule 1: Transition cue between shots of different families ──
-        if prev_shot_type is not None:
+        # ── Rule 1 (revised): pre-roll transition whoosh onto the PREVIOUS ──
+        # entry so the transient (≈65% into the file) lands on the cut,
+        # not after it. Sample-accurate: no natural-offset wobble.
+        if i > 0 and prev_shot_type is not None and "transition_whoosh" in palette:
             prev_family = _FAMILY.get(prev_shot_type, "other")
             cur_family = _FAMILY.get(shot_type, "other")
             if prev_family != cur_family:
-                cue = _cue_from_palette(
-                    palette, "transition_whoosh",
-                    shot_idx, "transition", t=0.00, volume_mul=1.0,
+                prev_entry = ordered[i - 1]
+                prev_dur = max(
+                    0.01,
+                    float(prev_entry.get("end", 0)) - float(prev_entry.get("start", 0)),
                 )
-                if cue:
-                    cues.append(cue)
+                variations = palette["transition_whoosh"]
+                sample = variations[0] if isinstance(variations, list) else variations
+                whoosh_dur = max(0.25, min(1.5, float(sample.get("duration") or 0.5)))
+                # Start the whoosh `whoosh_dur*0.65` before the cut so its
+                # transient peak lands on the cut. Clamp to >= 0 so we never
+                # bleed into a previous-previous shot.
+                t_pre = max(0.0, prev_dur - whoosh_dur * 0.65)
+                t_cue = _cue_from_palette(
+                    palette, "transition_whoosh",
+                    shot_idx, "transition", t=t_pre, volume_mul=1.0,
+                    no_natural_offset=True,
+                )
+                if t_cue:
+                    # Respect the previous entry's per-shot cap so a long
+                    # busy shot at its limit doesn't go over.
+                    prev_cap = 1 if prev_dur < _SHORT_SHOT else max_per_shot
+                    if len(prev_entry["sound_cues"]) < prev_cap:
+                        prev_entry["sound_cues"].append(_public_cue(t_cue))
+                        total_cues += 1
 
         # ── Rule 2: Shot-type signature cue (one per shot, at sync[0] or fixed time) ──
         sig = SHOT_TYPE_CUE.get(shot_type)
@@ -203,6 +230,9 @@ def plan_sounds(
                 start_time=start_time,
                 duration=duration,
                 shot_idx=shot_idx,
+                # Title/impact hits must be sample-accurate so the punch
+                # lands on the visual frame, not 30-80ms after it.
+                no_natural_offset=(role in ("impact", "transition_whoosh")),
             )
             cues.extend(sig_cues)
 
@@ -250,10 +280,19 @@ def plan_sounds(
             cues = cues[:cap]
 
         cues.sort(key=lambda c: float(c.get("t", 0)))
-        entry["sound_cues"] = [_public_cue(c) for c in cues]
+        # Append local cues to whatever is already on the entry. A transition
+        # cue from a previous iteration's pre-roll attaches to entry[i-1]
+        # *after* entry[i-1] is finalized, so we must extend, not replace.
+        entry["sound_cues"].extend(_public_cue(c) for c in cues)
 
         total_cues += len(cues)
         prev_shot_type = shot_type
+
+    # Final pass: sort each entry's cues by t. Transition pre-rolls were
+    # appended after their host entry's local cues were sorted, so the list
+    # is no longer monotonic until we sort here.
+    for e in ordered:
+        e["sound_cues"].sort(key=lambda c: float(c.get("t", 0)))
 
     # Log palette summary
     _log_palette(palette, total_cues, len(ordered))
@@ -352,11 +391,16 @@ def _cue_from_palette(
     *,
     t: float,
     volume_mul: float,
+    no_natural_offset: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Build a cue dict using a rotated file from the palette's variations.
 
     Each call advances the role's rotation counter so consecutive cues
     of the same role use different sound files.
+
+    `no_natural_offset` skips the 30-80ms hash offset for cues whose
+    placement must be sample-accurate (transition whooshes leading a cut,
+    title impact hits). Default offset is fine for chimes/clicks.
     """
     variations = palette.get(role)
     if not variations:
@@ -375,12 +419,15 @@ def _cue_from_palette(
     # Reduce all volumes by 40% so they don't compete with narration
     volume = max(0.0, min(1.0, base_volume * volume_mul * 0.6))
 
-    # Add slight natural offset (0.03-0.08s) so sounds don't land exactly
-    # on shot boundaries — feels more organic
-    import hashlib
-    offset_hash = int(hashlib.md5(f"{shot_idx}:{slot}".encode()).hexdigest()[:4], 16)
-    natural_offset = 0.03 + (offset_hash % 50) / 1000.0  # 0.03-0.08s
-    adjusted_t = max(0.0, round(float(t) + natural_offset, 3))
+    if no_natural_offset:
+        adjusted_t = round(float(t), 3)
+    else:
+        # Add slight natural offset (0.03-0.08s) so sounds don't land exactly
+        # on shot boundaries — feels more organic
+        import hashlib
+        offset_hash = int(hashlib.md5(f"{shot_idx}:{slot}".encode()).hexdigest()[:4], 16)
+        natural_offset = 0.03 + (offset_hash % 50) / 1000.0  # 0.03-0.08s
+        adjusted_t = max(0.0, round(float(t) + natural_offset, 3))
 
     return {
         "id": f"sfx_{shot_idx}_{slot}",
@@ -403,6 +450,8 @@ def _resolve_signature_cue(
     start_time: float,
     duration: float,
     shot_idx: int,
+    *,
+    no_natural_offset: bool = False,
 ) -> List[Dict[str, Any]]:
     """Resolve a SHOT_TYPE_CUE entry. Always produces at most 1 cue now
     (sync[*] was changed to sync[0] — one event per shot, not per sync point).
@@ -415,7 +464,8 @@ def _resolve_signature_cue(
         if t >= duration:
             return []
         cue = _cue_from_palette(palette, role, shot_idx, "signature",
-                                t=t, volume_mul=volume_mul)
+                                t=t, volume_mul=volume_mul,
+                                no_natural_offset=no_natural_offset)
         return [cue] if cue else []
 
     if isinstance(placement, str) and placement.startswith("sync["):
@@ -426,7 +476,8 @@ def _resolve_signature_cue(
         # Always pick only the FIRST sync point — one cue per shot max.
         t = rel_times[0]
         cue = _cue_from_palette(palette, role, shot_idx, "sync0",
-                                t=t, volume_mul=volume_mul)
+                                t=t, volume_mul=volume_mul,
+                                no_natural_offset=no_natural_offset)
         return [cue] if cue else []
 
     return []

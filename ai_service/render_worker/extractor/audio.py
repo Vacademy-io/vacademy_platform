@@ -105,11 +105,13 @@ def transcribe(
 # Prosody analysis
 # ---------------------------------------------------------------------------
 
-def analyze_prosody(wav_path: Path, hop_ms: int = 100) -> tuple[ProsodySummary, np.ndarray, np.ndarray]:
+def analyze_prosody(
+    wav_path: Path, hop_ms: int = 100,
+) -> tuple[ProsodySummary, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Compute RMS energy, pitch, and detect pauses.
 
-    Returns (summary, rms_times, rms_values) — the raw arrays are needed
-    by the energy-based highlight fallback.
+    Returns (summary, rms_times, rms_values, f0_times, f0_values).
+    f0_values may contain NaN for unvoiced frames.
     """
     import librosa
 
@@ -120,12 +122,15 @@ def analyze_prosody(wav_path: Path, hop_ms: int = 100) -> tuple[ProsodySummary, 
     rms = librosa.feature.rms(y=y, hop_length=hop_length)[0]
     rms_times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length)
 
-    # Pitch via pyin
+    # Pitch via pyin (NaN where unvoiced)
     f0, voiced_flag, _ = librosa.pyin(
         y, fmin=librosa.note_to_hz("C2"), fmax=librosa.note_to_hz("C6"),
         sr=sr, hop_length=hop_length,
     )
-    f0_valid = f0[~np.isnan(f0)] if f0 is not None else np.array([])
+    if f0 is None:
+        f0 = np.array([])
+    f0_times = librosa.frames_to_time(np.arange(len(f0)), sr=sr, hop_length=hop_length) if len(f0) > 0 else np.array([])
+    f0_valid = f0[~np.isnan(f0)] if len(f0) > 0 else np.array([])
 
     mean_rms = float(np.mean(rms)) if len(rms) > 0 else 0.0
     peak_rms = float(np.max(rms)) if len(rms) > 0 else 0.0
@@ -215,3 +220,72 @@ def detect_emphasis(
     marks.sort(key=lambda m: m.t)
     logger.info(f"Emphasis: {len(marks)} marks detected")
     return marks
+
+
+# ---------------------------------------------------------------------------
+# Per-sentence prosody enrichment
+# ---------------------------------------------------------------------------
+
+def assign_sentence_prosody(
+    sentences: list[Sentence],
+    rms_times: np.ndarray,
+    rms_values: np.ndarray,
+    f0_times: np.ndarray,
+    f0_values: np.ndarray,
+) -> None:
+    """Populate energy_mean, pitch_mean_hz, pitch_std_hz, speech_rate_wps on each sentence.
+
+    Mutates the sentences list in-place. Future engagement-detection pipelines
+    can use these signals to score per-sentence "interestingness" without
+    re-running audio analysis.
+    """
+    for sent in sentences:
+        # Energy (RMS) within sentence span
+        if len(rms_times) > 0:
+            mask = (rms_times >= sent.start) & (rms_times <= sent.end)
+            if mask.any():
+                sent.energy_mean = round(float(np.mean(rms_values[mask])), 6)
+
+        # Pitch within sentence span (skip NaN unvoiced frames)
+        if len(f0_times) > 0 and len(f0_values) > 0:
+            pmask = (f0_times >= sent.start) & (f0_times <= sent.end)
+            if pmask.any():
+                seg = f0_values[pmask]
+                seg_valid = seg[~np.isnan(seg)]
+                if len(seg_valid) > 0:
+                    sent.pitch_mean_hz = round(float(np.mean(seg_valid)), 2)
+                    sent.pitch_std_hz = round(float(np.std(seg_valid)), 2)
+
+        # Speech rate (words per second)
+        dur = sent.end - sent.start
+        if dur > 0 and sent.words:
+            sent.speech_rate_wps = round(len(sent.words) / dur, 3)
+
+
+def downsample_series(
+    times: np.ndarray, values: np.ndarray, hop_s: float = 1.0,
+) -> list[dict]:
+    """Bucket a per-frame series into hop_s-wide bins, return [{t, v}].
+
+    NaN values are skipped within each bucket; a bucket with no valid samples
+    contributes an entry with v=None so the index stays time-aligned.
+    """
+    if len(times) == 0 or len(values) == 0:
+        return []
+    out: list[dict] = []
+    t_max = float(times[-1])
+    n_buckets = int(t_max / hop_s) + 1
+    for i in range(n_buckets):
+        lo = i * hop_s
+        hi = lo + hop_s
+        mask = (times >= lo) & (times < hi)
+        if not mask.any():
+            out.append({"t": round(lo, 3), "v": None})
+            continue
+        seg = values[mask]
+        seg_valid = seg[~np.isnan(seg)] if seg.dtype.kind == "f" else seg
+        if len(seg_valid) == 0:
+            out.append({"t": round(lo, 3), "v": None})
+        else:
+            out.append({"t": round(lo, 3), "v": round(float(np.mean(seg_valid)), 6)})
+    return out

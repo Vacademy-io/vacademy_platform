@@ -19,15 +19,23 @@ from pathlib import Path
 from typing import Any, Callable
 
 import boto3
-import numpy as np
 from botocore.exceptions import ClientError
 from urllib.request import Request, urlopen
 
-from .audio import analyze_prosody, demux_audio, detect_emphasis, transcribe
+from .audio import (
+    analyze_prosody,
+    assign_sentence_prosody,
+    demux_audio,
+    detect_emphasis,
+    downsample_series,
+    transcribe,
+)
+from .full_video_face import cluster_into_segments, scan_full_video_faces
 from .highlight import select_highlight
 from .matting import SelfieSegMatter
 from .scene import detect_scenes
 from .schemas import (
+    FaceSegment,
     SpeakerForeground,
     VideoContext,
     VideoMeta,
@@ -37,7 +45,9 @@ from .spatial import (
     write_change_rows,
     write_cursor_rows,
     write_dynamic_crops as write_spatial_dynamic_crops,
+    write_face_segments,
     write_frame_rows,
+    write_full_video_faces,
     write_ocr_rows,
     write_ui_cutouts as write_spatial_ui_cutouts,
 )
@@ -212,15 +222,41 @@ def run_index_pipeline(
         sentences, all_words = transcribe(wav_path)
         on_progress(20)
 
-        prosody, rms_times, rms_values = analyze_prosody(wav_path)
+        prosody, rms_times, rms_values, f0_times, f0_values = analyze_prosody(wav_path)
         on_progress(23)
 
         emphasis = detect_emphasis(all_words, rms_times, rms_values, prosody)
         on_progress(25)
 
+        # Persist downsampled energy/pitch series so future engagement
+        # pipelines don't have to re-run audio analysis.
+        prosody.energy_series = downsample_series(rms_times, rms_values, hop_s=1.0)
+        prosody.pitch_series = downsample_series(f0_times, f0_values, hop_s=1.0)
+
         # Scene detection — use higher threshold for podcast (less visual variety)
         scene_threshold = 33.0 if mode == "podcast" else 27.0
         scenes = detect_scenes(video_path, threshold=scene_threshold)
+        on_progress(28)
+
+        # ── STAGE 1.5: FULL-VIDEO FACE SCAN (28-30%, podcast only) ────
+        # Lightweight 1fps face detection across the ENTIRE video so future
+        # placement pipelines know where the speaker's face is at any point,
+        # not just inside the highlight window.
+        face_samples: list[dict] = []
+        face_segments_list = []
+        if mode == "podcast":
+            try:
+                logger.info("=== STAGE 1.5: Full-video face scan (1fps) ===")
+                face_samples = scan_full_video_faces(
+                    video_path=video_path,
+                    sample_fps=1.0,
+                    on_progress=on_progress,
+                    progress_lo=28.0,
+                    progress_hi=30.0,
+                )
+                face_segments_list = cluster_into_segments(face_samples)
+            except Exception as e:
+                logger.warning(f"Full-video face scan failed (non-fatal): {e}")
         on_progress(30)
 
         # ── STAGE 2: LLM HIGHLIGHT (30-40%) ───────────────────────────
@@ -360,11 +396,39 @@ def run_index_pipeline(
         # ── OUTPUT (90-100%) ──────────────────────────────────────────
         logger.info("=== OUTPUT: Building artifacts ===")
 
-        # Assign energy_mean to sentences
-        for sent in sentences:
-            mask = (rms_times >= sent.start) & (rms_times <= sent.end)
-            if mask.any():
-                sent.energy_mean = round(float(np.mean(rms_values[mask])), 6)
+        # Per-sentence prosody enrichment (energy, pitch, speech rate).
+        assign_sentence_prosody(sentences, rms_times, rms_values, f0_times, f0_values)
+
+        # Persist full-video face data into the spatial DB for SQL queries.
+        if face_samples:
+            face_sample_rows = [
+                {
+                    "t": s["t"],
+                    "face_x": s["face_x"], "face_y": s["face_y"],
+                    "face_w": s["face_w"], "face_h": s["face_h"],
+                    "detected": 1 if s["detected"] else 0,
+                }
+                for s in face_samples
+            ]
+            # Reopen the connection — it was closed at the end of Stage 3.
+            conn = create_spatial_db(spatial_db_path)
+            try:
+                write_full_video_faces(conn, face_sample_rows)
+                if face_segments_list:
+                    seg_rows = [
+                        {
+                            "t_start": fs.t_start, "t_end": fs.t_end,
+                            "bbox_x": fs.bbox_norm[0], "bbox_y": fs.bbox_norm[1],
+                            "bbox_w": fs.bbox_norm[2], "bbox_h": fs.bbox_norm[3],
+                            "free_regions": ",".join(fs.free_regions),
+                            "sample_count": fs.sample_count,
+                            "detection_rate": fs.detection_rate,
+                        }
+                        for fs in face_segments_list
+                    ]
+                    write_face_segments(conn, seg_rows)
+            finally:
+                conn.close()
 
         # Build video_context.json
         video_context = VideoContext(
@@ -381,6 +445,7 @@ def run_index_pipeline(
             prosody=prosody,
             scenes=scenes,
             foreground=foreground if mode == "podcast" else None,
+            face_segments=face_segments_list if mode == "podcast" else [],
             demo_only=demo_context if mode == "demo" else None,
         )
 

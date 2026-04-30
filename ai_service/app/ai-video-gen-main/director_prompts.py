@@ -149,6 +149,17 @@ DIRECTOR_SYSTEM_PROMPT = (
     "(e.g. photo hero → illustrated infographic → product hero outro) as long as each transition "
     "feels intentional. Use KINETIC_TITLE or a hard cut between shots to mark act changes.\n\n"
 
+    "**OPTIONAL — `template_id` (deterministic shot composition)**:\n"
+    "Some shots cleanly fit a pre-built composition layout. Setting `template_id` "
+    "AND `template_params` on a shot tells the pipeline to render that layout "
+    "deterministically — NO per-shot LLM call, perfect cross-shot consistency. "
+    "Use templates when content is a clean fit; leave `template_id` null for "
+    "freeform shots. The available `template_id` values plus their required "
+    "`template_params` shapes are documented in the SHOT TEMPLATE CATALOG that "
+    "follows the rules — read it before planning. Templates compose with any "
+    "`shot_type` (e.g. a `TEXT_DIAGRAM` shot can use the `split_comparison` "
+    "template; a `DATA_STORY` shot can use `stat_block_with_context`).\n\n"
+
     "**TRANSITION_IN** (required for every shot — pick exactly one):\n"
     "- `\"cut\"` — instant. KINETIC_TEXT (always), fast reels back-to-back shots.\n"
     "- `\"fade\"` — opacity 0→1, 0.4s. Default for education content, reflective beats.\n"

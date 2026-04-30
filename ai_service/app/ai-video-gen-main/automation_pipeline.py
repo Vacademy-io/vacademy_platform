@@ -491,8 +491,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "use_director": True,
         "director_max_tokens": 14000,  # was 20000 — Director JSON plans don't need essay budgets
         "shot_pack_enabled": True,
+        "shot_templates_enabled": True,
         "per_shot_max_tokens": 12000,  # was 16000 — measured outputs 8-12K; cap removed waste
         "crossfade_duration": 0.35,
+        "transition_picker_enabled": True,
         "sound_enabled": True,
         "sound_max_cues_per_shot": 1,
         "sound_max_cues_per_video": 10,
@@ -515,9 +517,12 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "director_max_tokens": 20000,  # was 32000
         "director_emphasis_map": True,
         "shot_pack_enabled": True,
+        "shot_templates_enabled": True,
         "skill_library_enabled": True,
+        "image_continuity_enabled": True,
         "per_shot_max_tokens": 16000,  # was 24000 — measured outputs ~10-14K
         "crossfade_duration": 0.35,
+        "transition_picker_enabled": True,
         "sound_enabled": True,
         "sound_max_cues_per_shot": 2,
         "sound_max_cues_per_video": 20,
@@ -543,12 +548,15 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "director_few_shot": True,
         "director_shot_density": True,
         "shot_pack_enabled": True,
+        "shot_templates_enabled": True,
         "shot_animation_validator": True,
         "stock_video_ranking": True,
         "skill_library_enabled": True,
+        "image_continuity_enabled": True,
         "per_shot_max_tokens": 20000,  # was 32000 — densest HTML ~14-18K; 20K gives headroom
         "kinetic_text_shots": True,
         "crossfade_duration": 0.35,
+        "transition_picker_enabled": True,
         "motion_density_enforcement": True,
         "director_motion_bias": True,
         "min_animated_elements": 6,
@@ -4781,6 +4789,19 @@ class VideoGenerationPipeline:
 
         # Super Ultra: bias the Director toward motion-graphics shot types
         director_system = DIRECTOR_SYSTEM_PROMPT
+        # Shot template catalog (premium / ultra / super_ultra).
+        # Surfaces the available `template_id` values + their required
+        # `template_params` schemas so the Director can opt into deterministic
+        # compositions when content cleanly fits one.
+        if self._tier_config.get("shot_templates_enabled"):
+            try:
+                from shot_template_registry import build_catalog_for_director  # type: ignore
+                _canvas = "portrait" if _h > _w else "landscape"
+                _tmpl_catalog = build_catalog_for_director(self._quality_tier, _canvas)
+                if _tmpl_catalog:
+                    director_system = director_system + "\n\n" + _tmpl_catalog
+            except Exception as _e:
+                print(f"   ⚠️ shot_template_registry unavailable for Director ({_e})")
         if self._tier_config.get("director_few_shot"):
             director_system = director_system + SUPER_ULTRA_DIRECTOR_EXTENSION
         if self._is_background_music_enabled():
@@ -4992,6 +5013,58 @@ class VideoGenerationPipeline:
                 if gap > 0.5:
                     non_overlay[i]["end_time"] = non_overlay[i + 1]["start_time"]
 
+        # ── Transition picker (premium / ultra / super_ultra) ──
+        # Replace the Director's blind `transition_in` choices with deterministic
+        # content-aware picks based on (prev_shot, shot, act_boundary). Also
+        # honors the Act Planner's `transition_out` field — previously dropped.
+        # Pure function; never raises; falls back to `fade` for unknown values.
+        if self._tier_config.get("transition_picker_enabled"):
+            try:
+                from transition_picker import apply_to_plan as _apply_transitions  # type: ignore
+                changes = _apply_transitions(director_plan, act_plan=act_plan)
+                if changes:
+                    for shot_idx, old, new, reason in changes[:6]:
+                        print(f"   🎬 Shot {shot_idx + 1} transition: {old} → {new} ({reason})")
+                    if len(changes) > 6:
+                        print(f"      ... {len(changes) - 6} more transition changes")
+                else:
+                    print("   🎬 Transition picker: no changes (Director picks were optimal)")
+            except Exception as _tp_err:
+                print(f"   ⚠️ Transition picker failed ({_tp_err}) — keeping Director picks")
+
+        # ── Subject extractor (ultra / super_ultra) ──
+        # Identifies recurring subjects (a specific character, product, location)
+        # across the shot plan. The mapping `{shot_index: subject_id}` is stashed
+        # on `self._subject_id_for_shot` and used by `_process_generated_images`
+        # to thread image-to-image references through Seedream so the same
+        # subject looks consistent across shots. One Gemini Flash call per video.
+        # Initialize per-run state regardless of tier so concurrent access is safe.
+        import threading as _threading_subj
+        self._subject_id_for_shot = {}
+        self._subject_refs = {}
+        self._subject_ready_events = {}
+        self._subject_first_claimed = set()
+        self._subject_meta_lock = _threading_subj.Lock()
+        if self._tier_config.get("image_continuity_enabled"):
+            try:
+                from subject_extractor import extract_subjects as _extract_subjects  # type: ignore
+                mapping, subjects = _extract_subjects(shots, self.html_client.chat)
+                self._subject_id_for_shot = mapping
+                if subjects:
+                    print(
+                        f"   🎯 Subject extraction: {len(subjects)} recurring "
+                        f"subject(s) across {len(mapping)} shots"
+                    )
+                    for sub in subjects[:6]:
+                        print(
+                            f"      • '{sub['id']}' ({sub.get('label', '')}) "
+                            f"→ shots {sub['shot_indices']}"
+                        )
+                else:
+                    print("   🎯 Subject extraction: no recurring subjects found")
+            except Exception as _se_err:
+                print(f"   ⚠️ Subject extraction failed ({_se_err}) — falling back to text-only image gen")
+
         # Save for debugging
         director_path = run_dir / "director_plan.json"
         director_path.write_text(json.dumps(director_plan, indent=2, ensure_ascii=False))
@@ -5188,6 +5261,18 @@ class VideoGenerationPipeline:
                 print(f"   ⚠️ Skill library failed to import ({_e}) — continuing without skills")
                 _skill_enabled = False
 
+        # Shot templates (premium / ultra / super_ultra) — deterministic full-shot
+        # compositions invoked by the Director via `template_id` on a shot. When a
+        # template renders successfully, the per-shot LLM call is SKIPPED entirely.
+        _template_enabled = bool(self._tier_config.get("shot_templates_enabled"))
+        _template_compose_fn = None
+        if _template_enabled:
+            try:
+                from shot_template_composer import compose as _template_compose_fn  # type: ignore
+            except Exception as _e:
+                print(f"   ⚠️ Shot templates failed to import ({_e}) — continuing without templates")
+                _template_enabled = False
+
         _w = getattr(self, 'video_width', 1920)
         _h = getattr(self, 'video_height', 1080)
         _safe_area = get_html_generation_safe_area(_w, _h)
@@ -5298,6 +5383,73 @@ class VideoGenerationPipeline:
             start_time = float(shot.get("start_time", 0))
             end_time = float(shot.get("end_time", start_time + 8))
             duration = max(1.0, end_time - start_time)
+
+            # ── Shot template bypass (premium / ultra / super_ultra) ──
+            # When the Director sets `template_id` on a shot AND the template
+            # renders successfully, we skip the LLM call entirely and use the
+            # deterministic template HTML. Falls through to the LLM path on any
+            # template error or when no template_id is set.
+            if _template_enabled and _template_compose_fn is not None and shot.get("template_id"):
+                _t_transition_in = shot.get("transition_in") or "fade"
+                _t_transition_block = TRANSITION_CSS_BLOCKS.get(_t_transition_in, "")
+                _t_ctx = {
+                    "shot_index": shot_idx,
+                    "canvas_w": _w,
+                    "canvas_h": _h,
+                    "tier": self._quality_tier,
+                    "shot_type": shot_type,
+                    "shot_pack": getattr(self, "_current_shot_pack", None) or {},
+                    "transition_in": _t_transition_in,
+                    "transition_css_block": _t_transition_block,
+                }
+                try:
+                    _t_result = _template_compose_fn(shot, _t_ctx)
+                except Exception as _t_err:
+                    _t_result = {"skipped": True, "reason": f"compose threw: {_t_err}", "template_id": shot.get("template_id")}
+
+                if not _t_result.get("skipped"):
+                    _t_html = self._ensure_fonts(_t_result["html"])
+                    _t_entry = {
+                        "start": start_time,
+                        "end": end_time,
+                        "htmlStartX": 0, "htmlStartY": 0,
+                        "htmlEndX": _w, "htmlEndY": _h,
+                        "html": _t_html,
+                        "id": _entry_id,
+                        "index": shot_idx,
+                        "z": shot.get("z", 10),
+                        # Same stash fields as the LLM path so downstream
+                        # (stock video ranker, sound planner) sees consistent shape.
+                        "_shot_type": shot_type,
+                        "_narration_excerpt": shot.get("narration_excerpt", ""),
+                        "_visual_description": shot.get("visual_description", ""),
+                        "_skill_audio_events": _t_result.get("audio_events", []),
+                        "_template_id": _t_result.get("template_id", ""),
+                    }
+                    print(
+                        f"   📐 {_log_label} template: {_t_result.get('template_id')} "
+                        f"v{_t_result.get('version', '?')} rendered (no LLM)"
+                    )
+                    if on_segment_done:
+                        try:
+                            on_segment_done([_t_entry])
+                        except Exception:
+                            pass
+                    # Cache so a resume can skip; usage = empty since we skipped the LLM.
+                    try:
+                        _cache_path.write_text(
+                            json.dumps({"entries": [_t_entry], "usage": {}}, default=str)
+                        )
+                    except Exception:
+                        pass
+                    return [_t_entry], {}
+                else:
+                    # Template said skip — log and fall through to the LLM path.
+                    print(
+                        f"   ⚠️ {_log_label} template '{_t_result.get('template_id')}' "
+                        f"skipped: {_t_result.get('reason')} — falling back to LLM"
+                    )
+            # ── end shot template bypass ──
 
             # Build per-shot system prompt (only the relevant shot type card)
             system_prompt = build_per_shot_system_prompt(shot_type, _w, _h)
@@ -8554,6 +8706,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     img_source = source_match.group(1).lower()
                 provider_match = re.search(r'data-stock-provider=["\'](\w+)["\']', full_tag)
                 stock_provider = provider_match.group(1).lower() if provider_match else ""
+                # Subject continuity (ultra+): if the Director plan flagged this
+                # shot as part of a recurring subject, attach the subject_id to
+                # the task so the worker thread can pass `reference_image_url`
+                # to Seedream after the FIRST shot of that subject lands.
+                _subject_id = (
+                    getattr(self, "_subject_id_for_shot", {}) or {}
+                ).get(seg_idx)
+                # Also probe a per-img tag override (`data-subject-id="..."`)
+                # in case the Director embedded one directly in the HTML.
+                _sid_match = re.search(r'data-subject-id=["\']([^"\']+)["\']', full_tag)
+                if _sid_match:
+                    _subject_id = _sid_match.group(1).strip() or _subject_id
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
@@ -8562,6 +8726,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     "is_cutout": is_cutout,
                     "img_source": img_source,
                     "stock_provider": stock_provider,
+                    "subject_id": _subject_id,
                     "timestamp": datetime.now().strftime("%f")  # basic uniqueness
                 })
 
@@ -8633,21 +8798,101 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 if image_style.lower() not in prompt.lower():
                     prompt = f"{image_style}, {prompt}"
 
+            # Subject continuity (ultra+): if this shot is part of a recurring
+            # subject AND a reference URL has already been cached from an
+            # earlier shot of the same subject, pass it as `reference_image_url`
+            # so Seedream conditions on the cached image. Without that, the
+            # subject would visually drift across shots.
+            #
+            # First-shot ordering: tasks are appended in shot-index order so
+            # the first shot of each subject naturally enters the executor
+            # first. We use a per-subject `threading.Event` to make any
+            # SUBSEQUENT task block until the first finishes and uploads.
+            _sub_id = task.get("subject_id")
+            _ref_url: Optional[str] = None
+            _is_first_for_subject = False
+            if _sub_id and getattr(self, "_subject_meta_lock", None) is not None:
+                with self._subject_meta_lock:
+                    _ref_url = (self._subject_refs or {}).get(_sub_id)
+                    if not _ref_url and _sub_id not in self._subject_first_claimed:
+                        # Claim the first-task slot for this subject.
+                        import threading as _t_subj
+                        self._subject_first_claimed.add(_sub_id)
+                        self._subject_ready_events[_sub_id] = _t_subj.Event()
+                        _is_first_for_subject = True
+                if (not _ref_url) and (not _is_first_for_subject):
+                    # Some other task has the first-shot slot — wait for it.
+                    event = self._subject_ready_events.get(_sub_id)
+                    if event and event.wait(timeout=120):
+                        _ref_url = (self._subject_refs or {}).get(_sub_id)
+
             label = f"seg={idx}" + (" (cutout)" if is_cutout else "")
+            if _sub_id:
+                label += f" [subject:{_sub_id}{'/first' if _is_first_for_subject else '/ref' if _ref_url else '/no-ref'}]"
             print(f"    🎨 Generating image {label}: {prompt[:60]}...")
-            # May raise _ImageGenRateLimitError — propagates to as_completed caller
-            image_bytes, usage_meta = self._call_image_generation_llm(prompt)
+            # May raise _ImageGenRateLimitError — propagates to as_completed caller.
+            # Subject continuity: if THIS is the first task for a subject, we
+            # MUST set the subject's ready-event before any path that exits this
+            # function, otherwise subsequent tasks (and the requeued retry of
+            # this same task) would deadlock on event.wait until the 120s
+            # timeout. Set the event in the 429 path so the requeued task can
+            # re-claim or proceed without a reference.
+            try:
+                image_bytes, usage_meta = self._call_image_generation_llm(
+                    prompt, reference_image_url=_ref_url
+                )
+            except _ImageGenRateLimitError:
+                if _is_first_for_subject and _sub_id:
+                    # Release the first-task claim so the requeued retry (or a
+                    # different subject member) can take it next time.
+                    if getattr(self, "_subject_meta_lock", None):
+                        with self._subject_meta_lock:
+                            self._subject_first_claimed.discard(_sub_id)
+                    event = (self._subject_ready_events or {}).get(_sub_id)
+                    if event:
+                        event.set()
+                raise
+            except Exception:
+                if _is_first_for_subject and _sub_id:
+                    event = (self._subject_ready_events or {}).get(_sub_id)
+                    if event:
+                        event.set()
+                raise
             if not usage_meta: usage_meta = {}
             for k, v in enhance_usage.items():
                 if k in ["prompt_tokens", "completion_tokens", "total_tokens"]:
                     usage_meta[k] = usage_meta.get(k, 0) + v
             if not image_bytes:
                 print(f"    ❌ No image bytes for: {prompt[:50]}...")
+                # Subject continuity: unblock waiters even on failure so they
+                # don't stall for the full 120s timeout. They'll proceed without
+                # a reference (text-only fallback for subsequent shots).
+                if _is_first_for_subject and _sub_id:
+                    event = (self._subject_ready_events or {}).get(_sub_id)
+                    if event:
+                        event.set()
                 return None
 
             # Remove background for cutout assets
             if is_cutout:
                 image_bytes = self._remove_background(image_bytes)
+
+            # Subject continuity: this is the FIRST successful shot for the
+            # subject — upload the image to S3 and cache the URL so subsequent
+            # shots of the same subject can use it as `reference_image_url`.
+            # Failures are non-fatal (logged inside the helper).
+            if _is_first_for_subject and _sub_id:
+                try:
+                    uploaded_url = self._upload_subject_reference(
+                        image_bytes, _sub_id, run_dir,
+                    )
+                    if uploaded_url and getattr(self, "_subject_meta_lock", None):
+                        with self._subject_meta_lock:
+                            self._subject_refs[_sub_id] = uploaded_url
+                finally:
+                    event = (self._subject_ready_events or {}).get(_sub_id)
+                    if event:
+                        event.set()
 
             # Save to disk for audit/debug (non-blocking write; bytes already in memory)
             filename = f"img_{idx}_{abs(hash(prompt))}.png"
@@ -8777,12 +9022,74 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         print(f"    📝 Applied {replacements_applied} image replacements")
         return html_segments, total_image_usage
 
-    def _call_image_generation_llm(self, prompt: str, width: Optional[int] = None, height: Optional[int] = None) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
+    def _upload_subject_reference(
+        self,
+        image_bytes: bytes,
+        subject_id: str,
+        run_dir: Path,
+    ) -> Optional[str]:
+        """Upload a generated subject-reference image to S3 and return its public URL.
+
+        Used by the image-continuity flow: when the FIRST shot of a recurring
+        subject lands, we upload that image so subsequent shots can pass its
+        URL as `reference_image_url` to Seedream (image-to-image continuity).
+
+        Returns the public URL on success, None on failure. Failure is non-fatal
+        — the subject just doesn't get continuity for the rest of the run.
+        """
+        import os as _os_subj
+        import re as _re_subj
+        try:
+            import boto3 as _boto3_subj
+        except Exception as _imp_err:
+            print(f"    ⚠️ subject_ref upload skipped (boto3 unavailable): {_imp_err}")
+            return None
+
+        # Sanitize subject_id for use in an S3 key.
+        safe_sid = _re_subj.sub(r"[^A-Za-z0-9_-]", "_", subject_id)[:64] or "subject"
+        run_id = run_dir.name or "run"
+        bucket = "vacademy-media-storage-public"
+        key = f"SUBJECT_REFS/{run_id}/{safe_sid}.png"
+
+        try:
+            client = _boto3_subj.client(
+                "s3",
+                aws_access_key_id=_os_subj.environ.get("AWS_ACCESS_KEY_ID") or None,
+                aws_secret_access_key=_os_subj.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                region_name=_os_subj.environ.get("AWS_REGION", "ap-south-1"),
+            )
+            client.put_object(
+                Bucket=bucket,
+                Key=key,
+                Body=image_bytes,
+                ContentType="image/png",
+                ACL="public-read",
+            )
+        except Exception as _up_err:
+            print(f"    ⚠️ subject_ref S3 upload failed for '{subject_id}': {_up_err}")
+            return None
+
+        url = f"https://{bucket}.s3.amazonaws.com/{key}"
+        print(f"    🎯 Cached reference for subject '{subject_id}': {url}")
+        return url
+
+    def _call_image_generation_llm(
+        self,
+        prompt: str,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
+        reference_image_url: Optional[str] = None,
+    ) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
         """Generate image via OpenRouter (bytedance-seed/seedream-4.5).
 
         Returns (image_bytes, usage_metadata). 429 raises _ImageGenRateLimitError
         so the executor thread is freed and the main thread handles requeue.
         5xx/network errors retry with jittered backoff.
+
+        When `reference_image_url` is provided, the call uses the multimodal
+        content-array shape (text part + image_url part) so Seedream can do
+        image-to-image conditioning — used by the subject continuity flow to
+        keep recurring characters/products visually consistent across shots.
         """
         import random as _random
         import traceback as _tb
@@ -8811,9 +9118,29 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "HTTP-Referer": "https://stilllift-automation.local",
             "X-Title": "StillLift Automation",
         }
+
+        # Two payload shapes:
+        #   - text-only (default): `content` is a plain string.
+        #   - multimodal (image-to-image): `content` is an array of parts,
+        #     including a single `image_url` part referencing the subject's
+        #     prior generated image. Seedream uses it as the visual reference
+        #     so the subject (character, product, etc.) looks consistent.
+        if reference_image_url:
+            i2i_prompt = (
+                f"{full_prompt}\n\nReference: match the subject's identity, "
+                f"colors, and proportions from the attached image. Same subject, "
+                f"new pose / angle / context as described."
+            )
+            content: Any = [
+                {"type": "text", "text": i2i_prompt},
+                {"type": "image_url", "image_url": {"url": reference_image_url}},
+            ]
+        else:
+            content = full_prompt
+
         payload = {
             "model": "bytedance-seed/seedream-4.5",
-            "messages": [{"role": "user", "content": full_prompt}],
+            "messages": [{"role": "user", "content": content}],
             "modalities": ["image"],
         }
 

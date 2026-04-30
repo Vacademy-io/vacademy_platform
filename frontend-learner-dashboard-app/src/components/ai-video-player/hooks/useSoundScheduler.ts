@@ -1,43 +1,59 @@
 /**
- * useSoundScheduler — plays per-shot sound effect cues live during playback.
- *
- * Contract:
- *   1. The backend Sound Planner emits `sound_cues` on each timeline entry.
- *   2. Every cue carries `absolute_time` (global seconds on the master clock)
- *      and `url` (S3 public URL to the audio file).
- *   3. This hook preloads every unique URL via Howler once on mount/cue change,
- *      then fires cues as `masterClockSec` crosses their trigger times.
- *
- * Why Howler (not raw Web Audio):
- *   - Handles iOS/Android autoplay unlock transparently — the audio context
- *     resumes on the first user gesture (typically the play button) without
- *     custom unlock code.
- *   - Polyphony: a Howl instance can play the same source multiple times
- *     concurrently. Not needed for our one-shot cues today, but free.
- *   - Short stings (<10s) are decoded into memory for zero-latency playback;
- *     long ambient loops can be streamed via `html5: true` (future work).
- *
- * Seek semantics:
- *   When the user seeks the master timeline, the scheduler recomputes which
- *   cues are "already played" (any cue whose trigger is before the new time
- *   is marked played so it never fires again this session). Seeking forward
- *   skips cues; seeking backward does NOT replay past cues — one-shot only.
- *
- * Kill switch:
- *   When `enabled` is false or the cues array is empty, the hook does nothing
- *   (no network requests, no Howl instances).
- *
- * This file is kept in sync with the admin dashboard version. If you change
- * one, update the other.
- */
+* useSoundScheduler — plays per-shot sound effect cues live during playback.
+*
+* Web Audio implementation (replaces an earlier Howler-based version).
+*
+* Contract:
+*   1. The backend Sound Planner emits `sound_cues` on each timeline entry.
+*   2. Every cue carries `absolute_time` (global seconds on the master clock)
+*      and `url` (S3 public URL to the audio file).
+*   3. This hook decodes every unique URL once into an AudioBuffer, then on
+*      each tick walks unfired cues and schedules the ones inside a 300 ms
+*      lookahead window using `source.start(ctx.currentTime + delta)` — so
+*      cues fire sample-accurately on the AudioContext clock instead of the
+*      jittery JS clock.
+*   4. Optional sidechain duck: when `narrationAudioRef` is provided, the
+*      narration `<audio>` element is tapped via `createMediaElementSource`
+*      and routed through a `narrationGain`. Each scheduled cue ramps that
+*      gain down by ~4 dB for the cue duration (40 ms attack / 100 ms
+*      release), so SFX arrive in clean air without sounding loud.
+*
+* Why Web Audio (vs Howler):
+*   - Sample-accurate scheduling. Howler fires when the JS clock crosses a
+*     trigger inside a ±150 ms window; here cues fire on the AudioContext's
+*     own clock with sub-5 ms accuracy.
+*   - A shared `sfxBus` GainNode means a single master SFX volume knob, and
+*     a single duck source for the narration tap.
+*   - No global mute/unmute side-effects — pause behaviour ramps the bus
+*     gain instead of muting Howler globally.
+*
+* Seek semantics:
+*   When the user seeks the master timeline, the scheduler recomputes which
+*   cues are "already played" (any cue whose trigger is before the new time
+*   is marked played so it never fires again this session). Seeking forward
+*   skips cues; seeking backward does NOT replay past cues — one-shot only.
+*
+* Kill switch:
+*   When `enabled` is false or the cues array is empty, the hook does nothing
+*   (no AudioContext, no fetches, no narration tap).
+*
+* iOS / autoplay: AudioContext starts suspended. We `ctx.resume()` whenever
+*   `isPlaying` becomes true — by then the user has clicked the play button,
+*   so the resume is allowed.
+*
+* createMediaElementSource caveat: it can only be called ONCE per audio
+*   element. If the same element is later passed in, we skip the tap. The
+*   audio element MUST have `crossOrigin="anonymous"` (already set in both
+*   AIContentPlayer and AIVideoPlayer) or the tap would silently mute the
+*   narration due to CORS tainting.
+*/
 
 import { useEffect, useMemo, useRef, useCallback } from 'react';
-import { Howl, Howler } from 'howler';
 import type { SoundCue } from '../types';
 
 export interface UseSoundSchedulerOptions {
   /** All sound cues for the video, pre-merged across entries. Each cue MUST
-   *  carry an `absolute_time` (global master-clock seconds). */
+  *  carry an `absolute_time` (global master-clock seconds). */
   cues: SoundCue[] | undefined;
   /** Master clock in seconds — same source the rest of the player uses. */
   masterClockSec: number;
@@ -46,16 +62,22 @@ export interface UseSoundSchedulerOptions {
   /** Scheduler kill switch. When false, no sounds play regardless of cues. */
   enabled?: boolean;
   /** Multiplier applied to every cue's per-cue volume (0.0–1.0).
-   *  Use this for a master SFX volume slider. Default 1.0. */
+  *  Use this for a master SFX volume slider. Default 1.0. */
   masterVolume?: number;
+  /** Optional ref to the narration <audio> element. When provided, the
+  *  scheduler taps it via createMediaElementSource and ducks it during
+  *  every cue. When omitted, SFX still play through the bus but the
+  *  narration is left flat. */
+  narrationAudioRef?: React.RefObject<HTMLAudioElement | null>;
 }
 
-/**
- * Time window around a cue's trigger during which it's considered "firing".
- * 150ms gives the onTimeUpdate tick (~250ms on most browsers) a chance to
- * catch cues even if the clock jumps by a full tick.
- */
-const TRIGGER_WINDOW = 0.15;
+const DUCK_DB = -4;
+const DUCK_GAIN = Math.pow(10, DUCK_DB / 20); // ≈ 0.631
+const DUCK_ATTACK_TC = 0.04; // setTargetAtTime time-constant ≈ 40 ms attack
+const DUCK_RELEASE_TC = 0.10; // ≈ 100 ms release after the cue ends
+const DUCK_TAIL_S = 0.20; // hold duck this long after cue ends
+const LOOKAHEAD_S = 0.30; // schedule cues this far ahead of the master clock
+const SEEK_THRESHOLD_S = 1.0; // clock jump bigger than this = seek
 
 export function useSoundScheduler({
   cues,
@@ -63,191 +85,274 @@ export function useSoundScheduler({
   isPlaying,
   enabled = true,
   masterVolume = 1.0,
+  narrationAudioRef,
 }: UseSoundSchedulerOptions): { resetPlayed: () => void } {
-  // Map<url, Howl> — one Howl per unique cue URL, reused across cues.
-  const howlsRef = useRef<Map<string, Howl>>(new Map());
-  // Set<cue.id> of cues already fired this session. Reset on seek/reset.
-  const playedRef = useRef<Set<string>>(new Set());
-  // Track the last observed clock value so we can detect seeks (big jumps).
+  const ctxRef = useRef<AudioContext | null>(null);
+  const sfxBusRef = useRef<GainNode | null>(null);
+  const narrationSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const narrationGainRef = useRef<GainNode | null>(null);
+  const narrationElRef = useRef<HTMLAudioElement | null>(null);
+  const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
+  /** Set<cue.id> of cues already scheduled this session. Reset on seek. */
+  const scheduledRef = useRef<Set<string>>(new Set());
   const lastClockRef = useRef<number>(masterClockSec);
 
-  // Stable list of unique cue URLs for preload diffing.
+  // ── 1. Lazy AudioContext + sfxBus ──────────────────────────────────────
+  useEffect(() => {
+    if (!enabled) return;
+    if (ctxRef.current) return;
+    const Ctor: typeof AudioContext | undefined =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctor) return;
+    const ctx = new Ctor();
+    const sfxBus = ctx.createGain();
+    sfxBus.gain.value = Math.max(0, Math.min(1, masterVolume));
+    sfxBus.connect(ctx.destination);
+    ctxRef.current = ctx;
+    sfxBusRef.current = sfxBus;
+  }, [enabled, masterVolume]);
+
+  // ── 2. On first play: resume AudioContext, then tap narration ──────────
+  // Both must happen at the same instant. createMediaElementSource reroutes
+  // the narration <audio> element away from the browser's default audio
+  // path and through this AudioContext; if the context is `suspended` when
+  // the routing happens, the user hears NOTHING from the narration.
+  //
+  // We gate on `isPlaying === true` so the resume + tap fire just after the
+  // user's play-button click (a valid user gesture for autoplay policy).
+  // The tap is one-shot per element; if it fails (StrictMode double-mount,
+  // already-tapped) we record the element so we don't retry every render.
+  useEffect(() => {
+    if (!enabled) return;
+    if (!isPlaying) return;
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch((err) => {
+        console.warn('[useSoundScheduler] AudioContext.resume failed:', err);
+      });
+    }
+
+    const el = narrationAudioRef?.current ?? null;
+    if (!el) return;
+    if (narrationElRef.current === el) return; // already attempted on this element
+    if (narrationSourceRef.current) return; // already tapped a different element
+
+    try {
+      const src = ctx.createMediaElementSource(el);
+      const g = ctx.createGain();
+      g.gain.value = 1.0;
+      src.connect(g).connect(ctx.destination);
+      narrationSourceRef.current = src;
+      narrationGainRef.current = g;
+      narrationElRef.current = el;
+    } catch (err) {
+      // createMediaElementSource throws if this element was tapped
+      // already (StrictMode or another player). Record the element so
+      // subsequent renders short-circuit instead of re-throwing.
+      console.warn('[useSoundScheduler] narration tap failed:', err);
+      narrationElRef.current = el;
+    }
+  }, [isPlaying, enabled, narrationAudioRef]);
+
+  // ── 3. Decode unique cue URLs into AudioBuffers ─────────────────────────
   const uniqueUrls = useMemo(() => {
     if (!enabled || !cues || cues.length === 0) return [] as string[];
     const s = new Set<string>();
-    for (const c of cues) {
-      if (c.url) s.add(c.url);
-    }
+    for (const c of cues) if (c.url) s.add(c.url);
     return Array.from(s);
   }, [cues, enabled]);
 
-  // Preload every unique Howl once. Re-run only when the URL set changes.
   useEffect(() => {
-    if (uniqueUrls.length === 0) return;
-
-    const map = howlsRef.current;
-    // Add Howls for new URLs
-    for (const url of uniqueUrls) {
-      if (!map.has(url)) {
-        const howl = new Howl({
-          src: [url],
-          preload: true,
-          volume: 1.0, // actual volume is set per .play() via cue.volume
-        });
-        map.set(url, howl);
-      }
+    if (!enabled || uniqueUrls.length === 0) return;
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    let cancelled = false;
+    const buffers = buffersRef.current;
+    // Drop buffers for URLs no longer referenced (new video loaded).
+    for (const url of Array.from(buffers.keys())) {
+      if (!uniqueUrls.includes(url)) buffers.delete(url);
     }
-    // Drop Howls for URLs no longer referenced (new video loaded)
-    for (const url of Array.from(map.keys())) {
-      if (!uniqueUrls.includes(url)) {
-        const old = map.get(url);
-        if (old) {
-          try {
-            old.unload();
-          } catch {
-            /* already unloaded */
-          }
-        }
-        map.delete(url);
-      }
-    }
-  }, [uniqueUrls]);
-
-  // Cleanup on unmount — unload everything so no detached buffers leak.
-  useEffect(() => {
-    // Snapshot the ref to the effect's closure so the cleanup doesn't
-    // read a stale .current at unmount time (react-hooks/exhaustive-deps).
-    const howlsMap = howlsRef.current;
-    const playedSet = playedRef.current;
-    return () => {
-      for (const h of howlsMap.values()) {
+    (async () => {
+      for (const url of uniqueUrls) {
+        if (cancelled) return;
+        if (buffers.has(url)) continue;
         try {
-          h.unload();
-        } catch {
-          /* ok */
+          const r = await fetch(url, { mode: 'cors' });
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          const ab = await r.arrayBuffer();
+          if (cancelled) return;
+          const buf = await ctx.decodeAudioData(ab);
+          if (cancelled) return;
+          buffers.set(url, buf);
+        } catch (err) {
+          console.warn(`[useSoundScheduler] decode failed for ${url}:`, err);
         }
       }
-      howlsMap.clear();
-      playedSet.clear();
+    })();
+    return () => {
+      cancelled = true;
     };
-  }, []);
+  }, [uniqueUrls, enabled]);
 
-  // Reset played set when the cues list changes (new video loaded).
+  // ── 4. Master volume changes → ramp sfxBus ─────────────────────────────
   useEffect(() => {
-    playedRef.current.clear();
+    const sfxBus = sfxBusRef.current;
+    const ctx = ctxRef.current;
+    if (!sfxBus || !ctx) return;
+    const target = Math.max(0, Math.min(1, masterVolume));
+    const t = ctx.currentTime;
+    sfxBus.gain.cancelScheduledValues(t);
+    sfxBus.gain.setTargetAtTime(target, t, 0.02);
+  }, [masterVolume]);
+
+  // ── 5. Reset scheduled-set when cue list changes (new video) ───────────
+  useEffect(() => {
+    scheduledRef.current.clear();
   }, [cues]);
 
-  // Tick: detect seeks and fire cues as the master clock crosses triggers.
-  // Seek detection runs unconditionally — even while paused — so that when
-  // the user scrubs the progress bar during a pause and then hits play, the
-  // played-set reflects the new position. Cue firing itself is still gated
-  // on isPlaying.
+  // ── 6. Tick: schedule cues inside the lookahead window ─────────────────
   useEffect(() => {
     if (!enabled || !cues || cues.length === 0) {
       lastClockRef.current = masterClockSec;
       return;
     }
+    const ctx = ctxRef.current;
+    if (!ctx) return;
 
     const prev = lastClockRef.current;
     const now = masterClockSec;
     lastClockRef.current = now;
 
-    // Detect a seek: if the clock jumped backwards OR forwards by >1s,
-    // recompute the played-set based on the new time.
-    const isSeek = Math.abs(now - prev) > 1.0 || now < prev;
+    // Detect a seek: clock jumped backwards OR forwards by > threshold.
+    const isSeek = Math.abs(now - prev) > SEEK_THRESHOLD_S || now < prev;
     if (isSeek) {
       const fresh = new Set<string>();
       for (const c of cues) {
         const absT = c.absolute_time ?? 0;
         if (absT < now) fresh.add(c.id);
       }
-      playedRef.current = fresh;
+      scheduledRef.current = fresh;
       return;
     }
 
-    // No cue firing when paused — the clock isn't advancing normally, so
-    // no cues should cross their triggers. (Seek-during-pause was already
-    // handled above.)
     if (!isPlaying) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {
+        /* ignore — will retry next tick */
+      });
+    }
 
-    // Normal tick: fire any cue whose trigger falls in (prev, now + window]
-    // and hasn't fired yet.
-    const from = prev;
-    const to = now + TRIGGER_WINDOW;
+    const sfxBus = sfxBusRef.current;
+    if (!sfxBus) return;
+    const narrGain = narrationGainRef.current;
+
     for (const c of cues) {
       const absT = c.absolute_time ?? 0;
-      if (absT < from || absT > to) continue;
-      if (playedRef.current.has(c.id)) continue;
+      const delta = absT - now;
+      if (delta < -0.05 || delta > LOOKAHEAD_S) continue;
+      if (scheduledRef.current.has(c.id)) continue;
+      const buf = buffersRef.current.get(c.url);
+      if (!buf) continue;
 
-      const howl = howlsRef.current.get(c.url);
-      if (!howl) continue;
-
-      // Howler automatically queues the play if the file isn't loaded
-      // yet — no "not loaded" guard needed.
+      const startAt = ctx.currentTime + Math.max(0, delta);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      const g = ctx.createGain();
+      const cueVol = Math.max(0, Math.min(1, c.volume));
+      g.gain.value = cueVol;
+      src.connect(g).connect(sfxBus);
       try {
-        const vol = Math.max(0, Math.min(1, c.volume * masterVolume));
-        const soundId = howl.play();
-        howl.volume(vol, soundId);
+        src.start(startAt);
       } catch {
-        /* swallow — individual cue failure must not break playback */
+        // start() can throw if the context closed mid-tick. Drop.
       }
-      playedRef.current.add(c.id);
-    }
-  }, [masterClockSec, isPlaying, cues, enabled, masterVolume]);
+      scheduledRef.current.add(c.id);
 
-  // When the player pauses, suspend everything. Howler's global mute is the
-  // simplest way to stop all currently-ringing sounds without tracking each
-  // sound ID individually. Resume on next play by un-muting.
-  useEffect(() => {
-    if (!enabled) return;
-    if (!isPlaying) {
-      // Stop any currently-playing Howls — one-shot cues should not
-      // continue ringing into a paused state. Use `.stop()` per Howl
-      // because Howler.mute(true) only mutes; short stings sound
-      // inconsistent if they silently finish under a mute.
-      for (const h of howlsRef.current.values()) {
+      // Sidechain duck: dip narration −4 dB for the cue + 200 ms tail.
+      if (narrGain) {
+        const cueLen = buf.duration;
+        const duckStart = Math.max(ctx.currentTime, startAt - 0.02);
+        const duckEnd = startAt + cueLen + DUCK_TAIL_S;
         try {
-          h.stop();
+          narrGain.gain.cancelScheduledValues(duckStart);
+          narrGain.gain.setTargetAtTime(DUCK_GAIN, duckStart, DUCK_ATTACK_TC);
+          narrGain.gain.setTargetAtTime(1.0, duckEnd, DUCK_RELEASE_TC);
         } catch {
           /* ok */
         }
       }
     }
-  }, [isPlaying, enabled]);
+  }, [masterClockSec, isPlaying, cues, enabled]);
 
-  // When the master volume goes to 0, also ensure Howler's global is sane.
+  // ── 7. Pause/play behavior on the bus ──────────────────────────────────
+  // On pause, fast-fade the sfxBus to silence so any in-flight cue doesn't
+  // ring across the pause; restore the narration gain to 1.0. On resume,
+  // ramp the bus back to masterVolume.
   useEffect(() => {
     if (!enabled) return;
-    // Clamp the global volume ceiling so masterVolume=0 means silence
-    // even if a cue is mid-ring.
-    Howler.volume(Math.max(0, Math.min(1, masterVolume)));
-  }, [masterVolume, enabled]);
-
-  // Exposed handle for the host player to reset the played-set on hard
-  // resets (e.g. replay from start). Called imperatively.
-  const resetPlayed = useCallback(() => {
-    playedRef.current.clear();
-    for (const h of howlsRef.current.values()) {
-      try {
-        h.stop();
-      } catch {
-        /* ok */
+    const ctx = ctxRef.current;
+    const sfxBus = sfxBusRef.current;
+    if (!ctx || !sfxBus) return;
+    const t = ctx.currentTime;
+    if (!isPlaying) {
+      sfxBus.gain.cancelScheduledValues(t);
+      sfxBus.gain.setTargetAtTime(0.0001, t, 0.02);
+      const narrGain = narrationGainRef.current;
+      if (narrGain) {
+        narrGain.gain.cancelScheduledValues(t);
+        narrGain.gain.setTargetAtTime(1.0, t, DUCK_RELEASE_TC);
       }
+    } else {
+      sfxBus.gain.cancelScheduledValues(t);
+      sfxBus.gain.setTargetAtTime(
+        Math.max(0, Math.min(1, masterVolume)),
+        t,
+        0.02,
+      );
     }
+  }, [isPlaying, enabled, masterVolume]);
+
+  // ── 8. Cleanup on unmount ──────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      const ctx = ctxRef.current;
+      if (ctx) {
+        try {
+          ctx.close();
+        } catch {
+          /* already closed */
+        }
+      }
+      ctxRef.current = null;
+      sfxBusRef.current = null;
+      narrationSourceRef.current = null;
+      narrationGainRef.current = null;
+      narrationElRef.current = null;
+      buffersRef.current.clear();
+      scheduledRef.current.clear();
+    };
+  }, []);
+
+  const resetPlayed = useCallback(() => {
+    scheduledRef.current.clear();
   }, []);
 
   return { resetPlayed };
 }
 
 /**
- * Flatten an `entries` array into a single cue list with `absolute_time`
- * populated. Prefers the backend-provided `absolute_time`; falls back to
- * computing it from the entry's `inTime + cue.t` if the backend predates
- * the field (older timelines).
- *
- * Hosted as a named export so both AIContentPlayer and AIVideoPlayer can
- * build their cue list the same way.
- */
+* Flatten an `entries` array into a single cue list with `absolute_time`
+* populated. Prefers the backend-provided `absolute_time`; falls back to
+* computing it from the entry's `inTime + cue.t` if the backend predates
+* the field (older timelines).
+*
+* Hosted as a named export so both AIContentPlayer and AIVideoPlayer can
+* build their cue list the same way.
+*/
 export function collectCuesFromEntries<
   T extends {
     inTime?: number;

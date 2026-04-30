@@ -120,17 +120,22 @@ class RenderWorker:
                 avatar_path = work_dir / "avatar_video.mp4"
                 self._download(avatar_video_url, avatar_path)
 
+            # ── Load timeline JSON once (used for both audio_tracks and sound cues) ──
+            timeline_data: Optional[dict] = None
+            try:
+                _td = json.loads(timeline_path.read_text())
+                if isinstance(_td, dict):
+                    timeline_data = _td
+            except Exception as exc:
+                logger.warning(f"Failed to parse timeline JSON for audio extraction: {exc}")
+
             # ── Download extra audio tracks ──
             # audio_tracks is a list of dicts: {id, label, url, volume, delay, fadeIn, fadeOut}
             # If not passed explicitly, try to read from timeline meta
             if audio_tracks is None:
-                try:
-                    timeline_data = json.loads(timeline_path.read_text())
-                    if isinstance(timeline_data, dict):
-                        audio_tracks = timeline_data.get("meta", {}).get("audio_tracks", []) or []
-                    else:
-                        audio_tracks = []
-                except Exception:
+                if timeline_data is not None:
+                    audio_tracks = timeline_data.get("meta", {}).get("audio_tracks", []) or []
+                else:
                     audio_tracks = []
 
             # Each entry is (path, track_metadata) to keep indices aligned
@@ -148,6 +153,49 @@ class RenderWorker:
                     extra_audio_items.append((track_path, track))
                 except Exception as exc:
                     logger.warning(f"Failed to download audio track {idx} ({track_url}): {exc}")
+
+            # ── Parse and download per-shot SFX cues (sound_planner output) ──
+            # Each cue: {id, t, url, volume, role, duration, absolute_time}.
+            # `absolute_time` already includes the intro-branding offset, so the
+            # ffmpeg adelay below uses it directly (no double-delay).
+            # Unique URLs are downloaded once and reused via separate ffmpeg
+            # `-i` inputs (cheap: identical bytes mux'd in twice is negligible).
+            sfx_items: list[tuple[Path, dict]] = []
+            if timeline_data is not None:
+                import hashlib as _hash
+                url_to_path: dict[str, Optional[Path]] = {}
+                _all_cues: list[dict] = []
+                for _tl_entry in timeline_data.get("entries", []) or []:
+                    for _cue in _tl_entry.get("sound_cues", []) or []:
+                        if not _cue.get("url"):
+                            continue
+                        if _cue.get("absolute_time") is None:
+                            continue
+                        _all_cues.append(_cue)
+
+                for _cue in _all_cues:
+                    _url = _cue["url"]
+                    if _url not in url_to_path:
+                        _ext = _url.rsplit(".", 1)[-1].split("?")[0].lower() or "mp3"
+                        if len(_ext) > 10:
+                            _ext = "mp3"
+                        _key = _hash.md5(_url.encode()).hexdigest()[:10]
+                        _sp = work_dir / f"sfx_{_key}.{_ext}"
+                        try:
+                            self._download(_url, _sp)
+                            url_to_path[_url] = _sp
+                        except Exception as _exc:
+                            logger.warning(f"Failed to download SFX {_url}: {_exc}")
+                            url_to_path[_url] = None
+                    _path = url_to_path.get(_url)
+                    if _path is not None:
+                        sfx_items.append((_path, _cue))
+
+                if sfx_items:
+                    logger.info(
+                        f"Loaded {len(sfx_items)} SFX cues across "
+                        f"{sum(1 for v in url_to_path.values() if v is not None)} unique files"
+                    )
 
             if on_progress:
                 on_progress(15)
@@ -240,10 +288,58 @@ class RenderWorker:
                 r"gsap\.fromTo\(\s*['\"]\.stage-drift['\"].*?\);",
                 _re.DOTALL,
             )
+            # Strip FE-injected `<script data-vx-timescale=...>gsap.globalTimeline.timeScale(...)`
+            # tags. The video editor injects these so its per-shot iframe (own GSAP instance)
+            # compresses/expands animations to fit a user-edited duration. In the renderer ALL
+            # shots share window.gsap.globalTimeline, so this call poisons the timeline:
+            # already-registered tweens get retroactively misaligned and never fire within
+            # the shot's active window.
+            _timescale_re = _re.compile(
+                r'<script\s[^>]*\bdata-vx-timescale="[^"]*"[^>]*>[\s\S]*?</script>',
+                _re.IGNORECASE,
+            )
+            # Strip LLM-generated `<script src="...gsap*.js">` CDN loaders. The render
+            # harness already loads GSAP 3.12.5 globally; when the renderer dynamically
+            # inserts the shot's <script src=> into shadow DOM, the browser fetches and
+            # executes a SECOND gsap which overwrites window.gsap with a fresh instance.
+            # Every tween already registered against the harness's gsap is orphaned, and
+            # the renderer's per-frame `gsap.globalTimeline.totalTime(state.t)` scrubs an
+            # empty timeline. Symptom: shots from that point onward freeze on their initial
+            # static HTML state (no opacity tweens, no transforms).
+            _gsap_cdn_re = _re.compile(
+                r'<script\s[^>]*\bsrc="[^"]*\bgsap[^"]*\.js[^"]*"[^>]*>\s*</script>',
+                _re.IGNORECASE,
+            )
+            # Strip `animation:vx-...` CSS shorthand from `<div data-vx-shot="1" style="...">`
+            # wrappers. The video editor injects these via buildTransitionCss() to drive
+            # in/out fade/slide/zoom transitions at the editor's iframe playhead. CSS keyframe
+            # animations advance at WALL-CLOCK time, but the renderer captures frames serially
+            # at variable per-frame cost (50–200ms each), so the wall clock outruns the
+            # render's scrub clock. Result: by the time the scrub reaches state.t in the
+            # middle of a shot, the CSS `animation:vx-fade-out 0.4s ease 1.74s both` has
+            # already completed and the wrapper sits at opacity:0 — the shot renders blank.
+            # Preserve the wrapper itself (it may carry user-edited transform/background);
+            # only drop the animation declaration. The unreferenced @keyframes <style> block
+            # left behind is harmless.
+            _vx_shot_anim_re = _re.compile(
+                r'(<div\s+data-vx-shot="[^"]*"\s+style=")([^"]*)(")',
+                _re.IGNORECASE,
+            )
+            _anim_prop_re = _re.compile(r'animation\s*:[^;]*;?', _re.IGNORECASE)
+
+            def _strip_vx_anim(_html):
+                def _repl(m):
+                    style = _anim_prop_re.sub('', m.group(2)).strip(';').strip()
+                    return f'{m.group(1)}{style}{m.group(3)}'
+                return _vx_shot_anim_re.sub(_repl, _html)
+
             for _entry in tl_entries:
                 if "html" in _entry:
                     _orig = _entry["html"]
                     _cleaned = _drift_re.sub("", _orig)
+                    _cleaned = _timescale_re.sub("", _cleaned)
+                    _cleaned = _gsap_cdn_re.sub("", _cleaned)
+                    _cleaned = _strip_vx_anim(_cleaned)
                     if _cleaned != _orig:
                         _entry["html"] = _cleaned
                         _modified_tl = True
@@ -253,7 +349,7 @@ class RenderWorker:
                     tl_data if isinstance(tl_data, dict) else tl_entries,
                     ensure_ascii=False,
                 ))
-                logger.info("Stripped <video> tags and stage-drift animations for render")
+                logger.info("Stripped <video>, stage-drift, vx-timescale, gsap CDN, and vx-shot CSS transitions for render")
             from moviepy import AudioFileClip as _AFC
             _audio_dur = _AFC(str(audio_path)).duration
             tl_max_end = max((e.get("exitTime", 0) for e in tl_entries), default=0)
@@ -436,6 +532,8 @@ class RenderWorker:
             valid_extra = [(p, t) for p, t in extra_audio_items if p.exists()]
             narration_idx = 1  # input index for narration.mp3
 
+            valid_sfx = [(p, c) for p, c in sfx_items if p.exists()]
+
             ffmpeg_cmd = [
                 "ffmpeg", "-y",
                 "-framerate", str(FPS),
@@ -444,19 +542,33 @@ class RenderWorker:
             ]
             for p, _ in valid_extra:
                 ffmpeg_cmd += ["-i", str(p)]
+            # SFX cue inputs come after extras so the input-index math stays
+            # additive: 0=frames, 1=narration, 2..2+E-1=extras, 2+E..=sfx.
+            for p, _ in valid_sfx:
+                ffmpeg_cmd += ["-i", str(p)]
 
             # Build filter_complex
             # 1. Scale video
-            # 2. Delay + volume + fade narration
-            # 3. Per extra track: delay + volume + fade
-            # 4. amix all audio streams
+            # 2. Narration: delay → format-normalize → [nar]
+            # 3. Per extra track: delay → volume → fade → format-normalize → [extraN]
+            # 4. Per SFX cue: delay (absolute_time) → volume → tail-fade →
+            #    format-normalize → asplit (when ducking) → [sfxN] + [sfxN_key]
+            # 5. If any SFX: sum keys → sidechaincompress narration → [nar_duct]
+            # 6. amix all audio streams → [aout]
+            #
+            # `aresample + aformat` on every chain is required because amix
+            # demands matching sample rate / sample format / channel layout.
+            # Catalog SFX MP3s vary (22.05/44.1/48 kHz; mono/stereo); without
+            # this, amix errors or silently produces broken audio.
+            FMT_NORM = "aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo"
+
             filter_parts = [f"[0:v]scale={output_width}:{output_height}:flags=lanczos[scaled]"]
             narration_delay_ms = int(audio_delay * 1000)
             filter_parts.append(
-                f"[{narration_idx}:a]adelay={narration_delay_ms}|{narration_delay_ms}[nar]"
+                f"[{narration_idx}:a]adelay={narration_delay_ms}|{narration_delay_ms},{FMT_NORM}[nar]"
             )
-            audio_labels = ["[nar]"]
 
+            extra_labels: list[str] = []
             for rel_idx, (_, track) in enumerate(valid_extra):
                 abs_idx = rel_idx + 2  # 0=frames, 1=narration, 2+=extra
                 delay_ms = int(float(track.get("delay", 0)) * 1000)
@@ -473,13 +585,74 @@ class RenderWorker:
                 # fade_out: reverse→fade_in→reverse trick avoids needing audio duration
                 if fade_out > 0:
                     chain += f",areverse,afade=t=in:d={fade_out:.3f},areverse"
-                chain += f"[{label}]"
+                chain += f",{FMT_NORM}[{label}]"
                 filter_parts.append(chain)
-                audio_labels.append(f"[{label}]")
+                extra_labels.append(f"[{label}]")
+
+            # Per-shot SFX cues (sound_planner output). Each cue plays once at
+            # its absolute_time. When `valid_sfx` is non-empty we asplit each
+            # chain so the SFX feeds both the final mix AND a sidechain key
+            # used to duck the narration during the cue.
+            duck_enabled = bool(valid_sfx)
+            sfx_input_base = 2 + len(valid_extra)
+            sfx_labels: list[str] = []
+            sfx_key_labels: list[str] = []
+            for rel_idx, (_, cue) in enumerate(valid_sfx):
+                abs_idx = sfx_input_base + rel_idx
+                abs_t = float(cue.get("absolute_time", 0.0) or 0.0)
+                delay_ms = max(0, int(round(abs_t * 1000)))
+                volume = float(cue.get("volume", 0.5) or 0.5)
+                cue_dur = float(cue.get("duration", 0.0) or 0.0)
+                label = f"sfx{rel_idx}"
+                key_label = f"sfx{rel_idx}_key"
+
+                chain = (
+                    f"[{abs_idx}:a]adelay={delay_ms}|{delay_ms}"
+                    f",volume={volume:.4f}"
+                )
+                if cue_dur > 0.10:
+                    fade_st = max(0.0, cue_dur - 0.03)
+                    chain += f",afade=t=out:st={fade_st:.3f}:d=0.03"
+                chain += f",{FMT_NORM}"
+                if duck_enabled:
+                    chain += f",asplit=2[{label}][{key_label}]"
+                    sfx_key_labels.append(f"[{key_label}]")
+                else:
+                    chain += f"[{label}]"
+                filter_parts.append(chain)
+                sfx_labels.append(f"[{label}]")
+
+            # Sidechain duck on narration when SFX exist. Sums all SFX keys
+            # into a single sidechain signal, then sidechaincompresses the
+            # narration against it. Threshold is low because cue volumes are
+            # already attenuated by the planner; ratio + release tuned to
+            # match the player-side duck (≈ −4 dB, 250 ms tail).
+            final_nar_label = "[nar]"
+            if duck_enabled and sfx_key_labels:
+                if len(sfx_key_labels) == 1:
+                    filter_parts.append(f"{sfx_key_labels[0]}anull[duckkey]")
+                else:
+                    n_keys = len(sfx_key_labels)
+                    filter_parts.append(
+                        f"{''.join(sfx_key_labels)}amix=inputs={n_keys}:normalize=0[duckkey]"
+                    )
+                filter_parts.append(
+                    "[nar][duckkey]sidechaincompress="
+                    "threshold=0.05:ratio=4:attack=20:release=250:makeup=1[nar_duct]"
+                )
+                final_nar_label = "[nar_duct]"
+
+            audio_labels = [final_nar_label, *extra_labels, *sfx_labels]
+
+            if valid_sfx:
+                logger.info(
+                    f"Mixing {len(valid_sfx)} SFX cues into render audio "
+                    f"(narration ducked via sidechaincompress)"
+                )
 
             if len(audio_labels) == 1:
-                # Single audio stream — no amix needed
-                filter_parts.append(f"{audio_labels[0]}aresample=44100[aout]")
+                # Single audio stream — no amix needed (already format-normalized)
+                filter_parts.append(f"{audio_labels[0]}anull[aout]")
             else:
                 n = len(audio_labels)
                 filter_parts.append(

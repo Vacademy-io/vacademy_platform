@@ -3,7 +3,10 @@ package vacademy.io.admin_core_service.features.notification.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationTemplateVariables;
 import vacademy.io.admin_core_service.features.notification.dto.WatiConfig;
 import vacademy.io.admin_core_service.features.notification.entity.NotificationEventConfig;
@@ -49,6 +52,33 @@ public class DynamicNotificationService {
     private final WatiContactAttributeService watiContactAttributeService;
     private final CouponCodeService couponCodeService;
     private final vacademy.io.admin_core_service.features.shortlink.service.ShortUrlManagementService shortUrlManagementService;
+    private final EnrollInviteRepository enrollInviteRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * If the institute's setting JSON contains
+     *   EMAIL_SETTING.data.REFERRAL_EMAIL.invite_code = "xxxxxx"
+     * resolve and return that EnrollInvite for use in referral / invitation
+     * link generation. Otherwise return the supplied fallback unchanged.
+     */
+    private EnrollInvite resolveReferralInviteOverride(String instituteId, EnrollInvite fallback) {
+        try {
+            Institute institute = getInstituteFromId(instituteId);
+            if (institute == null) return fallback;
+            String settingJson = institute.getSetting();
+            if (settingJson == null || settingJson.isBlank()) return fallback;
+            JsonNode codeNode = objectMapper.readTree(settingJson)
+                    .path("EMAIL_SETTING").path("data").path("REFERRAL_EMAIL").path("invite_code");
+            if (codeNode.isMissingNode() || codeNode.isNull()) return fallback;
+            String code = codeNode.asText();
+            if (code == null || code.isBlank()) return fallback;
+            return enrollInviteRepository.findByInviteCode(code).orElse(fallback);
+        } catch (Exception e) {
+            log.warn("Failed to resolve referral invite override for institute {}: {}",
+                    instituteId, e.getMessage());
+            return fallback;
+        }
+    }
 
     /**
      * Send dynamic notifications based on event and package session
@@ -108,17 +138,18 @@ public class DynamicNotificationService {
 
             // Populate referral and invitation templates for dynamic notifications
             try {
+                EnrollInvite linkInvite = resolveReferralInviteOverride(instituteId, enrollInvite);
                 String invitationLink = learnerInvitationLinkService
-                        .generateLearnerInvitationResponseLink(instituteId, enrollInvite, user.getId());
+                        .generateLearnerInvitationResponseLink(instituteId, linkInvite, user.getId());
                 String shortRefLink = learnerInvitationLinkService
-                        .generateShortLearnerInvitationResponseLink(instituteId, enrollInvite, user.getId());
+                        .generateShortLearnerInvitationResponseLink(instituteId, linkInvite, user.getId());
                 String refCode = learnerInvitationLinkService.getRefFromUserCoupon(user.getId());
 
                 templateVars.setReferralLink(invitationLink);
                 templateVars.setLearnerInvitationResponseLink(invitationLink);
                 templateVars.setShortReferralLink(shortRefLink);
                 templateVars.setRefCode(refCode);
-                templateVars.setInviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "");
+                templateVars.setInviteCode(linkInvite != null ? linkInvite.getInviteCode() : "");
                 // Only set theme color from parent institute if not already set by sub-org
                 if (templateVars.getThemeColor() == null || templateVars.getThemeColor().isEmpty()) {
                     templateVars.setThemeColor(getThemeColorFromInstitute(getInstituteFromId(instituteId)));
@@ -377,13 +408,15 @@ public class DynamicNotificationService {
             // Get institute details
             Institute institute = getInstituteFromId(instituteId);
 
+            EnrollInvite linkInvite = resolveReferralInviteOverride(instituteId, enrollInvite);
+
             // Generate learner invitation response links (long link)
             String invitationLink = learnerInvitationLinkService
-                    .generateLearnerInvitationResponseLink(instituteId, enrollInvite, user.getId());
+                    .generateLearnerInvitationResponseLink(instituteId, linkInvite, user.getId());
 
             // Generate short invitation link
             String shortRefLink = learnerInvitationLinkService
-                    .generateShortLearnerInvitationResponseLink(instituteId, enrollInvite, user.getId());
+                    .generateShortLearnerInvitationResponseLink(instituteId, linkInvite, user.getId());
 
             // Get the coupon code's short_url to use as referral link if available
             String couponShortUrl = shortRefLink;
@@ -417,9 +450,9 @@ public class DynamicNotificationService {
                     .instituteId(institute.getId())
 
                     // Enroll invite details
-                    .enrollInviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "")
-                    .enrollInviteExpiryDate(enrollInvite != null && enrollInvite.getEndDate() != null
-                            ? enrollInvite.getEndDate().toString()
+                    .enrollInviteCode(linkInvite != null ? linkInvite.getInviteCode() : "")
+                    .enrollInviteExpiryDate(linkInvite != null && linkInvite.getEndDate() != null
+                            ? linkInvite.getEndDate().toString()
                             : "")
 
                     // Learner invitation response link
@@ -429,7 +462,7 @@ public class DynamicNotificationService {
                     .name(user.getFullName() != null ? user.getFullName() : user.getUsername())
                     .referralLink(invitationLink)
                     .shortReferralLink(couponShortUrl) // Use the coupon short URL
-                    .inviteCode(enrollInvite != null ? enrollInvite.getInviteCode() : "")
+                    .inviteCode(linkInvite != null ? linkInvite.getInviteCode() : "")
                     .themeColor(themeColor)
                     .build();
 

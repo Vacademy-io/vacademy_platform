@@ -1,0 +1,915 @@
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Link } from '@tanstack/react-router';
+import {
+    Send,
+    Sparkles,
+    ArrowRight,
+    Eye,
+    EyeOff,
+    Paperclip,
+    Loader2,
+    FileText,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { getUserId } from '@/utils/userDetails';
+import { getInstituteId } from '@/constants/helper';
+import { GET_VIDEO_STYLE, GET_VIDEO_BRANDING } from '@/constants/urls';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import {
+    handleStartProcessUploadedFile,
+    handleConvertPDFToHTML,
+} from '@/routes/ai-center/-services/ai-center-service';
+import {
+    GenerateVideoRequest,
+    ReferenceFile,
+    RoutingPlan,
+    RoutingOverrides,
+    RoutingToolName,
+    TtsVoice,
+    fetchTtsVoices,
+    fetchRoutePreview,
+} from '../../-services/video-generation';
+import { useAIModelsList } from '@/hooks/useAiModels';
+import { useAiCreditsQuery } from '@/services/ai-credits/get-ai-credits';
+import { LatexRenderer } from '../../-components/LatexRenderer';
+import { CostPreviewInline, CostPreviewModal, useCostPreview } from '../../-components/CostPreview';
+import { ContextTray, AttachmentItem, IndexedVideoItem } from './ContextTray';
+import { SettingsPopover, VideoStyleInfo, VideoBrandingInfo } from './SettingsPopover';
+import { SourceVideoPopover } from './SourceVideoPopover';
+
+interface ComposerProps {
+    onGenerate: (request: GenerateVideoRequest) => void;
+    isGenerating: boolean;
+    disabled?: boolean;
+    prompt: string;
+    onPromptChange: (value: string) => void;
+    options: Omit<GenerateVideoRequest, 'prompt'>;
+    onOptionsChange: (options: Omit<GenerateVideoRequest, 'prompt'>) => void;
+    reviewModeEnabled?: boolean;
+    onReviewModeChange?: (enabled: boolean) => void;
+    apiKey?: string | null;
+    /** Visual variant: hero (centered, large) or docked (compact, used post-completion). */
+    variant?: 'hero' | 'docked';
+
+    // Lifted state — owned by parent so it survives the unmount/remount during
+    // generating / reviewing states.
+    attachments: AttachmentItem[];
+    onAttachmentsChange: React.Dispatch<React.SetStateAction<AttachmentItem[]>>;
+    selectedInputVideoIds: string[];
+    onSelectedInputVideoIdsChange: React.Dispatch<React.SetStateAction<string[]>>;
+    inputVideoAudio: 'original' | 'tts';
+    onInputVideoAudioChange: React.Dispatch<React.SetStateAction<'original' | 'tts'>>;
+    muteTtsDuringSourceClips: boolean;
+    onMuteTtsDuringSourceClipsChange: React.Dispatch<React.SetStateAction<boolean>>;
+    ignoredUrls: Set<string>;
+    onIgnoredUrlsChange: React.Dispatch<React.SetStateAction<Set<string>>>;
+    routingOverrides: RoutingOverrides;
+    onRoutingOverridesChange: React.Dispatch<React.SetStateAction<RoutingOverrides>>;
+}
+
+export function Composer({
+    onGenerate,
+    isGenerating,
+    disabled,
+    prompt,
+    onPromptChange,
+    options,
+    onOptionsChange,
+    reviewModeEnabled,
+    onReviewModeChange,
+    apiKey,
+    variant = 'hero',
+    attachments,
+    onAttachmentsChange,
+    selectedInputVideoIds,
+    onSelectedInputVideoIdsChange,
+    inputVideoAudio,
+    onInputVideoAudioChange,
+    muteTtsDuringSourceClips,
+    onMuteTtsDuringSourceClipsChange,
+    ignoredUrls,
+    onIgnoredUrlsChange,
+    routingOverrides,
+    onRoutingOverridesChange,
+}: ComposerProps) {
+    const isDocked = variant === 'docked';
+    const [showPreview, setShowPreview] = useState(false);
+    const [isPdfProcessing, setIsPdfProcessing] = useState(false);
+    const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+    const [pendingRequest, setPendingRequest] = useState<GenerateVideoRequest | null>(null);
+
+    // TTS voice selection — local because the audio preview ref must not be lost
+    // mid-playback and the voice list is keyed off (language, gender, provider).
+    const [availableVoices, setAvailableVoices] = useState<TtsVoice[]>([]);
+    const [isLoadingVoices, setIsLoadingVoices] = useState(false);
+    const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
+    const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+
+    // Style + branding (read-only display fed into SettingsPopover)
+    const [videoStyle, setVideoStyle] = useState<VideoStyleInfo | null>(null);
+    const [videoBranding, setVideoBranding] = useState<VideoBrandingInfo | null>(null);
+
+    const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+
+    // Smart Plan derived state — re-fetched on mount from prompt + overrides.
+    const [routerPlan, setRouterPlan] = useState<RoutingPlan | null>(null);
+    const [routerLoading, setRouterLoading] = useState(false);
+    const [routerExplanationOpen, setRouterExplanationOpen] = useState(false);
+
+    // Indexed input videos (catalog of completed source videos) — local because
+    // it's just a server fetch tied to apiKey, not user-edited state.
+    const [indexedVideos, setIndexedVideos] = useState<IndexedVideoItem[]>([]);
+    const [processingVideos, setProcessingVideos] = useState<IndexedVideoItem[]>([]);
+
+    // Track which video IDs were already complete so we can auto-add freshly
+    // completed ones to the selection without re-adding existing ones.
+    const prevCompletedIds = useRef<Set<string>>(new Set());
+
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const pdfInputRef = useRef<HTMLInputElement>(null);
+    const attachmentInputRef = useRef<HTMLInputElement>(null);
+    const { data: modelsList } = useAIModelsList({ category: 'general' });
+    const { uploadFile, getPublicUrl: getFilePublicUrl } = useFileUpload();
+    const { data: credits } = useAiCreditsQuery();
+
+    // Auto-grow textarea
+    useEffect(() => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto';
+            textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 240)}px`;
+        }
+    }, [prompt, showPreview]);
+
+    // Refresh both completed + in-progress source videos.
+    // Held in a ref so the polling effect can call the latest version without
+    // re-creating its interval on every state update.
+    const refreshInputVideos = useRef<() => void>();
+    refreshInputVideos.current = () => {
+        if (!apiKey) return;
+        import('../../-services/input-video').then(({ listInputVideos }) => {
+            listInputVideos(apiKey)
+                .then((videos) => {
+                    const toItem = (v: {
+                        id: string;
+                        name: string;
+                        mode: string;
+                        duration_seconds: number | null;
+                        status: string;
+                        progress: number;
+                    }) => ({
+                        id: v.id,
+                        name: v.name,
+                        mode: v.mode,
+                        duration_seconds: v.duration_seconds,
+                        status: v.status,
+                        progress: v.progress,
+                    });
+                    setIndexedVideos(videos.filter((v) => v.status === 'COMPLETED').map(toItem));
+                    setProcessingVideos(
+                        videos
+                            .filter(
+                                (v) =>
+                                    v.status === 'QUEUED' ||
+                                    v.status === 'PROCESSING' ||
+                                    v.status === 'PENDING'
+                            )
+                            .map(toItem)
+                    );
+                })
+                .catch(() => {});
+        });
+    };
+
+    useEffect(() => {
+        refreshInputVideos.current?.();
+    }, [apiKey]);
+
+    // Poll while indexing is in progress so the user sees status updates.
+    useEffect(() => {
+        if (processingVideos.length === 0) return;
+        const timer = setInterval(() => {
+            refreshInputVideos.current?.();
+        }, 5000);
+        return () => clearInterval(timer);
+    }, [processingVideos.length]);
+
+    // Auto-add newly completed videos to the selection (up to 5 max).
+    useEffect(() => {
+        const currentIds = new Set(indexedVideos.map((v) => v.id));
+        for (const id of currentIds) {
+            if (!prevCompletedIds.current.has(id) && prevCompletedIds.current.size > 0) {
+                onSelectedInputVideoIdsChange((prev) => {
+                    if (prev.includes(id) || prev.length >= 5) return prev;
+                    const next = [...prev, id];
+                    // Multi-source auto-forces TTS — original audio is single-clip only.
+                    if (next.length > 1) onInputVideoAudioChange('tts');
+                    return next;
+                });
+            }
+        }
+        prevCompletedIds.current = currentIds;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [indexedVideos]);
+
+    // Auto-select model based on quality tier
+    useEffect(() => {
+        if (!modelsList?.models || modelsList.models.length === 0) return;
+        const tier = options.quality_tier || 'ultra';
+
+        if (options.model && modelsList.models.some((m) => m.model_id === options.model)) {
+            return;
+        }
+
+        const tierModels = modelsList.models.filter((m) => m.tier === tier);
+        const defaultForTier =
+            tierModels.find((m) => m.is_default) ||
+            tierModels[0] ||
+            modelsList.models.find((m) => m.is_default) ||
+            modelsList.models[0];
+        if (defaultForTier) {
+            onOptionsChange({ ...options, model: defaultForTier.model_id });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [modelsList, options.quality_tier]);
+
+    // Fetch video style + branding
+    useEffect(() => {
+        const instituteId = getInstituteId();
+        if (!instituteId) return;
+        authenticatedAxiosInstance
+            .get(GET_VIDEO_STYLE(instituteId))
+            .then((res) => {
+                if (res.data?.style) {
+                    setVideoStyle({
+                        ...res.data.style,
+                        has_custom_style: res.data.has_custom_style,
+                    });
+                } else if (res.data) {
+                    setVideoStyle(res.data);
+                }
+            })
+            .catch(() => {});
+        authenticatedAxiosInstance
+            .get(GET_VIDEO_BRANDING(instituteId))
+            .then((res) => {
+                if (res.data?.branding) {
+                    setVideoBranding(res.data.branding);
+                }
+            })
+            .catch(() => {});
+    }, []);
+
+    // Fetch TTS voices when language/gender/provider changes
+    useEffect(() => {
+        setIsLoadingVoices(true);
+        fetchTtsVoices(options.language, options.voice_gender, options.tts_provider)
+            .then((res) => {
+                setAvailableVoices(res.voices);
+                if (options.voice_id && !res.voices.some((v) => v.id === options.voice_id)) {
+                    onOptionsChange({ ...options, voice_id: undefined });
+                }
+            })
+            .catch(() => setAvailableVoices([]))
+            .finally(() => setIsLoadingVoices(false));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [options.language, options.voice_gender, options.tts_provider]);
+
+    // Cleanup audio preview on unmount
+    useEffect(() => {
+        return () => {
+            if (previewAudioRef.current) {
+                previewAudioRef.current.pause();
+                previewAudioRef.current = null;
+            }
+        };
+    }, []);
+
+    const handlePlayPreview = (voice: TtsVoice) => {
+        if (previewAudioRef.current) {
+            previewAudioRef.current.pause();
+            previewAudioRef.current = null;
+        }
+        if (playingVoiceId === voice.id) {
+            setPlayingVoiceId(null);
+            return;
+        }
+        const audio = new Audio(voice.sample_url);
+        audio.onended = () => setPlayingVoiceId(null);
+        audio.onerror = () => {
+            setPlayingVoiceId(null);
+            toast.error('Sample audio not available yet');
+        };
+        audio.play().catch(() => {
+            setPlayingVoiceId(null);
+            toast.error('Sample audio not available yet');
+        });
+        previewAudioRef.current = audio;
+        setPlayingVoiceId(voice.id);
+    };
+
+    // Smart Plan: debounced fetch from /route-preview
+    const trimmedPromptForRouting = prompt.trim();
+    const inputVideoCount = selectedInputVideoIds.length;
+    const attachedFileCount = attachments.length;
+    useEffect(() => {
+        if (!apiKey || trimmedPromptForRouting.length < 10) {
+            setRouterPlan(null);
+            setRouterLoading(false);
+            return;
+        }
+        let cancelled = false;
+        const handle = window.setTimeout(async () => {
+            try {
+                setRouterLoading(true);
+                const plan = await fetchRoutePreview(apiKey, {
+                    prompt: trimmedPromptForRouting,
+                    input_video_count: inputVideoCount,
+                    attached_file_count: attachedFileCount,
+                    orientation: options.orientation,
+                    content_type: options.content_type,
+                });
+                if (!cancelled) setRouterPlan(plan);
+            } catch (err) {
+                if (!cancelled) setRouterPlan(null);
+                console.debug('[RoutePreview] failed', err);
+            } finally {
+                if (!cancelled) setRouterLoading(false);
+            }
+        }, 600);
+        return () => {
+            cancelled = true;
+            window.clearTimeout(handle);
+        };
+    }, [
+        apiKey,
+        trimmedPromptForRouting,
+        inputVideoCount,
+        attachedFileCount,
+        options.orientation,
+        options.content_type,
+    ]);
+
+    // Resolved view of router decisions + user overrides
+    const isToolEnabled = (name: RoutingToolName): boolean => {
+        const ovr = routingOverrides.tools?.[name];
+        if (typeof ovr === 'boolean') return ovr;
+        const plan = routerPlan?.tools?.find((t) => t.name === name);
+        return !!plan?.enabled;
+    };
+    const isToolOverridden = (name: RoutingToolName): boolean =>
+        typeof routingOverrides.tools?.[name] === 'boolean';
+    const cfgValue = <K extends keyof RoutingPlan['config']>(
+        key: K
+    ): RoutingPlan['config'][K] | undefined => {
+        const ovr = routingOverrides.config?.[key];
+        if (ovr !== undefined) return ovr as RoutingPlan['config'][K];
+        return routerPlan?.config?.[key];
+    };
+    const isCfgOverridden = (key: keyof RoutingPlan['config']): boolean =>
+        routingOverrides.config?.[key] !== undefined;
+
+    const toggleTool = (name: RoutingToolName) => {
+        onRoutingOverridesChange((prev) => {
+            const currentResolved = isToolEnabled(name);
+            const newVal = !currentResolved;
+            const planEnabled = !!routerPlan?.tools?.find((t) => t.name === name)?.enabled;
+            const next = { ...prev, tools: { ...(prev.tools || {}) } };
+            if (newVal === planEnabled) {
+                delete next.tools![name];
+            } else {
+                next.tools![name] = newVal;
+            }
+            return next;
+        });
+    };
+    const toggleMuteTtsCfg = () => {
+        onRoutingOverridesChange((prev) => {
+            const planVal = !!routerPlan?.config?.mute_tts_on_source_clips;
+            const currentVal = cfgValue('mute_tts_on_source_clips');
+            const newVal = !(currentVal ?? false);
+            const next = { ...prev, config: { ...(prev.config || {}) } };
+            if (newVal === planVal) {
+                delete next.config!.mute_tts_on_source_clips;
+            } else {
+                next.config!.mute_tts_on_source_clips = newVal;
+            }
+            return next;
+        });
+    };
+    const toggleOverlayCfg = () => {
+        onRoutingOverridesChange((prev) => {
+            const planVal = routerPlan?.config?.infographic_mode || 'side';
+            const currentVal = cfgValue('infographic_mode') ?? 'side';
+            const newVal: RoutingPlan['config']['infographic_mode'] =
+                currentVal === 'overlay' ? 'side' : 'overlay';
+            const next = { ...prev, config: { ...(prev.config || {}) } };
+            if (newVal === planVal) {
+                delete next.config!.infographic_mode;
+            } else {
+                next.config!.infographic_mode = newVal;
+            }
+            return next;
+        });
+    };
+
+    // Detect URLs in the prompt — backend captures up to 2 of these as references
+    const URL_REGEX = /https?:\/\/[^\s<>"'`)]+/g;
+    const detectedUrls = useMemo<string[]>(() => {
+        if (!prompt) return [];
+        const found = prompt.match(URL_REGEX) || [];
+        const seen = new Set<string>();
+        const out: string[] = [];
+        for (const raw of found) {
+            const u = raw.replace(/[.,;:!?)]+$/, '');
+            if (!seen.has(u)) {
+                seen.add(u);
+                out.push(u);
+            }
+            if (out.length >= 2) break;
+        }
+        return out;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [prompt]);
+
+    const buildRequest = (): GenerateVideoRequest => {
+        const referenceFiles: ReferenceFile[] = attachments.map((a) => ({
+            url: a.url,
+            name: a.fileName,
+            type: a.fileType,
+        }));
+        let outboundPrompt = prompt.trim();
+        if (ignoredUrls.size > 0) {
+            for (const u of ignoredUrls) {
+                outboundPrompt = outboundPrompt
+                    .split(u)
+                    .join('')
+                    .replace(/\s{2,}/g, ' ')
+                    .trim();
+            }
+        }
+        const hasRoutingOverrides =
+            (routingOverrides.tools && Object.keys(routingOverrides.tools).length > 0) ||
+            (routingOverrides.config && Object.keys(routingOverrides.config).length > 0);
+        return {
+            prompt: outboundPrompt,
+            ...options,
+            ...(referenceFiles.length > 0 ? { reference_files: referenceFiles } : {}),
+            ...(selectedInputVideoIds.length > 0
+                ? {
+                      input_video_ids: selectedInputVideoIds,
+                      input_video_audio: inputVideoAudio,
+                      ...(inputVideoAudio === 'tts' && muteTtsDuringSourceClips
+                          ? { mute_tts_on_source_clips: true }
+                          : {}),
+                  }
+                : {}),
+            ...(hasRoutingOverrides ? { routing_overrides: routingOverrides } : {}),
+        };
+    };
+
+    const handleSubmit = () => {
+        if (!prompt.trim() || isGenerating || disabled) return;
+        setPendingRequest(buildRequest());
+        setConfirmModalOpen(true);
+    };
+
+    const costPreview = useCostPreview({
+        apiKey,
+        options,
+        reviewMode: !!reviewModeEnabled,
+        attachmentsCount: attachments.length,
+    });
+
+    const handleConfirmGenerate = () => {
+        if (!pendingRequest) return;
+        setConfirmModalOpen(false);
+        const req = pendingRequest;
+        setPendingRequest(null);
+        onGenerate(req);
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit();
+        }
+    };
+
+    const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+
+        setIsPdfProcessing(true);
+        try {
+            const fileId = await uploadFile({
+                file,
+                setIsUploading: () => {},
+                userId: getUserId(),
+            });
+            if (!fileId) throw new Error('Failed to upload PDF');
+
+            const processResult = await handleStartProcessUploadedFile(fileId);
+            const pdfId = processResult?.pdf_id;
+            if (!pdfId) throw new Error('Failed to process PDF');
+
+            const taskName = `Task_${new Date().toLocaleDateString('en-GB')}_${new Date().toLocaleTimeString('en-GB')}`;
+            const htmlResult = await handleConvertPDFToHTML(pdfId, taskName);
+            const html = htmlResult?.html;
+            if (!html) throw new Error('Failed to extract content from PDF');
+
+            onPromptChange(html);
+            toast.success('PDF content extracted successfully');
+        } catch (error) {
+            console.error('PDF upload error:', error);
+            toast.error('Failed to extract content from PDF');
+        } finally {
+            setIsPdfProcessing(false);
+        }
+    };
+
+    const MAX_ATTACHMENTS = 10;
+    const MAX_FILE_SIZE_MB = 50;
+    const ACCEPTED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'webp'];
+    const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+    const processFiles = async (fileList: File[]) => {
+        if (fileList.length === 0) return;
+        const validFiles = fileList.filter((f) => {
+            const ext = f.name.split('.').pop()?.toLowerCase() || '';
+            return ACCEPTED_EXTENSIONS.includes(ext);
+        });
+        if (validFiles.length < fileList.length) {
+            const rejected = fileList.length - validFiles.length;
+            toast.warning(`${rejected} file(s) skipped (only images and PDFs accepted)`);
+        }
+        if (validFiles.length === 0) return;
+
+        const remaining = MAX_ATTACHMENTS - attachments.length;
+        if (remaining <= 0) {
+            toast.error(`Maximum ${MAX_ATTACHMENTS} files allowed`);
+            return;
+        }
+
+        const filesToProcess = validFiles.slice(0, remaining);
+        setIsUploadingAttachment(true);
+        let successCount = 0;
+        let failCount = 0;
+
+        try {
+            for (const file of filesToProcess) {
+                if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+                    toast.error(`${file.name} exceeds ${MAX_FILE_SIZE_MB}MB limit`);
+                    failCount++;
+                    continue;
+                }
+                const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                const fileType: 'image' | 'pdf' = ext === 'pdf' ? 'pdf' : 'image';
+                try {
+                    const fileId = await uploadFile({
+                        file,
+                        setIsUploading: () => {},
+                        userId: getUserId(),
+                        source: 'AI_VIDEO_REFERENCE',
+                        sourceId: 'ADMIN',
+                        publicUrl: true,
+                    });
+                    if (!fileId) {
+                        failCount++;
+                        continue;
+                    }
+                    const url = await getFilePublicUrl(fileId);
+                    if (!url) {
+                        failCount++;
+                        continue;
+                    }
+                    const previewUrl = fileType === 'image' ? URL.createObjectURL(file) : undefined;
+                    onAttachmentsChange((prev) => [
+                        ...prev,
+                        { fileId, fileName: file.name, fileType, url, previewUrl },
+                    ]);
+                    successCount++;
+                } catch {
+                    failCount++;
+                }
+            }
+
+            if (successCount > 0 && failCount === 0) {
+                toast.success(`${successCount} file(s) attached`);
+            } else if (successCount > 0 && failCount > 0) {
+                toast.warning(`${successCount} attached, ${failCount} failed`);
+            } else if (failCount > 0) {
+                toast.error(`Failed to upload ${failCount} file(s)`);
+            }
+        } catch (error) {
+            console.error('Attachment upload error:', error);
+            toast.error('Failed to upload attachments');
+        } finally {
+            setIsUploadingAttachment(false);
+        }
+    };
+
+    const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []);
+        e.target.value = '';
+        if (files.length === 0) return;
+        await processFiles(files);
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.dataTransfer.types.includes('Files')) {
+            setIsDraggingOver(true);
+        }
+    };
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingOver(false);
+    };
+    const handleDrop = async (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDraggingOver(false);
+        if (isGenerating || disabled || isUploadingAttachment) return;
+        const files = Array.from(e.dataTransfer.files);
+        await processFiles(files);
+    };
+
+    const removeAttachment = (fileId: string) => {
+        onAttachmentsChange((prev) => {
+            const removed = prev.find((a) => a.fileId === fileId);
+            if (removed?.previewUrl) URL.revokeObjectURL(removed.previewUrl);
+            return prev.filter((a) => a.fileId !== fileId);
+        });
+    };
+
+    const removeInputVideo = (id: string) => {
+        onSelectedInputVideoIdsChange((prev) => prev.filter((x) => x !== id));
+    };
+
+    const setUrlIgnored = (url: string, ignored: boolean) => {
+        onIgnoredUrlsChange((prev) => {
+            const next = new Set(prev);
+            if (ignored) next.add(url);
+            else next.delete(url);
+            return next;
+        });
+    };
+
+    const models = modelsList?.models || [];
+
+    return (
+        <div className="w-full">
+            {/* Outer card — slimmer in docked variant (no big footer below) */}
+            <div
+                className={`relative space-y-1.5 border bg-background transition-all focus-within:border-ring/40 focus-within:shadow-md ${
+                    isDocked ? 'rounded-xl p-1.5 shadow-none' : 'rounded-2xl p-2 shadow-sm'
+                } ${isDraggingOver ? 'border-blue-400 bg-blue-50/40 ring-1 ring-blue-300' : ''}`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+            >
+                {/* Drag overlay */}
+                {isDraggingOver && (
+                    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed border-blue-400 bg-blue-50/80">
+                        <div className="flex flex-col items-center gap-1 text-blue-600">
+                            <Paperclip className="size-5" />
+                            <span className="text-xs font-medium">Drop images or PDFs here</span>
+                        </div>
+                    </div>
+                )}
+
+                {/* Context tray (compact strip; hidden when nothing active) */}
+                <ContextTray
+                    attachments={attachments}
+                    onRemoveAttachment={removeAttachment}
+                    selectedInputVideoIds={selectedInputVideoIds}
+                    indexedVideos={indexedVideos}
+                    onRemoveInputVideo={removeInputVideo}
+                    inputVideoAudio={inputVideoAudio}
+                    onInputVideoAudioChange={(mode) => {
+                        // With multiple sources, original audio isn't meaningful;
+                        // keep TTS to avoid an inconsistent submit payload.
+                        if (mode === 'original' && selectedInputVideoIds.length > 1) return;
+                        onInputVideoAudioChange(mode);
+                    }}
+                    muteTtsDuringSourceClips={muteTtsDuringSourceClips}
+                    onMuteTtsDuringSourceClipsChange={onMuteTtsDuringSourceClipsChange}
+                    routerPlan={routerPlan}
+                    routerLoading={routerLoading}
+                    isToolEnabled={isToolEnabled}
+                    isToolOverridden={isToolOverridden}
+                    onToggleTool={toggleTool}
+                    cfgValue={(key) => {
+                        const v = cfgValue(key);
+                        if (key === 'infographic_mode') {
+                            return (v === 'overlay' ? 'overlay' : 'side') as never;
+                        }
+                        return (v ?? false) as never;
+                    }}
+                    isCfgOverridden={isCfgOverridden}
+                    onToggleMuteTtsCfg={toggleMuteTtsCfg}
+                    onToggleOverlayCfg={toggleOverlayCfg}
+                    routerExplanationOpen={routerExplanationOpen}
+                    onToggleRouterExplanation={() => setRouterExplanationOpen((v) => !v)}
+                    detectedUrls={detectedUrls}
+                    ignoredUrls={ignoredUrls}
+                    onSetUrlIgnored={setUrlIgnored}
+                />
+
+                {/* Textarea / preview row */}
+                <div className="px-1.5">
+                    {showPreview ? (
+                        <div className="max-h-[240px] min-h-[44px] overflow-y-auto py-2">
+                            {prompt ? (
+                                <LatexRenderer
+                                    text={prompt}
+                                    className="whitespace-pre-wrap text-sm leading-relaxed"
+                                />
+                            ) : (
+                                <span className="italic text-muted-foreground">
+                                    Nothing to preview
+                                </span>
+                            )}
+                        </div>
+                    ) : (
+                        <Textarea
+                            ref={textareaRef}
+                            value={prompt}
+                            onChange={(e) => onPromptChange(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            placeholder="Describe what you want to create…"
+                            className="max-h-[240px] min-h-[44px] resize-none border-0 bg-transparent p-0 text-sm placeholder:text-muted-foreground/70 focus-visible:ring-0 focus-visible:ring-offset-0"
+                            disabled={isGenerating || disabled}
+                            rows={1}
+                        />
+                    )}
+                </div>
+
+                {/* Bottom action row */}
+                <div className="flex items-center gap-1.5 px-1">
+                    {/* Hidden file inputs */}
+                    <input
+                        ref={pdfInputRef}
+                        type="file"
+                        accept=".pdf"
+                        className="hidden"
+                        onChange={handlePdfUpload}
+                        disabled={isPdfProcessing || isGenerating || disabled}
+                    />
+                    <input
+                        ref={attachmentInputRef}
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg,.webp"
+                        multiple
+                        className="hidden"
+                        onChange={handleAttachmentUpload}
+                        disabled={isUploadingAttachment || isGenerating || disabled}
+                    />
+
+                    {/* Attach */}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-muted-foreground hover:text-blue-600"
+                        onClick={() => attachmentInputRef.current?.click()}
+                        disabled={isUploadingAttachment || isGenerating || disabled}
+                        title="Attach reference images or PDFs"
+                        aria-label="Attach reference files"
+                    >
+                        {isUploadingAttachment ? (
+                            <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                            <Paperclip className="size-4" />
+                        )}
+                    </Button>
+
+                    {/* PDF → prompt */}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-muted-foreground hover:text-orange-600"
+                        onClick={() => pdfInputRef.current?.click()}
+                        disabled={isPdfProcessing || isGenerating || disabled}
+                        title="Extract PDF text and use as prompt (replaces current text)"
+                        aria-label="Extract PDF as prompt"
+                    >
+                        {isPdfProcessing ? (
+                            <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                            <FileText className="size-4" />
+                        )}
+                    </Button>
+
+                    {/* Source video clips — separate popover with upload + selection. */}
+                    <div className="relative">
+                        <SourceVideoPopover
+                            apiKey={apiKey}
+                            indexedVideos={indexedVideos}
+                            processingVideos={processingVideos}
+                            selectedIds={selectedInputVideoIds}
+                            onAddVideo={(id) => {
+                                onSelectedInputVideoIdsChange((prev) => {
+                                    if (prev.includes(id) || prev.length >= 5) return prev;
+                                    const next = [...prev, id];
+                                    if (next.length > 1) onInputVideoAudioChange('tts');
+                                    return next;
+                                });
+                            }}
+                            onRefresh={() => refreshInputVideos.current?.()}
+                            disabled={isGenerating || disabled}
+                        />
+                    </div>
+
+                    {/* Preview toggle */}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-muted-foreground hover:text-violet-600"
+                        onClick={() => setShowPreview(!showPreview)}
+                        title="Toggle Markdown/LaTeX preview"
+                        aria-label="Toggle preview"
+                    >
+                        {showPreview ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </Button>
+
+                    <div className="ml-auto flex items-center gap-1.5">
+                        {/* Settings popover */}
+                        <SettingsPopover
+                            options={options}
+                            onOptionsChange={onOptionsChange}
+                            reviewModeEnabled={reviewModeEnabled}
+                            onReviewModeChange={onReviewModeChange}
+                            availableVoices={availableVoices}
+                            isLoadingVoices={isLoadingVoices}
+                            playingVoiceId={playingVoiceId}
+                            onPlayPreview={handlePlayPreview}
+                            videoStyle={videoStyle}
+                            videoBranding={videoBranding}
+                            models={models}
+                        />
+
+                        {/* Send */}
+                        <Button
+                            onClick={handleSubmit}
+                            disabled={!prompt.trim() || isGenerating || disabled || showPreview}
+                            size="icon"
+                            className="size-9 rounded-md shadow-sm"
+                            title="Generate (Enter)"
+                            aria-label="Generate"
+                        >
+                            <Send className="size-4" />
+                        </Button>
+                    </div>
+                </div>
+            </div>
+
+            {/* Footer: course CTA + cost preview share one line.
+                In the docked variant the composer sits under VideoResult, so
+                we suppress the upsell link and only keep the cost summary. */}
+            {isDocked ? (
+                (costPreview.data || costPreview.loading) && (
+                    <div className="mt-1 flex justify-end px-2 pb-0.5">
+                        <CostPreviewInline data={costPreview.data} loading={costPreview.loading} />
+                    </div>
+                )
+            ) : (
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-2 pb-1">
+                    <Link
+                        to="/study-library/ai-copilot"
+                        className="group flex items-center gap-1.5 text-[10px] text-muted-foreground transition-colors hover:text-violet-600"
+                    >
+                        <Sparkles className="size-3 transition-colors group-hover:text-violet-600" />
+                        <span>Want to create an entire course via AI?</span>
+                        <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
+                    </Link>
+                    <div className="flex items-center gap-2">
+                        {credits && (
+                            <span className="text-[11px] tabular-nums text-muted-foreground">
+                                {parseFloat(credits.current_balance).toFixed(1)} credits
+                            </span>
+                        )}
+                        <CostPreviewInline data={costPreview.data} loading={costPreview.loading} />
+                    </div>
+                </div>
+            )}
+
+            <CostPreviewModal
+                open={confirmModalOpen}
+                onOpenChange={(v) => {
+                    setConfirmModalOpen(v);
+                    if (!v) setPendingRequest(null);
+                }}
+                data={costPreview.data}
+                loading={costPreview.loading}
+                error={costPreview.error}
+                onConfirm={handleConfirmGenerate}
+            />
+        </div>
+    );
+}

@@ -21,6 +21,7 @@ import {
     ContentType,
     VideoOrientation,
     TokenUsage,
+    RoutingOverrides,
     generateVideo,
     resumeVideo,
     retryVideo,
@@ -31,11 +32,13 @@ import {
     DEFAULT_OPTIONS,
 } from '../-services/video-generation';
 import { HistorySidebar } from '../-components/HistorySidebar';
-import { PromptInput } from '../-components/PromptInput';
 import { GenerationProgress } from '../-components/GenerationProgress';
 import { VideoResult } from '../-components/VideoResult';
-import { ContentSelector } from '../-components/ContentSelector';
 import { ScriptReview } from '../-components/ScriptReview';
+import { CenteredHero } from './-components/CenteredHero';
+import { IntentChips } from './-components/IntentChips';
+import { Composer } from './-components/Composer';
+import { AttachmentItem } from './-components/ContextTray';
 
 export const Route = createLazyFileRoute('/video-api-studio/console/')({
     component: VideoConsole,
@@ -173,6 +176,16 @@ function VideoConsole() {
 
     const [currentGeneration, setCurrentGeneration] = useState<CurrentGeneration | null>(null);
     const [isLoadingVideoUrls, setIsLoadingVideoUrls] = useState(false);
+
+    // Composer state lifted to the parent so attachments, selected source videos,
+    // ignored URLs, and routing overrides survive the idle → generating → idle
+    // remount cycle (Composer unmounts during generating/reviewing).
+    const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+    const [selectedInputVideoIds, setSelectedInputVideoIds] = useState<string[]>([]);
+    const [inputVideoAudio, setInputVideoAudio] = useState<'original' | 'tts'>('tts');
+    const [muteTtsDuringSourceClips, setMuteTtsDuringSourceClips] = useState(false);
+    const [ignoredUrls, setIgnoredUrls] = useState<Set<string>>(new Set());
+    const [routingOverrides, setRoutingOverrides] = useState<RoutingOverrides>({});
 
     const abortRef = useRef<(() => void) | null>(null);
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1107,6 +1120,14 @@ function VideoConsole() {
         setSelectedHistoryId(null);
         setCurrentGeneration(null);
         setReviewScript('');
+        // Clear composer context so the next generation starts clean.
+        setAttachments((prev) => {
+            for (const a of prev) if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+            return [];
+        });
+        setSelectedInputVideoIds([]);
+        setIgnoredUrls(new Set());
+        setRoutingOverrides({});
         setConsoleState('idle');
     }, []);
 
@@ -1417,16 +1438,55 @@ function VideoConsole() {
                     {/* Content Area */}
                     <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth p-2 sm:p-3">
                         {consoleState === 'idle' && !currentGeneration && !isLoadingVideoUrls && (
-                            <ContentSelector
-                                selectedType={options.content_type || 'VIDEO'}
-                                onSelect={(type) =>
-                                    setOptions((prev: Omit<GenerateVideoRequest, 'prompt'>) => ({
-                                        ...prev,
-                                        content_type: type,
-                                    }))
-                                }
-                                onSamplePromptSelect={(p) => setPrompt(p)}
-                            />
+                            <div className="duration-200 animate-in fade-in zoom-in-95">
+                                <CenteredHero
+                                    composer={
+                                        <Composer
+                                            onGenerate={handleGenerate}
+                                            isGenerating={isGenerating}
+                                            disabled={!activeApiKey}
+                                            prompt={prompt}
+                                            onPromptChange={setPrompt}
+                                            options={options}
+                                            onOptionsChange={setOptions}
+                                            reviewModeEnabled={reviewModeEnabled}
+                                            onReviewModeChange={setReviewModeEnabled}
+                                            apiKey={activeApiKey}
+                                            variant="hero"
+                                            attachments={attachments}
+                                            onAttachmentsChange={setAttachments}
+                                            selectedInputVideoIds={selectedInputVideoIds}
+                                            onSelectedInputVideoIdsChange={setSelectedInputVideoIds}
+                                            inputVideoAudio={inputVideoAudio}
+                                            onInputVideoAudioChange={setInputVideoAudio}
+                                            muteTtsDuringSourceClips={muteTtsDuringSourceClips}
+                                            onMuteTtsDuringSourceClipsChange={
+                                                setMuteTtsDuringSourceClips
+                                            }
+                                            ignoredUrls={ignoredUrls}
+                                            onIgnoredUrlsChange={setIgnoredUrls}
+                                            routingOverrides={routingOverrides}
+                                            onRoutingOverridesChange={setRoutingOverrides}
+                                        />
+                                    }
+                                    intentChips={
+                                        <IntentChips
+                                            selected={options.content_type || 'VIDEO'}
+                                            onSelect={(type) =>
+                                                setOptions(
+                                                    (
+                                                        prev: Omit<GenerateVideoRequest, 'prompt'>
+                                                    ) => ({
+                                                        ...prev,
+                                                        content_type: type,
+                                                    })
+                                                )
+                                            }
+                                            onSamplePromptSelect={(p) => setPrompt(p)}
+                                        />
+                                    }
+                                />
+                            </div>
                         )}
 
                         {isLoadingVideoUrls && (
@@ -1500,21 +1560,41 @@ function VideoConsole() {
                             )}
                     </div>
 
-                    {/* Prompt Input */}
-                    <div className="sticky bottom-0 z-20 border-t bg-background/80 shadow-lg shadow-violet-500/5 backdrop-blur-md">
-                        <PromptInput
-                            onGenerate={handleGenerate}
-                            isGenerating={isGenerating}
-                            disabled={!activeApiKey}
-                            prompt={prompt}
-                            onPromptChange={setPrompt}
-                            options={options}
-                            onOptionsChange={setOptions}
-                            reviewModeEnabled={reviewModeEnabled}
-                            onReviewModeChange={setReviewModeEnabled}
-                            apiKey={activeApiKey}
-                        />
-                    </div>
+                    {/* Composer pinned at the bottom only after a generation completes
+                        — so the user can refine or kick off a new prompt. In other
+                        states the Composer either lives inside the centered hero (idle)
+                        or is hidden entirely (generating / reviewing). */}
+                    {consoleState === 'complete' && (
+                        <div className="sticky bottom-0 z-20 border-t bg-background/80 p-2 backdrop-blur-md sm:p-3">
+                            <div className="mx-auto w-full max-w-3xl">
+                                <Composer
+                                    onGenerate={handleGenerate}
+                                    isGenerating={isGenerating}
+                                    disabled={!activeApiKey}
+                                    prompt={prompt}
+                                    onPromptChange={setPrompt}
+                                    options={options}
+                                    onOptionsChange={setOptions}
+                                    reviewModeEnabled={reviewModeEnabled}
+                                    onReviewModeChange={setReviewModeEnabled}
+                                    apiKey={activeApiKey}
+                                    variant="docked"
+                                    attachments={attachments}
+                                    onAttachmentsChange={setAttachments}
+                                    selectedInputVideoIds={selectedInputVideoIds}
+                                    onSelectedInputVideoIdsChange={setSelectedInputVideoIds}
+                                    inputVideoAudio={inputVideoAudio}
+                                    onInputVideoAudioChange={setInputVideoAudio}
+                                    muteTtsDuringSourceClips={muteTtsDuringSourceClips}
+                                    onMuteTtsDuringSourceClipsChange={setMuteTtsDuringSourceClips}
+                                    ignoredUrls={ignoredUrls}
+                                    onIgnoredUrlsChange={setIgnoredUrls}
+                                    routingOverrides={routingOverrides}
+                                    onRoutingOverridesChange={setRoutingOverrides}
+                                />
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         </LayoutContainer>

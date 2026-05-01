@@ -582,6 +582,30 @@ class VideoGenerationService:
                             logger.info(f"[VideoGenService] Successfully downloaded script.txt")
                         else:
                             logger.warning(f"[VideoGenService] Failed to download script.txt from {script_url}")
+
+                # Also pull `script_plan.json` (internal — not stored in DB
+                # s3_urls). Without this, the resume path loads `plan_data = {}`
+                # and the Director skips with "missing script or beat outline".
+                # The plan is uploaded by the SCRIPT stage; we reconstruct the
+                # public S3 URL from convention.
+                try:
+                    from ..config import get_settings
+                    settings = get_settings()
+                    bucket = settings.aws_bucket_name or settings.aws_s3_public_bucket
+                    plan_key = f"ai-videos/{video_id}/script/script_plan.json"
+                    plan_url = f"https://{bucket}.s3.amazonaws.com/{plan_key}"
+                    plan_local = run_dir / "script_plan.json"
+                    if not plan_local.exists():
+                        logger.info(f"[VideoGenService] Attempting to download script_plan.json from S3...")
+                        if self.s3_service.download_file(plan_url, plan_local):
+                            logger.info(f"[VideoGenService] Successfully downloaded script_plan.json")
+                        else:
+                            logger.info(
+                                f"[VideoGenService] script_plan.json not found in S3 "
+                                f"(legacy run? Director will use a synthesized fallback beat)"
+                            )
+                except Exception as e:
+                    logger.warning(f"[VideoGenService] Could not download script_plan.json: {e}")
             
             # Need narration_raw.json and narration.mp3 if resuming from WORDS or later
             if start_stage_idx >= 3:  # WORDS, HTML, or RENDER
@@ -673,9 +697,12 @@ class VideoGenerationService:
                             logger.info(f"[VideoGenService] Successfully downloaded branding_meta.json")
         
         # ── Intent router — decide which tools to invoke and how the pipeline behaves ──
+        # Gate <=1 (not ==0) because fresh videos start at stage_idx=1 (SCRIPT). The
+        # PENDING stage is never entered, so an ==0 gate would mean intent routing
+        # never fires for new generations — leaving URL/web_search dead code.
         from ..schemas.routing import RoutingPlan
         routing_plan = RoutingPlan()  # safe default
-        if start_stage_idx == 0 and prompt:
+        if start_stage_idx <= 1 and prompt:
             try:
                 from .intent_router_service import IntentRouterService, apply_overrides
                 from .web_content_capture_service import extract_urls
@@ -706,7 +733,7 @@ class VideoGenerationService:
 
         # ── Web capture (only if router enabled scrape_url) ──
         captured_text_context = ""
-        if start_stage_idx == 0 and prompt and routing_plan.is_tool_enabled("scrape_url"):
+        if start_stage_idx <= 1 and prompt and routing_plan.is_tool_enabled("scrape_url"):
             try:
                 from .web_content_capture_service import WebContentCaptureService, extract_urls
                 urls = extract_urls(prompt, max_urls=2)
@@ -725,7 +752,7 @@ class VideoGenerationService:
 
         # ── Web search (only if router enabled web_search) ──
         searched_text_context = ""
-        if start_stage_idx == 0 and routing_plan.is_tool_enabled("web_search"):
+        if start_stage_idx <= 1 and routing_plan.is_tool_enabled("web_search"):
             try:
                 ws_tool = routing_plan.get_tool("web_search")
                 query = (ws_tool.params or {}).get("query", "") if ws_tool else ""
@@ -899,7 +926,15 @@ class VideoGenerationService:
         # Format: (output_key_from_pipeline, file_key_for_db_s3, file_name)
         # file_key is used as the key in s3_urls and file_ids in the database
         file_map = {
-            "script": [("script_path", "script", "script.txt")],
+            # `script.txt` goes into the DB s3_urls (consumers ask for it).
+            # `script_plan.json` is internal — uploaded for resume capability so
+            # later stages (TTS/WORDS/HTML) can rehydrate the structured plan
+            # (beat_outline, subject_domain, visual_style, key_terms, etc.).
+            # Without this, resume at HTML loses the plan and the Director skips.
+            "script": [
+                ("script_path", "script", "script.txt"),
+                (None, None, "script_plan.json"),  # internal — see download path
+            ],
             "tts": [
                 ("audio_path", "audio", "narration.mp3"),
                 # narration_raw.json is uploaded to S3 for resume capability but stored separately
@@ -1522,30 +1557,39 @@ class VideoGenerationService:
                                                     file_path_obj.write_text(json.dumps(timeline_data, indent=2), encoding='utf-8')
                                                     logger.info(f"[VideoGenService] ✅ Updated {updated_count} image references in {file_name} across {total_entries} entries")
                                                 else:
-                                                    logger.warning(f"[VideoGenService] ⚠️  No image references were updated in {file_name}. Check image_path_mapping and HTML content.")
-                                                    # Log sample of what's in the mapping for debugging
-                                                    if image_path_mapping:
-                                                        sample_keys = list(image_path_mapping.keys())[:3]
-                                                        logger.debug(f"[VideoGenService] Sample image_path_mapping keys: {sample_keys}")
-                                                        # Check if HTML contains any file:// URLs
-                                                        if entries_list:
-                                                            file_urls_in_html = re.findall(r'src=["\']?(file://[^"\'\s]+)["\']?', entries_list[0].get("html", ""))
-                                                            if file_urls_in_html:
-                                                                logger.debug(f"[VideoGenService] Found file:// URLs in HTML: {file_urls_in_html[:3]}")
+                                                    # Check whether the modern path applies: all <img> tags are
+                                                    # already base64 data URLs (embedded by automation_pipeline
+                                                    # before timeline write). If so, the URL-replace pass having
+                                                    # nothing to do is *expected*, not an error.
+                                                    sample_html = entries_list[0].get("html", "") if entries_list else ""
+                                                    file_urls_in_html = re.findall(r'src=["\']?(file://[^"\'\s]+)["\']?', sample_html)
+                                                    has_unresolved_file_urls = bool(file_urls_in_html)
+                                                    if has_unresolved_file_urls:
+                                                        logger.warning(f"[VideoGenService] ⚠️  No image references were updated in {file_name} but {len(file_urls_in_html)} unresolved file:// URLs remain. Check image_path_mapping and HTML content.")
+                                                        if image_path_mapping:
+                                                            sample_keys = list(image_path_mapping.keys())[:3]
+                                                            logger.debug(f"[VideoGenService] Sample image_path_mapping keys: {sample_keys}")
+                                                            logger.debug(f"[VideoGenService] Found file:// URLs in HTML: {file_urls_in_html[:3]}")
+                                                    else:
+                                                        logger.info(f"[VideoGenService] ℹ️  Skipping URL replacement for {file_name} — no file:// references found (images are base64-embedded or already on S3)")
                                             except Exception as e:
                                                 logger.warning(f"[VideoGenService] Failed to update image URLs in {file_name}: {e}. Uploading original file.", exc_info=True)
                                         else:
                                             logger.info(f"[VideoGenService] No image mappings found, skipping URL update in {file_name}")
                                     
-                                    # Handle files that should be uploaded but not stored in main s3_urls (like narration_raw.json)
+                                    # Handle files that should be uploaded but not stored in main s3_urls.
+                                    # Internal files use the current pipeline stage as their S3 subdir
+                                    # (e.g. script_plan.json → ai-videos/<vid>/script/) so the resume-time
+                                    # download path can find them by convention.
+                                    # Backwards compat: narration_raw.json keeps its hardcoded "audio"
+                                    # subdir because the existing download path at line 631 looks there.
                                     if file_key is None:
-                                        # Upload to S3 for resume capability but don't store in database
-                                        # Use "audio" as stage since it's related to TTS/audio generation
-                                        logger.info(f"[VideoGenService] Uploading internal file {file_name} to S3 (not storing in DB)...")
+                                        _internal_stage = "audio" if file_name == "narration_raw.json" else stage_pipeline_name
+                                        logger.info(f"[VideoGenService] Uploading internal file {file_name} to S3 stage='{_internal_stage}' (not storing in DB)...")
                                         s3_url = self.s3_service.upload_video_file(
                                             file_path=file_path_obj,
                                             video_id=video_id,
-                                            stage="audio"  # Store in audio directory but don't add to s3_urls
+                                            stage=_internal_stage
                                         )
                                         logger.info(f"[VideoGenService] Uploaded internal file {file_name}: {s3_url} (not stored in DB)")
                                         continue  # Skip DB update for internal files

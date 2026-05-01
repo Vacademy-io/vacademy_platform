@@ -516,6 +516,9 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "use_director": True,
         "director_max_tokens": 20000,  # was 32000
         "director_emphasis_map": True,
+        "director_motion_bias": True,
+        "director_shot_density": True,
+        "motion_density_enforcement": True,
         "shot_pack_enabled": True,
         "shot_templates_enabled": True,
         "skill_library_enabled": True,
@@ -4621,9 +4624,35 @@ class VideoGenerationPipeline:
         _w = getattr(self, 'video_width', 1920)
         _h = getattr(self, 'video_height', 1080)
 
-        if not script_text or not beat_outline:
-            print("⚠️ Director: missing script or beat outline — skipping")
+        # The Director's irreducible requirement is the script text — it can
+        # plan shots from script + word timestamps even when `beat_outline` is
+        # missing. Common cause for missing beats: an old `script_plan.json`
+        # loaded on resume, or a script LLM that returned a script without a
+        # structured beat outline. Synthesize a minimal beat outline so the
+        # Director gets some anchor structure (the planning prompt iterates
+        # `beat_outline` but tolerates an empty list — a single fallback beat
+        # is much better than skipping the Director entirely and losing
+        # templates / transition picker / image continuity).
+        if not script_text:
+            print("⚠️ Director: missing script — skipping (no narration text loaded)")
             return None, {}
+        if not beat_outline:
+            # Build one beat from the entire script. The Director then uses the
+            # word timestamps for fine-grained shot boundaries.
+            print(
+                "ℹ️ Director: no beat_outline in script_plan — synthesizing a "
+                "single-beat fallback so Director can still plan shots"
+            )
+            beat_outline = [{
+                "label": "Main",
+                "narration": script_text[:2000],
+                "visual_type": "",
+                "visual_idea": "",
+                "emotion": "",
+                "pacing": "normal",
+                "complexity_level": "moderate",
+                "key_terms": [],
+            }]
 
         # ── Optional Pass 1: Act Planner (super_ultra only) ────────────────
         act_plan: Optional[Dict[str, Any]] = None

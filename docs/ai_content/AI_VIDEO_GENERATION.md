@@ -317,6 +317,17 @@ def run(
 
 Each stage yields progress events via callback → SSE → frontend.
 
+#### 3.2.1 Pre-script intent routing (URL ingestion + web search)
+
+Before SCRIPT runs, [video_generation_service.py:702-763](../../ai_service/app/services/video_generation_service.py) calls `IntentRouterService.route()` to decide whether the prompt requires:
+
+- **`scrape_url`** — `WebContentCaptureService.capture_urls()` runs Playwright on every URL detected in the prompt (up to 2). Per URL it captures: 3 viewport screenshots (above-fold / mid / footer), top-N inline images ranked by visible area, and metadata (title, og:description, og:image, page text excerpt). All assets are uploaded to S3 under `ai-videos/web-capture/{run_id}/` and appended to `reference_files`. The clean text excerpt is merged into `reference_context.text_context` so the script LLM sees article-grounded content instead of having to make it up from world knowledge.
+- **`web_search`** — `WebSearchService.search()` calls Perplexity Sonar via OpenRouter and merges the synthesized answer + cited sources into `reference_context.text_context`.
+
+Both are gated on `start_stage_idx <= 1` (i.e. the run has not yet generated a script). The check used to be `== 0` but `STAGES = ["PENDING", "SCRIPT", ...]` and new videos are forced to start at `start_stage_idx = 1` ([video_generation_service.py:296](../../ai_service/app/services/video_generation_service.py#L296)) — so the old guard meant intent routing **never fired for fresh runs**. Fixed 2026-05 after a run with a URL prompt (`https://telanganatoday.com/forest-law-enforcement-...`) produced a generic, world-knowledge-only script with no images extracted from the article.
+
+The routing decision is cached at `<run_dir>/routing_plan.json` so resumes (start_stage_idx ≥ 2) reuse it without re-scraping.
+
 ### 3.3 `QUALITY_TIERS`
 
 Defined at [automation_pipeline.py:268](../../ai_service/app/ai-video-gen-main/automation_pipeline.py#L268). Controls per-tier feature gates.
@@ -328,7 +339,7 @@ Defined at [automation_pipeline.py:268](../../ai_service/app/ai-video-gen-main/a
 | `free` | ❌ | ❌ | ❌ | ❌ | ❌ |
 | `standard` | ❌ | ✅ | ❌ | ❌ | ❌ |
 | `premium` | ✅ | ✅ | ✅ | ❌ | ❌ |
-| `ultra` | ✅ | ✅ | ✅ | ❌ | ❌ |
+| `ultra` | ✅ | ✅ | ✅ | ❌ | ✅ |
 | `super_ultra` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 **Director tokens & advanced flags (2026-04):**
@@ -336,7 +347,7 @@ Defined at [automation_pipeline.py:268](../../ai_service/app/ai-video-gen-main/a
 | Tier | `director_max_tokens` | Shot pack | Shot templates | Transition picker | Emphasis map | Few-shot | Shot density | Two-pass | Anim validator | Stock video rank | Skill library | Image continuity |
 |------|----------------------:|-----------|----------------|-------------------|--------------|----------|--------------|----------|----------------|------------------|---------------|------------------|
 | `premium` | 20,000 | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `ultra` | 32,000 | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| `ultra` | 32,000 | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ |
 | `super_ultra` | 40,000 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 - **`use_director`**: enables the three-stage LLM flow (script → director plan → per-shot HTML) vs legacy single-stage. Premium+ uses the director.
@@ -353,7 +364,8 @@ Defined at [automation_pipeline.py:268](../../ai_service/app/ai-video-gen-main/a
 - **`skill_library_enabled`**: injects a filtered skill catalog into the per-shot system prompt and runs the skill composer on the returned HTML. Ultra and super_ultra only. See §3.13.
 - **`image_continuity_enabled`**: runs `subject_extractor` after the Director plan to identify recurring subjects, then threads each subject's first-shot S3 URL into Seedream as `reference_image_url` for subsequent shots. Image-to-image continuity. Ultra and super_ultra only. See §3.16.
 - **`kinetic_text_shots`**: pipeline builds `KINETIC_TEXT` shots deterministically (word-by-word sync) instead of asking the LLM. Super_ultra only.
-- **`director_motion_bias`**: director is instructed to target reel-pace (2–4s shots, 50%+ motion-graphics types). Super_ultra only.
+- **`director_motion_bias`**: director is instructed to target reel-pace (2–4s shots, 50%+ motion-graphics types). The hint computed at `automation_pipeline.py:4886` injects a numeric target (`~audio_duration / 3` shots) into the system prompt — cheap planner models (gemini-flash variants) need this explicit number; the soft "2-5s/shot" hint is otherwise ignored. Ultra and super_ultra (ultra added 2026-05 after a run produced 7 shots over 68s of narration).
+- **`motion_density_enforcement`**: enables the animation-density validator at `automation_pipeline.py:6030-6084` — counts GSAP tweens per shot and triggers one corrective regeneration if a shot is below threshold. Ultra and super_ultra.
 - **`crossfade_duration`**: pipeline inserts 0.35s crossfade transitions between shots on `premium`+. The browser player applies the same crossfade-window opacity ramp as the renderer for parity (`AIVideoPlayer.tsx` extends the active-frame range by `crossfade_duration` and computes per-frame opacity from the playhead).
 
 ### 3.4 Visual style — Director-owned per-shot (2026-04)
@@ -1613,6 +1625,9 @@ When making changes that touch the pipeline or render engine:
 | Image-to-image call returns no bytes | Seedream rejected the multimodal payload OR the reference URL isn't publicly readable | Check the `_subject_refs` URL is HTTP 200 + non-private (`vacademy-media-storage-public` bucket has public-read ACL); fall back to text-only by clearing the cached URL |
 | Recurring subject still drifts visually | Subject extractor missed the connection, OR the first reference was poor quality | Check the `🎯 Subject extraction:` log line for which shots got grouped; if missed, add explicit `data-subject-id="..."` on the `<img>` tags in the Director plan |
 | Subject-continuity tasks stall ~120s on 429 | Pre-fix bug — should now release the first-shot claim and re-claim on retry | Confirm the latest `automation_pipeline.py` includes the `try / except _ImageGenRateLimitError` block in `process_image_task` (search for `_subject_first_claimed.discard`) |
+| Big empty octagon / hexagon / diamond outline appears where an image should be | Per-shot LLM produced a decorative geometric placeholder because no `image_prompt`/`video_query` was set on that shot | The system prompt forbids this — confirm the "Decorative shape placeholders are forbidden" bullet is still in the **❌ DO NOT USE** block of `prompts.py`. If recurring with a cheap planner model, also confirm `director_motion_bias` is on (forces shot density so the LLM doesn't have empty 9s shots to fill) |
+| URL prompt produces a generic script with no article facts and no extracted images | Intent routing is gated on `start_stage_idx <= 1` (was `== 0`); for fresh runs the gate **must** evaluate true so `WebContentCaptureService` runs | Confirm [video_generation_service.py:702-763](../../ai_service/app/services/video_generation_service.py) has `start_stage_idx <= 1` (not `== 0`); confirm the `[IntentRouter] Plan:` log line appears DURING the video's generation window (not after); confirm `routing_plan.json` is written to the run dir |
+| `⚠️ No image references were updated in time_based_frame.json` log warning every run | False positive when all images are base64-embedded in entries before timeline write — the URL-replace pass has nothing to swap, which is **expected** | The warning is now suppressed when no `file://` URLs remain in the HTML. If it still fires, look for `Found file:// URLs in HTML:` in the debug log to see what didn't get swapped |
 
 ---
 

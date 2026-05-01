@@ -831,7 +831,14 @@ const EnrollByInvite = ({ vendor: propVendor }: EnrollByInviteProps = {}) => {
           ) {
             dialogType = "paid_member_blocked";
           }
-          // If there are upgrade options, it's likely a re-enrollment block with upsell
+          // If the error matches alreadyEnrolledMessage, keep already_enrolled dialog
+          else if (
+            policyResponse?.reenrollmentPolicy?.alreadyEnrolledMessage &&
+            enrollmentErrorMessage === policyResponse.reenrollmentPolicy.alreadyEnrolledMessage
+          ) {
+            dialogType = "already_enrolled";
+          }
+          // If there are upgrade options and error matches reenrollmentBlockedMessage, show upsell
           else if (
             policyResponse?.reenrollmentPolicy?.upgradeOptions?.paid_upgrade
           ) {

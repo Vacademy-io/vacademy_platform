@@ -24,7 +24,7 @@ import { BulkActions } from './bulk-actions/bulk-actions';
 import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
 import { DashboardLoader, ErrorBoundary } from '@/components/core/dashboard-loader';
-import RootErrorComponent from '@/components/core/deafult-error';
+import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { StudentSidebar } from '../student-side-view/student-side-view';
 import EmptyStudentListImage from '@/assets/svgs/empty-students-image.svg';
@@ -185,7 +185,7 @@ export const StudentsListSection = () => {
     );
 
     if (isLoading) return <DashboardLoader />;
-    if (isError) return <RootErrorComponent />;
+    if (isError) return <SmartErrorPage />;
 
     // Enhanced empty state component
     const EmptyState = () => (

@@ -3,7 +3,7 @@ import * as Sentry from '@sentry/react';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import ReactDOM from 'react-dom/client';
-import RootErrorComponent from './components/core/deafult-error';
+import { SmartErrorPage as RootErrorComponent } from './components/core/SmartErrorPage';
 import RootNotFoundComponent from './components/core/default-not-found';
 import RootPendingComponent from './components/core/default-pending';
 import './index.css';

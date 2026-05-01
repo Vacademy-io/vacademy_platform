@@ -1,7 +1,7 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
-import { isChunkLoadError, reloadForChunkError } from '@/lib/chunk-reload';
+import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { QueryClient } from '@tanstack/react-query';
 import { createRootRouteWithContext, Outlet, redirect } from '@tanstack/react-router';
 import React, { Suspense } from 'react';
@@ -171,36 +171,5 @@ export const Route = createRootRouteWithContext<{
             </>
         );
     },
-    errorComponent: ({ error }: { error: Error }) => {
-        const chunkError = isChunkLoadError(error);
-
-        React.useEffect(() => {
-            if (chunkError) {
-                reloadForChunkError();
-            }
-        }, [chunkError]);
-
-        if (chunkError) {
-            return (
-                <div className="flex h-[100vh] w-full flex-col items-center justify-center gap-4 bg-gray-50">
-                    <p className="text-lg font-semibold text-gray-700">
-                        Updating application...
-                    </p>
-                </div>
-            );
-        }
-
-        return (
-            <div className="flex h-screen w-full flex-col items-center justify-center gap-4 bg-gray-50 p-4">
-                <h1 className="text-2xl font-bold text-gray-900">Something went wrong</h1>
-                <p className="text-gray-600">{error.message || 'Unknown error occurred'}</p>
-                <button
-                    onClick={() => window.location.reload()}
-                    className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
-                >
-                    Reload Page
-                </button>
-            </div>
-        );
-    },
+    errorComponent: SmartErrorPage,
 });

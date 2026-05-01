@@ -242,6 +242,9 @@ public class NotificationService {
             } catch (Exception e) {
                 log.error("Failed to send WhatsApp batch for template {}: {}",
                         request.getTemplateName(), e.getMessage());
+                SentryLogger.logError(e, "WhatsApp HTTP bridge failed — notification_service unreachable or returned error",
+                        Map.of("template.name", request.getTemplateName() != null ? request.getTemplateName() : "unknown",
+                                "layer", "3-notification-bridge"));
             }
         }
     }

@@ -48,6 +48,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowEngineService;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.text.SimpleDateFormat;
 
@@ -419,7 +420,20 @@ public class LearnerEnrollRequestService {
 
                                 // Build users list with essential data only
                                 Map<String, Object> userMap = new java.util.HashMap<>();
-                                userMap.put("phone_number", learnerEnrollRequestDTO.getUser().getMobileNumber());
+                                String rawPhone = learnerEnrollRequestDTO.getUser().getMobileNumber();
+                                userMap.put("phone_number", rawPhone);
+                                // Layer 1: warn Sentry when phone is missing or too short to be valid
+                                if (rawPhone == null || rawPhone.isEmpty()
+                                        || rawPhone.replaceAll("[^0-9]", "").length() < 10) {
+                                    SentryLogger.logWarning("WhatsApp enrollment skipped: invalid or missing phone number",
+                                            Map.of(
+                                                    "user.id", learnerEnrollRequestDTO.getUser().getId(),
+                                                    "phone", rawPhone != null ? rawPhone : "null",
+                                                    "workflow.id", workflowId,
+                                                    "package_session.id", packageSessionId,
+                                                    "layer", "1-enrollment-trigger"
+                                            ));
+                                }
                                 userMap.put("name", learnerEnrollRequestDTO.getUser().getFullName());
                                 userMap.put("username", learnerEnrollRequestDTO.getUser().getEmail() != null
                                         ? learnerEnrollRequestDTO.getUser().getEmail().split("@")[0]
@@ -461,6 +475,13 @@ public class LearnerEnrollRequestService {
                             } catch (Exception e) {
                                 log.error("Failed to trigger workflow {} for user {}: {}",
                                         workflowId, learnerEnrollRequestDTO.getUser().getId(), e.getMessage(), e);
+                                SentryLogger.logError(e, "WhatsApp workflow trigger failed",
+                                        Map.of(
+                                                "workflow.id", workflowId,
+                                                "user.id", learnerEnrollRequestDTO.getUser().getId(),
+                                                "package_session.id", packageSessionId,
+                                                "layer", "1-enrollment-trigger"
+                                        ));
                             }
                         }
                     }

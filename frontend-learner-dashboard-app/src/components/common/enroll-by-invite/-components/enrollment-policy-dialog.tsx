@@ -223,14 +223,14 @@ const EnrollmentPolicyDialog = ({
             </DialogHeader>
 
             <div className="py-4 space-y-4">
-                <div className="rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 p-4">
+                {/* <div className="rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 p-4">
                     <div className="flex items-start gap-3">
                         <Sparkles className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
                         <p className="text-sm text-amber-800">
                             Your existing enrollment gives you full access to all course content. Continue learning from where you left off!
                         </p>
                     </div>
-                </div>
+                </div> */}
 
                 {/* Upgrade option if available */}
                 {reenrollmentPolicy?.upgradeOptions?.paid_upgrade && (

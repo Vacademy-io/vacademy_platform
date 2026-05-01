@@ -1,7 +1,32 @@
-import { ColumnDef } from '@tanstack/react-table';
+import { ColumnDef, Row } from '@tanstack/react-table';
 import { Trash2 } from 'lucide-react';
+import { ArrowSquareOut } from '@phosphor-icons/react';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 import { CustomFieldSetupItem } from '../../-services/get-custom-field-setup';
-import { getCampaignCustomFields, CampaignFormCustomField } from '../../-utils/getCampaignCustomFields';
+import {
+    getCampaignCustomFields,
+    CampaignFormCustomField,
+} from '../../-utils/getCampaignCustomFields';
+
+// Details cell — opens the side view via SidebarTrigger, mirroring the
+// "Details" column used in manage-students and manage-contacts so the affordance
+// is consistent across audience tables.
+const DetailsCell = ({
+    row,
+    onSelect,
+}: {
+    row: Row<CampaignUserTable>;
+    onSelect: (row: CampaignUserTable) => void;
+}) => {
+    const handleClick = () => {
+        onSelect(row.original);
+    };
+    return (
+        <SidebarTrigger onClick={handleClick}>
+            <ArrowSquareOut className="size-10 cursor-pointer text-neutral-600" />
+        </SidebarTrigger>
+    );
+};
 
 // Helper function to generate key from name
 const generateKeyFromName = (name: string): string =>
@@ -14,6 +39,25 @@ export interface CampaignUserTable {
     id: string;
     index: number;
     submittedAt?: string;
+    // Underscore-prefixed fields hold the source user info for the side-view click,
+    // so they don't collide with dynamic custom-field accessors.
+    _user_id?: string;
+    _user?: {
+        id?: string;
+        full_name?: string;
+        email?: string;
+        mobile_number?: string;
+        username?: string;
+        gender?: string;
+        date_of_birth?: string;
+        city?: string;
+        region?: string | null;
+        pin_code?: string;
+        address_line?: string;
+        face_file_id?: string | null;
+        profile_pic_file_id?: string | null;
+    };
+    _custom_field_values?: Record<string, string | null>;
     [key: string]: any; // Allow dynamic custom field properties
 }
 
@@ -25,11 +69,8 @@ const indexColumn: ColumnDef<CampaignUserTable> = {
     minSize: 80,
     maxSize: 80,
     enableResizing: false,
-    cell: ({ row }) => (
-        <div className="p-3 text-sm text-neutral-700">{row.original.index + 1}</div>
-    ),
+    cell: ({ row }) => <div className="p-3 text-sm text-neutral-700">{row.original.index + 1}</div>,
 };
-
 
 const getFieldFromLookup = (
     lookup: Map<string, CustomFieldSetupItem> | undefined,
@@ -44,10 +85,12 @@ const isNameField = (fieldKey?: string, fieldName?: string): boolean => {
     if (!fieldKey && !fieldName) return false;
     const normalizedKey = fieldKey?.toLowerCase() || '';
     const normalizedName = fieldName?.toLowerCase() || '';
-    return normalizedKey === 'full_name' || 
-           normalizedKey === 'name' || 
-           normalizedName === 'full name' ||
-           normalizedName === 'name';
+    return (
+        normalizedKey === 'full_name' ||
+        normalizedKey === 'name' ||
+        normalizedName === 'full name' ||
+        normalizedName === 'name'
+    );
 };
 
 // Helper to check if a field is Email
@@ -72,9 +115,26 @@ export const generateDynamicColumns = (
     fieldLookup?: Map<string, CustomFieldSetupItem>,
     onDelete?: (responseId: string) => void,
     campaignFieldsMap?: Map<string, { name: string; key?: string }>,
-    fieldMetadataMap?: Map<string, { fieldName?: string; fieldKey?: string; fieldType?: string }>
+    fieldMetadataMap?: Map<string, { fieldName?: string; fieldKey?: string; fieldType?: string }>,
+    onRowClick?: (row: CampaignUserTable) => void,
+    onSelectRow?: (row: CampaignUserTable) => void
 ): ColumnDef<CampaignUserTable>[] => {
-    const columns: ColumnDef<CampaignUserTable>[] = [indexColumn]; // Start with S.No column
+    // When a select-row callback is provided, render a "Details" column first —
+    // matching manage-students and manage-contacts so the side-view affordance is
+    // discoverable in the same place across audience tables.
+    const columns: ColumnDef<CampaignUserTable>[] = [];
+    if (onSelectRow) {
+        columns.push({
+            id: 'details',
+            size: 80,
+            minSize: 60,
+            maxSize: 120,
+            enablePinning: true,
+            header: 'Details',
+            cell: ({ row }) => <DetailsCell row={row} onSelect={onSelectRow} />,
+        });
+    }
+    columns.push(indexColumn); // S.No column
 
     try {
         const lookup = fieldLookup ?? new Map<string, CustomFieldSetupItem>();
@@ -101,7 +161,8 @@ export const generateDynamicColumns = (
         fieldIdsToProcess.forEach((fieldId) => {
             if (!processedFieldIds.has(fieldId)) {
                 let fieldInfo =
-                    getFieldFromLookup(lookup, fieldId) || getFieldFromLookup(lookup, fieldId?.toLowerCase());
+                    getFieldFromLookup(lookup, fieldId) ||
+                    getFieldFromLookup(lookup, fieldId?.toLowerCase());
 
                 // Exhaustive search through all setup entries if simple lookup failed
                 if (!fieldInfo && lookup.size > 0) {
@@ -124,9 +185,11 @@ export const generateDynamicColumns = (
 
                 if (fieldInfo) {
                     const fieldName = fieldInfo.field_name
-                        ? fieldInfo.field_name.charAt(0).toUpperCase() + fieldInfo.field_name.slice(1)
+                        ? fieldInfo.field_name.charAt(0).toUpperCase() +
+                          fieldInfo.field_name.slice(1)
                         : fieldInfo.field_key || fieldId;
-                    const fieldKey = fieldInfo.field_key || generateKeyFromName(fieldInfo.field_name || fieldId);
+                    const fieldKey =
+                        fieldInfo.field_key || generateKeyFromName(fieldInfo.field_name || fieldId);
 
                     fieldMappings.push({
                         id: fieldId,
@@ -136,18 +199,22 @@ export const generateDynamicColumns = (
                     processedFieldIds.add(fieldId);
                 } else {
                     // Fallback: try campaign config, then API metadata, then field ID
-                    const campaignField = campaignFieldsMap?.get(fieldId)
-                        || campaignFieldsMap?.get(fieldId.toLowerCase());
+                    const campaignField =
+                        campaignFieldsMap?.get(fieldId) ||
+                        campaignFieldsMap?.get(fieldId.toLowerCase());
                     const apiMeta = fieldMetadataMap?.get(fieldId);
 
                     let fieldName = fieldId;
                     let fieldKey = generateKeyFromName(fieldId);
 
                     if (campaignField?.name) {
-                        fieldName = campaignField.name.charAt(0).toUpperCase() + campaignField.name.slice(1);
+                        fieldName =
+                            campaignField.name.charAt(0).toUpperCase() +
+                            campaignField.name.slice(1);
                         fieldKey = campaignField.key || generateKeyFromName(fieldName);
                     } else if (apiMeta?.fieldName) {
-                        fieldName = apiMeta.fieldName.charAt(0).toUpperCase() + apiMeta.fieldName.slice(1);
+                        fieldName =
+                            apiMeta.fieldName.charAt(0).toUpperCase() + apiMeta.fieldName.slice(1);
                         fieldKey = apiMeta.fieldKey || generateKeyFromName(fieldName);
                     }
 
@@ -168,22 +235,22 @@ export const generateDynamicColumns = (
             const bIsName = isNameField(b.key, b.name);
             const aIsEmail = isEmailField(a.key, a.name);
             const bIsEmail = isEmailField(b.key, b.name);
-            
+
             // Priority: Name (1) > Email (2) > Others (3)
             const getPriority = (isName: boolean, isEmail: boolean) => {
                 if (isName) return 1;
                 if (isEmail) return 2;
                 return 3;
             };
-            
+
             const aPriority = getPriority(aIsName, aIsEmail);
             const bPriority = getPriority(bIsName, bIsEmail);
-            
+
             // If same priority, maintain original order
             if (aPriority === bPriority) {
                 return 0;
             }
-            
+
             return aPriority - bPriority;
         });
 
@@ -193,7 +260,7 @@ export const generateDynamicColumns = (
 
             // Determine cell styling based on field type
             const isNameFieldCell = isNameField(fieldKey, fieldName);
-            
+
             columns.push({
                 accessorKey: fieldId, // Use field ID as accessorKey to match custom_field_values
                 header: fieldName,
@@ -205,18 +272,26 @@ export const generateDynamicColumns = (
                     // Value can be null if the user doesn't have data for this field
                     const value = row.original[fieldId];
                     // Display null as '-' for better UX, but the data is stored as null
-                    const displayValue = value !== null && value !== undefined && value !== '' && value !== '-' && value !== 'N/A' 
-                        ? String(value) 
-                        : '-';
+                    const displayValue =
+                        value !== null &&
+                        value !== undefined &&
+                        value !== '' &&
+                        value !== '-' &&
+                        value !== 'N/A'
+                            ? String(value)
+                            : '-';
+                    const clickable = !!onRowClick && !!row.original._user_id;
                     return (
-                        <div className={`p-3 text-sm  ${isNameFieldCell ? 'font-medium text-neutral-900' : 'text-neutral-700'}`}>
+                        <div
+                            className={`p-3 text-sm ${isNameFieldCell ? 'font-medium text-neutral-900' : 'text-neutral-700'} ${clickable ? 'cursor-pointer hover:text-primary-600' : ''}`}
+                            onClick={clickable ? () => onRowClick!(row.original) : undefined}
+                        >
                             {displayValue}
                         </div>
                     );
                 },
             });
         });
-        
     } catch (error) {
         console.error('❌ Error generating dynamic columns:', error);
     }
@@ -261,10 +336,10 @@ export const generateDynamicColumns = (
 // Default columns (fallback when no custom fields) - uses getCampaignCustomFields() for all columns
 export const campaignUsersColumns: ColumnDef<CampaignUserTable>[] = (() => {
     const columns: ColumnDef<CampaignUserTable>[] = [indexColumn];
-    
+
     try {
         const campaignCustomFields = getCampaignCustomFields();
-        
+
         campaignCustomFields.forEach((field: CampaignFormCustomField) => {
             const fieldName = field.name;
             const fieldKey = field.key;
@@ -281,7 +356,9 @@ export const campaignUsersColumns: ColumnDef<CampaignUserTable>[] = (() => {
                 cell: ({ row }) => {
                     const value = row.original[fieldKey];
                     return (
-                        <div className={`p-3 text-sm ${isNameField ? 'font-medium text-neutral-900' : 'text-neutral-700'}`}>
+                        <div
+                            className={`p-3 text-sm ${isNameField ? 'font-medium text-neutral-900' : 'text-neutral-700'}`}
+                        >
                             {value && value !== '-' && value !== 'N/A' ? String(value) : '-'}
                         </div>
                     );
@@ -305,4 +382,3 @@ export const campaignUsersColumns: ColumnDef<CampaignUserTable>[] = (() => {
 
     return columns;
 })();
-

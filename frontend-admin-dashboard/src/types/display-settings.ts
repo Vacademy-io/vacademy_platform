@@ -102,6 +102,27 @@ export interface CourseCreationSettings {
     limitToSingleLevel: boolean;
 }
 
+// Stable identifiers for the student side-view tabs. Used as keys in the
+// settings ordering map and as values for the default-tab selector. These
+// match the `setCategory(...)` strings the side-view component already uses.
+export type StudentSideViewTabId =
+    | 'overview'
+    | 'courses'
+    | 'learningProgress'
+    | 'testRecord'
+    | 'notifications'
+    | 'membership'
+    | 'paymentHistory'
+    | 'userTagging'
+    | 'files'
+    | 'portalAccess'
+    | 'reports'
+    | 'enrollDeroll'
+    | 'enquiry'
+    | 'application'
+    | 'lead'
+    | 'fullHistory';
+
 export interface StudentSideViewSettings {
     overviewTab: boolean;
     testTab: boolean;
@@ -119,7 +140,35 @@ export interface StudentSideViewSettings {
     applicationTab: boolean;
     leadTab: boolean;
     fullHistoryTab?: boolean;
+    // Custom ordering by tab id. Lower numbers render first. Tabs missing
+    // from the map fall back to the default order. Optional for
+    // backward-compat with settings that pre-date this feature.
+    tabOrders?: Partial<Record<StudentSideViewTabId, number>>;
+    // Tab to open by default when the side view first renders. Falls back to
+    // the first visible tab if unset or if the chosen tab is hidden.
+    defaultTab?: StudentSideViewTabId;
 }
+
+// Keys of StudentSideViewSettings that toggle a tab's visibility. Used by
+// the settings UI to iterate only over the boolean visibility fields and
+// avoid widening to ordering/default-tab fields.
+export type StudentSideViewVisibilityKey =
+    | 'overviewTab'
+    | 'testTab'
+    | 'progressTab'
+    | 'coursesTab'
+    | 'notificationTab'
+    | 'membershipTab'
+    | 'paymentHistoryTab'
+    | 'userTaggingTab'
+    | 'fileTab'
+    | 'portalAccessTab'
+    | 'reportsTab'
+    | 'enrollDerollTab'
+    | 'enquiryTab'
+    | 'applicationTab'
+    | 'leadTab'
+    | 'fullHistoryTab';
 
 export interface LearnerManagementSettings {
     allowPortalAccess: boolean;

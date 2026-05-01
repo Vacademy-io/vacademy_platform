@@ -131,6 +131,27 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         enquiryTab: false,
         applicationTab: false,
         leadTab: false,
+        // Default rendering order. Tabs render left-to-right by ascending number.
+        // The keys match `StudentSideViewTabId` and the side-view's category strings.
+        tabOrders: {
+            overview: 1,
+            courses: 2,
+            learningProgress: 3,
+            testRecord: 4,
+            notifications: 5,
+            membership: 6,
+            paymentHistory: 7,
+            userTagging: 8,
+            files: 9,
+            portalAccess: 10,
+            reports: 11,
+            enrollDeroll: 12,
+            enquiry: 13,
+            application: 14,
+            lead: 15,
+            fullHistory: 16,
+        },
+        defaultTab: 'overview',
     },
     learnerManagement: {
         allowPortalAccess: true,

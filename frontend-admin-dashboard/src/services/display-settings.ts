@@ -421,6 +421,11 @@ function mergeDisplayWithDefaults(
         enquiryTab: incoming?.studentSideView?.enquiryTab ?? defStudentSideView.enquiryTab,
         applicationTab: incoming?.studentSideView?.applicationTab ?? defStudentSideView.applicationTab,
         leadTab: incoming?.studentSideView?.leadTab ?? defStudentSideView.leadTab,
+        // Preserve user-supplied ordering and default-tab choice; fall back to
+        // the role's defaults so older saved settings (which lacked these
+        // fields) still render in a sensible order.
+        tabOrders: incoming?.studentSideView?.tabOrders ?? defStudentSideView.tabOrders,
+        defaultTab: incoming?.studentSideView?.defaultTab ?? defStudentSideView.defaultTab,
     };
 
     const defLearnerManagement = defaults.learnerManagement || {

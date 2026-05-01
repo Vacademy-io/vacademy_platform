@@ -79,6 +79,9 @@ public class WhatsAppService {
 
         if (instituteId == null) {
             log.error("Missing instituteId for WhatsApp message sending");
+            SentryLogger.logError(new IllegalArgumentException("instituteId is null"),
+                    "WhatsApp send called with null instituteId",
+                    Map.of("template.name", templateName != null ? templateName : "unknown", "layer", "4-whatsapp-service"));
             return null;
         }
 
@@ -87,6 +90,10 @@ public class WhatsAppService {
             String jsonString = instituteDTO.getSetting();
             if (jsonString == null || jsonString.isEmpty()) {
                 log.error("No WhatsApp settings configured for institute {}", instituteId);
+                SentryLogger.logError(new IllegalStateException("WhatsApp settings missing"),
+                        "Institute has no WhatsApp settings — all sends will be dropped",
+                        Map.of("institute.id", instituteId, "template.name", templateName != null ? templateName : "unknown",
+                                "layer", "4-whatsapp-service"));
                 return null;
             }
             log.info("Retrieved institute settings for: {}", instituteId);
@@ -228,6 +235,10 @@ public class WhatsAppService {
 
             if (apiKey == null || apiKey.isBlank()) {
                 log.error("WATI API key not configured");
+                SentryLogger.logError(new IllegalStateException("WATI API key missing"),
+                        "WATI API key not configured for institute — all sends will fail",
+                        Map.of("api.url", apiUrl, "template.name", templateName != null ? templateName : "unknown",
+                                "layer", "4-whatsapp-service"));
                 return bodyParams.stream()
                         .map(detail -> Map.of(detail.keySet().iterator().next(), false))
                         .collect(Collectors.toList());
@@ -252,6 +263,7 @@ public class WhatsAppService {
                     .withTag("user.count", String.valueOf(bodyParams != null ? bodyParams.size() : 0))
                     .withTag("operation", "sendViaWati")
                     .send();
+            if (bodyParams == null) return List.of();
             return bodyParams.stream()
                     .map(detail -> Map.of(detail.keySet().iterator().next(), false))
                     .collect(Collectors.toList());

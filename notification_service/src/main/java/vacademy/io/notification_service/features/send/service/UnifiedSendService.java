@@ -16,6 +16,7 @@ import vacademy.io.notification_service.features.send.entity.SendBatch;
 import vacademy.io.notification_service.features.send.repository.SendBatchRepository;
 import vacademy.io.notification_service.service.EmailService;
 import vacademy.io.notification_service.service.WhatsAppService;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -96,6 +97,15 @@ public class UnifiedSendService implements SendChannelRouter {
                 results.add(UnifiedSendResponse.RecipientResult.builder()
                         .phone(r.getPhone()).success(false)
                         .status("FAILED").error("Missing phone number").build());
+                // Layer 4: phone was null/empty after sanitization — log to Sentry so we can track data quality issues
+                SentryLogger.logWarning("WhatsApp send skipped: missing or unsanitizable phone number",
+                        Map.of(
+                                "template.name", request.getTemplateName() != null ? request.getTemplateName() : "unknown",
+                                "institute.id", request.getInstituteId() != null ? request.getInstituteId() : "unknown",
+                                "user.id", r.getUserId() != null ? r.getUserId() : "unknown",
+                                "raw.phone", r.getPhone() != null ? r.getPhone() : "null",
+                                "layer", "4-unified-send"
+                        ));
                 continue;
             }
 
@@ -223,6 +233,13 @@ public class UnifiedSendService implements SendChannelRouter {
             }
         } catch (Exception e) {
             log.error("WhatsApp send failed for institute {}: {}", request.getInstituteId(), e.getMessage(), e);
+            SentryLogger.logError(e, "WhatsApp send failed in UnifiedSendService",
+                    Map.of(
+                            "template.name", request.getTemplateName() != null ? request.getTemplateName() : "unknown",
+                            "institute.id", request.getInstituteId() != null ? request.getInstituteId() : "unknown",
+                            "recipient.count", String.valueOf(bodyParams.size()),
+                            "layer", "4-unified-send"
+                    ));
             for (Map<String, Map<String, String>> userMap : bodyParams) {
                 for (String phone : userMap.keySet()) {
                     results.add(UnifiedSendResponse.RecipientResult.builder()

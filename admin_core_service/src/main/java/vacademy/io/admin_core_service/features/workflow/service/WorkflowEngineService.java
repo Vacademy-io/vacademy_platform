@@ -44,6 +44,8 @@ public class WorkflowEngineService {
 
             if (mappings.isEmpty()) {
                 log.warn("No node mappings found for workflow: {}", workflowId);
+                SentryLogger.logWarning("Workflow has no node mappings — nothing will be sent",
+                        Map.of("workflow.id", workflowId, "layer", "2-workflow-engine"));
                 return seedContext != null ? seedContext : new HashMap<>();
             }
 
@@ -112,6 +114,9 @@ public class WorkflowEngineService {
                 WorkflowNodeMapping current = byNodeId.get(currentNodeId);
                 if (current == null) {
                     log.error("Node mapping not found for node ID: {}", currentNodeId);
+                    SentryLogger.logError(new IllegalStateException("Node mapping not found"),
+                            "Workflow node mapping missing — node will be skipped",
+                            Map.of("workflow.id", workflowId, "node.id", currentNodeId, "layer", "2-workflow-engine"));
                     continue;
                 }
 
@@ -120,6 +125,10 @@ public class WorkflowEngineService {
                 NodeTemplate tmpl = templateById.get(current.getNodeTemplateId());
                 if (tmpl == null) {
                     log.error("Node template not found for mapping: {}", current.getId());
+                    SentryLogger.logError(new IllegalStateException("Node template not found"),
+                            "Node template missing — node will be skipped",
+                            Map.of("workflow.id", workflowId, "mapping.id", current.getId(),
+                                    "node.template.id", current.getNodeTemplateId(), "layer", "2-workflow-engine"));
                     continue;
                 }
 
@@ -208,9 +217,16 @@ public class WorkflowEngineService {
                     }
                     if (lastError != null) {
                         log.error("Node {} failed after {} retries", current.getId(), maxRetries + 1, lastError);
+                        SentryLogger.logError(lastError, "Workflow node failed after all retries",
+                                Map.of("workflow.id", workflowId, "node.id", current.getId(),
+                                        "node.type", nodeType, "retries", String.valueOf(maxRetries),
+                                        "layer", "2-workflow-engine"));
                     }
                 } else {
                     log.warn("No handler found for node type: {}", nodeType);
+                    SentryLogger.logWarning("No handler registered for workflow node type",
+                            Map.of("workflow.id", workflowId, "node.id", current.getId(),
+                                    "node.type", nodeType, "layer", "2-workflow-engine"));
                 }
 
                 // Evaluate routing to find next nodes and push them to stack
@@ -240,6 +256,10 @@ public class WorkflowEngineService {
                         } else {
                             log.error("Next node {} not found in workflow! Available nodes: {}", nextNodeId,
                                     byNodeId.keySet());
+                            SentryLogger.logError(new IllegalStateException("Routing target node not found"),
+                                    "Workflow routing points to non-existent node — branch will be dropped",
+                                    Map.of("workflow.id", workflowId, "missing.node.id", nextNodeId,
+                                            "current.node.id", current.getId(), "layer", "2-workflow-engine"));
                         }
                     }
                 }
@@ -253,12 +273,16 @@ public class WorkflowEngineService {
 
             if (guard >= 100) {
                 log.warn("Workflow execution stopped due to loop guard limit: {}", workflowId);
+                SentryLogger.logWarning("Workflow hit 100-node loop guard — execution stopped early",
+                        Map.of("workflow.id", workflowId, "layer", "2-workflow-engine"));
             }
 
             return ctx;
 
         } catch (Exception e) {
             log.error("Error executing workflow: {}", workflowId, e);
+            SentryLogger.logError(e, "Unhandled exception in workflow engine",
+                    Map.of("workflow.id", workflowId, "layer", "2-workflow-engine"));
             return seedContext != null ? seedContext : new HashMap<>();
         }
     }

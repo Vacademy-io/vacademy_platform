@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.notification_service.features.external_communication_log.model.ExternalCommunicationSource;
 import vacademy.io.notification_service.features.external_communication_log.service.ExternalCommunicationLogService;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -173,6 +174,15 @@ public class WatiService {
                     if (!result) {
                         String info = respJson.path("info").asText("unknown error");
                         log.error("WATI API returned success=false: {}", info);
+                        // Layer 5: WATI accepted the HTTP call but rejected the send internally
+                        SentryLogger.logWarning("WATI API returned result=false",
+                                Map.of(
+                                        "template.name", templateName,
+                                        "wati.info", info,
+                                        "recipient.count", String.valueOf(uniqueUsers.size()),
+                                        "api.url", apiUrl,
+                                        "layer", "5-wati-api"
+                                ));
                         deliverySuccess = false;
                     }
                 } catch (Exception ignored) {}
@@ -184,6 +194,14 @@ public class WatiService {
                     .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("Failed to send WATI bulk message: {}", e.getMessage(), e);
+            // Layer 5: HTTP call to WATI failed entirely — network error, timeout, or auth failure
+            SentryLogger.logError(e, "WATI bulk send HTTP call failed",
+                    Map.of(
+                            "template.name", templateName,
+                            "recipient.count", String.valueOf(uniqueUsers.size()),
+                            "api.url", apiUrl,
+                            "layer", "5-wati-api"
+                    ));
             // Best effort: if logging hadn't started, create one just to mark failure
             try {
                 String fallbackId = externalCommunicationLogService.start(ExternalCommunicationSource.WHATSAPP, null,
@@ -274,6 +292,10 @@ public class WatiService {
             log.info("WATI addContact {}: status={}, body={}", phone, response.getStatusCode(), response.getBody());
         } catch (Exception e) {
             log.warn("WATI addContact failed for {}: {}", phone, e.getMessage());
+            // If both updateContactAttributes and addContact fail, WATI will reject the
+            // template send with "Missing customer attributes"
+            SentryLogger.logWarning(e, "WATI addContact failed — template send may be rejected",
+                    Map.of("phone", phone, "api.url", apiUrl, "layer", "5-wati-api"));
         }
     }
 

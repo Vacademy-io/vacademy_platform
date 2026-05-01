@@ -2,10 +2,35 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>API_KEY</key>
+	<string>AIzaSyDi599yoVEAeklFdYG21ZteLa00csKRXKU</string>
+	<key>GCM_SENDER_ID</key>
+	<string>117550803134</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>io.fivesep.student.app</string>
+	<key>PROJECT_ID</key>
+	<string>vacademy-app</string>
+	<key>STORAGE_BUCKET</key>
+	<string>vacademy-app.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:117550803134:ios:1adc60723849627dbdd6ef</string>
+	<!-- App Info.plist keys -->
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>SSDC HORIZON</string>
+	<string>iThinkers by Fivesep</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -23,13 +48,13 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>We need access to your camera to capture photos and record videos for property reviews and inspections.</string>
+	<string>We need access to your camera so you can upload a profile photo and share images or videos in course discussions and assignments.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>We need access to your microphone to record audio and videos for property reviews and inspections.</string>
+	<string>We need access to your microphone so you can record audio and video submissions for assignments and participate in live class sessions.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>We need access to add photos to your library.</string>
+	<string>We need access to add photos to your library so you can save course content and assignment materials.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>We need access to your photos to allow selecting images for upload.</string>
+	<string>We need access to your photos so you can select and upload images for your profile and course assignments.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

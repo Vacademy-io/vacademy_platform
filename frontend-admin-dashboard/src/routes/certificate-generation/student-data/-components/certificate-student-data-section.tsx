@@ -3,7 +3,7 @@ import { useSearch } from '@tanstack/react-router';
 import { Route } from '../index';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import RootErrorComponent from '@/components/core/deafult-error';
+import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { CertificateGenerationSession } from '@/types/certificate/certificate-types';
 import { StudentDataStep } from './student-data-step/student-data-step';
 import { PdfAnnotationStep } from './pdf-annotation-step/pdf-annotation-step';
@@ -99,7 +99,7 @@ export const CertificateStudentDataSection = () => {
     }
 
     if (error) {
-        return <RootErrorComponent />;
+        return <SmartErrorPage />;
     }
 
     const steps = [
@@ -211,6 +211,6 @@ export const CertificateStudentDataSection = () => {
         );
     } catch (renderError) {
         console.error('❌ Error rendering main component:', renderError);
-        return <RootErrorComponent />;
+        return <SmartErrorPage />;
     }
 };

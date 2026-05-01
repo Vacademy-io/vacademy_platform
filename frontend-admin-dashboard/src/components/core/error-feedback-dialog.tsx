@@ -37,6 +37,7 @@ function getInstituteName(): string {
     // Derive a readable name from the hostname as last resort
     const host = window.location.hostname.replace(/^(admin\.|app\.|www\.)/, '');
     const domain = host.split('.')[0];
+    if (!domain) return 'Vacademy';
     return domain.charAt(0).toUpperCase() + domain.slice(1);
 }
 
@@ -273,11 +274,10 @@ export function ErrorFeedbackDialog({
                 }
 
                 await Sentry.captureFeedback({
-                    event_id: eventId,
+                    associatedEventId: eventId,
                     name: name || 'Anonymous',
                     email: email || 'anonymous@example.com',
                     message: description,
-                    comments: description,
                 });
             }
 

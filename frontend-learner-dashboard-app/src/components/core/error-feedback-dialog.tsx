@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { getCachedInstituteBranding } from '@/services/domain-routing';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
-import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { useInstituteDetailsStore } from '@/stores/study-library/useInstituteDetails';
 import { MyButton } from '../design-system/button';
 
 interface ErrorFeedbackDialogProps {

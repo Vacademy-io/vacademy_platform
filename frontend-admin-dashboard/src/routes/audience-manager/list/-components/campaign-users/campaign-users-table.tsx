@@ -1,10 +1,21 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
+import { ColumnDef } from '@tanstack/react-table';
 import { MyTable } from '@/components/design-system/table';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import EmptyInvitePage from '@/assets/svgs/empty-invite-page.svg';
 import { Button } from '@/components/ui/button';
 import { Pagination, PaginationContent, PaginationItem } from '@/components/ui/pagination';
-import { ChevronLeft, ChevronRight, Download, Upload, UserPlus, MessageSquare } from 'lucide-react';
+import {
+    ChevronLeft,
+    ChevronRight,
+    Download,
+    Upload,
+    UserPlus,
+    MessageSquare,
+    Calendar,
+} from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCampaignUsers } from '../../-hooks/useCampaignUsers';
@@ -24,6 +35,11 @@ import { LeadBulkImportDialog } from './LeadBulkImportDialog';
 import { SendMessageDialog } from './SendMessageDialog';
 import { CommunicationHistory } from './CommunicationHistory';
 import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
+import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
+import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
+import { StudentTable } from '@/types/student-table-types';
 
 // Helper function to generate key from name
 const generateKeyFromName = (name: string): string =>
@@ -53,6 +69,16 @@ export const CampaignUsersTable = ({
     const [isDownloading, setIsDownloading] = useState(false);
     const [showBulkImportDialog, setShowBulkImportDialog] = useState(false);
     const [showSendMessageDialog, setShowSendMessageDialog] = useState(false);
+    // Date filter state (yyyy-mm-dd from native input). `appliedRange` is what
+    // actually drives the query — `fromDate`/`toDate` are the in-progress
+    // values until the user clicks Apply.
+    const [fromDate, setFromDate] = useState('');
+    const [toDate, setToDate] = useState('');
+    const [appliedRange, setAppliedRange] = useState<{ from: string; to: string }>({
+        from: '',
+        to: '',
+    });
+    const isDateFilterActive = !!appliedRange.from || !!appliedRange.to;
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const bulkImportCustomFields = useMemo(
@@ -113,16 +139,40 @@ export const CampaignUsersTable = ({
         return map;
     }, [customFieldSetup]);
 
-    const leadsPayload = useMemo(
-        () => ({
+    const leadsPayload = useMemo(() => {
+        // Convert yyyy-mm-dd input values to ISO timestamps spanning the full
+        // local day, matching the format the backend's `LeadFilterDTO` parses.
+        const startOfDayIso = (date: string): string | undefined => {
+            if (!date) return undefined;
+            const d = new Date(`${date}T00:00:00`);
+            return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+        };
+        const endOfDayIso = (date: string): string | undefined => {
+            if (!date) return undefined;
+            const d = new Date(`${date}T23:59:59.999`);
+            return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+        };
+        return {
             audience_id: campaignId,
             page,
             size: pageSize,
             sort_by: 'submitted_at_local',
             sort_direction: 'DESC',
-        }),
-        [campaignId, page, pageSize]
-    );
+            submitted_from_local: startOfDayIso(appliedRange.from),
+            submitted_to_local: endOfDayIso(appliedRange.to),
+        };
+    }, [campaignId, page, pageSize, appliedRange]);
+
+    const handleApplyDateFilter = () => {
+        setPage(0);
+        setAppliedRange({ from: fromDate, to: toDate });
+    };
+    const handleClearDateFilter = () => {
+        setFromDate('');
+        setToDate('');
+        setPage(0);
+        setAppliedRange({ from: '', to: '' });
+    };
 
     const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
 
@@ -192,7 +242,10 @@ export const CampaignUsersTable = ({
 
     // Build field metadata map from API response (custom_field_metadata)
     const fieldMetadataMap = useMemo(() => {
-        const map = new Map<string, { fieldName?: string; fieldKey?: string; fieldType?: string }>();
+        const map = new Map<
+            string,
+            { fieldName?: string; fieldKey?: string; fieldType?: string }
+        >();
         if (!usersResponse?.content) return map;
 
         usersResponse.content.forEach((lead: any) => {
@@ -212,44 +265,77 @@ export const CampaignUsersTable = ({
         return map;
     }, [usersResponse]);
 
-    const handleDeleteLead = useCallback(async (responseId: string) => {
-        if (!confirm('Delete this lead? This action cannot be undone.')) return;
-        try {
-            await deleteAudienceLead(responseId);
-            toast.success('Lead deleted');
-            queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
-        } catch {
-            toast.error('Failed to delete lead');
-        }
-    }, [campaignId, queryClient]);
+    const handleDeleteLead = useCallback(
+        async (responseId: string) => {
+            if (!confirm('Delete this lead? This action cannot be undone.')) return;
+            try {
+                await deleteAudienceLead(responseId);
+                toast.success('Lead deleted');
+                queryClient.invalidateQueries({ queryKey: ['campaignUsers', campaignId] });
+            } catch {
+                toast.error('Failed to delete lead');
+            }
+        },
+        [campaignId, queryClient]
+    );
 
-    const columns = useMemo(() => {
-        const allCustomFieldsArray = allFieldIdsFromAllUsers.map((fieldId) => ({
-            id: fieldId,
-            _id: fieldId,
-            field_id: fieldId,
-        }));
+    const buildColumns = useCallback(
+        (
+            onRowClick?: (row: CampaignUserTable) => void,
+            onSelectRow?: (row: CampaignUserTable) => void
+        ) => {
+            const allCustomFieldsArray = allFieldIdsFromAllUsers.map((fieldId) => ({
+                id: fieldId,
+                _id: fieldId,
+                field_id: fieldId,
+            }));
 
-        if (allCustomFieldsArray.length === 0 && customFields.length === 0) {
-            // No custom fields — always show Name, Email, Phone, Opted Out From
-            const defaultFields = [
-                { id: 'full_name', _id: 'full_name', field_id: 'full_name' },
-                { id: 'email', _id: 'email', field_id: 'email' },
-                { id: 'phone_number', _id: 'phone_number', field_id: 'phone_number' },
-                { id: 'opted_out_from', _id: 'opted_out_from', field_id: 'opted_out_from' },
-            ];
-            const defaultFieldsMap = new Map<string, { name: string; key: string }>([
-                ['full_name', { name: 'Full Name', key: 'full_name' }],
-                ['email', { name: 'Email', key: 'email' }],
-                ['phone_number', { name: 'Phone Number', key: 'phone_number' }],
-                ['opted_out_from', { name: 'Opted Out From', key: 'opted_out_from' }],
-            ]);
-            return generateDynamicColumns(defaultFields, customFieldMap, handleDeleteLead, defaultFieldsMap, fieldMetadataMap);
-        }
+            if (allCustomFieldsArray.length === 0 && customFields.length === 0) {
+                // No custom fields — always show Name, Email, Phone, Opted Out From
+                const defaultFields = [
+                    { id: 'full_name', _id: 'full_name', field_id: 'full_name' },
+                    { id: 'email', _id: 'email', field_id: 'email' },
+                    { id: 'phone_number', _id: 'phone_number', field_id: 'phone_number' },
+                    { id: 'opted_out_from', _id: 'opted_out_from', field_id: 'opted_out_from' },
+                ];
+                const defaultFieldsMap = new Map<string, { name: string; key: string }>([
+                    ['full_name', { name: 'Full Name', key: 'full_name' }],
+                    ['email', { name: 'Email', key: 'email' }],
+                    ['phone_number', { name: 'Phone Number', key: 'phone_number' }],
+                    ['opted_out_from', { name: 'Opted Out From', key: 'opted_out_from' }],
+                ]);
+                return generateDynamicColumns(
+                    defaultFields,
+                    customFieldMap,
+                    handleDeleteLead,
+                    defaultFieldsMap,
+                    fieldMetadataMap,
+                    onRowClick,
+                    onSelectRow
+                );
+            }
 
-        const fieldIdsToUse = allCustomFieldsArray.length > 0 ? allCustomFieldsArray : customFields;
-        return generateDynamicColumns(fieldIdsToUse, customFieldMap, handleDeleteLead, campaignFieldsMap, fieldMetadataMap);
-    }, [customFields, allFieldIdsFromAllUsers, customFieldMap, handleDeleteLead, campaignFieldsMap, fieldMetadataMap]);
+            const fieldIdsToUse =
+                allCustomFieldsArray.length > 0 ? allCustomFieldsArray : customFields;
+            return generateDynamicColumns(
+                fieldIdsToUse,
+                customFieldMap,
+                handleDeleteLead,
+                campaignFieldsMap,
+                fieldMetadataMap,
+                onRowClick,
+                onSelectRow
+            );
+        },
+        [
+            customFields,
+            allFieldIdsFromAllUsers,
+            customFieldMap,
+            handleDeleteLead,
+            campaignFieldsMap,
+            fieldMetadataMap,
+        ]
+    );
 
     const tableKey = useMemo(() => {
         const fieldIdsKey =
@@ -282,12 +368,22 @@ export const CampaignUsersTable = ({
                     email: user.email || lead.parent_email || null,
                     phone_number: user.mobile_number || lead.parent_mobile || null,
                     opted_out_from: lead.source_audience_name || null,
+                    // Pass the underlying user reference through so the side-view click
+                    // handler can map this lead to a StudentTable shape.
+                    _user_id: (user as any).id || lead.user_id || null,
+                    _user: user,
+                    _custom_field_values: (lead as any).custom_field_values || {},
                 };
 
                 allFieldIdsFromAllUsers.forEach((fieldId) => {
                     // Virtual fields are already set in rowData above — skip them
-                    if (fieldId === 'opted_out_from' || fieldId === 'full_name' ||
-                        fieldId === 'email' || fieldId === 'phone_number') return;
+                    if (
+                        fieldId === 'opted_out_from' ||
+                        fieldId === 'full_name' ||
+                        fieldId === 'email' ||
+                        fieldId === 'phone_number'
+                    )
+                        return;
 
                     let fieldInfo =
                         customFieldMap.get(fieldId) ||
@@ -577,7 +673,10 @@ export const CampaignUsersTable = ({
         );
     }
 
-    if (!tableData || tableData.content.length === 0) {
+    // Only short-circuit to the dedicated empty page when there's no data AND
+    // the user hasn't applied a date filter — otherwise we want the filter bar
+    // to stay visible so they can adjust or clear it.
+    if ((!tableData || tableData.content.length === 0) && !isDateFilterActive) {
         return (
             <div className="flex h-[70vh] w-full flex-col items-center justify-center gap-2">
                 <EmptyInvitePage />
@@ -587,135 +686,333 @@ export const CampaignUsersTable = ({
     }
 
     return (
-        <div className="flex w-full flex-col gap-6">
-            {campaignName && (
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h2 className="text-h3 font-semibold">{campaignName}</h2>
-                        <p className="mt-1 text-sm text-neutral-600">
-                            Total Users:{' '}
-                            <span className="font-semibold">{tableData.total_elements}</span>
-                        </p>
+        <StudentSidebarProvider>
+            <div className="flex w-full flex-col gap-6">
+                {campaignName && (
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-h3 font-semibold">{campaignName}</h2>
+                            <p className="mt-1 text-sm text-neutral-600">
+                                Total Users:{' '}
+                                <span className="font-semibold">
+                                    {tableData?.total_elements ?? 0}
+                                </span>
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {!isOptOut && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                        navigate({
+                                            to: '/audience-manager/list/campaign-users/add' as any,
+                                            search: {
+                                                campaignId,
+                                                campaignName,
+                                                customFields: customFieldsJson,
+                                            } as any,
+                                        } as any)
+                                    }
+                                >
+                                    <UserPlus className="mr-2 size-4" />
+                                    Add Response
+                                </Button>
+                            )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setShowSendMessageDialog(true)}
+                            >
+                                <MessageSquare className="mr-2 size-4" />
+                                Send Message
+                            </Button>
+                            {!isOptOut && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setShowBulkImportDialog(true)}
+                                >
+                                    <Upload className="mr-2 size-4" />
+                                    Import CSV
+                                </Button>
+                            )}
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleDownload}
+                                disabled={isDownloading || !tableData?.total_elements}
+                            >
+                                <Download className="mr-2 size-4" />
+                                {isDownloading ? 'Downloading...' : 'Download CSV'}
+                            </Button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                        {!isOptOut && (
+                )}
+
+                {/* Submitted-on date filter */}
+                <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
+                    <div className="flex flex-col gap-1">
+                        <Label
+                            htmlFor="campaign-users-from"
+                            className="text-xs text-neutral-600"
+                        >
+                            Submitted From
+                        </Label>
+                        <div className="relative">
+                            <Calendar className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                id="campaign-users-from"
+                                type="date"
+                                value={fromDate}
+                                onChange={(e) => setFromDate(e.target.value)}
+                                className="w-44 pl-7"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label
+                            htmlFor="campaign-users-to"
+                            className="text-xs text-neutral-600"
+                        >
+                            Submitted To
+                        </Label>
+                        <div className="relative">
+                            <Calendar className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                id="campaign-users-to"
+                                type="date"
+                                value={toDate}
+                                onChange={(e) => setToDate(e.target.value)}
+                                className="w-44 pl-7"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex gap-2">
+                        <Button size="sm" onClick={handleApplyDateFilter}>
+                            Apply
+                        </Button>
+                        {isDateFilterActive && (
                             <Button
-                                variant="outline"
                                 size="sm"
-                                onClick={() =>
-                                    navigate({
-                                        to: '/audience-manager/list/campaign-users/add' as any,
-                                        search: {
-                                            campaignId,
-                                            campaignName,
-                                            customFields: customFieldsJson,
-                                        } as any,
-                                    } as any)
-                                }
+                                variant="ghost"
+                                onClick={handleClearDateFilter}
                             >
-                                <UserPlus className="mr-2 size-4" />
-                                Add Response
+                                Clear
                             </Button>
                         )}
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setShowSendMessageDialog(true)}
-                        >
-                            <MessageSquare className="mr-2 size-4" />
-                            Send Message
-                        </Button>
-                        {!isOptOut && (
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setShowBulkImportDialog(true)}
-                            >
-                                <Upload className="mr-2 size-4" />
-                                Import CSV
-                            </Button>
-                        )}
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={handleDownload}
-                            disabled={isDownloading || !tableData?.total_elements}
-                        >
-                            <Download className="mr-2 size-4" />
-                            {isDownloading ? 'Downloading...' : 'Download CSV'}
-                        </Button>
                     </div>
                 </div>
-            )}
 
-            <div className="rounded-md shadow-sm">
+                {tableData && tableData.content.length > 0 ? (
+                    <CampaignUsersTableBody
+                        tableData={tableData}
+                        tableKey={tableKey}
+                        buildColumns={buildColumns}
+                        isLoading={isLoading || isCustomFieldsLoading}
+                        error={error || customFieldsError}
+                        currentPage={page}
+                    />
+                ) : (
+                    <div className="flex flex-col items-center gap-2 rounded-lg border border-neutral-200 bg-white py-12 shadow-sm">
+                        <p className="text-sm text-neutral-500">
+                            No responses found in the selected date range.
+                        </p>
+                    </div>
+                )}
+
+                {tableData && tableData.total_pages > 1 && (
+                    <Pagination>
+                        <PaginationContent>
+                            <PaginationItem>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => handlePageChange(Math.max(0, page - 1))}
+                                    disabled={page === 0}
+                                >
+                                    <span className="sr-only">Previous</span>
+                                    <ChevronLeft className="size-4" />
+                                </Button>
+                            </PaginationItem>
+                            <PaginationItem className="hidden sm:block">
+                                <span className="px-4 text-sm text-muted-foreground">
+                                    Page {page + 1} of {tableData.total_pages}
+                                </span>
+                            </PaginationItem>
+                            <PaginationItem>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() =>
+                                        handlePageChange(
+                                            Math.min(tableData.total_pages - 1, page + 1)
+                                        )
+                                    }
+                                    disabled={page >= tableData.total_pages - 1}
+                                >
+                                    <span className="sr-only">Next</span>
+                                    <ChevronRight className="size-4" />
+                                </Button>
+                            </PaginationItem>
+                        </PaginationContent>
+                    </Pagination>
+                )}
+
+                <CommunicationHistory campaignId={campaignId} />
+
+                <LeadBulkImportDialog
+                    open={showBulkImportDialog}
+                    onOpenChange={setShowBulkImportDialog}
+                    campaignId={campaignId}
+                    campaignName={campaignName || 'Campaign'}
+                    instituteId={instituteId || ''}
+                    customFields={bulkImportCustomFields}
+                />
+
+                <SendMessageDialog
+                    open={showSendMessageDialog}
+                    onOpenChange={setShowSendMessageDialog}
+                    campaignId={campaignId}
+                    campaignName={campaignName || 'Campaign'}
+                    instituteId={instituteId || ''}
+                    customFields={bulkImportCustomFields}
+                    leadCount={tableData?.total_elements || 0}
+                />
+            </div>
+        </StudentSidebarProvider>
+    );
+};
+
+// Map a lead row from the campaign-users table to a partial StudentTable so the
+// shared StudentSidebar can render its tabs against this audience respondent.
+const mapLeadToStudent = (row: CampaignUserTable): StudentTable => {
+    const u = row._user ?? {};
+    const customFields: Record<string, string | null> = {};
+    const cfv = row._custom_field_values ?? {};
+    for (const [k, v] of Object.entries(cfv)) {
+        customFields[k] = v == null ? null : String(v);
+    }
+    return {
+        id: u.id || row._user_id || row.id,
+        user_id: u.id || row._user_id || row.id,
+        full_name: (row.full_name as string) || u.full_name || '',
+        email: (row.email as string) || u.email || '',
+        username: u.username ?? null,
+        mobile_number: (row.phone_number as string) || u.mobile_number || '',
+        gender: u.gender || '',
+        region: u.region ?? null,
+        city: u.city || '',
+        date_of_birth: u.date_of_birth || '',
+        created_at: '',
+        address_line: u.address_line || '',
+        attendance_percent: 0,
+        referral_count: 0,
+        pin_code: u.pin_code || '',
+        fathers_name: '',
+        mothers_name: '',
+        father_mobile_number: '',
+        father_email: '',
+        mother_mobile_number: '',
+        mother_email: '',
+        linked_institute_name: null,
+        updated_at: '',
+        package_session_id: '',
+        institute_enrollment_id: '',
+        status: 'INACTIVE',
+        session_expiry_days: 0,
+        institute_id: '',
+        expiry_date: 0,
+        face_file_id: u.face_file_id ?? u.profile_pic_file_id ?? null,
+        parents_email: '',
+        parents_mobile_number: '',
+        parents_to_mother_email: '',
+        parents_to_mother_mobile_number: '',
+        destination_package_session_id: '',
+        enroll_invite_id: '',
+        payment_status: '',
+        custom_fields: customFields,
+    };
+};
+
+interface CampaignUsersTableBodyProps {
+    tableData: {
+        content: CampaignUserTable[];
+        total_pages: number;
+        page_no: number;
+        page_size: number;
+        total_elements: number;
+        last: boolean;
+    };
+    tableKey: string;
+    buildColumns: (
+        onRowClick?: (row: CampaignUserTable) => void,
+        onSelectRow?: (row: CampaignUserTable) => void
+    ) => ColumnDef<CampaignUserTable>[];
+    isLoading: boolean;
+    error: unknown;
+    currentPage: number;
+}
+
+// Inner body component: lives inside StudentSidebarProvider so it can read/set
+// the selected respondent, and creates its own SidebarProvider so the side view
+// opens beside the table when a row is clicked.
+const CampaignUsersTableBody = ({
+    tableData,
+    tableKey,
+    buildColumns,
+    isLoading,
+    error,
+    currentPage,
+}: CampaignUsersTableBodyProps) => {
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const { setSelectedStudent } = useStudentSidebar();
+
+    // Cell-text click: select + ensure the sidebar is open.
+    const handleRowClick = useCallback(
+        (row: CampaignUserTable) => {
+            setSelectedStudent(mapLeadToStudent(row));
+            setIsSidebarOpen(true);
+        },
+        [setSelectedStudent]
+    );
+
+    // Details-icon click: only update the selected row. The SidebarTrigger
+    // wrapping the icon handles the open/close toggle, mirroring the contacts
+    // and students-list pattern so behaviour stays consistent across tables.
+    const handleSelectRow = useCallback(
+        (row: CampaignUserTable) => {
+            setSelectedStudent(mapLeadToStudent(row));
+        },
+        [setSelectedStudent]
+    );
+
+    const columns = useMemo(
+        () => buildColumns(handleRowClick, handleSelectRow),
+        [buildColumns, handleRowClick, handleSelectRow]
+    );
+
+    return (
+        <div className="rounded-md shadow-sm">
+            <SidebarProvider
+                style={{ ['--sidebar-width' as string]: '565px' }}
+                defaultOpen={false}
+                open={isSidebarOpen}
+                onOpenChange={setIsSidebarOpen}
+            >
                 <MyTable<CampaignUserTable>
                     key={tableKey}
                     data={tableData}
                     columns={columns}
-                    isLoading={isLoading || isCustomFieldsLoading}
-                    error={error || customFieldsError}
-                    currentPage={page}
+                    isLoading={isLoading}
+                    error={error}
+                    currentPage={currentPage}
                     tableState={{ columnVisibility: {} }}
                 />
-            </div>
-
-            {tableData.total_pages > 1 && (
-                <Pagination>
-                    <PaginationContent>
-                        <PaginationItem>
-                            <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={() => handlePageChange(Math.max(0, page - 1))}
-                                disabled={page === 0}
-                            >
-                                <span className="sr-only">Previous</span>
-                                <ChevronLeft className="size-4" />
-                            </Button>
-                        </PaginationItem>
-                        <PaginationItem className="hidden sm:block">
-                            <span className="px-4 text-sm text-muted-foreground">
-                                Page {page + 1} of {tableData.total_pages}
-                            </span>
-                        </PaginationItem>
-                        <PaginationItem>
-                            <Button
-                                variant="outline"
-                                size="icon"
-                                onClick={() =>
-                                    handlePageChange(Math.min(tableData.total_pages - 1, page + 1))
-                                }
-                                disabled={page >= tableData.total_pages - 1}
-                            >
-                                <span className="sr-only">Next</span>
-                                <ChevronRight className="size-4" />
-                            </Button>
-                        </PaginationItem>
-                    </PaginationContent>
-                </Pagination>
-            )}
-
-            <CommunicationHistory campaignId={campaignId} />
-
-            <LeadBulkImportDialog
-                open={showBulkImportDialog}
-                onOpenChange={setShowBulkImportDialog}
-                campaignId={campaignId}
-                campaignName={campaignName || 'Campaign'}
-                instituteId={instituteId || ''}
-                customFields={bulkImportCustomFields}
-            />
-
-            <SendMessageDialog
-                open={showSendMessageDialog}
-                onOpenChange={setShowSendMessageDialog}
-                campaignId={campaignId}
-                campaignName={campaignName || 'Campaign'}
-                instituteId={instituteId || ''}
-                customFields={bulkImportCustomFields}
-                leadCount={tableData?.total_elements || 0}
-            />
+                <div>
+                    <StudentSidebar selectedTab="overview" examType="EXAM" isStudentList={false} />
+                </div>
+            </SidebarProvider>
         </div>
     );
 };

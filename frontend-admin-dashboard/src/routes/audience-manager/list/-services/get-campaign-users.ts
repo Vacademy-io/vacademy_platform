@@ -48,8 +48,11 @@ export interface CampaignLeadsRequest {
     audience_id: string;
     source_type?: string;
     source_id?: string;
-    submitted_from?: string;
-    submitted_to?: string;
+    // Backend `LeadFilterDTO` uses snake_case `submitted_from_local` /
+    // `submitted_to_local`. The earlier non-`_local` fields were silently
+    // ignored — keep the field names aligned with the DTO.
+    submitted_from_local?: string;
+    submitted_to_local?: string;
     page: number;
     size: number;
     sort_by?: string;
@@ -69,8 +72,8 @@ export const fetchCampaignLeads = async (
             },
             body: JSON.stringify({
                 audience_id: payload.audience_id,
-                submitted_from: payload.submitted_from,
-                submitted_to: payload.submitted_to,
+                submitted_from_local: payload.submitted_from_local,
+                submitted_to_local: payload.submitted_to_local,
                 page: payload.page,
                 size: payload.size,
             }),
@@ -98,8 +101,8 @@ export const handleFetchCampaignUsers = (payload: CampaignLeadsRequest) => {
             payload.sort_direction,
             payload.source_type,
             payload.source_id,
-            payload.submitted_from,
-            payload.submitted_to,
+            payload.submitted_from_local,
+            payload.submitted_to_local,
         ],
         queryFn: () => fetchCampaignLeads(payload),
         staleTime: 60 * 1000, // 1 minute

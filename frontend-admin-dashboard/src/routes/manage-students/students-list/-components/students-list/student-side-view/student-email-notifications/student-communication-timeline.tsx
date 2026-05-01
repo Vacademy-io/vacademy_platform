@@ -19,7 +19,75 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Bell, Envelope, WhatsappLogo, ChatCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
-import { useDialogStore } from '@/routes/manage-students/students-list/-hooks/useDialogStore';
+import { IndividualSendDialog } from './individual-send-dialog';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+
+// ─── HTML helpers ──────────────────────────────────────────────────────────
+// The communication-timeline service often returns the raw email HTML in
+// `title` / `bodyPreview` (e.g. starting with `<!DOCTYPE html>`). Showing that
+// verbatim makes the timeline unreadable, so we strip tags client-side.
+
+const HTML_LIKE = /^\s*<!?(?:DOCTYPE|html|head|body|div|p|span|table|tr|td|h\d|br|meta)\b/i;
+
+const looksLikeHtml = (text?: string | null): boolean =>
+    !!text && (HTML_LIKE.test(text) || /<[a-z][^>]*>/i.test(text));
+
+// Decode the small set of named entities that show up in real emails. We
+// intentionally avoid setting innerHTML on a temporary node here — that runs
+// linked images and would broaden the XSS surface; a regex pass is enough for
+// preview text.
+const decodeEntities = (text: string): string =>
+    text
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&apos;/gi, "'")
+        .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
+
+// Plain-text version of an HTML string, suitable for one-line previews.
+const htmlToPreviewText = (html: string, maxLen = 140): string => {
+    const stripped = html
+        // drop <style>/<script> blocks entirely so their CSS/JS doesn't
+        // leak into the preview
+        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
+        // strip every remaining tag
+        .replace(/<[^>]+>/g, ' ');
+    const text = decodeEntities(stripped).replace(/\s+/g, ' ').trim();
+    if (!text) return '';
+    return text.length > maxLen ? `${text.slice(0, maxLen).trimEnd()}…` : text;
+};
+
+// Best-effort subject extraction: prefer the document's <title>, fall back to
+// the first heading, and finally to a truncated text preview.
+const extractEmailSubject = (rawTitle: string | undefined, body?: string): string => {
+    const candidates = [rawTitle, body].filter(Boolean) as string[];
+    for (const c of candidates) {
+        const titleMatch = c.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        if (titleMatch?.[1]) {
+            const decoded = decodeEntities(titleMatch[1]).replace(/\s+/g, ' ').trim();
+            if (decoded) return decoded;
+        }
+        const h1 = c.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+        if (h1?.[1]) {
+            const decoded = decodeEntities(h1[1].replace(/<[^>]+>/g, ' '))
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (decoded) return decoded;
+        }
+    }
+    if (rawTitle && !looksLikeHtml(rawTitle)) {
+        const t = rawTitle.trim();
+        if (t) return t;
+    }
+    if (body) {
+        const fallback = htmlToPreviewText(body, 80);
+        if (fallback) return fallback;
+    }
+    return '(no subject)';
+};
 
 // ─── Channel Config ─────────────────────────────────────────────────────────
 
@@ -133,6 +201,18 @@ function TimelineItem({ item }: { item: CommunicationItem }) {
     const isInbound = item.direction === 'INBOUND';
     const ChannelIcon = channel!.icon as React.ComponentType<{ className?: string; weight?: string }>;
 
+    // For email rows, the backend often returns raw HTML in `title` and
+    // `bodyPreview`. Derive a readable subject and one-line preview before
+    // rendering so the timeline doesn't show DOCTYPE/markup junk.
+    const isEmail = item.channel === 'EMAIL';
+    const displayTitle = isEmail
+        ? extractEmailSubject(item.title, item.fullBody || item.bodyPreview)
+        : item.title || '(no subject)';
+    const rawPreview = item.bodyPreview || (isEmail ? item.fullBody : '') || '';
+    const displayPreview = looksLikeHtml(rawPreview)
+        ? htmlToPreviewText(rawPreview, 160)
+        : rawPreview;
+
     return (
         <div
             className={`group relative flex gap-3 ${isInbound ? 'flex-row' : 'flex-row-reverse'}`}
@@ -149,10 +229,8 @@ function TimelineItem({ item }: { item: CommunicationItem }) {
 
             {/* Message card */}
             <div
-                className={`mb-3 min-w-0 flex-1 cursor-pointer rounded-lg border bg-white p-3 shadow-sm transition-all duration-200 hover:shadow-md ${
-                    isInbound
-                        ? 'border-l-2 border-l-green-400 border-t-neutral-200 border-r-neutral-200 border-b-neutral-200'
-                        : 'border-r-2 border-r-blue-400 border-t-neutral-200 border-l-neutral-200 border-b-neutral-200'
+                className={`mb-3 min-w-0 flex-1 cursor-pointer rounded-lg border border-neutral-200 bg-white p-3 shadow-sm transition-all duration-200 hover:shadow-md ${
+                    isInbound ? 'border-l-2 border-l-green-400' : 'border-r-2 border-r-blue-400'
                 }`}
                 onClick={() => setExpanded(!expanded)}
             >
@@ -169,8 +247,11 @@ function TimelineItem({ item }: { item: CommunicationItem }) {
                                 {isInbound ? 'Received' : 'Sent'} via {channel!.label}
                             </span>
                         </div>
-                        <h4 className="truncate text-sm font-semibold text-neutral-900">
-                            {item.title || 'No subject'}
+                        <h4
+                            className="truncate text-sm font-semibold text-neutral-900"
+                            title={displayTitle}
+                        >
+                            {displayTitle}
                         </h4>
                     </div>
                     <div className="flex shrink-0 items-center gap-1.5">
@@ -188,10 +269,10 @@ function TimelineItem({ item }: { item: CommunicationItem }) {
                     </div>
                 </div>
 
-                {/* Body preview */}
-                {!expanded && item.bodyPreview && (
+                {/* Body preview (plain text — full HTML renders only when expanded) */}
+                {!expanded && displayPreview && (
                     <p className="mt-1 line-clamp-2 text-xs text-neutral-600">
-                        {item.bodyPreview}
+                        {displayPreview}
                     </p>
                 )}
 
@@ -210,18 +291,28 @@ function TimelineItem({ item }: { item: CommunicationItem }) {
 
                 {/* Expanded details */}
                 {expanded && (
-                    <div className="mt-3 space-y-3 border-t border-neutral-100 pt-3">
+                    <div
+                        className="mt-3 space-y-3 border-t border-neutral-100 pt-3"
+                        // Don't collapse the row when the user clicks inside the
+                        // expanded body (e.g. selecting text in the email).
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         {/* Full body */}
                         {item.fullBody && (
-                            <div className="rounded-md bg-neutral-50 p-2.5">
-                                <p className="text-xs font-medium text-neutral-500">Message</p>
+                            <div className="rounded-md border border-neutral-200 bg-neutral-50 p-2.5">
+                                <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-500">
+                                    Message
+                                </p>
                                 {item.channel === 'EMAIL' ? (
+                                    // Render the email's own HTML inside a white
+                                    // container so its inline styles don't mix with
+                                    // the timeline card background.
                                     <div
-                                        className="mt-1 max-h-40 overflow-y-auto text-xs text-neutral-700"
+                                        className="max-h-80 overflow-y-auto rounded border border-neutral-200 bg-white p-2 text-xs text-neutral-800"
                                         dangerouslySetInnerHTML={{ __html: item.fullBody }}
                                     />
                                 ) : (
-                                    <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs text-neutral-700">
+                                    <p className="max-h-80 overflow-y-auto whitespace-pre-wrap text-xs text-neutral-700">
                                         {item.fullBody}
                                     </p>
                                 )}
@@ -308,7 +399,9 @@ export const StudentCommunicationTimeline = () => {
     const [page, setPage] = useState(0);
     const [channelFilter, setChannelFilter] = useState<string>('ALL');
     const pageSize = 20;
-    const { openIndividualSendEmailDialog, openIndividualSendMessageDialog } = useDialogStore();
+    const { instituteDetails } = useInstituteDetailsStore();
+    const instituteId = instituteDetails?.id ?? '';
+    const [sendDialog, setSendDialog] = useState<'EMAIL' | 'WHATSAPP' | null>(null);
 
     const email = selectedStudent?.email || undefined;
     const phone = selectedStudent?.mobile_number || undefined;
@@ -433,9 +526,9 @@ export const StudentCommunicationTimeline = () => {
                         type="button"
                         buttonType="secondary"
                         scale="small"
-                        disable={false}
+                        disable={!selectedStudent?.email}
                         onClick={() => {
-                            if (selectedStudent) openIndividualSendEmailDialog(selectedStudent);
+                            if (selectedStudent) setSendDialog('EMAIL');
                         }}
                         className="group flex flex-1 cursor-pointer items-center justify-center gap-1.5 border border-blue-200 bg-white text-xs text-blue-700 transition-all duration-200 hover:scale-100 hover:border-blue-300 hover:bg-blue-50"
                         style={{ pointerEvents: 'auto', zIndex: 10 }}
@@ -447,9 +540,9 @@ export const StudentCommunicationTimeline = () => {
                         type="button"
                         buttonType="secondary"
                         scale="small"
-                        disable={false}
+                        disable={!selectedStudent?.mobile_number}
                         onClick={() => {
-                            if (selectedStudent) openIndividualSendMessageDialog(selectedStudent);
+                            if (selectedStudent) setSendDialog('WHATSAPP');
                         }}
                         className="group flex flex-1 cursor-pointer items-center justify-center gap-1.5 border border-green-200 bg-white text-xs text-green-700 transition-all duration-200 hover:scale-100 hover:border-green-300 hover:bg-green-50"
                         style={{ pointerEvents: 'auto', zIndex: 10 }}
@@ -546,6 +639,22 @@ export const StudentCommunicationTimeline = () => {
                         Next
                     </button>
                 </div>
+            )}
+
+            {sendDialog && (
+                <IndividualSendDialog
+                    open={!!sendDialog}
+                    onOpenChange={(o) => {
+                        if (!o) {
+                            setSendDialog(null);
+                            // Refresh the timeline so the just-sent message shows up.
+                            void refetch();
+                        }
+                    }}
+                    student={selectedStudent}
+                    channel={sendDialog}
+                    instituteId={instituteId}
+                />
             )}
         </div>
     );

@@ -2533,7 +2533,40 @@ class VideoGenerationPipeline:
                         }
                         print(f"🎼 Background music ready: {_music_result['url']}")
                 except Exception as _mus_err:
-                    print(f"⚠️ Background music generation failed — video will ship without score: {_mus_err}")
+                    print(f"⚠️ Background music generation failed: {_mus_err}")
+                    # Curated-bed fallback. Picks a royalty-free track from the
+                    # MUSIC_BED_* env-var library (asset rollout pending, see
+                    # music_fallback_library.py docstring). When no env vars
+                    # are configured the video ships without a score (legacy).
+                    try:
+                        from music_fallback_library import pick_fallback_bed
+                        _fb_bed = pick_fallback_bed(_music_plan_to_use)
+                        if _fb_bed and _fb_bed.get("url"):
+                            _music_vol = (
+                                self._background_music_volume_override
+                                if self._background_music_volume_override is not None
+                                else float(self._tier_config.get("background_music_default_volume", 0.20))
+                            )
+                            self._background_music_track = {
+                                "id": "background-music",
+                                "label": f"Background Music ({_fb_bed.get('mood', 'ambient')} bed)",
+                                "url": _fb_bed["url"],
+                                "volume": _music_vol,
+                                "delay": 0.0,
+                                "fadeIn": 2.0,
+                                "fadeOut": 3.0,
+                            }
+                            print(
+                                f"🎼 Fell back to curated bed (mood={_fb_bed.get('mood')}): "
+                                f"{_fb_bed['url']}"
+                            )
+                        else:
+                            print(
+                                "ℹ️ No MUSIC_BED_* env-var configured for chosen mood — "
+                                "shipping video without score"
+                            )
+                    except Exception as _fb_err:
+                        print(f"⚠️ Curated-bed fallback errored: {_fb_err} — shipping silent")
             elif self._is_background_music_enabled():
                 print(
                     f"ℹ️ Background music skipped "
@@ -4872,6 +4905,11 @@ class VideoGenerationPipeline:
         director_plan: Dict[str, Any] = {}
         raw: str = ""
         correction_message: Optional[str] = None
+        # Token budget grows on truncation-detected retries. Caps at 1.5× the
+        # tier's configured limit so a runaway model can't blow up the budget.
+        _base_director_tokens = self._tier_config.get("director_max_tokens", 20000)
+        _director_token_cap = int(_base_director_tokens * 1.5)
+        _next_attempt_tokens = _base_director_tokens
         for attempt in range(max_attempts):
             try:
                 # On retry after a malformed response, prepend a corrective message
@@ -4887,14 +4925,14 @@ class VideoGenerationPipeline:
                 raw, attempt_usage = self.html_client.chat(
                     messages=messages,
                     temperature=0.5 if attempt == 0 else 0.3,  # lower temp on retries
-                    max_tokens=self._tier_config.get("director_max_tokens", 20000),
+                    max_tokens=_next_attempt_tokens,
                     response_format={"type": "json_object"},
                 )
                 if attempt_usage:
                     total_usage["prompt_tokens"] += attempt_usage.get("prompt_tokens", 0)
                     total_usage["completion_tokens"] += attempt_usage.get("completion_tokens", 0)
                     total_usage["total_tokens"] += attempt_usage.get("total_tokens", 0)
-                print(f"   ℹ️  Director raw response length: {len(raw)} chars")
+                print(f"   ℹ️  Director raw response length: {len(raw)} chars (budget {_next_attempt_tokens})")
                 parsed = _extract_json_blob(raw)
                 print(f"   ℹ️  Director parsed type: {type(parsed).__name__}; keys: {list(parsed.keys()) if isinstance(parsed, dict) else 'N/A'}")
 
@@ -4928,6 +4966,25 @@ class VideoGenerationPipeline:
                 # Log first 500 chars of raw response if available for debugging
                 if raw:
                     print(f"   ℹ️  Raw response preview: {raw[:500]}...")
+
+                # Detect truncation — a non-empty response that doesn't close
+                # its outer JSON structure means the model ran out of tokens
+                # mid-output. Retrying at the same budget will fail the same
+                # way; bump by 50% (capped at 1.5× the tier limit). If `raw`
+                # is empty, this isn't a truncation signal — leave the budget.
+                _stripped = raw.strip() if raw else ""
+                _looks_truncated = bool(_stripped) and not (
+                    _stripped.endswith("}") or _stripped.endswith("]")
+                )
+                if _looks_truncated and _next_attempt_tokens < _director_token_cap:
+                    _bumped = min(int(_next_attempt_tokens * 1.5), _director_token_cap)
+                    print(
+                        f"   📈 Director output looks truncated "
+                        f"(no closing `}}`/`]`) — bumping max_tokens "
+                        f"{_next_attempt_tokens} → {_bumped} for next attempt"
+                    )
+                    _next_attempt_tokens = _bumped
+
                 # On parse error, send a simpler corrective retry asking for valid JSON
                 correction_message = (
                     "Your previous response could not be parsed as JSON. "
@@ -6179,6 +6236,9 @@ class VideoGenerationPipeline:
             # count is below the tier threshold OR the sync points weren't honored,
             # fire ONE corrective regeneration call. Doesn't loop forever.
             _shot_duration_s = end_time - start_time
+            # Telemetry record visible at entry-build time below. Stays None
+            # when the validator doesn't run.
+            _validator_record_for_entry: Optional[Dict[str, Any]] = None
             if (
                 self._tier_config.get("shot_animation_validator")
                 and shot_type not in ("KINETIC_TEXT", "KINETIC_TITLE")
@@ -6190,6 +6250,12 @@ class VideoGenerationPipeline:
                     start_time=start_time,
                     end_time=end_time,
                 )
+                # Track the regen lifecycle so we can stash a small record on
+                # the entry for telemetry (which html_version actually shipped).
+                _validator_record: Dict[str, Any] = {
+                    "pre_issues": list(issues) if issues else [],
+                    "shipped": "original",  # default — overwritten on regen success
+                }
                 if issues:
                     print(f"   ⚠️ Shot {shot_idx + 1} failed animation density check: {'; '.join(issues)}")
                     corrective = (
@@ -6202,6 +6268,11 @@ class VideoGenerationPipeline:
                         "animated DOM elements must meet the min_animated_elements target. Keep the "
                         "same shot pack tokens. Return only the JSON shot object."
                     )
+                    # Snapshot the pre-regen HTML so we can revert if regen
+                    # produces a worse result. The validator can be wrong —
+                    # if regen ALSO fails, the original is more likely closer
+                    # to the Director's intent than a desperate second attempt.
+                    _html_before_regen = html
                     try:
                         raw2, usage2 = self.html_client.chat(
                             messages=[
@@ -6216,22 +6287,58 @@ class VideoGenerationPipeline:
                         data2 = _extract_json_blob(raw2)
                         html2 = data2.get("html", "")
                         if html2:
-                            html = self._sanitize_html_content(html2)
+                            _candidate = self._sanitize_html_content(html2)
                             if usage2:
                                 usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)
                                 usage["completion_tokens"] = usage.get("completion_tokens", 0) + usage2.get("completion_tokens", 0)
                                 usage["total_tokens"] = usage.get("total_tokens", 0) + usage2.get("total_tokens", 0)
-                            # Re-validate; if still failing, ship what we have and log it
+
+                            # Re-validate the regen candidate. Three outcomes:
+                            #   A. Regen passes → ship regen.
+                            #   B. Regen fails strictly more than original → ship original.
+                            #   C. Regen fails but is no worse → ship regen as best-attempt.
                             post_issues = self._validate_shot_animation_density(
-                                html=html, shot=shot,
+                                html=_candidate, shot=shot,
                                 start_time=start_time, end_time=end_time,
                             )
-                            if post_issues:
-                                print(f"   ⚠️ Shot {shot_idx + 1} still failed after regen — shipping anyway: {'; '.join(post_issues)}")
-                            else:
+                            _validator_record["post_issues"] = list(post_issues) if post_issues else []
+                            if not post_issues:
+                                html = _candidate
+                                _validator_record["shipped"] = "regen"
                                 print(f"   ✅ Shot {shot_idx + 1} regen passed animation density check")
+                            elif len(post_issues) > len(issues):
+                                # Strict regression — ship the original. The
+                                # original at least matched the Director's
+                                # narrative intent; the regen is worse on the
+                                # rubric AND lost continuity with the prompt.
+                                _validator_record["shipped"] = "original"
+                                _validator_record["reason"] = "regen had more issues than original"
+                                html = _html_before_regen
+                                print(
+                                    f"   ⏪ Shot {shot_idx + 1} regen REGRESSED "
+                                    f"({len(issues)} → {len(post_issues)} issues) — "
+                                    f"reverting to original"
+                                )
+                            else:
+                                # No worse — keep the regen as best attempt
+                                html = _candidate
+                                _validator_record["shipped"] = "regen"
+                                _validator_record["reason"] = "regen no worse — best attempt shipped"
+                                print(
+                                    f"   ⚠️ Shot {shot_idx + 1} regen still has "
+                                    f"{len(post_issues)} issue(s) — shipping best attempt: "
+                                    f"{'; '.join(post_issues)}"
+                                )
+                        else:
+                            _validator_record["reason"] = "regen returned empty html — shipping original"
+                            print(f"   ⚠️ Shot {shot_idx + 1} regen returned empty — shipping original")
                     except Exception as e:
+                        _validator_record["reason"] = f"regen exception ({e}) — shipping original"
                         print(f"   ⚠️ Shot {shot_idx + 1} regen failed ({e}) — shipping original")
+                # Capture for telemetry on the entry (stripped before timeline
+                # serialization via _process_stock_videos's strip helper).
+                if issues:
+                    _validator_record_for_entry = _validator_record
 
             html = self._ensure_fonts(html)
 
@@ -6252,6 +6359,11 @@ class VideoGenerationPipeline:
                 # Stashed for the Sound Planner — stripped before serialization.
                 "_skill_audio_events": _shot_skill_audio_events,
             }
+            # Animation-validator telemetry: pre/post issues + which version
+            # shipped (regen vs original revert). Stripped before the timeline
+            # is serialized to S3 — same strip path as other underscore fields.
+            if _validator_record_for_entry is not None:
+                entry["_validator_record"] = _validator_record_for_entry
             # SOURCE_CLIP: propagate source video time range + inject <video> into
             # the HTML so the FE player (iframe preview) shows the actual footage
             # instead of a black rectangle. The render worker will composite
@@ -8345,10 +8457,30 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {prompt[:60]}...")
         image_bytes, usage_meta = self._call_image_generation_llm(prompt)
         if not image_bytes:
+            # Seedream returned nothing — cascade through Pexels/Pixabay → SVG
+            # placeholder so the shot doesn't ship with a broken `placeholder.png`.
+            fb = self._image_fallback_chain(prompt, is_cutout=is_cutout)
+            if fb:
+                return {
+                    "entry":       entry,
+                    "full_tag":    full_tag,
+                    "stock_url":   fb.get("stock_url"),
+                    "image_bytes": fb.get("image_bytes"),
+                    "is_svg":      fb.get("is_svg", False),
+                    "filename":    None,
+                    "usage":       usage_meta or {},
+                }
             return None
-        # Remove background for cutout assets
+        # Remove background for cutout assets, then VALIDATE the result has
+        # actual transparency. rembg silently fails on ambiguous subjects and
+        # returns a fully-opaque PNG — embedding that paints a white square
+        # over the layout where transparency was promised.
+        cutout_failed = False
         if is_cutout:
             image_bytes = self._remove_background(image_bytes)
+            if not self._validate_cutout(image_bytes):
+                cutout_failed = True
+                print(f"    ⚠️  [pipeline] Cutout validation failed (no transparency) — hiding image element: {prompt[:60]}")
         filename = f"img_pipe_{seg_idx}_{abs(hash(prompt))}.png"
         try:
             (images_dir / filename).write_bytes(image_bytes)
@@ -8361,7 +8493,150 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "image_bytes": image_bytes,
             "filename":    filename,
             "usage":       usage_meta,
+            "cutout_failed": cutout_failed,
         }
+
+    def _image_fallback_chain(
+        self,
+        prompt: str,
+        is_cutout: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """Cascade fallback when Seedream returns no bytes.
+
+        Order:
+          1. Pexels stock photo (skipped for cutouts — would not have transparency).
+          2. Pixabay stock photo (same).
+          3. Synthesized SVG placeholder using brand palette + prompt text.
+              Always succeeds, so this is also the absolute last resort.
+
+        Returns a dict matching the result-dict schema used by both
+        `_process_image_task_simple` and `process_image_task`:
+          - {"stock_url": "..."} for Pexels/Pixabay hits
+          - {"image_bytes": <svg_bytes>, "is_svg": True} for the synthesized placeholder
+          - None only if synthesis itself fails (should never happen).
+        """
+        # Stock fallback (skip for cutouts — stock photos rarely have alpha)
+        if not is_cutout:
+            try:
+                orientation = "portrait" if (
+                    getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080)
+                ) else "landscape"
+                services = self._resolve_stock_provider_chain("", prompt)
+                for svc in services:
+                    provider_name = type(svc).__name__.replace("Service", "")
+                    result = svc.search_photos(prompt, orientation=orientation)
+                    if result and result.get("url"):
+                        print(f"    🔄 Image fallback → stock photo ({provider_name}): {prompt[:50]}...")
+                        return {"stock_url": result["url"], "image_bytes": None}
+            except Exception as e:
+                print(f"    ⚠️ Stock fallback errored ({e}); continuing to synth SVG")
+
+        # Synth SVG placeholder — cannot fail
+        try:
+            svg_bytes = self._synthesize_svg_placeholder(prompt)
+            print(f"    🔄 Image fallback → synthesized SVG placeholder: {prompt[:50]}...")
+            return {"image_bytes": svg_bytes, "is_svg": True}
+        except Exception as e:
+            print(f"    ❌ SVG synth failed ({e}) — pipeline will leave placeholder src in HTML")
+            return None
+
+    def _synthesize_svg_placeholder(self, prompt: str) -> bytes:
+        """Build a brand-themed SVG placeholder when both AI gen + stock fail.
+
+        The SVG uses the run's palette (or a sensible default), shows the
+        prompt's first noun phrase as a centered title, and adds a subtle
+        gradient + corner mark so the result doesn't look like a broken image.
+        Never raises — always returns valid bytes.
+        """
+        import html as _html_mod
+        palette = (getattr(self, "_current_style_guide", None) or {}).get("palette") or {}
+        bg = palette.get("background", "#0f172a")
+        primary = palette.get("primary", "#3b82f6")
+        accent = palette.get("accent", "#fbbf24")
+        text_color = palette.get("text", "#f1f5f9")
+        text_secondary = palette.get("text_secondary", "#94a3b8")
+
+        w = int(getattr(self, "video_width", 1920))
+        h = int(getattr(self, "video_height", 1080))
+
+        # Take the first ~6 words of the prompt as the headline; cap length
+        words = (prompt or "Image").split()
+        headline = " ".join(words[:6]).strip()
+        if len(headline) > 48:
+            headline = headline[:45] + "…"
+        headline_safe = _html_mod.escape(headline)
+        # A short subtitle marker
+        subtitle_safe = _html_mod.escape("AI image unavailable — placeholder")
+
+        # Geometry — title centered, accent rule above
+        cx, cy = w / 2, h / 2
+        rule_w = max(80, w // 12)
+        rule_y = cy - 90
+        # Font sizes scale with canvas dimension
+        title_size = max(40, min(110, int(w / 22)))
+        sub_size = max(14, min(28, int(w / 80)))
+
+        svg = (
+            f'<?xml version="1.0" encoding="UTF-8"?>'
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" '
+            f'width="{w}" height="{h}" preserveAspectRatio="xMidYMid slice">'
+            f'<defs>'
+            f'<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">'
+            f'<stop offset="0" stop-color="{bg}"/>'
+            f'<stop offset="1" stop-color="{primary}" stop-opacity="0.55"/>'
+            f'</linearGradient>'
+            f'<radialGradient id="vignette" cx="0.5" cy="0.5" r="0.7">'
+            f'<stop offset="0.4" stop-color="#000000" stop-opacity="0"/>'
+            f'<stop offset="1" stop-color="#000000" stop-opacity="0.55"/>'
+            f'</radialGradient>'
+            f'</defs>'
+            f'<rect width="{w}" height="{h}" fill="url(#bg)"/>'
+            f'<rect width="{w}" height="{h}" fill="url(#vignette)"/>'
+            f'<rect x="{cx - rule_w/2}" y="{rule_y}" width="{rule_w}" height="6" '
+            f'rx="3" fill="{accent}"/>'
+            f'<text x="{cx}" y="{cy}" text-anchor="middle" '
+            f'font-family="Bebas Neue, Montserrat, Inter, sans-serif" '
+            f'font-size="{title_size}" font-weight="700" letter-spacing="0.02em" '
+            f'fill="{text_color}">{headline_safe}</text>'
+            f'<text x="{cx}" y="{cy + title_size * 0.85}" text-anchor="middle" '
+            f'font-family="Inter, sans-serif" font-size="{sub_size}" '
+            f'letter-spacing="0.22em" text-transform="uppercase" '
+            f'fill="{text_secondary}">{subtitle_safe}</text>'
+            f'</svg>'
+        )
+        return svg.encode("utf-8")
+
+    @staticmethod
+    def _validate_cutout(image_bytes: bytes) -> bool:
+        """True if `image_bytes` is a usable transparent cutout.
+
+        rembg can silently fail (model uncertainty, no clear subject) and
+        return a fully-opaque PNG — the original image with no transparency.
+        Embedding that into a layout where transparency was promised paints
+        a visible white square over the composition. Detect by checking the
+        alpha channel histogram: at least 5% of pixels must be transparent
+        (alpha < 200) AND at most 95% fully opaque. If the image lacks an
+        alpha channel entirely, the cutout obviously failed.
+        """
+        try:
+            from io import BytesIO
+            from PIL import Image
+            img = Image.open(BytesIO(image_bytes))
+            if img.mode not in ("RGBA", "LA"):
+                return False
+            alpha = img.split()[-1]
+            hist = alpha.histogram()  # 256 bins for 8-bit alpha
+            total = sum(hist) or 1
+            opaque_count = sum(hist[200:256])
+            transparent_count = sum(hist[0:50])
+            transparent_ratio = transparent_count / total
+            opaque_ratio = opaque_count / total
+            # Must have at least 5% truly-transparent pixels AND not be 95%+
+            # fully opaque. Both checks together cut both "failed cutout"
+            # (all opaque) and "garbled cutout" (alpha noise).
+            return transparent_ratio >= 0.05 and opaque_ratio <= 0.95
+        except Exception:
+            return False
 
     @staticmethod
     def _remove_background(image_bytes: bytes) -> bytes:
@@ -8552,10 +8827,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         total_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
         def _strip_internal_fields() -> None:
+            # Strip only fields the timeline JSON consumers don't need:
+            #   _skill_audio_events → consumed by the Sound Planner inside this run
+            #   _validator_record   → animation-validator telemetry (pre/post issues,
+            #                         shipped='regen'|'original'); useful for log
+            #                         aggregation, not for playback.
+            # Keep:
+            #   _shot_type, _narration_excerpt, _visual_description → small
+            #   (≤300 bytes/entry), used by the frame-regen LLM as run-context.
+            #   Without these, regen produces shots that drift stylistically from
+            #   the rest of the timeline (AI_VIDEO_GENERATION.md §12.3 — closed).
             for entry in html_segments:
-                for k in ("_shot_type", "_narration_excerpt", "_visual_description",
-                          "_skill_audio_events"):
-                    entry.pop(k, None)
+                entry.pop("_skill_audio_events", None)
+                entry.pop("_validator_record", None)
 
         pexels_ok = self._pexels_service and self._pexels_service.is_available
         pixabay_ok = self._pixabay_service and self._pixabay_service.is_available
@@ -8864,23 +9148,48 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     usage_meta[k] = usage_meta.get(k, 0) + v
             if not image_bytes:
                 print(f"    ❌ No image bytes for: {prompt[:50]}...")
-                # Subject continuity: unblock waiters even on failure so they
-                # don't stall for the full 120s timeout. They'll proceed without
-                # a reference (text-only fallback for subsequent shots).
+                # Subject continuity: unblock waiters before we cascade so they
+                # don't stall the full 120s. Subsequent shots proceed text-only.
                 if _is_first_for_subject and _sub_id:
                     event = (self._subject_ready_events or {}).get(_sub_id)
                     if event:
                         event.set()
+
+                # Cascade through Pexels/Pixabay → SVG placeholder so the
+                # `<img>` tag isn't left pointing at the LLM's `placeholder.png`.
+                fb = self._image_fallback_chain(prompt, is_cutout=is_cutout)
+                if fb:
+                    return {
+                        "entry_id":   id(task["entry"]),
+                        "full_tag":   task["full_tag"],
+                        "stock_url":  fb.get("stock_url"),
+                        "image_bytes": fb.get("image_bytes"),
+                        "is_svg":     fb.get("is_svg", False),
+                        "filename":   None,
+                        "usage":      usage_meta,
+                    }
                 return None
 
-            # Remove background for cutout assets
+            # Remove background for cutout assets, then VALIDATE the result.
+            # rembg silently returns a fully-opaque image when it can't find a
+            # subject; embedding that paints a white square over the layout.
+            cutout_failed = False
             if is_cutout:
                 image_bytes = self._remove_background(image_bytes)
+                if not self._validate_cutout(image_bytes):
+                    cutout_failed = True
+                    print(
+                        f"    ⚠️  Cutout validation failed (no transparency) "
+                        f"— hiding image element: {prompt[:60]}"
+                    )
 
             # Subject continuity: this is the FIRST successful shot for the
             # subject — upload the image to S3 and cache the URL so subsequent
             # shots of the same subject can use it as `reference_image_url`.
-            # Failures are non-fatal (logged inside the helper).
+            # Failures are non-fatal (logged inside the helper). We still
+            # upload even when cutout validation failed: the original bytes
+            # are useful as an i2i reference even though they're not a clean
+            # cutout for layout use.
             if _is_first_for_subject and _sub_id:
                 try:
                     uploaded_url = self._upload_subject_reference(
@@ -8909,6 +9218,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 "image_bytes": image_bytes,       # pass bytes directly — no re-read
                 "filename":   filename,
                 "usage":      usage_meta,
+                "cutout_failed": cutout_failed,
             }
 
         replacements      = {}
@@ -8989,9 +9299,42 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
             for rep in replacements[entry_id]:
                 old_tag     = rep["full_tag"]
-                # Stock photos use CDN URL directly; generated images use base64
+
+                # Cutout failure handling: the cutout had no real transparency
+                # (rembg silently failed). Embedding the white-background bytes
+                # would paint a white square over the layout. Replace the
+                # `<img>` with a hidden div instead so adjacent flexbox /
+                # absolute layout doesn't shift; the rest of the shot composes
+                # without the cutout.
+                if rep.get("cutout_failed"):
+                    placeholder = (
+                        '<div data-cutout-failed="true" '
+                        'style="display:none" aria-hidden="true"></div>'
+                    )
+                    if old_tag in html:
+                        html = html.replace(old_tag, placeholder)
+                        replacements_applied += 1
+                        print(
+                            f"    🚫 Cutout failed — hid image element for entry {entry_id}: "
+                            f"{old_tag[:50]}..."
+                        )
+                    else:
+                        pm = re.search(r'data-img-prompt=(["\'])(.*?)\1', old_tag)
+                        if pm:
+                            pv = pm.group(2)
+                            pat = rf'<img[^>]+data-img-prompt=(["\']){re.escape(pv)}\1[^>]*>'
+                            html = re.sub(pat, placeholder, html)
+                            replacements_applied += 1
+                            print(f"    🚫 Cutout failed (prompt match) — hid image: {pv[:30]}...")
+                    continue
+
+                # Stock photos use CDN URL directly; generated images use base64;
+                # SVG fallback placeholders use a `data:image/svg+xml` data URI.
                 if rep.get("stock_url"):
                     new_src = rep["stock_url"]
+                elif rep.get("is_svg"):
+                    b64     = base64.b64encode(rep["image_bytes"]).decode("utf-8")
+                    new_src = f"data:image/svg+xml;base64,{b64}"
                 else:
                     # Encode directly from the bytes already in memory
                     b64     = base64.b64encode(rep["image_bytes"]).decode("utf-8")
@@ -9749,6 +10092,21 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     "primary": _palette.get("primary", "#2563eb"),
                     "accent": _palette.get("accent", "#f59e0b"),
                 }
+            # Persist a compact `style_guide` summary for the frame-regen LLM so
+            # post-hoc edits respect the run's brand & motion strategy. ~200 bytes.
+            meta_dict["style_guide"] = {
+                "background_type": style_guide.get("background_type", ""),
+                "layout_theme": style_guide.get("layout_theme", ""),
+                "motion_strategy": style_guide.get("motion_strategy", ""),
+            }
+
+        # Persist the shot pack (premium+) so the frame-regen LLM can reuse the
+        # exact same design tokens as the original run. Without this, regen
+        # picks new colors / sizes / eases and the regenerated shot looks
+        # off-brand against its neighbours. The pack is small (~600 bytes).
+        _shot_pack = getattr(self, "_current_shot_pack", None)
+        if _shot_pack and isinstance(_shot_pack, dict):
+            meta_dict["shot_pack"] = _shot_pack
 
         # Source video metadata for renderer compositing
         if self._input_video_contexts:

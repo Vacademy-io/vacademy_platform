@@ -29,6 +29,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { AddMediaOverlayDialog } from './AddMediaOverlayDialog';
 import { AddShotDialog } from './AddShotDialog';
 import { AudioTracksPanel } from './AudioTracksPanel';
+import { PlaybackBar } from './playback/PlaybackBar';
 import { RenderSettingsDialog } from '@/routes/video-api-studio/-components/RenderSettingsDialog';
 import {
     requestVideoRender,
@@ -187,7 +188,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                 pollCountRef.current++;
 
                 try {
-                    const status = await getRenderStatus(jobId, props.apiKey!);
+                    const status = await getRenderStatus(jobId, props.apiKey!, props.videoId);
                     if (!isMountedRef.current) return; // C5: guard after await
 
                     if (status.progress != null) {
@@ -636,6 +637,7 @@ function EditorLayout({ toolbar, entriesPanelOpen }: LayoutProps) {
                 <PropertiesPanel />
             </div>
 
+            <PlaybackBar />
             <TimelineScrubber />
             <AudioTracksPanel />
         </div>

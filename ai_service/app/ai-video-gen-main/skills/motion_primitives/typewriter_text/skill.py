@@ -96,3 +96,19 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
     )
 
     return {"html": html, "css": css, "js": js, "plugins": []}
+
+
+def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """No-animation static version: full text rendered immediately, no caret."""
+    import html as _h
+    text = str(params.get("text", "") or "Text")
+    size_key = str(params.get("size", "h1"))
+    font_size = _SIZE_MAP.get(size_key, _SIZE_MAP["h1"])
+    shot_idx = ctx.get("shot_index", 0)
+    sid = f"tw{shot_idx}fb"
+    html = f'<div class="{sid}-wrap"><span class="{sid}-text">{_h.escape(text)}</span></div>'
+    css = f"""
+.{sid}-wrap {{ font-family:'Bebas Neue','Montserrat',sans-serif; font-size:{font_size}; line-height:1.1; color:var(--brand-text); font-weight:700; letter-spacing:0.01em; }}
+.{sid}-text {{ white-space:pre-wrap; }}
+"""
+    return {"html": html, "css": css, "js": "", "plugins": [], "audio_events": []}

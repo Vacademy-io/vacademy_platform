@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import {
     Layers,
     Type,
@@ -43,11 +44,8 @@ import {
     newImageOverlay,
     newVideoOverlay,
 } from './utils/html-overlay-editor';
-import {
-    TRANSITION_OPTIONS,
-    Transition,
-    TransitionType,
-} from './utils/transitions';
+import { TRANSITION_OPTIONS, Transition, TransitionType } from './utils/transitions';
+import { LayersTab } from './LayersTab';
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -56,6 +54,42 @@ function formatTime(s?: number | null): string {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+/**
+ * Tiny badge that subscribes to currentTime independently. Isolated so that
+ * the heavy PropertiesPanel body doesn't re-render on every playhead tick —
+ * only this 1-line component does.
+ */
+function OutsidePlayheadBadge({
+    navigation,
+    inTime,
+    outTime,
+    entryIndex,
+    onJump,
+}: {
+    navigation?: string;
+    inTime?: number | null;
+    outTime?: number | null;
+    entryIndex: number;
+    onJump: () => void;
+}) {
+    const currentTime = useVideoEditorStore((s) => s.currentTime);
+    const isOutside =
+        navigation === 'time_driven'
+            ? currentTime < (inTime ?? 0) || currentTime >= (outTime ?? Infinity)
+            : Math.floor(currentTime) !== entryIndex;
+    if (!isOutside) return null;
+    return (
+        <button
+            type="button"
+            onClick={onJump}
+            title="The playhead is outside this entry. Click to jump to its start."
+            className="shrink-0 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-700 transition hover:bg-amber-200"
+        >
+            Outside playhead
+        </button>
+    );
 }
 
 // ── Slider field ───────────────────────────────────────────────────────────
@@ -115,7 +149,20 @@ function TransformTab({ entryId, canvasW, canvasH, inTime, exitTime }: Transform
         updateEntryTransition,
         fitAnimationsToDuration,
         meta,
-    } = useVideoEditorStore();
+    } = useVideoEditorStore(
+        useShallow((s) => ({
+            entryTransforms: s.entryTransforms,
+            entryBackgrounds: s.entryBackgrounds,
+            entryTransitions: s.entryTransitions,
+            naturalDurations: s.naturalDurations,
+            updateEntryTransform: s.updateEntryTransform,
+            resetEntryTransform: s.resetEntryTransform,
+            updateEntryBackground: s.updateEntryBackground,
+            updateEntryTransition: s.updateEntryTransition,
+            fitAnimationsToDuration: s.fitAnimationsToDuration,
+            meta: s.meta,
+        }))
+    );
     const transform = entryTransforms[entryId] ?? DEFAULT_TRANSFORM;
     const background = entryBackgrounds[entryId] ?? '';
     // Only feed a valid 7-char hex into <input type="color"> (it can't render gradients/named colors).
@@ -147,9 +194,7 @@ function TransformTab({ entryId, canvasW, canvasH, inTime, exitTime }: Transform
                 <label className="w-8 text-[10px] font-medium text-gray-600">{label}</label>
                 <select
                     value={current?.type ?? ''}
-                    onChange={(e) =>
-                        setTransition(which, e.target.value as TransitionType | '')
-                    }
+                    onChange={(e) => setTransition(which, e.target.value as TransitionType | '')}
                     className="h-7 flex-1 rounded border border-gray-200 bg-white px-1 text-[11px] focus:border-indigo-400 focus:outline-none"
                 >
                     <option value="">None</option>
@@ -167,9 +212,7 @@ function TransformTab({ entryId, canvasW, canvasH, inTime, exitTime }: Transform
                     value={current?.duration ?? ''}
                     disabled={!current}
                     placeholder="0.4s"
-                    onChange={(e) =>
-                        setDuration(which, parseFloat(e.target.value) || 0.4)
-                    }
+                    onChange={(e) => setDuration(which, parseFloat(e.target.value) || 0.4)}
                     className="h-7 w-14 rounded border border-gray-200 bg-white px-1 text-center font-mono text-[11px] disabled:bg-gray-50 disabled:text-gray-300"
                 />
             </div>
@@ -256,42 +299,45 @@ function TransformTab({ entryId, canvasW, canvasH, inTime, exitTime }: Transform
                 onChange={(v) => updateEntryTransform(entryId, { rotation: v })}
             />
             {/* Fit animations to duration — only meaningful for time_driven */}
-            {meta.navigation === 'time_driven' && (() => {
-                const currentDur = (exitTime ?? 0) - (inTime ?? 0);
-                const baseDur = naturalDurations[entryId];
-                const canFit = currentDur > 0 && baseDur != null && baseDur > 0
-                    && Math.abs(currentDur - baseDur) > 0.05;
-                const currentSpeed = baseDur != null && currentDur > 0
-                    ? baseDur / currentDur
-                    : null;
-                return (
-                    <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
-                        <div className="flex items-center justify-between">
-                            <span className="text-[11px] font-medium text-gray-600">
-                                Animation Speed
-                            </span>
-                            {currentSpeed != null && (
-                                <span className="font-mono text-[10px] text-indigo-600">
-                                    {currentSpeed.toFixed(2)}×
+            {meta.navigation === 'time_driven' &&
+                (() => {
+                    const currentDur = (exitTime ?? 0) - (inTime ?? 0);
+                    const baseDur = naturalDurations[entryId];
+                    const canFit =
+                        currentDur > 0 &&
+                        baseDur != null &&
+                        baseDur > 0 &&
+                        Math.abs(currentDur - baseDur) > 0.05;
+                    const currentSpeed =
+                        baseDur != null && currentDur > 0 ? baseDur / currentDur : null;
+                    return (
+                        <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
+                            <div className="flex items-center justify-between">
+                                <span className="text-[11px] font-medium text-gray-600">
+                                    Animation Speed
                                 </span>
-                            )}
+                                {currentSpeed != null && (
+                                    <span className="font-mono text-[10px] text-indigo-600">
+                                        {currentSpeed.toFixed(2)}×
+                                    </span>
+                                )}
+                            </div>
+                            <div className="text-[10px] text-gray-400">
+                                Natural: {baseDur != null ? `${baseDur.toFixed(1)}s` : '—'}
+                                {' · '}Current: {currentDur > 0 ? `${currentDur.toFixed(1)}s` : '—'}
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 w-full text-xs text-gray-600 disabled:opacity-40"
+                                disabled={!canFit}
+                                onClick={() => fitAnimationsToDuration(entryId)}
+                            >
+                                Fit animations to duration
+                            </Button>
                         </div>
-                        <div className="text-[10px] text-gray-400">
-                            Natural: {baseDur != null ? `${baseDur.toFixed(1)}s` : '—'}
-                            {' · '}Current: {currentDur > 0 ? `${currentDur.toFixed(1)}s` : '—'}
-                        </div>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 w-full text-xs text-gray-600 disabled:opacity-40"
-                            disabled={!canFit}
-                            onClick={() => fitAnimationsToDuration(entryId)}
-                        >
-                            Fit animations to duration
-                        </Button>
-                    </div>
-                );
-            })()}
+                    );
+                })()}
             <Button
                 size="sm"
                 variant="outline"
@@ -400,9 +446,7 @@ function TextItem({ el, canvasW, canvasH, onPatch, onDelete }: TextItemProps) {
                         <label className="text-[10px] font-medium text-gray-500">Font Size</label>
                         <div className="flex gap-1">
                             <select
-                                value={
-                                    FONT_SIZES.includes(el.fontSize) ? el.fontSize : ''
-                                }
+                                value={FONT_SIZES.includes(el.fontSize) ? el.fontSize : ''}
                                 onChange={(e) => onPatch(el.index, { fontSize: e.target.value })}
                                 className="flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800 focus:border-indigo-400 focus:outline-none"
                             >
@@ -441,9 +485,7 @@ function TextItem({ el, canvasW, canvasH, onPatch, onDelete }: TextItemProps) {
                             ).map((w) => (
                                 <button
                                     key={w.value || 'default'}
-                                    onClick={() =>
-                                        onPatch(el.index, { whiteSpace: w.value })
-                                    }
+                                    onClick={() => onPatch(el.index, { whiteSpace: w.value })}
                                     className={[
                                         'h-6 rounded border px-2 text-[10px] transition-colors',
                                         (el.whiteSpace || '') === w.value
@@ -457,9 +499,7 @@ function TextItem({ el, canvasW, canvasH, onPatch, onDelete }: TextItemProps) {
                         </div>
                     </div>
                     <div className="space-y-1">
-                        <label className="text-[10px] font-medium text-gray-500">
-                            Line Height
-                        </label>
+                        <label className="text-[10px] font-medium text-gray-500">Line Height</label>
                         <div className="flex gap-1">
                             <input
                                 type="number"
@@ -586,7 +626,7 @@ interface TextTabProps {
 }
 
 function TextTab({ entryId, entryHtml, canvasW, canvasH }: TextTabProps) {
-    const { updateEntryHtml } = useVideoEditorStore();
+    const updateEntryHtml = useVideoEditorStore((s) => s.updateEntryHtml);
 
     const textElements = useMemo(() => extractTextElements(entryHtml), [entryHtml]);
 
@@ -736,7 +776,7 @@ interface MediaTabProps {
 }
 
 function MediaTab({ entryId, entryHtml }: MediaTabProps) {
-    const { updateEntryHtml } = useVideoEditorStore();
+    const updateEntryHtml = useVideoEditorStore((s) => s.updateEntryHtml);
 
     const mediaElements = useMemo(() => extractMediaElements(entryHtml), [entryHtml]);
 
@@ -789,7 +829,7 @@ interface HtmlTabProps {
 }
 
 function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
-    const { updateEntryHtml } = useVideoEditorStore();
+    const updateEntryHtml = useVideoEditorStore((s) => s.updateEntryHtml);
     const [localHtml, setLocalHtml] = useState(entryHtml);
     const [isDirty, setIsDirty] = useState(false);
 
@@ -832,19 +872,15 @@ function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
                         {inline.count > 0 && (
                             <>
                                 {' '}
-                                — {inline.count} inline image{inline.count === 1 ? '' : 's'}{' '}
-                                folded (hover to preview)
+                                — {inline.count} inline image{inline.count === 1 ? '' : 's'} folded
+                                (hover to preview)
                             </>
                         )}
                     </span>
                 </div>
             )}
             <div className="flex-1 bg-[#1e1e1e]">
-                <MonacoHtmlEditor
-                    value={localHtml}
-                    onChange={handleChange}
-                    onApply={handleApply}
-                />
+                <MonacoHtmlEditor value={localHtml} onChange={handleChange} onApply={handleApply} />
             </div>
             <div className="flex shrink-0 items-center gap-2 border-t border-gray-200 bg-white px-3 py-2">
                 <span className="flex-1 font-mono text-[10px] text-gray-400">{sizeKb} KB</span>
@@ -934,13 +970,9 @@ function OverlayEditor({
                         <input
                             type="color"
                             value={
-                                /^#[0-9a-fA-F]{6}$/.test(overlay.color)
-                                    ? overlay.color
-                                    : '#ffffff'
+                                /^#[0-9a-fA-F]{6}$/.test(overlay.color) ? overlay.color : '#ffffff'
                             }
-                            onChange={(e) =>
-                                onPatch({ color: e.target.value } as Partial<Overlay>)
-                            }
+                            onChange={(e) => onPatch({ color: e.target.value } as Partial<Overlay>)}
                             className="h-6 w-8 cursor-pointer rounded border border-gray-200 bg-white p-0"
                         />
                         <div className="flex gap-0.5">
@@ -1034,7 +1066,7 @@ function OverlayEditor({
 }
 
 function OverlaysTab({ entryId, entryHtml }: OverlaysTabProps) {
-    const { updateEntryHtml } = useVideoEditorStore();
+    const updateEntryHtml = useVideoEditorStore((s) => s.updateEntryHtml);
     const { uploadFile, getPublicUrl } = useFileUpload();
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const replaceTargetRef = useRef<{ id: string; kind: 'image' | 'video' } | null>(null);
@@ -1080,8 +1112,7 @@ function OverlaysTab({ entryId, entryHtml }: OverlaysTabProps) {
 
             // If it's a "create new" stub (id == 'NEW'), add; otherwise replace src
             if (target.id === 'NEW') {
-                const fresh =
-                    target.kind === 'image' ? newImageOverlay(url) : newVideoOverlay(url);
+                const fresh = target.kind === 'image' ? newImageOverlay(url) : newVideoOverlay(url);
                 patchHtml(upsertOverlay(entryHtml, fresh));
             } else {
                 const existing = overlays.find((o) => o.id === target.id);
@@ -1108,12 +1139,7 @@ function OverlaysTab({ entryId, entryHtml }: OverlaysTabProps) {
 
     return (
         <div className="space-y-2 p-3">
-            <input
-                ref={fileInputRef}
-                type="file"
-                className="hidden"
-                onChange={handleFile}
-            />
+            <input ref={fileInputRef} type="file" className="hidden" onChange={handleFile} />
             <div className="grid grid-cols-3 gap-1.5">
                 <Button
                     size="sm"
@@ -1155,9 +1181,7 @@ function OverlaysTab({ entryId, entryHtml }: OverlaysTabProps) {
                         overlay={o}
                         onPatch={handlePatch(o.id)}
                         onDelete={handleDelete(o.id)}
-                        onReplaceSrc={() =>
-                            o.kind !== 'text' && openFilePicker(o.kind, o.id)
-                        }
+                        onReplaceSrc={() => o.kind !== 'text' && openFilePicker(o.kind, o.id)}
                     />
                 ))
             )}
@@ -1167,7 +1191,7 @@ function OverlaysTab({ entryId, entryHtml }: OverlaysTabProps) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-type Tab = 'transform' | 'text' | 'media' | 'overlays' | 'code';
+type Tab = 'transform' | 'text' | 'media' | 'overlays' | 'layers' | 'code';
 
 interface PropertiesPanelProps {
     /**
@@ -1182,9 +1206,20 @@ interface PropertiesPanelProps {
  * Works as a right column (landscape) or bottom drawer (portrait).
  */
 export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
-    const { entries, meta, selectedEntryId, deleteEntry, updateEntryHtml, videoId, apiKey } =
-        useVideoEditorStore();
-    const [tab, setTab] = useState<Tab>('transform');
+    const { entries, meta, selectedEntryId, deleteEntry, updateEntryHtml, videoId, apiKey, seek } =
+        useVideoEditorStore(
+            useShallow((s) => ({
+                entries: s.entries,
+                meta: s.meta,
+                selectedEntryId: s.selectedEntryId,
+                deleteEntry: s.deleteEntry,
+                updateEntryHtml: s.updateEntryHtml,
+                videoId: s.videoId,
+                apiKey: s.apiKey,
+                seek: s.seek,
+            }))
+        );
+    const [tab, setTab] = useState<Tab>('layers');
 
     // ── Remake state ───────────────────────────────────────────────────────
     const [remakeOpen, setRemakeOpen] = useState(false);
@@ -1230,6 +1265,16 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
     const inTime = entry.inTime ?? entry.start;
     const outTime = entry.exitTime ?? entry.end;
     const entryId = entry.id;
+
+    const entryIndex = entries.indexOf(entry);
+
+    const handleJumpToEntry = () => {
+        if (meta.navigation === 'time_driven') {
+            seek(inTime ?? 0);
+        } else {
+            seek(entryIndex);
+        }
+    };
 
     // Timestamp to pass to regenerate: inTime for time_driven, array index otherwise
     const remakeTimestamp =
@@ -1285,6 +1330,13 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                     <p className="flex-1 truncate font-mono text-xs font-semibold text-gray-800">
                         {entry.id}
                     </p>
+                    <OutsidePlayheadBadge
+                        navigation={meta.navigation}
+                        inTime={inTime}
+                        outTime={outTime}
+                        entryIndex={entryIndex}
+                        onJump={handleJumpToEntry}
+                    />
                     <span className="text-[10px] text-gray-400">
                         z:{entry.z ?? 0}
                         {meta.navigation === 'time_driven' ? (
@@ -1384,6 +1436,7 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
             <div className="flex shrink-0 overflow-x-auto border-b border-gray-200 [scrollbar-width:thin]">
                 {(
                     [
+                        { id: 'layers', icon: <Layers className="size-3" />, label: 'Layers' },
                         {
                             id: 'transform',
                             icon: <Sliders className="size-3" />,
@@ -1416,7 +1469,11 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
             </div>
 
             {/* Tab content */}
-            <div className={['flex-1', tab === 'code' ? 'overflow-hidden' : 'overflow-y-auto'].join(' ')}>
+            <div
+                className={['flex-1', tab === 'code' ? 'overflow-hidden' : 'overflow-y-auto'].join(
+                    ' '
+                )}
+            >
                 {tab === 'transform' && (
                     <TransformTab
                         entryId={entryId}
@@ -1435,9 +1492,8 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                     />
                 )}
                 {tab === 'media' && <MediaTab entryId={entryId} entryHtml={entry.html} />}
-                {tab === 'overlays' && (
-                    <OverlaysTab entryId={entryId} entryHtml={entry.html} />
-                )}
+                {tab === 'overlays' && <OverlaysTab entryId={entryId} entryHtml={entry.html} />}
+                {tab === 'layers' && <LayersTab entryId={entryId} entryHtml={entry.html} />}
                 {tab === 'code' && <HtmlTab entryId={entryId} entryHtml={entry.html} />}
             </div>
 

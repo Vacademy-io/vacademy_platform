@@ -101,3 +101,34 @@ def _format_value(v: float, decimals: int) -> str:
     if decimals > 0:
         return f"{v:.{decimals}f}"
     return f"{int(round(v))}"
+
+
+def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """No-animation static version: number shown at its final target value.
+    Used when render() raises or params are invalid."""
+    end = float(params.get("to", 0) or 0)
+    prefix = str(params.get("prefix", ""))
+    suffix = str(params.get("suffix", ""))
+    label = str(params.get("label", ""))
+    decimals = int(params.get("decimals", 0) or 0)
+    shot_idx = ctx.get("shot_index", 0)
+    sid = f"nc{shot_idx}fb"
+    label_html = f'<div class="{sid}-label">{label}</div>' if label else ""
+    html = (
+        f'<div class="{sid}-wrap">'
+        f'{label_html}'
+        f'<div class="{sid}-number">'
+        f'<span class="{sid}-prefix">{prefix}</span>'
+        f'<span class="{sid}-value">{_format_value(end, decimals)}</span>'
+        f'<span class="{sid}-suffix">{suffix}</span>'
+        f'</div>'
+        f'</div>'
+    )
+    css = f"""
+.{sid}-wrap {{ display:flex; flex-direction:column; align-items:center; gap:0.8rem; padding:1rem 0; }}
+.{sid}-label {{ font-size:1.35rem; font-weight:600; color:var(--brand-text-secondary); text-transform:uppercase; letter-spacing:0.12em; }}
+.{sid}-number {{ font-family:'Bebas Neue','Montserrat',sans-serif; font-size:10rem; line-height:0.9; color:var(--brand-primary); font-variant-numeric:tabular-nums; display:flex; align-items:baseline; gap:0.1em; }}
+.{sid}-prefix, .{sid}-suffix {{ color:var(--brand-accent); font-size:0.55em; font-weight:700; }}
+.{sid}-value {{ font-weight:900; }}
+"""
+    return {"html": html, "css": css, "js": "", "plugins": [], "audio_events": []}

@@ -310,28 +310,95 @@ class RenderWorker:
                 r'<script\s[^>]*\bsrc="[^"]*\bgsap[^"]*\.js[^"]*"[^>]*>\s*</script>',
                 _re.IGNORECASE,
             )
-            # Strip `animation:vx-...` CSS shorthand from `<div data-vx-shot="1" style="...">`
-            # wrappers. The video editor injects these via buildTransitionCss() to drive
-            # in/out fade/slide/zoom transitions at the editor's iframe playhead. CSS keyframe
-            # animations advance at WALL-CLOCK time, but the renderer captures frames serially
-            # at variable per-frame cost (50–200ms each), so the wall clock outruns the
-            # render's scrub clock. Result: by the time the scrub reaches state.t in the
-            # middle of a shot, the CSS `animation:vx-fade-out 0.4s ease 1.74s both` has
-            # already completed and the wrapper sits at opacity:0 — the shot renders blank.
-            # Preserve the wrapper itself (it may carry user-edited transform/background);
-            # only drop the animation declaration. The unreferenced @keyframes <style> block
-            # left behind is harmless.
-            _vx_shot_anim_re = _re.compile(
-                r'(<div\s+data-vx-shot="[^"]*"\s+style=")([^"]*)(")',
+            # Convert `animation:vx-...` CSS shorthand on `<div data-vx-shot="1" ...>`
+            # wrappers into GSAP-driven tweens that the renderer's per-frame scrub controls.
+            #
+            # The video editor injects these via buildTransitionCss() (see
+            # frontend-admin-dashboard/.../utils/transitions.ts) to drive in/out
+            # fade/slide/zoom transitions. CSS keyframe animations advance at WALL-CLOCK
+            # time, but the renderer captures frames serially at variable per-frame cost
+            # (50-200ms each), so the wall clock outruns the render's scrub clock — the
+            # CSS animation completes long before the scrub reaches the shot's exit and
+            # the shot renders blank.
+            #
+            # We parse the animation shorthand, strip it from the wrapper's inline style,
+            # and emit a `<script>` whose tweens are equivalent to the original keyframes
+            # but registered on `gsap.globalTimeline` — the renderer scrubs that timeline
+            # via `globalTimeline.totalTime(state.t)` so the transitions play frame-accurate.
+            _vx_shot_open_re = _re.compile(
+                r'(<div\s+data-vx-shot="[^"]*"\s+style=")([^"]*)("\s*>)',
                 _re.IGNORECASE,
             )
             _anim_prop_re = _re.compile(r'animation\s*:[^;]*;?', _re.IGNORECASE)
+            _vx_anim_token_re = _re.compile(
+                r'(vx-(?:fade|slide-[lrud]|zoom-in|zoom-out)-(?:in|out))\s+'
+                r'([\d.]+)s\s+(\S+?)\s+([-\d.]+)s\s+both',
+                _re.IGNORECASE,
+            )
+            # Per-type from-state (CSS-keyframe "unit=0"). The to-state is identity for all.
+            _vx_state0 = {
+                'fade':     {'opacity': 0},
+                'slide-l':  {'opacity': 0, 'xPercent': -100},
+                'slide-r':  {'opacity': 0, 'xPercent': 100},
+                'slide-u':  {'opacity': 0, 'yPercent': -100},
+                'slide-d':  {'opacity': 0, 'yPercent': 100},
+                'zoom-in':  {'opacity': 0, 'scale': 0.6},
+                'zoom-out': {'opacity': 0, 'scale': 1.4},
+            }
+            _vx_state1 = {'opacity': 1, 'xPercent': 0, 'yPercent': 0, 'scale': 1}
+            _css_to_gsap_ease = {
+                'ease':        'power2.inOut',
+                'linear':      'none',
+                'ease-in':     'power2.in',
+                'ease-out':    'power2.out',
+                'ease-in-out': 'power2.inOut',
+            }
 
-            def _strip_vx_anim(_html):
+            def _vars_to_js(d):
+                return '{' + ','.join(f'{k}:{v}' for k, v in d.items()) + '}'
+
+            def _convert_vx_wrapper(_html):
                 def _repl(m):
-                    style = _anim_prop_re.sub('', m.group(2)).strip(';').strip()
-                    return f'{m.group(1)}{style}{m.group(3)}'
-                return _vx_shot_anim_re.sub(_repl, _html)
+                    opening, style, closing = m.group(1), m.group(2), m.group(3)
+                    am = _anim_prop_re.search(style)
+                    if not am:
+                        return m.group(0)
+                    anim_value = am.group(0).split(':', 1)[1].rstrip(';').strip()
+                    new_style = _anim_prop_re.sub('', style).strip(';').strip()
+                    tweens_js = []
+                    for tok in _vx_anim_token_re.finditer(anim_value):
+                        name, dur, easing, delay = tok.group(1), float(tok.group(2)), tok.group(3), float(tok.group(4))
+                        if name.endswith('-in'):
+                            type_, direction = name[3:-3], 'in'
+                        elif name.endswith('-out'):
+                            type_, direction = name[3:-4], 'out'
+                        else:
+                            continue
+                        if type_ not in _vx_state0:
+                            continue
+                        s0 = _vx_state0[type_]
+                        # Only include identity-axis keys that actually changed (avoid
+                        # GSAP wiping the user's baked transform along the unchanged axis).
+                        s1 = {k: _vx_state1[k] for k in s0.keys()}
+                        from_v, to_v = (s0, s1) if direction == 'in' else (s1, s0)
+                        ease = _css_to_gsap_ease.get(easing.lower(), 'power2.inOut')
+                        to_with_meta = dict(to_v)
+                        to_with_meta['duration'] = dur
+                        to_with_meta['delay'] = delay
+                        to_with_meta['ease'] = f'"{ease}"'
+                        tweens_js.append(
+                            f'gsap.fromTo(__vxw,{_vars_to_js(from_v)},{_vars_to_js(to_with_meta)});'
+                        )
+                    if not tweens_js:
+                        return f'{opening}{new_style}{closing}'
+                    script = (
+                        '<script data-vx-render-transition="1">'
+                        'var __vxw=scope.querySelector(\'[data-vx-shot="1"]\');'
+                        'if(__vxw){' + ''.join(tweens_js) + '}'
+                        '</script>'
+                    )
+                    return f'{opening}{new_style}{closing}{script}'
+                return _vx_shot_open_re.sub(_repl, _html)
 
             for _entry in tl_entries:
                 if "html" in _entry:
@@ -339,7 +406,7 @@ class RenderWorker:
                     _cleaned = _drift_re.sub("", _orig)
                     _cleaned = _timescale_re.sub("", _cleaned)
                     _cleaned = _gsap_cdn_re.sub("", _cleaned)
-                    _cleaned = _strip_vx_anim(_cleaned)
+                    _cleaned = _convert_vx_wrapper(_cleaned)
                     if _cleaned != _orig:
                         _entry["html"] = _cleaned
                         _modified_tl = True
@@ -349,7 +416,7 @@ class RenderWorker:
                     tl_data if isinstance(tl_data, dict) else tl_entries,
                     ensure_ascii=False,
                 ))
-                logger.info("Stripped <video>, stage-drift, vx-timescale, gsap CDN, and vx-shot CSS transitions for render")
+                logger.info("Preprocessed timeline: stripped <video>/stage-drift/vx-timescale/gsap CDN; converted vx-shot CSS transitions to GSAP tweens")
             from moviepy import AudioFileClip as _AFC
             _audio_dur = _AFC(str(audio_path)).duration
             tl_max_end = max((e.get("exitTime", 0) for e in tl_entries), default=0)

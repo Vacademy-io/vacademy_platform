@@ -8,36 +8,6 @@
  * 3. User preference: saved in localStorage or backend
  */
 
-import { useRouter } from '@tanstack/react-router';
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-
-// ============================================================================
-// COMPACT MODE ZUSTAND STORE
-// ============================================================================
-
-interface CompactModeStore {
-    userPreference: boolean | null;
-    setUserPreference: (preference: boolean) => void;
-    clearPreference: () => void;
-}
-
-/**
- * Zustand store for persisting user's compact mode preference
- */
-export const useCompactModeStore = create<CompactModeStore>()(
-    persist(
-        (set) => ({
-            userPreference: null,
-            setUserPreference: (preference: boolean) => set({ userPreference: preference }),
-            clearPreference: () => set({ userPreference: null }),
-        }),
-        {
-            name: 'compact-mode-preference',
-        }
-    )
-);
-
 // ============================================================================
 // COMPACT MODE DETECTION HOOK
 // ============================================================================
@@ -103,115 +73,15 @@ export interface CompactModeHook {
  * ```
  */
 export function useCompactMode(): CompactModeHook {
-    const router = useRouter();
-    const location = router.state.location;
-    const { userPreference, setUserPreference, clearPreference } = useCompactModeStore();
-
-    // Method 1: Check if route starts with /cm/
-    const isCompactRoute = location.pathname.startsWith('/cm/');
-
-    // Method 2: Check query parameter
-    // Method 2: Check query parameter
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const searchParams = location.search as any;
-    const isCompactParam = searchParams?.compact === 'true' || searchParams?.compact === true;
-
-    // Method 3: Check user preference
-    const isCompactPreference = userPreference === true;
-
-    // Determine if compact mode is active and why
-    let isCompact = false;
-    let compactSource: CompactModeHook['compactSource'] = null;
-
-    if (isCompactRoute) {
-        isCompact = true;
-        compactSource = 'route';
-    } else if (isCompactParam) {
-        isCompact = true;
-        compactSource = 'query';
-    } else if (isCompactPreference) {
-        isCompact = true;
-        compactSource = 'preference';
-    }
-
-    /**
-     * Toggle compact mode via query parameter
-     */
-    const toggleCompactMode = () => {
-        const url = new URL(window.location.href);
-        if (isCompactParam) {
-            url.searchParams.delete('compact');
-        } else {
-            url.searchParams.set('compact', 'true');
-        }
-        window.history.pushState({}, '', url.toString());
-        // Force a re-render by using router.invalidate or similar
-        window.location.href = url.toString();
-    };
-
-    /**
-     * Set permanent user preference
-     */
-    const setCompactPreference = (enabled: boolean) => {
-        setUserPreference(enabled);
-
-        // TODO: Also save to backend if user is authenticated
-        // saveCompactPreferenceToBackend(enabled);
-    };
-
-    /**
-     * Clear user preference
-     */
-    const clearCompactPreference = () => {
-        clearPreference();
-
-        // TODO: Also clear from backend
-        // clearCompactPreferenceFromBackend();
-    };
-
-    /**
-     * Navigate to compact version of current route
-     */
-    const navigateToCompact = () => {
-        const currentPath = location.pathname;
-
-        // If already on /cm/ route, do nothing
-        if (currentPath.startsWith('/cm/')) {
-            return;
-        }
-
-        // Convert route to compact version
-        const compactPath = `/cm${currentPath}`;
-        router.navigate({ to: compactPath });
-    };
-
-    /**
-     * Navigate to default (non-compact) version of current route
-     */
-    const navigateToDefault = () => {
-        const currentPath = location.pathname;
-
-        // If not on /cm/ route, just remove query param
-        if (!currentPath.startsWith('/cm/')) {
-            const url = new URL(window.location.href);
-            url.searchParams.delete('compact');
-            window.location.href = url.toString();
-            return;
-        }
-
-        // Convert /cm/ route to default route
-        const defaultPath = currentPath.replace(/^\/cm/, '');
-        router.navigate({ to: defaultPath || '/' });
-    };
-
+    // Compact mode is always on — the user-facing toggle/settings have been removed.
     return {
-        isCompact,
-        compactSource,
-        toggleCompactMode,
-        setCompactPreference,
-        clearCompactPreference,
-        navigateToCompact,
-        navigateToDefault,
+        isCompact: true,
+        compactSource: 'preference',
+        toggleCompactMode: () => {},
+        setCompactPreference: () => {},
+        clearCompactPreference: () => {},
+        navigateToCompact: () => {},
+        navigateToDefault: () => {},
     };
 }
 

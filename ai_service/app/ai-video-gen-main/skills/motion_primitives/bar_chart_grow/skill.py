@@ -121,3 +121,48 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
 def json_str(s: str) -> str:
     """Escape a string for safe embedding inside a JS string literal."""
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """No-animation static version: bars rendered at full width, values displayed
+    directly, no GSAP. Used when the animated render() raises or params are
+    invalid — better than a `<!-- skill error -->` comment.
+    """
+    bars = params.get("bars") or []
+    if not isinstance(bars, list) or not bars:
+        bars = [{"label": "—", "value": 0}]
+    unit = str(params.get("unit", ""))
+    shot_idx = ctx.get("shot_index", 0)
+    prefix = f"bcg{shot_idx}fb"
+
+    values = [float((b or {}).get("value", 0) or 0) for b in bars]
+    max_val = max(values + [1.0])
+
+    rows = []
+    for b in bars:
+        if not isinstance(b, dict):
+            b = {}
+        label = str(b.get("label", ""))
+        value = float(b.get("value", 0) or 0)
+        pct = (value / max_val) * 100.0
+        color = str(b.get("color") or "var(--brand-primary)")
+        display_val = f"{int(round(value))}{unit}" if abs(value - round(value)) < 1e-6 else f"{value:g}{unit}"
+        rows.append(
+            f'<div class="{prefix}-row">'
+            f'<span class="{prefix}-label">{label}</span>'
+            f'<div class="{prefix}-track">'
+            f'<div class="{prefix}-fill" style="width:{pct:.1f}%;background:{color}"></div>'
+            f'</div>'
+            f'<span class="{prefix}-value">{display_val}</span>'
+            f'</div>'
+        )
+    html = f'<div class="{prefix}-chart">' + "".join(rows) + "</div>"
+    css = f"""
+.{prefix}-chart {{ display:flex; flex-direction:column; gap:1.1rem; width:100%; padding:1.2rem 0; }}
+.{prefix}-row {{ display:flex; align-items:center; gap:1rem; }}
+.{prefix}-label {{ flex:0 0 9rem; font-size:1.5rem; font-weight:700; color:var(--brand-text); text-transform:uppercase; letter-spacing:0.04em; }}
+.{prefix}-track {{ flex:1; height:2.4rem; background:rgba(255,255,255,0.07); border-radius:0.35rem; overflow:hidden; }}
+.{prefix}-fill {{ height:100%; border-radius:0.35rem; box-shadow:0 0 0 1px rgba(255,255,255,0.08) inset; }}
+.{prefix}-value {{ flex:0 0 5.5rem; font-size:1.8rem; font-weight:800; color:var(--brand-accent); text-align:right; font-variant-numeric:tabular-nums; }}
+"""
+    return {"html": html, "css": css, "js": "", "plugins": [], "audio_events": []}

@@ -107,3 +107,43 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
     ]
 
     return {"html": html, "css": css, "js": js, "plugins": ["gsap"], "audio_events": audio_events}
+
+
+def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """No-animation static version: ring rendered at the target percent, value displayed directly."""
+    import html as _h
+    percent = max(0.0, min(100.0, float(params.get("percent", 0) or 0)))
+    label = str(params.get("label", "") or "")
+    size = float(params.get("size", 380) or 380)
+    shot_idx = ctx.get("shot_index", 0)
+    sid = f"rp{shot_idx}fb"
+    radius = (size / 2.0) - 24.0
+    circumference = 2.0 * math.pi * radius
+    cx = cy = size / 2.0
+    stroke_w = 22.0
+    offset = circumference * (1 - percent / 100.0)
+    label_html = f'<div class="{sid}-label">{_h.escape(label)}</div>' if label else ""
+    html = (
+        f'<div class="{sid}-wrap">'
+        f'<svg class="{sid}-svg" width="{size:.0f}" height="{size:.0f}" viewBox="0 0 {size:.0f} {size:.0f}">'
+        f'<circle cx="{cx:.0f}" cy="{cy:.0f}" r="{radius:.0f}" fill="none" '
+        f'stroke="rgba(255,255,255,0.08)" stroke-width="{stroke_w:.0f}"/>'
+        f'<circle cx="{cx:.0f}" cy="{cy:.0f}" r="{radius:.0f}" fill="none" '
+        f'stroke="var(--brand-primary)" stroke-width="{stroke_w:.0f}" stroke-linecap="round" '
+        f'transform="rotate(-90 {cx:.0f} {cy:.0f})" '
+        f'stroke-dasharray="{circumference:.2f}" stroke-dashoffset="{offset:.2f}"/>'
+        f'</svg>'
+        f'<div class="{sid}-center">'
+        f'<span class="{sid}-value">{int(round(percent))}</span><span class="{sid}-unit">%</span>'
+        f'{label_html}'
+        f'</div></div>'
+    )
+    css = f"""
+.{sid}-wrap {{ position:relative; display:inline-block; }}
+.{sid}-svg {{ display:block; }}
+.{sid}-center {{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.4rem; }}
+.{sid}-value {{ font-family:'Bebas Neue',sans-serif; font-size:{int(size*0.28)}px; font-weight:900; line-height:1; color:var(--brand-text); font-variant-numeric:tabular-nums; }}
+.{sid}-unit {{ font-family:'Bebas Neue',sans-serif; font-size:{int(size*0.11)}px; color:var(--brand-accent); font-weight:700; margin-top:-0.3em; }}
+.{sid}-label {{ font-size:{int(size*0.04)}px; font-weight:700; color:var(--brand-text-secondary); text-transform:uppercase; letter-spacing:0.14em; margin-top:0.8rem; }}
+"""
+    return {"html": html, "css": css, "js": "", "plugins": [], "audio_events": []}

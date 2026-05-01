@@ -108,3 +108,38 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
             })
 
     return {"html": html, "css": css, "js": js, "plugins": ["gsap"], "audio_events": audio_events}
+
+
+def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """No-animation static version: full equation visible immediately, labels visible."""
+    import html as _h
+    terms = params.get("terms") or []
+    if not isinstance(terms, list) or not terms:
+        terms = [{"symbol": "—", "label": ""}]
+    shot_idx = ctx.get("shot_index", 0)
+    sid = f"eqn{shot_idx}fb"
+    term_html = "".join(
+        f'<span class="{sid}-term">{_h.escape(str((t or {}).get("symbol", "")))}</span>'
+        for t in terms
+    )
+    label_html = "".join(
+        f'<div class="{sid}-labelwrap"><div class="{sid}-linkline"></div>'
+        f'<div class="{sid}-label">{_h.escape(str((t or {}).get("label", "")))}</div></div>'
+        for t in terms if str((t or {}).get("label", ""))
+    )
+    html = (
+        f'<div class="{sid}-wrap">'
+        f'<div class="{sid}-equation">{term_html}</div>'
+        f'<div class="{sid}-labels">{label_html}</div>'
+        f'</div>'
+    )
+    css = f"""
+.{sid}-wrap {{ display:flex; flex-direction:column; align-items:center; gap:3rem; padding:2rem 0; }}
+.{sid}-equation {{ font-family:'Fira Code','DM Mono',monospace; font-size:7rem; font-weight:700; color:var(--brand-primary); display:flex; gap:0.8rem; align-items:center; }}
+.{sid}-term {{ display:inline-block; }}
+.{sid}-labels {{ display:flex; gap:2.5rem; flex-wrap:wrap; justify-content:center; }}
+.{sid}-labelwrap {{ display:flex; flex-direction:column; align-items:center; gap:0.6rem; }}
+.{sid}-linkline {{ width:2px; height:1.8rem; background:var(--brand-accent); }}
+.{sid}-label {{ font-size:1.3rem; font-weight:700; color:var(--brand-accent); text-transform:uppercase; letter-spacing:0.08em; }}
+"""
+    return {"html": html, "css": css, "js": "", "plugins": [], "audio_events": []}

@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional, List
@@ -1434,13 +1435,17 @@ async def request_video_render(
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    # Store render job_id in metadata so frontend can resume progress tracking after reload
+    # Store render job_id + start timestamp in metadata so frontend can resume
+    # progress tracking after reload, AND so the watchdog in /render/status/
+    # can detect stuck jobs.
     try:
         repo = AiVideoRepository(session=db)
         video_record = repo.get_by_video_id(video_id)
         if video_record:
             meta = dict(video_record.extra_metadata or {})
             meta["render_job_id"] = job_id
+            from datetime import datetime, timezone
+            meta["render_started_at"] = datetime.now(timezone.utc).isoformat()
             repo.update_metadata(video_id, meta)
     except Exception as e:
         logger.warning(f"[render] Failed to store render_job_id in metadata: {e}")
@@ -1482,7 +1487,9 @@ async def request_video_render(
 @router.get("/render/status/{job_id}")
 async def get_render_status(
     job_id: str,
-    _: str = Depends(get_institute_from_api_key),
+    video_id: Optional[str] = None,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
 ):
     """
     Check the status and progress of a render job.
@@ -1492,6 +1499,14 @@ async def get_render_status(
         - progress: 0-100
         - video_url: S3 URL when completed
         - error: error message when failed
+
+    Watchdog: when `video_id` is provided AND the job has been queued for
+    longer than `RENDER_TIMEOUT_SECONDS` (default 600s, settable via env)
+    AND the upstream status is still queued/running/unknown, the route
+    synthesizes a "failed (timeout)" response, clears the stale render_job_id
+    from the video metadata, and refunds the institute's render credits so
+    the user can retry. This fires per-poll — the frontend's existing polling
+    triggers it without a separate scheduler.
     """
     from ..config import get_settings
     from ..services.render_service import RenderService
@@ -1506,6 +1521,63 @@ async def get_render_status(
     )
 
     result = render_svc.check_status(job_id)
+
+    # Watchdog: detect renders stuck past the timeout threshold and fail them
+    # out so the frontend stops polling and the user can re-render.
+    if video_id:
+        try:
+            from datetime import datetime, timezone
+            timeout_seconds = int(os.environ.get("RENDER_TIMEOUT_SECONDS", "600"))
+            cur_status = (result or {}).get("status", "")
+            if cur_status not in ("completed", "failed"):
+                repo = AiVideoRepository(session=db)
+                video_record = repo.get_by_video_id(video_id)
+                if video_record and video_record.extra_metadata:
+                    started_iso = video_record.extra_metadata.get("render_started_at")
+                    if started_iso:
+                        try:
+                            started_at = datetime.fromisoformat(started_iso)
+                            if started_at.tzinfo is None:
+                                started_at = started_at.replace(tzinfo=timezone.utc)
+                            age_seconds = (datetime.now(timezone.utc) - started_at).total_seconds()
+                            if age_seconds > timeout_seconds:
+                                logger.error(
+                                    f"[render-watchdog] Job {job_id} for video {video_id} "
+                                    f"stuck for {age_seconds:.0f}s (> {timeout_seconds}s) "
+                                    f"with status={cur_status} — marking failed and refunding credits"
+                                )
+                                # Clear the stale render_job_id so the user can re-render
+                                new_meta = dict(video_record.extra_metadata)
+                                new_meta.pop("render_job_id", None)
+                                new_meta.pop("render_started_at", None)
+                                new_meta["render_last_failed_at"] = datetime.now(timezone.utc).isoformat()
+                                new_meta["render_last_failure_reason"] = (
+                                    f"watchdog timeout after {age_seconds:.0f}s"
+                                )
+                                repo.update_metadata(video_id, new_meta)
+                                # Best-effort credit refund — non-fatal if it errors
+                                try:
+                                    from ..services.token_usage_service import TokenUsageService
+                                    TokenUsageService(db).refund_video_credits(video_id, institute_id)
+                                except Exception as _refund_err:
+                                    logger.warning(
+                                        f"[render-watchdog] Refund failed for {video_id}: {_refund_err}"
+                                    )
+                                # Override the response so the frontend stops polling
+                                result = {
+                                    "status": "failed",
+                                    "error": (
+                                        f"Render timed out after {age_seconds:.0f}s "
+                                        f"(threshold {timeout_seconds}s). Credits refunded; "
+                                        f"please retry."
+                                    ),
+                                    "watchdog": True,
+                                }
+                        except (ValueError, TypeError) as _ts_err:
+                            logger.debug(f"[render-watchdog] start timestamp parse error: {_ts_err}")
+        except Exception as _wd_err:
+            logger.warning(f"[render-watchdog] errored (non-fatal): {_wd_err}")
+
     return result
 
 

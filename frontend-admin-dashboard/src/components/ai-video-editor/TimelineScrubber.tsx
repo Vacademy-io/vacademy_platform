@@ -1,4 +1,5 @@
-import { useRef, useCallback, useMemo, useState, Fragment } from 'react';
+import { useRef, useCallback, useMemo, useState, useEffect, Fragment } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Plus } from 'lucide-react';
 import {
     useVideoEditorStore,
@@ -15,6 +16,7 @@ import {
 } from './utils/track-layout';
 import { clamp } from './utils/coord-convert';
 import { useAudioWaveform } from './utils/use-audio-waveform';
+import { pauseIfPlaying } from './playback/playback-engine';
 import { SentenceEditPopover } from './SentenceEditPopover';
 import { SoundCueRemovePopover } from './SoundCueRemovePopover';
 import { AddShotPopover } from './AddShotPopover';
@@ -45,6 +47,109 @@ function computeChannelYOffsets(groups: ChannelGroup[], hasWaveform: boolean): n
         y += CHANNEL_SEP_H + g.trackCount * TRACK_H;
     }
     return offsets;
+}
+
+/**
+ * Imperative subscription helper: write `left:%` directly on a ref's style
+ * whenever currentTime changes, without re-rendering this component (and
+ * therefore without re-rendering the heavy timeline SVG above it).
+ *
+ * Used both for the waveform playhead and the main scrub head so the timeline
+ * stays responsive at 60 Hz playback.
+ */
+function useImperativeLeftFromCurrentTime(
+    ref: React.RefObject<HTMLDivElement>,
+    totalDuration: number,
+    navigationMode: string | undefined
+) {
+    useEffect(() => {
+        const apply = (t: number) => {
+            const el = ref.current;
+            if (!el) return;
+            if (totalDuration <= 0) {
+                el.style.left = '0%';
+                return;
+            }
+            const clamped = navigationMode === 'time_driven' ? t : Math.min(t, totalDuration - 1);
+            const pct = Math.max(0, Math.min(100, (clamped / totalDuration) * 100));
+            el.style.left = `${pct.toFixed(4)}%`;
+        };
+        apply(useVideoEditorStore.getState().currentTime);
+        return useVideoEditorStore.subscribe((s, prev) => {
+            if (s.currentTime !== prev.currentTime) apply(s.currentTime);
+        });
+    }, [ref, totalDuration, navigationMode]);
+}
+
+function PlayheadWaveformCursor({
+    totalDuration,
+    navigationMode,
+}: {
+    totalDuration: number;
+    navigationMode: string | undefined;
+}) {
+    const ref = useRef<HTMLDivElement>(null);
+    useImperativeLeftFromCurrentTime(ref, totalDuration, navigationMode);
+    return (
+        <div
+            ref={ref}
+            className="pointer-events-none absolute inset-y-0 w-px bg-indigo-400 opacity-60"
+            style={{ left: 0 }}
+        />
+    );
+}
+
+function PlayheadScrubCursor({
+    totalDuration,
+    navigationMode,
+}: {
+    totalDuration: number;
+    navigationMode: string | undefined;
+}) {
+    const ref = useRef<HTMLDivElement>(null);
+    useImperativeLeftFromCurrentTime(ref, totalDuration, navigationMode);
+    return (
+        <div
+            ref={ref}
+            className="pointer-events-none absolute inset-y-0 z-10"
+            style={{ left: 0, transform: 'translateX(-1px)' }}
+        >
+            {/* Triangle marker */}
+            <div
+                className="absolute left-1/2 -translate-x-1/2"
+                style={{
+                    top: 0,
+                    width: 0,
+                    height: 0,
+                    borderLeft: '5px solid transparent',
+                    borderRight: '5px solid transparent',
+                    borderTop: '6px solid #6366f1',
+                }}
+            />
+            {/* Vertical line */}
+            <div
+                className="absolute left-1/2 w-px -translate-x-1/2 bg-indigo-500"
+                style={{ top: 6, bottom: 0 }}
+            />
+        </div>
+    );
+}
+
+function StatusTimeReadout({
+    navigationMode,
+    entriesLength,
+}: {
+    navigationMode: string | undefined;
+    entriesLength: number;
+}) {
+    const currentTime = useVideoEditorStore((s) => s.currentTime);
+    return (
+        <span className="font-mono text-xs text-indigo-600">
+            {navigationMode === 'time_driven'
+                ? formatSec(currentTime)
+                : `${Math.floor(currentTime) + 1} / ${entriesLength}`}
+        </span>
+    );
 }
 
 // ── Waveform SVG ────────────────────────────────────────────────────────────
@@ -96,16 +201,21 @@ function WaveformBars({ peaks, height }: WaveformProps) {
  * user_driven  – entries are equal-width sequential blocks, scrubs by index.
  */
 export function TimelineScrubber() {
-    const {
-        entries,
-        meta,
-        currentTime,
-        selectedEntryId,
-        seek,
-        selectEntry,
-        audioUrl,
-        resizeEntryEdge,
-    } = useVideoEditorStore();
+    const { entries, meta, selectedEntryId, seek, selectEntry, audioUrl, resizeEntryEdge } =
+        useVideoEditorStore(
+            useShallow((s) => ({
+                entries: s.entries,
+                meta: s.meta,
+                selectedEntryId: s.selectedEntryId,
+                seek: s.seek,
+                selectEntry: s.selectEntry,
+                audioUrl: s.audioUrl,
+                resizeEntryEdge: s.resizeEntryEdge,
+            }))
+        );
+    // currentTime is intentionally NOT a parent-level subscription — playhead
+    // and time readout each subscribe individually so 60 Hz playback ticks
+    // don't re-render the entire timeline SVG.
 
     const barRef = useRef<HTMLDivElement>(null);
     const isDragging = useRef(false);
@@ -236,6 +346,9 @@ export function TimelineScrubber() {
     const startDrag = useCallback(
         (e: React.MouseEvent | React.TouchEvent) => {
             e.stopPropagation();
+            // User scrubbing takes precedence over playback — stop the rAF
+            // loop so it doesn't race the seek values the user is dragging.
+            pauseIfPlaying();
             isDragging.current = true;
             const clientX = 'touches' in e ? e.touches[0]?.clientX ?? 0 : e.clientX;
             seek(xToTime(clientX));
@@ -450,9 +563,8 @@ export function TimelineScrubber() {
         return `${pct.toFixed(4)}%`;
     };
 
-    const scrubPercent = timeToPercent(
-        navigationMode === 'time_driven' ? currentTime : Math.min(currentTime, totalDuration - 1)
-    );
+    // Playhead position is applied imperatively inside <PlayheadScrubCursor>
+    // / <PlayheadWaveformCursor> — no scrubPercent needed at this scope.
 
     // Tick marks for the time ruler
     const tickInterval =
@@ -474,11 +586,7 @@ export function TimelineScrubber() {
         >
             {/* Status bar: current time / duration */}
             <div className="flex items-center justify-between px-3 py-1">
-                <span className="font-mono text-xs text-indigo-600">
-                    {navigationMode === 'time_driven'
-                        ? formatSec(currentTime)
-                        : `${Math.floor(currentTime) + 1} / ${entries.length}`}
-                </span>
+                <StatusTimeReadout navigationMode={navigationMode} entriesLength={entries.length} />
                 {waveformLoading && (
                     <span className="text-[10px] text-gray-400">Loading waveform…</span>
                 )}
@@ -574,9 +682,9 @@ export function TimelineScrubber() {
                                 </div>
                             )}
                             {/* Current-time cursor line on waveform */}
-                            <div
-                                className="pointer-events-none absolute inset-y-0 w-px bg-indigo-400 opacity-60"
-                                style={{ left: scrubPercent }}
+                            <PlayheadWaveformCursor
+                                totalDuration={totalDuration}
+                                navigationMode={navigationMode}
                             />
 
                             {/* Sound-effect markers: small clickable dots positioned at each
@@ -891,28 +999,10 @@ export function TimelineScrubber() {
                     )}
 
                     {/* Scrub head (on top of everything) */}
-                    <div
-                        className="pointer-events-none absolute inset-y-0 z-10"
-                        style={{ left: scrubPercent, transform: 'translateX(-1px)' }}
-                    >
-                        {/* Triangle marker */}
-                        <div
-                            className="absolute left-1/2 -translate-x-1/2"
-                            style={{
-                                top: 0,
-                                width: 0,
-                                height: 0,
-                                borderLeft: '5px solid transparent',
-                                borderRight: '5px solid transparent',
-                                borderTop: '6px solid #6366f1',
-                            }}
-                        />
-                        {/* Vertical line */}
-                        <div
-                            className="absolute left-1/2 w-px -translate-x-1/2 bg-indigo-500"
-                            style={{ top: 6, bottom: 0 }}
-                        />
-                    </div>
+                    <PlayheadScrubCursor
+                        totalDuration={totalDuration}
+                        navigationMode={navigationMode}
+                    />
                 </div>
             </div>
         </div>

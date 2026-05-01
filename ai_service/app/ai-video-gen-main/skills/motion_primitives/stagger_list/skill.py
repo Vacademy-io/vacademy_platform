@@ -85,3 +85,43 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
     js = "\n".join(js_parts)
 
     return {"html": html, "css": css, "js": js, "plugins": ["gsap"]}
+
+
+def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """No-animation static version: all items at full opacity, no slide-in."""
+    import html as _h
+    items = params.get("items") or []
+    if not isinstance(items, list) or not items:
+        items = [{"text": "—"}]
+    numbered = bool(params.get("numbered", False))
+    shot_idx = ctx.get("shot_index", 0)
+    sid = f"sl{shot_idx}fb"
+    rows = []
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            item = {}
+        text = str(item.get("text", "") or "")
+        icon = str(item.get("icon", "") or "")
+        caption = str(item.get("caption", "") or "")
+        marker = (
+            f'<span class="{sid}-num">{i + 1:02d}</span>'
+            if numbered
+            else (f'<span class="{sid}-icon">{_h.escape(icon)}</span>' if icon else "")
+        )
+        caption_html = f'<div class="{sid}-caption">{_h.escape(caption)}</div>' if caption else ""
+        rows.append(
+            f'<li class="{sid}-item">{marker}'
+            f'<div class="{sid}-body"><div class="{sid}-text">{_h.escape(text)}</div>{caption_html}</div>'
+            f'</li>'
+        )
+    html = f'<ul class="{sid}-list">' + "".join(rows) + '</ul>'
+    css = f"""
+.{sid}-list {{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:1.1rem; }}
+.{sid}-item {{ display:flex; align-items:flex-start; gap:1.1rem; }}
+.{sid}-num {{ flex:0 0 auto; font-family:'Bebas Neue',sans-serif; font-size:2.4rem; line-height:1; color:var(--brand-accent); font-weight:900; min-width:3.2rem; }}
+.{sid}-icon {{ flex:0 0 auto; font-size:1.9rem; color:var(--brand-accent); min-width:2.4rem; }}
+.{sid}-body {{ flex:1; }}
+.{sid}-text {{ font-size:1.75rem; font-weight:700; color:var(--brand-text); line-height:1.25; }}
+.{sid}-caption {{ font-size:1.15rem; font-weight:500; color:var(--brand-text-secondary); margin-top:0.25rem; line-height:1.4; }}
+"""
+    return {"html": html, "css": css, "js": "", "plugins": [], "audio_events": []}

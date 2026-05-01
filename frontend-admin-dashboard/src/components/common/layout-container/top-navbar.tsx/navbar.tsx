@@ -71,7 +71,6 @@ import AccountDetailsEdit from '@/routes/dashboard/-components/AccountDetailsEdi
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { useCompactMode } from '@/hooks/use-compact-mode';
-import { CompactModeToggle } from '@/components/compact-mode/CompactModeToggle';
 import { useAiCreditsQuery } from '@/services/ai-credits/get-ai-credits';
 import { AiCreditsPanel } from '@/components/common/ai-credits/AiCreditsPanel';
 import {
@@ -802,9 +801,6 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                 </Dialog>
 
                 {roles.includes('STUDENT') && <SSOSwitcher variant="button" className="" />}
-
-                {/* Compact Mode Toggle */}
-                <CompactModeToggle variant="icon" showPopover={true} />
 
                 {/* User profile dropdown */}
                 <div className="flex items-center gap-1">

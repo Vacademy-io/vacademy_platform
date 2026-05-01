@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from skill_registry import get_registry, validate_params
 
@@ -52,9 +52,33 @@ def compose(shot_html: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
     aggregated_js: List[str] = []
     aggregated_audio_events: List[Dict[str, Any]] = []
 
+    def _try_static_fallback(skill_id: str, params: Dict[str, Any], reason: str) -> Optional[Dict[str, Any]]:
+        """Attempt the skill's static fallback. Returns rendered dict or None."""
+        skill = reg.get(skill_id)
+        if not skill:
+            return None
+        fb = skill.get("static_fallback")
+        if not callable(fb):
+            return None
+        try:
+            result = fb(params, ctx)
+        except Exception as fe:
+            print(f"[skill_composer] {skill_id} static_fallback also raised: {fe}")
+            return None
+        if not isinstance(result, dict) or not (result.get("html", "") or "").strip():
+            return None
+        print(f"[skill_composer] {skill_id} fell back to static (reason: {reason})")
+        return result
+
     def _replace(match: re.Match) -> str:
         skill_id = match.group(1)
         params_raw = match.group(3)
+
+        # Track whether the result came from the static fallback so the single
+        # invocation append at the bottom can record it accurately.
+        fallback_reason: Optional[str] = None
+        rendered: Optional[Dict[str, Any]] = None
+        params: Dict[str, Any] = {}
 
         # Parse params
         try:
@@ -62,49 +86,65 @@ def compose(shot_html: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
             if not isinstance(params, dict):
                 raise ValueError("params must be a JSON object")
         except (json.JSONDecodeError, ValueError) as e:
-            invocations.append({
-                "skill_id": skill_id,
-                "valid": False,
-                "issues": [f"params JSON error: {e}"],
-            })
-            return f"<!-- skill {skill_id}: params JSON error -->"
+            # Bad params — try static fallback (skill is responsible for sensible defaults)
+            fb = _try_static_fallback(skill_id, {}, f"params JSON error: {e}")
+            if fb:
+                rendered = fb
+                fallback_reason = f"params JSON error: {e}"
+            else:
+                invocations.append({
+                    "skill_id": skill_id, "valid": False,
+                    "issues": [f"params JSON error: {e}"],
+                })
+                return f"<!-- skill {skill_id}: params JSON error -->"
 
-        skill = reg.get(skill_id)
-        if not skill:
-            invocations.append({
-                "skill_id": skill_id,
-                "valid": False,
-                "issues": ["unknown skill (not in registry)"],
-            })
-            return f"<!-- skill {skill_id}: unknown -->"
+        if rendered is None:
+            skill = reg.get(skill_id)
+            if not skill:
+                invocations.append({
+                    "skill_id": skill_id, "valid": False,
+                    "issues": ["unknown skill (not in registry)"],
+                })
+                return f"<!-- skill {skill_id}: unknown -->"
 
-        valid, issues = validate_params(skill_id, params)
-        if not valid:
-            invocations.append({
-                "skill_id": skill_id,
-                "valid": False,
-                "issues": issues,
-            })
-            return f"<!-- skill {skill_id}: invalid params: {'; '.join(issues)} -->"
+            valid, issues = validate_params(skill_id, params)
+            if not valid:
+                fb = _try_static_fallback(skill_id, params, f"invalid params: {'; '.join(issues)}")
+                if fb:
+                    rendered = fb
+                    fallback_reason = f"invalid params: {'; '.join(issues)}"
+                else:
+                    invocations.append({
+                        "skill_id": skill_id, "valid": False, "issues": issues,
+                    })
+                    return f"<!-- skill {skill_id}: invalid params: {'; '.join(issues)} -->"
+            else:
+                # Invoke skill render. On any failure, try static fallback.
+                try:
+                    rendered = skill["render"](params, ctx)
+                except Exception as e:
+                    fb = _try_static_fallback(skill_id, params, f"render raised: {e}")
+                    if fb:
+                        rendered = fb
+                        fallback_reason = f"render raised: {e}"
+                    else:
+                        invocations.append({
+                            "skill_id": skill_id, "valid": False,
+                            "issues": [f"render error: {e}"],
+                        })
+                        return f"<!-- skill {skill_id}: render error -->"
 
-        # Invoke skill render
-        try:
-            rendered = skill["render"](params, ctx)
-        except Exception as e:
-            invocations.append({
-                "skill_id": skill_id,
-                "valid": False,
-                "issues": [f"render error: {e}"],
-            })
-            return f"<!-- skill {skill_id}: render error -->"
-
-        if not isinstance(rendered, dict):
-            invocations.append({
-                "skill_id": skill_id,
-                "valid": False,
-                "issues": ["render() did not return a dict"],
-            })
-            return f"<!-- skill {skill_id}: render error -->"
+                if not isinstance(rendered, dict):
+                    fb = _try_static_fallback(skill_id, params, "render did not return dict")
+                    if fb:
+                        rendered = fb
+                        fallback_reason = "render did not return dict"
+                    else:
+                        invocations.append({
+                            "skill_id": skill_id, "valid": False,
+                            "issues": ["render() did not return a dict"],
+                        })
+                        return f"<!-- skill {skill_id}: render error -->"
 
         html_frag = rendered.get("html", "") or ""
         js_frag = rendered.get("js", "") or ""
@@ -122,12 +162,19 @@ def compose(shot_html: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(ev, dict) and "role" in ev and "t" in ev:
                 aggregated_audio_events.append(ev)
 
-        invocations.append({
+        # Single invocation append. `skill` may be unbound if we reached this
+        # point via the JSON-parse fallback path — look it up if so.
+        _skill_for_version = reg.get(skill_id) or {}
+        invocation: Dict[str, Any] = {
             "skill_id": skill_id,
             "valid": True,
-            "issues": [],
-            "version": skill.get("version"),
-        })
+            "issues": [f"used static fallback: {fallback_reason}"] if fallback_reason else [],
+            "version": _skill_for_version.get("version"),
+        }
+        if fallback_reason:
+            invocation["fallback"] = True
+            invocation["fallback_reason"] = fallback_reason
+        invocations.append(invocation)
         return html_frag
 
     new_html = _SKILL_TAG_RE.sub(_replace, shot_html)

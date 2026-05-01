@@ -313,7 +313,7 @@ export function VideoResult({
                     return;
                 }
                 try {
-                    const status = await getRenderStatus(jobId, key);
+                    const status = await getRenderStatus(jobId, key, videoId);
                     console.log(
                         `[VideoResult] Poll #${attempts} jobId=${jobId}:`,
                         status.status,
@@ -378,7 +378,7 @@ export function VideoResult({
                             `[VideoResult] Found saved render job in localStorage: jobId=${saved.jobId}`
                         );
                         // Verify the job is still alive
-                        getRenderStatus(saved.jobId, apiKey)
+                        getRenderStatus(saved.jobId, apiKey, videoId)
                             .then((status) => {
                                 console.log(
                                     `[VideoResult] Saved job status:`,

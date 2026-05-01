@@ -1788,6 +1788,236 @@ class VideoGenerationService:
         return video_record.to_dict()
 
 
+    def _build_regen_context(
+        self,
+        timeline_data: Any,
+        frame_index: int,
+        timeline_meta: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Extract run-level + neighbour-level context for the frame-regen LLM.
+
+        Returns a dict with:
+          - palette, style_guide, shot_pack (run-level, from timeline meta)
+          - target_shot_type (from the frame's _shot_type, when present)
+          - neighbour_shots (list of {position, shot_type, narration, visual_desc} for
+            up to 2 prev + 2 next shots)
+
+        Empty / missing fields degrade gracefully — old timelines (pre-2026-05)
+        without `_narration_excerpt` or `meta.shot_pack` simply yield an empty
+        context dict and the regen prompt falls back to the legacy minimal form.
+        """
+        meta = timeline_meta or {}
+        if not isinstance(meta, dict):
+            meta = {}
+
+        # Normalize to entries list
+        entries = (
+            timeline_data["entries"]
+            if isinstance(timeline_data, dict) and "entries" in timeline_data
+            else timeline_data
+        )
+        if not isinstance(entries, list):
+            entries = []
+
+        ctx: Dict[str, Any] = {}
+        palette = meta.get("palette") if isinstance(meta.get("palette"), dict) else None
+        if palette:
+            ctx["palette"] = palette
+        style_guide = meta.get("style_guide") if isinstance(meta.get("style_guide"), dict) else None
+        if style_guide:
+            ctx["style_guide"] = style_guide
+        shot_pack = meta.get("shot_pack") if isinstance(meta.get("shot_pack"), dict) else None
+        if shot_pack:
+            ctx["shot_pack"] = shot_pack
+        ctx["dimensions"] = meta.get("dimensions") or {"width": 1920, "height": 1080}
+
+        # Target shot's stash fields (kept in published timeline since 2026-05)
+        if 0 <= frame_index < len(entries):
+            target = entries[frame_index]
+            ctx["target_shot_type"] = target.get("_shot_type") or ""
+            ctx["target_narration"] = target.get("_narration_excerpt") or ""
+            ctx["target_visual_description"] = target.get("_visual_description") or ""
+            ctx["target_template_id"] = target.get("_template_id") or ""
+
+        # Window of up to 2 prev + 2 next shots — gives the LLM continuity
+        # signal without ballooning the prompt.
+        neighbours: List[Dict[str, Any]] = []
+        for offset in (-2, -1, 1, 2):
+            j = frame_index + offset
+            if 0 <= j < len(entries) and j != frame_index:
+                e = entries[j]
+                neighbours.append({
+                    "position": "prev" if offset < 0 else "next",
+                    "offset": offset,
+                    "shot_type": e.get("_shot_type") or "",
+                    "narration": (e.get("_narration_excerpt") or "")[:160],
+                    "visual_desc": (e.get("_visual_description") or "")[:160],
+                })
+        if neighbours:
+            ctx["neighbours"] = neighbours
+
+        return ctx
+
+    def _build_regen_prompt(
+        self,
+        context: Dict[str, Any],
+        original_html: str,
+        user_prompt: str,
+    ) -> tuple[str, str]:
+        """Build the (system, user) prompt pair for frame regeneration.
+
+        Composes run-level brand context + neighbour summary + skill catalog
+        into the system prompt so the regenerated shot stays consistent with
+        the rest of the timeline. Falls back to the legacy minimal prompt
+        when context is empty (old timelines).
+        """
+        import json as _json
+
+        # If we have no run context at all (legacy timeline), use the original
+        # minimal prompt — never regress.
+        if not context.get("palette") and not context.get("shot_pack"):
+            system = (
+                "You are an expert HTML/CSS developer for educational videos. "
+                "Modify the provided HTML frame based on the user's request.\n\n"
+                "RULES:\n"
+                "1. Keep the HTML structure valid and responsive.\n"
+                "2. PRESERVE all existing image tags <img src='...'> exactly. "
+                "Do not change image sources.\n"
+                "3. Apply requested text or CSS changes.\n"
+                "4. Return ONLY the new HTML code. No markdown, no explanations."
+            )
+            user = (
+                f"ORIGINAL HTML:\n{original_html}\n\n"
+                f"USER INSTRUCTION:\n{user_prompt}\n\nGenerate the updated HTML:"
+            )
+            return system, user
+
+        # Rich context path — build a designer-grade system prompt
+        sections: List[str] = []
+        sections.append(
+            "You are the editor for an existing AI-generated educational video. "
+            "A specific frame needs to be modified. The rest of the timeline is "
+            "FROZEN — your edit must look stylistically continuous with its "
+            "neighbours. Use the run's brand tokens, motion strategy, and "
+            "neighbour context below to stay on-brand."
+        )
+
+        sections.append("\n## RUN CONTEXT (do not violate)")
+
+        palette = context.get("palette") or {}
+        if palette:
+            sections.append(
+                "\n**Brand palette** (use the CSS variables, not raw hex):\n"
+                f"  --brand-primary: {palette.get('primary', '?')}\n"
+                f"  --brand-accent: {palette.get('accent', '?')}\n"
+                f"  --brand-text: {palette.get('text', '?')}\n"
+                f"  --brand-text-secondary: {palette.get('text_secondary', '?')}\n"
+                f"  --brand-bg: {palette.get('background', '?')}"
+            )
+
+        sg = context.get("style_guide") or {}
+        if sg:
+            sections.append(
+                "\n**Run style guide**:\n"
+                f"  Background type: {sg.get('background_type') or 'n/a'}\n"
+                f"  Layout theme:    {sg.get('layout_theme') or 'n/a'}\n"
+                f"  Motion strategy: {sg.get('motion_strategy') or 'n/a'}"
+            )
+
+        sp = context.get("shot_pack") or {}
+        if sp:
+            # Compact serialization — JSON is fine; the LLM reads it
+            sections.append(
+                "\n**Shot pack — single source of design truth for this video** "
+                "(use these tokens verbatim):\n```json\n"
+                + _json.dumps(sp, indent=2, ensure_ascii=False)
+                + "\n```\n"
+                "Rules:\n"
+                "- COLORS: use only color_tokens CSS vars (var(--brand-primary) etc.). Never hardcode brand hex.\n"
+                "- TYPOGRAPHY: use font_scale values. Never invent your own size.\n"
+                "- SPACING: use spacing tokens; safe_area for outer padding.\n"
+                "- EASES: use ease tokens in GSAP tweens."
+            )
+
+        target_shot_type = context.get("target_shot_type", "")
+        target_narration = context.get("target_narration", "")
+        target_visual = context.get("target_visual_description", "")
+        target_template = context.get("target_template_id", "")
+        if target_shot_type or target_narration or target_visual or target_template:
+            sections.append("\n## TARGET FRAME (the one being edited)")
+            if target_shot_type:
+                sections.append(f"  Shot type: {target_shot_type}")
+            if target_template:
+                sections.append(
+                    f"  Originally rendered from template: `{target_template}`. "
+                    "Your edit can stay template-shaped or break free — your call, "
+                    "but visual consistency with the rest of the timeline is non-negotiable."
+                )
+            if target_narration:
+                sections.append(f"  Narration excerpt: \"{target_narration[:280]}\"")
+            if target_visual:
+                sections.append(f"  Original visual direction: \"{target_visual[:240]}\"")
+
+        neighbours = context.get("neighbours") or []
+        if neighbours:
+            sections.append("\n## NEIGHBOURING SHOTS (for continuity reference)")
+            for n in neighbours:
+                label = "Previous" if n["position"] == "prev" else "Next"
+                shot_type = n.get("shot_type") or "?"
+                narr = n.get("narration") or ""
+                vis = n.get("visual_desc") or ""
+                line = f"- {label} (offset {n['offset']:+d}, {shot_type}):"
+                if narr:
+                    line += f" narration=\"{narr}\""
+                if vis:
+                    line += f" visual=\"{vis}\""
+                sections.append(line)
+            sections.append(
+                "\nDo NOT redesign — your edit should feel like the same designer "
+                "produced the surrounding shots."
+            )
+
+        # Skill catalog — only when we know the target shot type and the registry imports
+        if target_shot_type:
+            try:
+                if str(self.video_gen_root) not in sys.path:
+                    sys.path.insert(0, str(self.video_gen_root))
+                from skill_registry import build_catalog_for_shot  # type: ignore
+                # Use ultra catalog as a reasonable upper bound; the regen LLM
+                # can reach for any skill the original run could have.
+                canvas = "portrait" if (
+                    int(context.get("dimensions", {}).get("width", 1920))
+                    < int(context.get("dimensions", {}).get("height", 1080))
+                ) else "landscape"
+                catalog = build_catalog_for_shot(target_shot_type, "ultra", canvas)
+                if catalog and catalog.strip():
+                    sections.append("\n## SKILL CATALOG (drop <skill> tags as needed)")
+                    sections.append(catalog)
+            except Exception:
+                pass  # registry import / catalog build is best-effort
+
+        sections.append(
+            "\n## OUTPUT RULES\n"
+            "1. PRESERVE existing `<img src=\"...\">` tags exactly — do not change image URLs.\n"
+            "2. PRESERVE `data-img-prompt`, `data-video-query`, and `data-subject-id` attributes — "
+            "they drive downstream image/video selection.\n"
+            "3. Use the brand CSS variables from RUN CONTEXT — never hardcode brand colors.\n"
+            "4. Reuse the shot pack's font_scale and spacing tokens — never pick your own.\n"
+            "5. Keep the outer wrapper as `<div id=\"shot-root\" style=\"position:relative;width:100%;height:100%;overflow:hidden\">…</div>`.\n"
+            "6. Use named GSAP eases (power3.out / back.out / expo.out) — never `linear` unless intentional.\n"
+            "7. Never use `setTimeout`. Use `gsap.delayedCall` or tween `delay:` values.\n"
+            "8. Never wrap inline scripts in `window.addEventListener('load', …)` — won't fire in the render server's shadow DOM.\n"
+            "9. Return ONLY the new HTML code. No markdown fences, no commentary."
+        )
+
+        system = "\n".join(sections)
+        user = (
+            f"ORIGINAL HTML:\n{original_html}\n\n"
+            f"USER INSTRUCTION:\n{user_prompt}\n\n"
+            f"Return the updated HTML with the run context honored."
+        )
+        return system, user
+
     async def regenerate_video_frame(
         self,
         video_id: str,
@@ -1868,32 +2098,24 @@ class VideoGenerationService:
                     raise ValueError("Empty timeline")
             
             original_html = target_frame.get("html", "")
-            
-            # 4. Call LLM to regenerate HTML
+
+            # 4. Build run-context-aware regen prompt. Reads palette / style_guide
+            #    / shot_pack from timeline meta and pulls neighbour shots'
+            #    narration_excerpt + visual_description so the regenerated frame
+            #    stays stylistically continuous with the rest of the timeline.
+            #    Falls back to a minimal prompt for legacy timelines that don't
+            #    carry these fields.
+            timeline_meta = (
+                raw["meta"] if isinstance(raw, dict) and isinstance(raw.get("meta"), dict) else {}
+            )
+            regen_context = self._build_regen_context(timeline_data, frame_index, timeline_meta)
+            system_prompt, user_message = self._build_regen_prompt(
+                regen_context, original_html, user_prompt
+            )
+
+            # 5. Call LLM to regenerate HTML
             from ..config import get_settings
 
-            # Construct prompt
-            system_prompt = """
-            You are an expert HTML/CSS developer for educational videos. 
-            Your task is to modify the provided HTML frame based on the user's request.
-            
-            RULES:
-            1. Keep the HTML structure valid and responsive.
-            2. PRESERVE all existing image tags <img src="..."> exactly as they are. DO NOT change image sources.
-            3. Apply requested text or CSS style changes.
-            4. Return ONLY the new HTML code. No markdown, no explanations.
-            """
-            
-            user_message = f"""
-            ORIGINAL HTML:
-            {original_html}
-            
-            USER INSTRUCTION:
-            {user_prompt}
-            
-            Generate the updated HTML:
-            """
-            
             import requests
             settings = get_settings()
             

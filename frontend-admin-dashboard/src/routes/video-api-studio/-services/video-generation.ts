@@ -1023,16 +1023,20 @@ export interface RenderStatus {
 
 export async function getRenderStatus(
     jobId: string,
-    apiKey: string
+    apiKey: string,
+    videoId?: string,
 ): Promise<RenderStatus> {
-    const response = await fetch(
-        `${AI_SERVICE_BASE_URL}/external/video/v1/render/status/${jobId}`,
-        {
-            headers: {
-                'X-Institute-Key': apiKey,
-            },
-        }
-    );
+    // Pass video_id as a query param so the backend watchdog can detect
+    // stuck render jobs (jobs queued > RENDER_TIMEOUT_SECONDS), mark them
+    // failed, and refund credits. Without video_id the watchdog is a no-op.
+    const url = videoId
+        ? `${AI_SERVICE_BASE_URL}/external/video/v1/render/status/${jobId}?video_id=${encodeURIComponent(videoId)}`
+        : `${AI_SERVICE_BASE_URL}/external/video/v1/render/status/${jobId}`;
+    const response = await fetch(url, {
+        headers: {
+            'X-Institute-Key': apiKey,
+        },
+    });
 
     if (!response.ok) {
         throw new Error(`Failed to get render status: ${response.statusText}`);

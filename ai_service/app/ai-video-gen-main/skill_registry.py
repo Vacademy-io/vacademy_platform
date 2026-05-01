@@ -56,6 +56,11 @@ def _load_skill_module(skill_dir: Path) -> Optional[Dict[str, Any]]:
     meta = getattr(module, "METADATA", None)
     schema = getattr(module, "PARAMS_SCHEMA", None)
     render = getattr(module, "render", None)
+    # Optional: a static (no-animation, no-LLM-needed) fallback the composer
+    # invokes when render() raises or params fail validation. Lets the shot
+    # ship a still version of the visual instead of a `<!-- skill X: ... -->`
+    # placeholder comment that produces a visible gap.
+    static_fallback = getattr(module, "static_fallback", None)
     if not isinstance(meta, dict) or not callable(render):
         print(f"[skill_registry] {skill_dir.name} missing METADATA or render()")
         return None
@@ -76,6 +81,7 @@ def _load_skill_module(skill_dir: Path) -> Optional[Dict[str, Any]]:
         "requires_canvas": meta.get("requires_canvas", "any"),
         "params_schema": schema or {},
         "render": render,
+        "static_fallback": static_fallback if callable(static_fallback) else None,
         "example_params": meta.get("example_params", {}),
     }
 

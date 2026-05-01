@@ -228,6 +228,10 @@ export interface VideoEditorState {
 
     // Selection
     selectedEntryId: string | null;
+    /** DOM path within the selected entry's HTML — drives the Layers tab and
+     *  (eventually) the on-canvas selection handles. Cleared when a different
+     *  entry is selected. */
+    selectedLayerPath: number[] | null;
 
     // Mode
     isPreviewMode: boolean;
@@ -279,6 +283,7 @@ export interface VideoEditorState {
     loadTimeline: () => Promise<void>;
     seek: (time: number) => void;
     selectEntry: (id: string | null) => void;
+    selectLayer: (path: number[] | null) => void;
     togglePreviewMode: () => void;
     updateEntryHtml: (entryId: string, newHtml: string) => void;
     /** Remove one scheduled sound effect from an entry. The entry is
@@ -419,6 +424,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     error: null,
     currentTime: 0,
     selectedEntryId: null,
+    selectedLayerPath: null,
     isPreviewMode: false,
     dirtyEntryIds: [],
     newEntryIds: [],
@@ -448,6 +454,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             error: null,
             currentTime: 0,
             selectedEntryId: null,
+            selectedLayerPath: null,
             isPreviewMode: false,
             dirtyEntryIds: [],
             newEntryIds: [],
@@ -507,7 +514,13 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     naturalDurations[e.id] = dur;
                 }
             }
-            set({ entries, meta, audioTracks: meta.audio_tracks ?? [], isLoading: false, naturalDurations });
+            set({
+                entries,
+                meta,
+                audioTracks: meta.audio_tracks ?? [],
+                isLoading: false,
+                naturalDurations,
+            });
         } catch (err) {
             set({
                 error: err instanceof Error ? err.message : 'Failed to load timeline',
@@ -518,10 +531,22 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
 
     seek: (time) => set({ currentTime: time }),
 
-    selectEntry: (id) => set({ selectedEntryId: id }),
+    selectEntry: (id) =>
+        set((s) => ({
+            selectedEntryId: id,
+            // Clear the layer selection whenever the entry context changes —
+            // a path is only meaningful within one entry's HTML.
+            selectedLayerPath: id === s.selectedEntryId ? s.selectedLayerPath : null,
+        })),
+
+    selectLayer: (path) => set({ selectedLayerPath: path }),
 
     togglePreviewMode: () =>
-        set((s) => ({ isPreviewMode: !s.isPreviewMode, selectedEntryId: null })),
+        set((s) => ({
+            isPreviewMode: !s.isPreviewMode,
+            selectedEntryId: null,
+            selectedLayerPath: null,
+        })),
 
     updateEntryHtml: (entryId, newHtml) => {
         set((s) => ({
@@ -791,8 +816,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 (entry.exitTime ?? entry.end ?? 0) - (entry.inTime ?? entry.start ?? 0);
             if (currentDur <= 0) return {};
             // Natural duration: read from previously baked attribute, or session snapshot.
-            const baseDur =
-                readTimescaleBaseDur(entry.html ?? '') ?? s.naturalDurations[entryId];
+            const baseDur = readTimescaleBaseDur(entry.html ?? '') ?? s.naturalDurations[entryId];
             if (!baseDur || baseDur <= 0) return {};
             const speed = baseDur / currentDur;
             const newHtml = injectTimescaleScript(entry.html, speed, baseDur);

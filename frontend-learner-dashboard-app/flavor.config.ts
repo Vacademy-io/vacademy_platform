@@ -57,6 +57,13 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "fivesep",
   },
 
+  // Shiksha Nation iOS app
+  "io.shikshanation.app": {
+    appName: "Shiksha Nation",
+    domain: "shikshanation.com",
+    subdomain: "learner",
+  },
+
   // Shiksha Nation Android & Electron app
   "com.shikshanation.new.app": {
     appName: "Shiksha Nation",

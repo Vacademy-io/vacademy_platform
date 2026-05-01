@@ -32,16 +32,14 @@
 		0E5CB23D2F0ABC0800089DAC /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		0E5CB23E2F0ABC0800089DAC /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		0E5CB23F2F0ABC0800089DAC /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		0E6322D32FA4C995002966B3 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E6322D22FA4C995002966B3 /* GoogleService-Info.plist */; };
 		0EB0C0E82F73B79D003DA394 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
-		0EB0C0EC2F73B79D003DA394 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */; };
-		0EB0C0ED2F73B79D003DA394 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
 		0EB0C0EE2F73B79D003DA394 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		0EB0C0EF2F73B79D003DA394 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		0EB0C0F02F73B79D003DA394 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		0EB0C0F12F73B79D003DA394 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		0EB0C0F22F73B79D003DA394 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		0EB0C0F32F73B79D003DA394 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
-		0EB0C0FB2F73B8AA003DA394 /* ShikshaNation-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EB0C0FA2F73B8AA003DA394 /* ShikshaNation-Info.plist */; };
 		0EFC07AD2F0BAA7600B3FC57 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
 		0EFC07AF2F0BAAB200B3FC57 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */; };
 		0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
@@ -63,7 +61,7 @@
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		7411584DD8EBBB621F299383 /* Pods_the7cs.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */; };
 		9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF80D54945E534E81704718B /* Pods_Five_Sep.framework */; };
-		9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
+		9DC19BA1DC8A586B110A7BD1 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		B6EF8EEE4CC97793718ECA52 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
 		C0A3B7F3498147EF92F90117 /* Pods_Shiksha_Nation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */; };
@@ -78,9 +76,8 @@
 		0E3507AF2F1C932000F1F9F9 /* SSDC-HORIZON-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "SSDC-HORIZON-Info.plist"; path = "/Users/neerajhariyale/development/frontend-learner-dashboard-app/ios/App/SSDC-HORIZON-Info.plist"; sourceTree = "<absolute>"; };
 		0E5CB2442F0ABC0800089DAC /* Five Sep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Five Sep.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "ithinkersByFiveSep-Info.plist"; sourceTree = "<group>"; };
+		0E6322D22FA4C995002966B3 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		0EB0C0F82F73B79D003DA394 /* Shiksha Nation.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shiksha Nation.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		0EB0C0F92F73B79D003DA394 /* SSDC Horizon copy2-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "SSDC Horizon copy2-Info.plist"; path = "/Users/neerajhariyale/development/Vacademy/vacademy_platform/frontend-learner-dashboard-app/ios/App/SSDC Horizon copy2-Info.plist"; sourceTree = "<absolute>"; };
-		0EB0C0FA2F73B8AA003DA394 /* ShikshaNation-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "ShikshaNation-Info.plist"; sourceTree = "<group>"; };
 		0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		1AAA00092F25A00000000009 /* Uplift Teacher Training.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Uplift Teacher Training.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1AAA000A2F25A0000000000A /* Enark-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Enark-Info.plist"; sourceTree = "<group>"; };
@@ -135,7 +132,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */,
+				9DC19BA1DC8A586B110A7BD1 /* (null) in Frameworks */,
 				9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -184,7 +181,7 @@
 		504EC2FB1FED79650016851F = {
 			isa = PBXGroup;
 			children = (
-				0EB0C0FA2F73B8AA003DA394 /* ShikshaNation-Info.plist */,
+				0E6322D22FA4C995002966B3 /* GoogleService-Info.plist */,
 				0EFC07AE2F0BAAB200B3FC57 /* GoogleService-Info.plist */,
 				504EC3061FED79650016851F /* App */,
 				504EC3051FED79650016851F /* Products */,
@@ -193,7 +190,6 @@
 				0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */,
 				0E35079A2F1C931700F1F9F9 /* the7cs-Info.plist */,
 				0E3507AF2F1C932000F1F9F9 /* SSDC-HORIZON-Info.plist */,
-				0EB0C0F92F73B79D003DA394 /* SSDC Horizon copy2-Info.plist */,
 				1AAA000A2F25A0000000000A /* Enark-Info.plist */,
 				1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */,
 			);
@@ -467,9 +463,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0EB0C0FB2F73B8AA003DA394 /* ShikshaNation-Info.plist in Resources */,
-				0EB0C0EC2F73B79D003DA394 /* GoogleService-Info.plist in Resources */,
-				0EB0C0ED2F73B79D003DA394 /* ithinkersByFiveSep-Info.plist in Resources */,
+				0E6322D32FA4C995002966B3 /* GoogleService-Info.plist in Resources */,
 				0EB0C0EE2F73B79D003DA394 /* LaunchScreen.storyboard in Resources */,
 				0EB0C0EF2F73B79D003DA394 /* public in Resources */,
 				0EB0C0F02F73B79D003DA394 /* Assets.xcassets in Resources */,
@@ -809,7 +803,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
-				INFOPLIST_FILE = "the7cs-Info.plist";
+				INFOPLIST_FILE = "GoogleServiceConfigs/the7cs/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = the7cs;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -832,7 +826,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
-				INFOPLIST_FILE = "the7cs-Info.plist";
+				INFOPLIST_FILE = "GoogleServiceConfigs/the7cs/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = the7cs;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -854,7 +848,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 7XKD5M7288;
-				INFOPLIST_FILE = "SSDC-HORIZON-Info.plist";
+				INFOPLIST_FILE = "GoogleServiceConfigs/SSDC-Horizon/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "SSDC Horizon";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -877,7 +871,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 7XKD5M7288;
-				INFOPLIST_FILE = "SSDC-HORIZON-Info.plist";
+				INFOPLIST_FILE = "GoogleServiceConfigs/SSDC-Horizon/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "SSDC Horizon";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
@@ -897,13 +891,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = FiveSepIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
-				INFOPLIST_FILE = "ithinkersByFiveSep-Info.plist";
+				INFOPLIST_FILE = "GoogleServiceConfigs/Five-Sep/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "iThinkers by Fivesep";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.3;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.fivesep.student.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -920,13 +914,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = FiveSepIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
-				INFOPLIST_FILE = "ithinkersByFiveSep-Info.plist";
+				INFOPLIST_FILE = "GoogleServiceConfigs/Five-Sep/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "iThinkers by Fivesep";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = io.fivesep.student.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -942,14 +936,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 7XKD5M7288;
-				INFOPLIST_FILE = "SSDC Horizon copy2-Info.plist";
+				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.4;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanation.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -966,14 +960,14 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 7XKD5M7288;
-				INFOPLIST_FILE = "SSDC Horizon copy2-Info.plist";
+				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanation.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -991,12 +985,12 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
-				INFOPLIST_FILE = "Enark-Info.plist";
+				INFOPLIST_FILE = "GoogleServiceConfigs/Uplift-Teacher-Training/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Uplift Teacher Training";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.8;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.enarkuplift.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1015,12 +1009,12 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
-				INFOPLIST_FILE = "Enark-Info.plist";
+				INFOPLIST_FILE = "GoogleServiceConfigs/Uplift-Teacher-Training/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Uplift Teacher Training";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.1;
+				MARKETING_VERSION = 1.0.8;
 				PRODUCT_BUNDLE_IDENTIFIER = io.enarkuplift.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";

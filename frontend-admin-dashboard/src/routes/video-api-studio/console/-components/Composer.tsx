@@ -16,8 +16,6 @@ import { toast } from 'sonner';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId } from '@/utils/userDetails';
 import { getInstituteId } from '@/constants/helper';
-import { GET_VIDEO_STYLE, GET_VIDEO_BRANDING } from '@/constants/urls';
-import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     handleStartProcessUploadedFile,
     handleConvertPDFToHTML,
@@ -32,12 +30,22 @@ import {
     fetchTtsVoices,
     fetchRoutePreview,
 } from '../../-services/video-generation';
+import {
+    type VideoBrandingConfig,
+    type VideoStyleConfig,
+    type VideoTemplate,
+    DEFAULT_VIDEO_BRANDING,
+    DEFAULT_VIDEO_STYLE,
+    fetchVideoBranding,
+    fetchVideoStyle,
+    fetchVideoTemplates,
+} from '../../-services/video-style-branding';
 import { useAIModelsList } from '@/hooks/useAiModels';
 import { useAiCreditsQuery } from '@/services/ai-credits/get-ai-credits';
 import { LatexRenderer } from '../../-components/LatexRenderer';
 import { CostPreviewInline, CostPreviewModal, useCostPreview } from '../../-components/CostPreview';
 import { ContextTray, AttachmentItem, IndexedVideoItem } from './ContextTray';
-import { SettingsPopover, VideoStyleInfo, VideoBrandingInfo } from './SettingsPopover';
+import { SettingsPopover } from './SettingsPopover';
 import { SourceVideoPopover } from './SourceVideoPopover';
 
 interface ComposerProps {
@@ -108,9 +116,11 @@ export function Composer({
     const [playingVoiceId, setPlayingVoiceId] = useState<string | null>(null);
     const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
-    // Style + branding (read-only display fed into SettingsPopover)
-    const [videoStyle, setVideoStyle] = useState<VideoStyleInfo | null>(null);
-    const [videoBranding, setVideoBranding] = useState<VideoBrandingInfo | null>(null);
+    // Institute-wide style + branding. Initialized with defaults so the Settings
+    // sheet always has a valid editing target, even before fetch resolves.
+    const [videoStyle, setVideoStyle] = useState<VideoStyleConfig>(DEFAULT_VIDEO_STYLE);
+    const [videoBranding, setVideoBranding] = useState<VideoBrandingConfig>(DEFAULT_VIDEO_BRANDING);
+    const [videoTemplates, setVideoTemplates] = useState<VideoTemplate[]>([]);
 
     const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
 
@@ -235,31 +245,19 @@ export function Composer({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [modelsList, options.quality_tier]);
 
-    // Fetch video style + branding
+    // Fetch video style + branding + templates (institute-wide config).
     useEffect(() => {
         const instituteId = getInstituteId();
         if (!instituteId) return;
-        authenticatedAxiosInstance
-            .get(GET_VIDEO_STYLE(instituteId))
-            .then((res) => {
-                if (res.data?.style) {
-                    setVideoStyle({
-                        ...res.data.style,
-                        has_custom_style: res.data.has_custom_style,
-                    });
-                } else if (res.data) {
-                    setVideoStyle(res.data);
-                }
-            })
-            .catch(() => {});
-        authenticatedAxiosInstance
-            .get(GET_VIDEO_BRANDING(instituteId))
-            .then((res) => {
-                if (res.data?.branding) {
-                    setVideoBranding(res.data.branding);
-                }
-            })
-            .catch(() => {});
+        fetchVideoStyle(instituteId)
+            .then(setVideoStyle)
+            .catch((err) => console.error('Fetch video style failed', err));
+        fetchVideoBranding(instituteId)
+            .then(setVideoBranding)
+            .catch((err) => console.error('Fetch video branding failed', err));
+        fetchVideoTemplates()
+            .then(setVideoTemplates)
+            .catch((err) => console.error('Fetch video templates failed', err));
     }, []);
 
     // Fetch TTS voices when language/gender/provider changes
@@ -850,7 +848,10 @@ export function Composer({
                             playingVoiceId={playingVoiceId}
                             onPlayPreview={handlePlayPreview}
                             videoStyle={videoStyle}
+                            onVideoStyleChange={setVideoStyle}
                             videoBranding={videoBranding}
+                            onVideoBrandingChange={setVideoBranding}
+                            videoTemplates={videoTemplates}
                             models={models}
                         />
 

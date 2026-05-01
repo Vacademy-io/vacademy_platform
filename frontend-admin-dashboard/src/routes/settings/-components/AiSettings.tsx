@@ -19,12 +19,21 @@ import {
     GET_INSITITUTE_SETTINGS,
     GET_INSTITUTE_AI_SETTINGS,
     UPDATE_INSTITUTE_AI_SETTINGS,
-    GET_VIDEO_BRANDING,
-    UPDATE_VIDEO_BRANDING,
-    GET_VIDEO_STYLE,
-    UPDATE_VIDEO_STYLE,
-    GET_VIDEO_TEMPLATES,
 } from '@/constants/urls';
+import {
+    type VideoBrandingConfig,
+    type VideoStyleConfig,
+    type VideoTemplate,
+    DEFAULT_VIDEO_BRANDING,
+    DEFAULT_VIDEO_STYLE,
+    FONT_OPTIONS,
+    WATERMARK_POSITIONS,
+    fetchVideoBranding,
+    fetchVideoStyle,
+    fetchVideoTemplates,
+    updateVideoBranding,
+    updateVideoStyle,
+} from '@/routes/video-api-studio/-services/video-style-branding';
 import { ColorPicker } from '@/components/ui/color-picker';
 import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
@@ -81,7 +90,7 @@ interface TutorConfiguration {
         temperature: number;
     };
     enabled_modes?: string[];
-    chatbot_pages?: string[];  // Array of enabled page category keys
+    chatbot_pages?: string[]; // Array of enabled page category keys
     voice_settings?: {
         default_language: string;
         default_voice: string;
@@ -110,73 +119,6 @@ interface ActivityLogResponse {
 import { useAIModelsList } from '@/hooks/useAiModels';
 import KnowledgeBase from './KnowledgeBase';
 
-// ─── Video Branding & Style types ─────────────────────────────────────────
-
-interface VideoIntroOutroConfig {
-    enabled: boolean;
-    duration_seconds: number;
-    html: string;
-}
-
-interface VideoWatermarkConfig {
-    enabled: boolean;
-    position: string;
-    opacity: number;
-    html: string;
-    max_width?: number;
-    max_height?: number;
-    margin?: number;
-}
-
-interface VideoBrandingConfig {
-    intro: VideoIntroOutroConfig;
-    outro: VideoIntroOutroConfig;
-    watermark: VideoWatermarkConfig;
-}
-
-interface VideoStyleConfig {
-    background_type: 'white' | 'black';
-    primary_color: string;
-    heading_font: string;
-    body_font: string;
-    layout_theme: string;
-}
-
-const DEFAULT_VIDEO_BRANDING: VideoBrandingConfig = {
-    intro: { enabled: false, duration_seconds: 3, html: '' },
-    outro: { enabled: false, duration_seconds: 4, html: '' },
-    watermark: { enabled: false, position: 'top-right', opacity: 0.5, html: '' },
-};
-
-const DEFAULT_VIDEO_STYLE: VideoStyleConfig = {
-    background_type: 'white',
-    primary_color: '#6366f1',
-    heading_font: 'Inter',
-    body_font: 'Inter',
-    layout_theme: '',
-};
-
-interface VideoTemplate {
-    id: string;
-    name: string;
-    description: string;
-    tags: string[];
-    background_type: 'white' | 'black';
-    preview_html: string;
-}
-
-const FONT_OPTIONS = [
-    'Inter', 'Roboto', 'Open Sans', 'Poppins', 'Montserrat',
-    'Lato', 'Playfair Display', 'Source Serif 4',
-];
-
-const WATERMARK_POSITIONS = [
-    { value: 'top-left',     label: 'Top Left' },
-    { value: 'top-right',    label: 'Top Right' },
-    { value: 'bottom-left',  label: 'Bottom Left' },
-    { value: 'bottom-right', label: 'Bottom Right' },
-];
-
 const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const [openaiKey, setOpenaiKey] = useState('');
     const [geminiKey, setGeminiKey] = useState('');
@@ -200,7 +142,9 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     const [tutorConfig, setTutorConfig] = useState<TutorConfiguration>({
         enable: false,
         role: 'Tutor',
-        assistant_name: instituteDetails?.institute_name ? `${instituteDetails.institute_name} Chatbot` : 'Vacademy Chatbot',
+        assistant_name: instituteDetails?.institute_name
+            ? `${instituteDetails.institute_name} Chatbot`
+            : 'Vacademy Chatbot',
         institute_name: instituteDetails?.institute_name || 'Vacademy',
         core_instruction: 'You are a helpful tutor assisting students with their doubts.',
         hard_rules: [
@@ -336,7 +280,9 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                 // Cache in localStorage for fast access by AI copilot pages
                 localStorage.setItem('ai_copilot_setting', JSON.stringify(data));
             }
-        } catch { /* no settings yet */ }
+        } catch {
+            /* no settings yet */
+        }
     }, [instituteId]);
 
     const handleSaveCopilotSettings = async () => {
@@ -347,7 +293,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
             await authenticatedAxiosInstance.post(
                 `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`,
                 { setting_name: 'AI Copilot Configuration', setting_data: settingData },
-                { params: { instituteId, settingKey: 'AI_COPILOT_SETTING' } },
+                { params: { instituteId, settingKey: 'AI_COPILOT_SETTING' } }
             );
             // Update localStorage cache
             localStorage.setItem('ai_copilot_setting', JSON.stringify(settingData));
@@ -385,22 +331,13 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     }, [instituteId]);
 
     // Fetch Video Branding
-    const fetchVideoBranding = useCallback(async () => {
+    const loadVideoBranding = useCallback(async () => {
         if (!instituteId) return;
         setIsLoadingBranding(true);
         try {
-            const response = await authenticatedAxiosInstance.get(GET_VIDEO_BRANDING(instituteId));
-            if (response.data?.branding) {
-                setVideoBranding({
-                    intro: { ...DEFAULT_VIDEO_BRANDING.intro, ...response.data.branding.intro },
-                    outro: { ...DEFAULT_VIDEO_BRANDING.outro, ...response.data.branding.outro },
-                    watermark: { ...DEFAULT_VIDEO_BRANDING.watermark, ...response.data.branding.watermark },
-                });
-            }
-        } catch (error: any) {
-            if (error.response?.status !== 404) {
-                console.error('Error fetching video branding:', error);
-            }
+            setVideoBranding(await fetchVideoBranding(instituteId));
+        } catch (error) {
+            console.error('Error fetching video branding:', error);
         } finally {
             setIsLoadingBranding(false);
         }
@@ -428,9 +365,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
 
         setIsSavingBranding(true);
         try {
-            await authenticatedAxiosInstance.post(UPDATE_VIDEO_BRANDING(instituteId), {
-                branding: videoBranding,
-            });
+            await updateVideoBranding(instituteId, videoBranding);
             toast.success('Video branding saved successfully!');
         } catch (error) {
             console.error('Error saving video branding:', error);
@@ -441,28 +376,22 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
     };
 
     // Fetch Video Style
-    const fetchVideoStyle = useCallback(async () => {
+    const loadVideoStyle = useCallback(async () => {
         if (!instituteId) return;
         setIsLoadingStyle(true);
         try {
-            const response = await authenticatedAxiosInstance.get(GET_VIDEO_STYLE(instituteId));
-            if (response.data?.style) {
-                setVideoStyle({ ...DEFAULT_VIDEO_STYLE, ...response.data.style });
-            }
-        } catch (error: any) {
-            if (error.response?.status !== 404) {
-                console.error('Error fetching video style:', error);
-            }
+            setVideoStyle(await fetchVideoStyle(instituteId));
+        } catch (error) {
+            console.error('Error fetching video style:', error);
         } finally {
             setIsLoadingStyle(false);
         }
     }, [instituteId]);
 
-    const fetchVideoTemplates = useCallback(async () => {
+    const loadVideoTemplates = useCallback(async () => {
         setIsLoadingTemplates(true);
         try {
-            const response = await authenticatedAxiosInstance.get(GET_VIDEO_TEMPLATES());
-            setVideoTemplates(response.data?.templates ?? []);
+            setVideoTemplates(await fetchVideoTemplates());
         } catch (error) {
             console.error('Error fetching video templates:', error);
         } finally {
@@ -475,9 +404,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
         if (!instituteId) return;
         setIsSavingStyle(true);
         try {
-            await authenticatedAxiosInstance.post(UPDATE_VIDEO_STYLE(instituteId), {
-                style: videoStyle,
-            });
+            await updateVideoStyle(instituteId, videoStyle);
             toast.success('Video style saved successfully!');
         } catch (error) {
             console.error('Error saving video style:', error);
@@ -524,14 +451,22 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                 fetchTutorSettings(),
                 fetchCopilotSettings(),
                 fetchInstituteAiSettings(),
-                fetchVideoBranding(),
-                fetchVideoStyle(),
-                fetchVideoTemplates(),
+                loadVideoBranding(),
+                loadVideoStyle(),
+                loadVideoTemplates(),
             ]);
             setIsLoading(false);
         };
         initialize();
-    }, [checkKeys, fetchTutorSettings, fetchCopilotSettings, fetchInstituteAiSettings, fetchVideoBranding, fetchVideoStyle, fetchVideoTemplates]);
+    }, [
+        checkKeys,
+        fetchTutorSettings,
+        fetchCopilotSettings,
+        fetchInstituteAiSettings,
+        loadVideoBranding,
+        loadVideoStyle,
+        loadVideoTemplates,
+    ]);
 
     // Fetch activity logs when page changes
     useEffect(() => {
@@ -547,9 +482,10 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                 ...prev,
                 institute_name: instituteDetails.institute_name || 'Vacademy',
                 // Only update assistant_name if it's still the default pattern
-                assistant_name: prev.assistant_name === 'Savir' || prev.assistant_name.endsWith(' Chatbot')
-                    ? `${instituteDetails.institute_name} Chatbot`
-                    : prev.assistant_name,
+                assistant_name:
+                    prev.assistant_name === 'Savir' || prev.assistant_name.endsWith(' Chatbot')
+                        ? `${instituteDetails.institute_name} Chatbot`
+                        : prev.assistant_name,
             }));
         }
     }, [instituteDetails]);
@@ -1216,8 +1152,8 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                             placeholder="e.g. CourseCrafter AI, CourseBot, AI Studio"
                         />
                         <p className="text-xs text-muted-foreground">
-                            This name appears as the heading and branding on the AI course creation screen.
-                            Leave empty to use the default "AI".
+                            This name appears as the heading and branding on the AI course creation
+                            screen. Leave empty to use the default "AI".
                         </p>
                     </div>
                 </CardContent>
@@ -1473,36 +1409,69 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     </div>
 
                     {/* Enabled Modes */}
-                    <div className="space-y-3 pt-4 border-t border-indigo-100">
+                    <div className="space-y-3 border-t border-indigo-100 pt-4">
                         <Label className="text-sm font-medium">Enabled Chat Modes</Label>
-                        <p className="text-xs text-muted-foreground">Choose which interaction modes are available to students</p>
+                        <p className="text-xs text-muted-foreground">
+                            Choose which interaction modes are available to students
+                        </p>
                         <div className="grid grid-cols-2 gap-2">
                             {[
-                                { key: 'general', label: 'General Chat', description: 'Free conversation' },
-                                { key: 'doubt', label: 'Ask Doubt', description: 'Question & answer' },
-                                { key: 'practice', label: 'Practice Quiz', description: 'MCQ practice' },
-                                { key: 'voice_interview', label: '🎤 Mock Interview', description: 'Voice interview practice' },
-                                { key: 'voice_doubt', label: '🎤 Voice Doubt', description: 'Discuss doubts via voice' },
-                                { key: 'voice_oral_test', label: '🎤 Oral Test', description: 'Voice-based testing' },
-                            ].map(mode => (
-                                <label key={mode.key} className="flex items-start gap-2 p-2 rounded-lg border border-indigo-100 hover:border-indigo-200 cursor-pointer">
+                                {
+                                    key: 'general',
+                                    label: 'General Chat',
+                                    description: 'Free conversation',
+                                },
+                                {
+                                    key: 'doubt',
+                                    label: 'Ask Doubt',
+                                    description: 'Question & answer',
+                                },
+                                {
+                                    key: 'practice',
+                                    label: 'Practice Quiz',
+                                    description: 'MCQ practice',
+                                },
+                                {
+                                    key: 'voice_interview',
+                                    label: '🎤 Mock Interview',
+                                    description: 'Voice interview practice',
+                                },
+                                {
+                                    key: 'voice_doubt',
+                                    label: '🎤 Voice Doubt',
+                                    description: 'Discuss doubts via voice',
+                                },
+                                {
+                                    key: 'voice_oral_test',
+                                    label: '🎤 Oral Test',
+                                    description: 'Voice-based testing',
+                                },
+                            ].map((mode) => (
+                                <label
+                                    key={mode.key}
+                                    className="flex cursor-pointer items-start gap-2 rounded-lg border border-indigo-100 p-2 hover:border-indigo-200"
+                                >
                                     <input
                                         type="checkbox"
-                                        checked={tutorConfig.enabled_modes?.includes(mode.key) ?? false}
+                                        checked={
+                                            tutorConfig.enabled_modes?.includes(mode.key) ?? false
+                                        }
                                         onChange={(e) => {
                                             const current = tutorConfig.enabled_modes || [];
                                             setTutorConfig({
                                                 ...tutorConfig,
                                                 enabled_modes: e.target.checked
                                                     ? [...current, mode.key]
-                                                    : current.filter(m => m !== mode.key),
+                                                    : current.filter((m) => m !== mode.key),
                                             });
                                         }}
                                         className="mt-0.5 rounded border-indigo-300"
                                     />
                                     <div>
                                         <span className="text-sm font-medium">{mode.label}</span>
-                                        <p className="text-xs text-muted-foreground">{mode.description}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {mode.description}
+                                        </p>
                                     </div>
                                 </label>
                             ))}
@@ -1510,19 +1479,31 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     </div>
 
                     {/* Voice Settings */}
-                    {tutorConfig.enabled_modes?.some(m => m.startsWith('voice_')) && (
-                        <div className="space-y-3 pt-4 border-t border-indigo-100">
+                    {tutorConfig.enabled_modes?.some((m) => m.startsWith('voice_')) && (
+                        <div className="space-y-3 border-t border-indigo-100 pt-4">
                             <Label className="text-sm font-medium">Voice Settings</Label>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <Label className="text-xs text-muted-foreground">Default Language</Label>
+                                    <Label className="text-xs text-muted-foreground">
+                                        Default Language
+                                    </Label>
                                     <select
-                                        value={tutorConfig.voice_settings?.default_language || 'en-IN'}
-                                        onChange={(e) => setTutorConfig({
-                                            ...tutorConfig,
-                                            voice_settings: { ...tutorConfig.voice_settings!, default_language: e.target.value, default_voice: tutorConfig.voice_settings?.default_voice || 'shubh' },
-                                        })}
-                                        className="w-full mt-1 rounded-md border border-indigo-100 px-2 py-1.5 text-sm"
+                                        value={
+                                            tutorConfig.voice_settings?.default_language || 'en-IN'
+                                        }
+                                        onChange={(e) =>
+                                            setTutorConfig({
+                                                ...tutorConfig,
+                                                voice_settings: {
+                                                    ...tutorConfig.voice_settings!,
+                                                    default_language: e.target.value,
+                                                    default_voice:
+                                                        tutorConfig.voice_settings?.default_voice ||
+                                                        'shubh',
+                                                },
+                                            })
+                                        }
+                                        className="mt-1 w-full rounded-md border border-indigo-100 px-2 py-1.5 text-sm"
                                     >
                                         <option value="en-IN">English (Indian)</option>
                                         <option value="hi-IN">Hindi</option>
@@ -1538,14 +1519,24 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                     </select>
                                 </div>
                                 <div>
-                                    <Label className="text-xs text-muted-foreground">Default Voice</Label>
+                                    <Label className="text-xs text-muted-foreground">
+                                        Default Voice
+                                    </Label>
                                     <select
                                         value={tutorConfig.voice_settings?.default_voice || 'shubh'}
-                                        onChange={(e) => setTutorConfig({
-                                            ...tutorConfig,
-                                            voice_settings: { ...tutorConfig.voice_settings!, default_voice: e.target.value, default_language: tutorConfig.voice_settings?.default_language || 'en-IN' },
-                                        })}
-                                        className="w-full mt-1 rounded-md border border-indigo-100 px-2 py-1.5 text-sm"
+                                        onChange={(e) =>
+                                            setTutorConfig({
+                                                ...tutorConfig,
+                                                voice_settings: {
+                                                    ...tutorConfig.voice_settings!,
+                                                    default_voice: e.target.value,
+                                                    default_language:
+                                                        tutorConfig.voice_settings
+                                                            ?.default_language || 'en-IN',
+                                                },
+                                            })
+                                        }
+                                        className="mt-1 w-full rounded-md border border-indigo-100 px-2 py-1.5 text-sm"
                                     >
                                         <optgroup label="Male">
                                             <option value="shubh">Shubh</option>
@@ -1570,45 +1561,51 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                     )}
 
                     {/* Chatbot Page Visibility */}
-                    <div className="space-y-3 pt-4 border-t border-indigo-100">
+                    <div className="space-y-3 border-t border-indigo-100 pt-4">
                         <Label className="text-sm font-medium">Chatbot Page Visibility</Label>
-                        <p className="text-xs text-muted-foreground">Choose which pages show the AI chatbot to students</p>
+                        <p className="text-xs text-muted-foreground">
+                            Choose which pages show the AI chatbot to students
+                        </p>
                         <div className="space-y-2">
                             {[
                                 {
                                     key: 'dashboard',
                                     label: 'Dashboard',
                                     description: 'Student home dashboard',
-                                    routes: ['/dashboard']
+                                    routes: ['/dashboard'],
                                 },
                                 {
                                     key: 'all_courses',
                                     label: 'All Courses',
                                     description: 'Course listing & browse pages',
-                                    routes: ['/study-library']
+                                    routes: ['/study-library'],
                                 },
                                 {
                                     key: 'course_details',
                                     label: 'Course Details',
                                     description: 'Individual course overview pages',
-                                    routes: ['/study-library/courses']
+                                    routes: ['/study-library/courses'],
                                 },
                                 {
                                     key: 'study_material',
                                     label: 'Study Material',
                                     description: 'Slides, videos, quizzes & assignments',
-                                    routes: ['/study-library/courses/course-details']
+                                    routes: ['/study-library/courses/course-details'],
                                 },
                                 {
                                     key: 'catalogue',
                                     label: 'Catalogue Pages (Logged Out)',
                                     description: 'Public course catalogue for visitors',
-                                    routes: ['/catalogue', '/$tagName']
+                                    routes: ['/catalogue', '/$tagName'],
                                 },
                             ].map((category) => {
-                                const isEnabled = tutorConfig.chatbot_pages?.includes(category.key) ?? false;
+                                const isEnabled =
+                                    tutorConfig.chatbot_pages?.includes(category.key) ?? false;
                                 return (
-                                    <label key={category.key} className="flex items-start gap-3 p-2.5 rounded-lg border border-indigo-100 hover:border-indigo-200 cursor-pointer">
+                                    <label
+                                        key={category.key}
+                                        className="flex cursor-pointer items-start gap-3 rounded-lg border border-indigo-100 p-2.5 hover:border-indigo-200"
+                                    >
                                         <input
                                             type="checkbox"
                                             checked={isEnabled}
@@ -1618,14 +1615,18 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                     ...tutorConfig,
                                                     chatbot_pages: e.target.checked
                                                         ? [...current, category.key]
-                                                        : current.filter(k => k !== category.key),
+                                                        : current.filter((k) => k !== category.key),
                                                 });
                                             }}
                                             className="mt-0.5 rounded border-indigo-300"
                                         />
                                         <div>
-                                            <span className="text-sm font-medium">{category.label}</span>
-                                            <p className="text-xs text-muted-foreground">{category.description}</p>
+                                            <span className="text-sm font-medium">
+                                                {category.label}
+                                            </span>
+                                            <p className="text-xs text-muted-foreground">
+                                                {category.description}
+                                            </p>
                                         </div>
                                     </label>
                                 );
@@ -1811,7 +1812,8 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                         ...b,
                                                         intro: {
                                                             ...b.intro,
-                                                            duration_seconds: parseFloat(e.target.value) || 3,
+                                                            duration_seconds:
+                                                                parseFloat(e.target.value) || 3,
                                                         },
                                                     }))
                                                 }
@@ -1828,15 +1830,23 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                     onChange={(e) =>
                                                         setVideoBranding((b) => ({
                                                             ...b,
-                                                            intro: { ...b.intro, html: e.target.value },
+                                                            intro: {
+                                                                ...b.intro,
+                                                                html: e.target.value,
+                                                            },
                                                         }))
                                                     }
                                                     rows={6}
                                                     placeholder="<div style='display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#fff;'><h1>Your Brand</h1></div>"
                                                     className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
                                                 />
-                                                <p className={`text-[10px] ${videoBranding.intro.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}>
-                                                    {(videoBranding.intro.html.length / 1024).toFixed(1)}KB
+                                                <p
+                                                    className={`text-[10px] ${videoBranding.intro.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}
+                                                >
+                                                    {(
+                                                        videoBranding.intro.html.length / 1024
+                                                    ).toFixed(1)}
+                                                    KB
                                                 </p>
                                             </div>
                                             <div className="space-y-1">
@@ -1856,7 +1866,10 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                     }}
                                                 >
                                                     <iframe
-                                                        srcDoc={videoBranding.intro.html || '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#f9fafb;color:#9ca3af;font-family:sans-serif;font-size:12px">Intro preview</div>'}
+                                                        srcDoc={
+                                                            videoBranding.intro.html ||
+                                                            '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#f9fafb;color:#9ca3af;font-family:sans-serif;font-size:12px">Intro preview</div>'
+                                                        }
                                                         style={{
                                                             width: '1920px',
                                                             height: '1080px',
@@ -1913,7 +1926,8 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                         ...b,
                                                         outro: {
                                                             ...b.outro,
-                                                            duration_seconds: parseFloat(e.target.value) || 4,
+                                                            duration_seconds:
+                                                                parseFloat(e.target.value) || 4,
                                                         },
                                                     }))
                                                 }
@@ -1930,15 +1944,23 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                     onChange={(e) =>
                                                         setVideoBranding((b) => ({
                                                             ...b,
-                                                            outro: { ...b.outro, html: e.target.value },
+                                                            outro: {
+                                                                ...b.outro,
+                                                                html: e.target.value,
+                                                            },
                                                         }))
                                                     }
                                                     rows={6}
                                                     placeholder="<div style='display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#fff;'><p>Thank you for watching</p></div>"
                                                     className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
                                                 />
-                                                <p className={`text-[10px] ${videoBranding.outro.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}>
-                                                    {(videoBranding.outro.html.length / 1024).toFixed(1)}KB
+                                                <p
+                                                    className={`text-[10px] ${videoBranding.outro.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}
+                                                >
+                                                    {(
+                                                        videoBranding.outro.html.length / 1024
+                                                    ).toFixed(1)}
+                                                    KB
                                                 </p>
                                             </div>
                                             <div className="space-y-1">
@@ -1958,7 +1980,10 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                     }}
                                                 >
                                                     <iframe
-                                                        srcDoc={videoBranding.outro.html || '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#f9fafb;color:#9ca3af;font-family:sans-serif;font-size:12px">Outro preview</div>'}
+                                                        srcDoc={
+                                                            videoBranding.outro.html ||
+                                                            '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#f9fafb;color:#9ca3af;font-family:sans-serif;font-size:12px">Outro preview</div>'
+                                                        }
                                                         style={{
                                                             width: '1920px',
                                                             height: '1080px',
@@ -1985,7 +2010,9 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                     <Label className="text-sm font-semibold">Watermark</Label>
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs text-gray-500">
-                                            {videoBranding.watermark.enabled ? 'Enabled' : 'Disabled'}
+                                            {videoBranding.watermark.enabled
+                                                ? 'Enabled'
+                                                : 'Disabled'}
                                         </span>
                                         <Switch
                                             checked={videoBranding.watermark.enabled}
@@ -2020,7 +2047,8 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                                 }))
                                                             }
                                                             className={`rounded-md border px-3 py-2 text-xs font-medium transition-colors ${
-                                                                videoBranding.watermark.position === pos.value
+                                                                videoBranding.watermark.position ===
+                                                                pos.value
                                                                     ? 'border-indigo-400 bg-indigo-100 text-indigo-700'
                                                                     : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                                                             }`}
@@ -2032,7 +2060,8 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                             </div>
                                             <div className="space-y-2">
                                                 <Label className="text-xs font-medium text-gray-600">
-                                                    Opacity ({videoBranding.watermark.opacity.toFixed(2)})
+                                                    Opacity (
+                                                    {videoBranding.watermark.opacity.toFixed(2)})
                                                 </Label>
                                                 <input
                                                     type="range"
@@ -2066,18 +2095,27 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                     onChange={(e) =>
                                                         setVideoBranding((b) => ({
                                                             ...b,
-                                                            watermark: { ...b.watermark, html: e.target.value },
+                                                            watermark: {
+                                                                ...b.watermark,
+                                                                html: e.target.value,
+                                                            },
                                                         }))
                                                     }
                                                     rows={3}
                                                     placeholder="<div style='font-family:sans-serif;color:rgba(0,0,0,0.3);font-size:14px;'>Your Brand</div>"
                                                     className="w-full rounded-md border border-indigo-100 px-3 py-2 font-mono text-xs focus:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100"
                                                 />
-                                                <p className={`text-[10px] ${videoBranding.watermark.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}>
-                                                    {(videoBranding.watermark.html.length / 1024).toFixed(1)}KB
+                                                <p
+                                                    className={`text-[10px] ${videoBranding.watermark.html.length > HTML_SIZE_WARN_BYTES ? 'text-amber-500' : 'text-gray-400'}`}
+                                                >
+                                                    {(
+                                                        videoBranding.watermark.html.length / 1024
+                                                    ).toFixed(1)}
+                                                    KB
                                                 </p>
                                                 <p className="text-[10px] text-gray-500">
-                                                    Small HTML snippet rendered in the corner of every frame.
+                                                    Small HTML snippet rendered in the corner of
+                                                    every frame.
                                                 </p>
                                             </div>
                                             <div className="space-y-1">
@@ -2098,13 +2136,18 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                     <div
                                                         style={{
                                                             position: 'absolute',
-                                                            ...(videoBranding.watermark.position?.includes('top')
+                                                            ...(videoBranding.watermark.position?.includes(
+                                                                'top'
+                                                            )
                                                                 ? { top: '8px' }
                                                                 : { bottom: '8px' }),
-                                                            ...(videoBranding.watermark.position?.includes('left')
+                                                            ...(videoBranding.watermark.position?.includes(
+                                                                'left'
+                                                            )
                                                                 ? { left: '8px' }
                                                                 : { right: '8px' }),
-                                                            opacity: videoBranding.watermark.opacity,
+                                                            opacity:
+                                                                videoBranding.watermark.opacity,
                                                         }}
                                                         dangerouslySetInnerHTML={{
                                                             __html:
@@ -2121,7 +2164,10 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                                             transform: 'translate(-50%, -50%)',
                                                         }}
                                                     >
-                                                        {videoBranding.watermark.position?.replace('-', ' ')}
+                                                        {videoBranding.watermark.position?.replace(
+                                                            '-',
+                                                            ' '
+                                                        )}
                                                     </span>
                                                 </div>
                                             </div>
@@ -2166,7 +2212,8 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                         <div>
                             <CardTitle className="text-xl">Video Style</CardTitle>
                             <CardDescription>
-                                Choose a template for the overall look. Customize colors and fonts to override template defaults.
+                                Choose a template for the overall look. Customize colors and fonts
+                                to override template defaults.
                             </CardDescription>
                         </div>
                     </div>
@@ -2185,7 +2232,10 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                     <button
                                         type="button"
                                         onClick={() =>
-                                            setVideoStyle((s) => ({ ...s, background_type: 'white' }))
+                                            setVideoStyle((s) => ({
+                                                ...s,
+                                                background_type: 'white',
+                                            }))
                                         }
                                         className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                                             videoStyle.background_type === 'white'
@@ -2199,7 +2249,10 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                     <button
                                         type="button"
                                         onClick={() =>
-                                            setVideoStyle((s) => ({ ...s, background_type: 'black' }))
+                                            setVideoStyle((s) => ({
+                                                ...s,
+                                                background_type: 'black',
+                                            }))
                                         }
                                         className={`flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
                                             videoStyle.background_type === 'black'
@@ -2298,14 +2351,17 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                             {/* ── Primary / Accent Color ───────────────── */}
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
-                                    <Label className="text-sm font-semibold">Primary / Accent Color</Label>
+                                    <Label className="text-sm font-semibold">
+                                        Primary / Accent Color
+                                    </Label>
                                     {videoStyle.layout_theme && (
                                         <button
                                             type="button"
                                             onClick={() =>
                                                 setVideoStyle((s) => ({
                                                     ...s,
-                                                    primary_color: DEFAULT_VIDEO_STYLE.primary_color,
+                                                    primary_color:
+                                                        DEFAULT_VIDEO_STYLE.primary_color,
                                                 }))
                                             }
                                             className="text-[10px] text-indigo-500 hover:text-indigo-700 hover:underline"
@@ -2315,7 +2371,8 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                     )}
                                 </div>
                                 <p className="text-[10px] text-gray-500">
-                                    Overrides the template&apos;s default color. Used for headings, accents, chart colours, and annotations.
+                                    Overrides the template&apos;s default color. Used for headings,
+                                    accents, chart colours, and annotations.
                                 </p>
                                 <div className="flex items-center gap-3">
                                     <ColorPicker

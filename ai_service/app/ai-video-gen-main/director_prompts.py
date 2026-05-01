@@ -189,6 +189,10 @@ DIRECTOR_SYSTEM_PROMPT = (
 # Super Ultra extension — few-shot examples + shot_density self-report
 # ---------------------------------------------------------------------------
 
+# NOTE: this constant is consumed by both ultra (`director_few_shot: True`,
+# added 2026-05) and super_ultra. The name is kept for cross-file stability.
+# Examples cover three scales: 30s reel, 45s short explainer, 4-min long
+# explainer — pick whichever scale best matches the audio_duration.
 SUPER_ULTRA_DIRECTOR_EXTENSION = (
     "\n\n**🎓 FEW-SHOT EXAMPLES — STUDY THESE BEFORE PLANNING**:\n\n"
 
@@ -287,6 +291,75 @@ SUPER_ULTRA_DIRECTOR_EXTENSION = (
     "}\n"
     "```\n\n"
 
+    "**Example 3 — Long-form educational explainer (16:9 landscape, 240s / 4 min, medium density)**:\n"
+    "Script (abridged): 'A great clothing line dies between the designer's sketch and the "
+    "factory floor. Translation is what kills it. The tech pack is the contract — fabric specs, "
+    "stitch counts, tolerances. Skip it, and you ship hoodies whose sleeves drift two inches "
+    "shot-to-shot. Six stages: design, tech pack, sourcing, sampling, production, shipping. "
+    "Each one has a quality gate. Get them right, and the brand survives the EU Digital Product "
+    "Passport era. Get them wrong, and you eat the returns.'\n"
+    "Plan (38 shots — note that NONE exceed 8s; education does NOT mean slow. Three acts, "
+    "with KINETIC_TITLE shots between acts as section breakers. Shot 0 is a cinematic hook, "
+    "shots 1-12 are Act 1 (the diagnosis), 13-26 are Act 2 (the six stages), 27-37 are Act 3 "
+    "(the payoff + outro)):\n"
+    "```json\n"
+    "{\n"
+    '  "shots": [\n'
+    '    {"shot_index":0,"shot_type":"VIDEO_HERO","start_time":0.0,"end_time":4.5,'
+    '"narration_excerpt":"A great clothing line dies",'
+    '"video_query":"empty fashion atelier dramatic morning light",'
+    '"animation_strategy":"0.0s video crossfades in (Ken Burns slow zoom), 0.6s headline splitReveal \\"GREAT BRANDS DIE HERE\\" (Bebas 7rem), 2.1s subtitle fadeIn \\"between sketch and seam\\", 3.6s accent underline draws under \\"DIE\\"",'
+    '"transition_in":"zoom_in","sync_points":[{"time":0.6,"word":"great"},{"time":2.1,"word":"between"}]},\n'
+    '    {"shot_index":1,"shot_type":"KINETIC_TITLE","start_time":4.5,"end_time":8.0,'
+    '"narration_excerpt":"between the designer\'s sketch and the factory floor.",'
+    '"text_elements":["SKETCH","→","SEAM"],'
+    '"animation_strategy":"0.0s \\"SKETCH\\" wipes in left, 0.9s arrow draws across, 1.8s \\"SEAM\\" wipes in right, 2.7s the gap between them gets a red highlight stripe",'
+    '"transition_in":"cut"},\n'
+    '    {"shot_index":2,"shot_type":"TEXT_DIAGRAM","start_time":8.0,"end_time":13.0,'
+    '"narration_excerpt":"Translation is what kills it.",'
+    '"animation_strategy":"central word \\"TRANSLATION\\" scales in, around it 5 small icons fade up (fabric / stitch / measurement / color / sample) connected by faint lines, at 3.5s the connecting lines turn red one by one",'
+    '"transition_in":"fade"},\n'
+    '    {"shot_index":3,"shot_type":"IMAGE_SPLIT","start_time":13.0,"end_time":18.5,'
+    '"narration_excerpt":"The tech pack is the contract",'
+    '"image_prompt":"close-up cinematic photograph of a printed apparel tech pack document with measurement annotations, blueprint aesthetic",'
+    '"animation_strategy":"0.0s image fades in left side, 0.5s right-side label \\"TECH PACK\\" with subtitle \\"the contract\\", 1.8s annotation lines draw onto the image highlighting fabric weight + stitch density",'
+    '"transition_in":"slide_left","sync_points":[{"time":0.5,"word":"tech"},{"time":1.8,"word":"contract"}]},\n'
+    '    {"shot_index":4,"shot_type":"DATA_STORY","start_time":18.5,"end_time":24.0,'
+    '"narration_excerpt":"fabric specs, stitch counts, tolerances.",'
+    '"animation_strategy":"three rows draw in sequentially — each row is a labeled bar with a counter (Fabric: 320 GSM, Stitch: 12/inch, Tolerance: ±2mm). Counters animate from 0 to value over 0.6s each, with the unit appearing last",'
+    '"transition_in":"slide_up"},\n'
+    '    {"shot_index":5,"shot_type":"VIDEO_HERO","start_time":24.0,"end_time":28.0,'
+    '"narration_excerpt":"Skip it, and you ship hoodies",'
+    '"video_query":"messy garment factory rejected pile of hoodies dramatic lighting",'
+    '"animation_strategy":"0.0s video fades in, 0.4s lower-third \\"WITHOUT A TECH PACK\\" slides in, 2.0s a red \\"REJECTED\\" stamp rotates 8° into frame and locks",'
+    '"transition_in":"cut"},\n'
+    '    {"shot_index":6,"shot_type":"ANIMATED_ASSET","start_time":28.0,"end_time":32.5,'
+    '"narration_excerpt":"whose sleeves drift two inches shot-to-shot.",'
+    '"image_prompt":"premium streetwear hoodie cutout, isolated on solid white background, three-quarter view, clean edges",'
+    '"animation_strategy":"hoodie slides in center, then a duplicate ghost-version fades in 30% opacity offset by 2 inches, with an animated dimension arrow drawing between the two sleeves and counter rolling 0→2.0 INCHES",'
+    '"transition_in":"slide_left"},\n'
+    '    {"shot_index":7,"shot_type":"KINETIC_TITLE","start_time":32.5,"end_time":36.0,'
+    '"narration_excerpt":"(act 1 → act 2 transition)",'
+    '"text_elements":["SIX","STAGES."],'
+    '"animation_strategy":"black background, \\"SIX\\" wipes up large, 0.8s later \\"STAGES.\\" wipes up below in accent color, 1.6s a horizontal accent line draws beneath both",'
+    '"transition_in":"fade"},\n'
+    '    /* ... shots 8-12 expand on each stage with appropriate type variety ... */\n'
+    '    {"shot_index":36,"shot_type":"DATA_STORY","start_time":228.0,"end_time":234.0,'
+    '"narration_excerpt":"Get them right, and the brand survives",'
+    '"animation_strategy":"line chart drawing left to right showing two trajectories — one labeled \\"WITH TECH PACK\\" climbing, one labeled \\"WITHOUT\\" flatlining; final values appear as bold callouts",'
+    '"transition_in":"slide_up"},\n'
+    '    {"shot_index":37,"shot_type":"KINETIC_TITLE","start_time":234.0,"end_time":240.0,'
+    '"narration_excerpt":"the EU Digital Product Passport era. Get them wrong, and you eat the returns.",'
+    '"text_elements":["SURVIVE","OR","EAT THE RETURNS."],'
+    '"animation_strategy":"three-line stacked wipe reveal, \\"SURVIVE\\" in primary, \\"OR\\" small in accent, \\"EAT THE RETURNS\\" largest with red accent underline drawing in last",'
+    '"transition_in":"zoom_in"}\n'
+    '  ],\n'
+    '  "shot_density": "medium",\n'
+    '  "pacing_rationale": "Educational long-form (4 min) does NOT mean reel pace — but it ALSO does not mean 12-second meditation. Each idea gets 4-7 seconds; KINETIC_TITLE shots between acts give the audio room to breathe. EQUATION_BUILD / DATA_STORY / ANIMATED_ASSET shots can run up to 8s only because their internal motion (counters, draw-in animations, dimension arrows) carries the time.",\n'
+    '  "continuity_notes": "Three acts use distinct visual worlds — act 1 is moody atelier photography, act 2 is illustrated SVG infographics on cream canvas, act 3 returns to photography for the payoff. KINETIC_TITLE shots at act boundaries make the world-shift feel intentional. Subject continuity: the hoodie subject from shot 6 reappears in shot 11 + 14 + 22 + 27 (Seedream image-to-image keeps it visually consistent)."\n'
+    "}\n"
+    "```\n\n"
+
     "**📊 SHOT DENSITY SELF-REPORT (REQUIRED)**:\n"
     "Add these two fields to your top-level JSON (alongside `shots` and `continuity_notes`):\n"
     "- `shot_density`: one of `\"fast\"` (≤2.5s avg), `\"medium\"` (2.5-4s avg), `\"slow\"` (≥4s avg)\n"
@@ -294,7 +367,13 @@ SUPER_ULTRA_DIRECTOR_EXTENSION = (
     "the content type (e.g. \"fast because travel reels need constant visual stimulation\", "
     "\"medium because physics needs visual proof time on each equation\").\n"
     "These let the pipeline validate your pacing against the content — if you say 'fast' but "
-    "return 8-second shots, something is off.\n"
+    "return 8-second shots, something is off.\n\n"
+
+    "**📏 PICKING THE RIGHT EXAMPLE FOR YOUR DURATION**:\n"
+    "- Audio ≤ 60s: use Example 1's pacing (fast, snappy, every sentence its own shot).\n"
+    "- Audio 60-90s: blend Example 1 + Example 2 — fast hook, medium middle, kinetic outro.\n"
+    "- Audio 90s-3min: Example 2's medium-pace educational pattern with shot types varied per beat.\n"
+    "- Audio ≥ 3min: Example 3's act-structured pattern. Use KINETIC_TITLE shots BETWEEN acts as breakers. Don't let any shot exceed 8s. Mix world-direction across acts.\n"
 )
 
 

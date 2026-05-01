@@ -1557,21 +1557,30 @@ class VideoGenerationService:
                                                     file_path_obj.write_text(json.dumps(timeline_data, indent=2), encoding='utf-8')
                                                     logger.info(f"[VideoGenService] ✅ Updated {updated_count} image references in {file_name} across {total_entries} entries")
                                                 else:
-                                                    # Check whether the modern path applies: all <img> tags are
-                                                    # already base64 data URLs (embedded by automation_pipeline
-                                                    # before timeline write). If so, the URL-replace pass having
-                                                    # nothing to do is *expected*, not an error.
-                                                    sample_html = entries_list[0].get("html", "") if entries_list else ""
-                                                    file_urls_in_html = re.findall(r'src=["\']?(file://[^"\'\s]+)["\']?', sample_html)
-                                                    has_unresolved_file_urls = bool(file_urls_in_html)
-                                                    if has_unresolved_file_urls:
-                                                        logger.warning(f"[VideoGenService] ⚠️  No image references were updated in {file_name} but {len(file_urls_in_html)} unresolved file:// URLs remain. Check image_path_mapping and HTML content.")
+                                                    # Detect any unresolved local refs across ALL entries.
+                                                    # An unresolved ref is an <img src> that is NOT a data: URI,
+                                                    # NOT http(s)://, and didn't get matched by the swap above.
+                                                    # That would indicate a bare-filename or file:// path the
+                                                    # post-upload swap should have rewritten but didn't —
+                                                    # warn so the gap shows up.
+                                                    unresolved: list[str] = []
+                                                    for entry in entries_list:
+                                                        html_e = entry.get("html", "")
+                                                        for m in re.finditer(r'<img[^>]+src=["\']([^"\']+)["\']', html_e):
+                                                            src = m.group(1)
+                                                            if src.startswith(("data:", "http://", "https://")):
+                                                                continue
+                                                            unresolved.append(src)
+                                                    if unresolved:
+                                                        logger.warning(
+                                                            f"[VideoGenService] ⚠️  {len(unresolved)} unresolved local image ref(s) in {file_name}: "
+                                                            f"{unresolved[:3]}. Check image_path_mapping coverage."
+                                                        )
                                                         if image_path_mapping:
                                                             sample_keys = list(image_path_mapping.keys())[:3]
                                                             logger.debug(f"[VideoGenService] Sample image_path_mapping keys: {sample_keys}")
-                                                            logger.debug(f"[VideoGenService] Found file:// URLs in HTML: {file_urls_in_html[:3]}")
                                                     else:
-                                                        logger.info(f"[VideoGenService] ℹ️  Skipping URL replacement for {file_name} — no file:// references found (images are base64-embedded or already on S3)")
+                                                        logger.info(f"[VideoGenService] ℹ️  All <img> sources in {file_name} are base64-embedded or already on S3 — no swap needed")
                                             except Exception as e:
                                                 logger.warning(f"[VideoGenService] Failed to update image URLs in {file_name}: {e}. Uploading original file.", exc_info=True)
                                         else:

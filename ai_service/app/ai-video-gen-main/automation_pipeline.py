@@ -519,6 +519,19 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "director_motion_bias": True,
         "director_shot_density": True,
         "motion_density_enforcement": True,
+        # Track C — cheap-model-friendly quality bump.
+        # `director_two_pass` decomposes "plan all shots" into Act Planner →
+        # Shot Planner; cheap planners do measurably better on focused calls.
+        # `director_few_shot` injects worked plan examples (one of which we
+        # added explicitly for 4-min landscape educational pacing).
+        # `shot_animation_validator` runs a regex pass on every generated
+        # shot's HTML and triggers ONE corrective regen if density is too low
+        # OR if a forbidden anti-pattern (vertical text, high-rotation type)
+        # slipped past the system-prompt rule.
+        "director_two_pass": True,
+        "director_few_shot": True,
+        "shot_animation_validator": True,
+        "min_animated_elements": 4,  # ultra: looser than super_ultra's 6
         "shot_pack_enabled": True,
         "shot_templates_enabled": True,
         "skill_library_enabled": True,
@@ -2460,21 +2473,38 @@ class VideoGenerationPipeline:
 
                 _img_executor.shutdown(wait=False)
 
-                # Apply in-memory base64 replacements from pipelined results
+                # Apply in-memory replacements from pipelined results.
+                # Generated images: emit the local filename so the post-upload
+                # URL swap in video_generation_service.py rewrites it to the
+                # public S3 URL. Avoids 1-2MB base64 blobs per <img> that
+                # bloated timeline JSON and caused audio/visual drift in the
+                # browser player on long videos.
                 _repl_applied_pipe = 0
                 for _res in _early_image_results:
                     _entry   = _res.get("entry")
                     _old_tag = _res.get("full_tag", "")
                     _ibytes  = _res.get("image_bytes")
                     _stock_url = _res.get("stock_url")
+                    _filename = _res.get("filename")
+                    _is_svg   = _res.get("is_svg", False)
                     if not (_entry and _old_tag and (_ibytes or _stock_url)):
                         continue
                     _html_e = _entry.get("html", "")
                     if _stock_url:
                         _nsrc = _stock_url
+                    elif _is_svg and _ibytes:
+                        # SVG synthesized placeholders are tiny, never round-trip
+                        # through S3 — keep them inline as data URIs.
+                        _b64  = base64.b64encode(_ibytes).decode("utf-8")
+                        _nsrc = f"data:image/svg+xml;base64,{_b64}"
+                    elif _filename:
+                        # Saved to generated_images/{filename}; post-upload
+                        # swap rewrites this to the S3 URL.
+                        _nsrc = _filename
                     else:
-                        _b64    = base64.b64encode(_ibytes).decode("utf-8")
-                        _nsrc   = f"data:image/png;base64,{_b64}"
+                        # Last-resort fallback: in-memory bytes with no filename.
+                        _b64  = base64.b64encode(_ibytes).decode("utf-8")
+                        _nsrc = f"data:image/png;base64,{_b64}"
                     if _old_tag in _html_e:
                         _new_tag = re.sub(r'src=["\'][^"\']*["\']',
                                           f'src="{_nsrc}"', _old_tag)
@@ -4499,6 +4529,62 @@ class VideoGenerationPipeline:
         if tween_count == 0 and "animation" not in html.lower():
             issues.append("no GSAP animations or CSS @keyframes found at all")
 
+        # ── Anti-pattern checks (Track C) ──
+        # Cheap planner models (gemini-flash variants) occasionally ignore
+        # the system-prompt forbid-list and emit vertical / heavily-rotated
+        # typography. The rules in prompts.py are the primary defense; this
+        # is the regex safety net. When a hit fires, we route through the
+        # existing regen path (above) — same single-shot LLM regen as for
+        # density misses, no new infrastructure.
+        #
+        # SAFE TO FLAG ANY MATCH because at validator time the HTML only
+        # contains (a) skill composer output (clean — verified empty for
+        # writing-mode in /skills and /shot_templates) and (b) LLM-generated
+        # shot HTML. The pipeline's own legitimate vertical-text use (the
+        # `overlay-left-ribbon` in `_emit_overlay_callout`) is appended
+        # AFTER the validator runs, so it never appears in `html` here.
+        if re.search(r"writing-mode\s*:\s*(?:vertical-rl|vertical-lr|sideways-rl|sideways-lr)", html, re.IGNORECASE):
+            issues.append("vertical typography (writing-mode: vertical-*) — text must read horizontally")
+        if re.search(r"text-orientation\s*:\s*(?:upright|sideways)", html, re.IGNORECASE):
+            issues.append("vertical typography (text-orientation: upright/sideways) — text must read horizontally")
+        # High-rotation transforms on text. We're conservative: flag rotations
+        # in the 30°–330° band, which excludes subtle stylistic tilts (≤±15°
+        # is explicitly allowed by the prompt rule) and any near-360° wraps.
+        # We DON'T attempt selector parsing — instead, only flag when the
+        # rotation appears in a CSS rule that targets a text-bearing element.
+        # The pattern matches the rotate value, then sanity-checks that the
+        # rule is text-related by looking at a 250-char window around it.
+        for rot_match in re.finditer(
+            r"transform\s*:\s*[^;{}]*\brotate\(\s*([+-]?\d+(?:\.\d+)?)\s*deg\s*\)",
+            html,
+            re.IGNORECASE,
+        ):
+            try:
+                deg = abs(float(rot_match.group(1))) % 360.0
+            except (TypeError, ValueError):
+                continue
+            # Normalize to [0, 180] — both 270deg and 90deg are equally extreme.
+            if deg > 180.0:
+                deg = 360.0 - deg
+            if deg <= 30.0:
+                continue  # subtle stylistic rotation — allowed
+            # Look at the surrounding context to decide if this rotation is on text.
+            ctx_start = max(0, rot_match.start() - 250)
+            ctx_end   = min(len(html), rot_match.end() + 60)
+            ctx       = html[ctx_start:ctx_end].lower()
+            text_signals = (
+                "h1", "h2", "h3", "h4",
+                "<p", "<span",
+                ".text", ".title", ".headline", ".heading", ".label",
+                "letter-spacing", "text-transform", "font-size", "font-family",
+                "writing-mode",
+            )
+            if any(sig in ctx for sig in text_signals):
+                issues.append(
+                    f"high-rotation transform on text element ({deg:.0f}° rotation) — text must read horizontally"
+                )
+                break  # one issue is enough; regen the shot
+
         return issues
 
     def _build_director_reference_image_block(self) -> List[Dict[str, Any]]:
@@ -6286,17 +6372,36 @@ class VideoGenerationPipeline:
                     "shipped": "original",  # default — overwritten on regen success
                 }
                 if issues:
-                    print(f"   ⚠️ Shot {shot_idx + 1} failed animation density check: {'; '.join(issues)}")
-                    corrective = (
-                        "Your previous output did not meet the motion requirements for this shot. "
-                        "Problems:\n"
-                        + "\n".join(f"- {i}" for i in issues)
-                        + "\n\nRegenerate the shot HTML. The animation_strategy and sync_points from "
+                    print(f"   ⚠️ Shot {shot_idx + 1} failed validator: {'; '.join(issues)}")
+                    # Tailor the corrective message: anti-pattern issues
+                    # (vertical text / high-rotation text) get a specific
+                    # callout so the cheap planner doesn't just bump tween
+                    # count while leaving the typography offense in place.
+                    _has_anti_pattern = any(
+                        ("vertical typography" in i) or ("high-rotation transform" in i)
+                        for i in issues
+                    )
+                    corrective_parts = [
+                        "Your previous output did not meet the requirements for this shot.",
+                        "Problems:",
+                        *[f"- {i}" for i in issues],
+                        "",
+                        "Regenerate the shot HTML. The animation_strategy and sync_points from "
                         "the Director are non-negotiable this time — every sync_point delay must appear "
                         "as a GSAP `delay:` value within ±0.2s, and the total number of independently "
-                        "animated DOM elements must meet the min_animated_elements target. Keep the "
-                        "same shot pack tokens. Return only the JSON shot object."
-                    )
+                        "animated DOM elements must meet the min_animated_elements target.",
+                    ]
+                    if _has_anti_pattern:
+                        corrective_parts.append(
+                            "TYPOGRAPHY: text MUST read horizontally. DO NOT use "
+                            "`writing-mode: vertical-rl/vertical-lr/sideways-*`, "
+                            "`text-orientation: upright/sideways`, or "
+                            "`transform: rotate(...)` greater than ±15° on any element "
+                            "containing text. Stage labels, badges, headlines, callouts — "
+                            "all horizontal."
+                        )
+                    corrective_parts.append("Keep the same shot pack tokens. Return only the JSON shot object.")
+                    corrective = "\n".join(corrective_parts)
                     # Snapshot the pre-regen HTML so we can revert if regen
                     # produces a worse result. The validator can be wrong —
                     # if regen ALSO fails, the original is more likely closer
@@ -9357,24 +9462,35 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             print(f"    🚫 Cutout failed (prompt match) — hid image: {pv[:30]}...")
                     continue
 
-                # Stock photos use CDN URL directly; generated images use base64;
-                # SVG fallback placeholders use a `data:image/svg+xml` data URI.
+                # Stock photos:    use CDN URL directly.
+                # SVG placeholders: keep as base64 data URI (tiny, no S3 round-trip).
+                # Generated PNGs:   emit local filename so the post-upload URL
+                #                   swap in video_generation_service.py rewrites
+                #                   it to the public S3 URL. Eliminates the
+                #                   timeline-JSON bloat that was causing
+                #                   audio/visual drift on long videos.
+                # No filename:      last-resort base64 fallback (in-memory only paths).
                 if rep.get("stock_url"):
                     new_src = rep["stock_url"]
+                    src_kind = "stock-url"
                 elif rep.get("is_svg"):
                     b64     = base64.b64encode(rep["image_bytes"]).decode("utf-8")
                     new_src = f"data:image/svg+xml;base64,{b64}"
+                    src_kind = "svg-base64"
+                elif rep.get("filename"):
+                    new_src = rep["filename"]
+                    src_kind = "S3-deferred"
                 else:
-                    # Encode directly from the bytes already in memory
                     b64     = base64.b64encode(rep["image_bytes"]).decode("utf-8")
                     new_src = f"data:image/png;base64,{b64}"
+                    src_kind = "base64-fallback"
 
                 # Strategy 1: direct tag replacement
                 if old_tag in html:
                     new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_src}"', old_tag)
                     html = html.replace(old_tag, new_tag)
                     replacements_applied += 1
-                    print(f"    ✅ Embedded image (base64) for entry {entry_id}: {old_tag[:50]}...")
+                    print(f"    ✅ {src_kind} image for entry {entry_id}: {old_tag[:50]}...")
                 else:
                     # Strategy 2: match by data-img-prompt value
                     pm = re.search(r'data-img-prompt=(["\'])(.*?)\1', old_tag)
@@ -9386,7 +9502,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             new_tag = re.sub(r'src=["\'][^"\']*["\']', f'src="{new_src}"', mt)
                             html    = html.replace(mt, new_tag)
                             replacements_applied += 1
-                            print(f"    ✅ Embedded image (prompt match): {pv[:30]}...")
+                            print(f"    ✅ {src_kind} image (prompt match): {pv[:30]}...")
 
             if html != original_html:
                 entry["html"] = html

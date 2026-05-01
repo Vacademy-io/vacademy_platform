@@ -531,7 +531,7 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
     },
     {
         icon: FilmStrip,
-        title: 'AI Content Creator Studio',
+        title: 'Vimotion - Content Studio',
         id: 'content-ai-studio',
         category: 'AI',
         to: '/video-api-studio/console',

@@ -3,6 +3,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/s
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
     Select,
@@ -12,6 +13,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ColorPicker } from '@/components/ui/color-picker';
 import {
     Settings2,
     Layers,
@@ -30,14 +32,16 @@ import {
     Type as TypeIcon,
     Film,
     ExternalLink,
-    Check,
-    X,
     Play,
     Pause,
     Loader2,
     Sparkles as SparklesIcon,
+    Save,
+    ChevronDown,
 } from 'lucide-react';
 import { Link } from '@tanstack/react-router';
+import { toast } from 'sonner';
+import { getInstituteId } from '@/constants/helper';
 import {
     GenerateVideoRequest,
     LANGUAGES,
@@ -55,21 +59,16 @@ import {
     TtsVoice,
     DEFAULT_OPTIONS,
 } from '../../-services/video-generation';
-
-export interface VideoStyleInfo {
-    primary_color?: string;
-    layout_theme?: string;
-    heading_font?: string;
-    body_font?: string;
-    background_type?: string;
-    has_custom_style?: boolean;
-}
-
-export interface VideoBrandingInfo {
-    intro?: { enabled: boolean; duration_seconds?: number };
-    outro?: { enabled: boolean; duration_seconds?: number };
-    watermark?: { enabled: boolean; position?: string };
-}
+import {
+    type VideoBrandingConfig,
+    type VideoStyleConfig,
+    type VideoTemplate,
+    type WatermarkPosition,
+    FONT_OPTIONS,
+    WATERMARK_POSITIONS,
+    updateVideoBranding,
+    updateVideoStyle,
+} from '../../-services/video-style-branding';
 
 interface AiModel {
     model_id: string;
@@ -87,9 +86,12 @@ interface SettingsPopoverProps {
     isLoadingVoices: boolean;
     playingVoiceId: string | null;
     onPlayPreview: (voice: TtsVoice) => void;
-    /** Style + branding (read-only here; edited in Settings page). */
-    videoStyle: VideoStyleInfo | null;
-    videoBranding: VideoBrandingInfo | null;
+    /** Institute-wide style + branding. Edited inline; persisted on Save. */
+    videoStyle: VideoStyleConfig;
+    onVideoStyleChange: React.Dispatch<React.SetStateAction<VideoStyleConfig>>;
+    videoBranding: VideoBrandingConfig;
+    onVideoBrandingChange: React.Dispatch<React.SetStateAction<VideoBrandingConfig>>;
+    videoTemplates: VideoTemplate[];
     /** AI model list (filtered by quality_tier). */
     models: AiModel[];
 }
@@ -143,7 +145,10 @@ function SettingsBody({
     playingVoiceId,
     onPlayPreview,
     videoStyle,
+    onVideoStyleChange,
     videoBranding,
+    onVideoBrandingChange,
+    videoTemplates,
     models,
 }: SettingsPopoverProps) {
     const update = <K extends keyof GenerateVideoRequest>(
@@ -151,6 +156,45 @@ function SettingsBody({
         value: GenerateVideoRequest[K]
     ) => {
         onOptionsChange({ ...options, [key]: value });
+    };
+
+    const [isSavingStyle, setIsSavingStyle] = useState(false);
+    const [isSavingBranding, setIsSavingBranding] = useState(false);
+
+    const handleSaveStyle = async () => {
+        const instituteId = getInstituteId();
+        if (!instituteId) {
+            toast.error('No institute selected');
+            return;
+        }
+        setIsSavingStyle(true);
+        try {
+            await updateVideoStyle(instituteId, videoStyle);
+            toast.success('Video style saved');
+        } catch (err) {
+            console.error('Save video style failed', err);
+            toast.error('Failed to save video style');
+        } finally {
+            setIsSavingStyle(false);
+        }
+    };
+
+    const handleSaveBranding = async () => {
+        const instituteId = getInstituteId();
+        if (!instituteId) {
+            toast.error('No institute selected');
+            return;
+        }
+        setIsSavingBranding(true);
+        try {
+            await updateVideoBranding(instituteId, videoBranding);
+            toast.success('Video branding saved');
+        } catch (err) {
+            console.error('Save video branding failed', err);
+            toast.error('Failed to save video branding');
+        } finally {
+            setIsSavingBranding(false);
+        }
     };
 
     return (
@@ -163,7 +207,7 @@ function SettingsBody({
                     Voice
                 </TabsTrigger>
                 <TabsTrigger value="visuals" className="text-xs">
-                    Visuals
+                    Branding
                 </TabsTrigger>
                 <TabsTrigger value="advanced" className="text-xs">
                     Advanced
@@ -519,93 +563,276 @@ function SettingsBody({
                     />
                 </div>
 
-                {/* Style — read-only, with link to AI Settings */}
-                <div className="space-y-2 rounded-md border bg-muted/30 p-2.5">
-                    <div className="flex items-center justify-between">
-                        <Label className="flex items-center gap-1.5 text-xs font-medium">
+                {/* Style — editable inline */}
+                <details
+                    open
+                    className="group rounded-md border bg-muted/30 [&_summary::-webkit-details-marker]:hidden"
+                >
+                    <summary className="flex cursor-pointer list-none items-center justify-between px-2.5 py-2 text-xs font-medium">
+                        <span className="flex items-center gap-1.5">
                             <Palette className="size-3.5 text-muted-foreground" />
                             Style
-                        </Label>
-                        <Link
-                            to="/settings"
-                            search={{ selectedTab: 'aiSettings' }}
-                            className="flex items-center gap-1 text-[10px] text-violet-600 hover:underline"
-                        >
-                            <ExternalLink className="size-2.5" />
-                            Edit
-                        </Link>
-                    </div>
-                    <div className="space-y-1 text-[11px]">
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-muted-foreground">Theme:</span>
-                            <span className="font-medium">
-                                {videoStyle?.layout_theme
-                                    ? videoStyle.layout_theme
-                                          .replace(/_/g, ' ')
-                                          .replace(/\b\w/g, (c) => c.toUpperCase())
-                                    : 'Default'}
-                            </span>
-                            <Badge variant="outline" className="ml-auto h-4 px-1 text-[9px]">
-                                {videoStyle?.background_type === 'black' ? 'Dark' : 'Light'}
-                            </Badge>
+                        </span>
+                        <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="space-y-2.5 border-t p-2.5">
+                        {/* Background type */}
+                        <div className="space-y-1">
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                Background
+                            </Label>
+                            <div className="grid grid-cols-2 gap-1">
+                                {(['white', 'black'] as const).map((v) => (
+                                    <button
+                                        key={v}
+                                        type="button"
+                                        onClick={() =>
+                                            onVideoStyleChange((s) => ({
+                                                ...s,
+                                                background_type: v,
+                                            }))
+                                        }
+                                        className={`rounded-md border px-2 py-1 text-xs capitalize transition-colors ${
+                                            videoStyle.background_type === v
+                                                ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+                                                : 'hover:bg-muted'
+                                        }`}
+                                    >
+                                        {v === 'white' ? 'Light' : 'Dark'}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
-                        <div className="flex items-center gap-1.5">
-                            <span
-                                className="inline-block size-3 rounded-full border border-border"
-                                style={{
-                                    backgroundColor: videoStyle?.primary_color || '#6366f1',
-                                }}
-                            />
-                            <span className="text-muted-foreground">Color:</span>
-                            <span className="font-mono font-medium">
-                                {videoStyle?.primary_color || '#6366f1'}
-                            </span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <TypeIcon className="size-3 text-muted-foreground" />
-                            <span className="text-muted-foreground">Fonts:</span>
-                            <span className="font-medium">
-                                {videoStyle?.heading_font || 'Inter'}
-                                {videoStyle?.body_font &&
-                                    videoStyle.body_font !== videoStyle.heading_font &&
-                                    ` / ${videoStyle.body_font}`}
-                            </span>
-                        </div>
-                    </div>
 
-                    <div className="space-y-1 border-t pt-2 text-[11px]">
-                        <BrandingRow
-                            icon={<Film className="size-3 text-muted-foreground" />}
-                            label="Intro"
-                            enabled={videoBranding?.intro?.enabled}
-                            extra={
-                                videoBranding?.intro?.duration_seconds
-                                    ? `${videoBranding.intro.duration_seconds}s`
-                                    : undefined
-                            }
-                        />
-                        <BrandingRow
-                            icon={<Film className="size-3 text-muted-foreground" />}
-                            label="Outro"
-                            enabled={videoBranding?.outro?.enabled}
-                            extra={
-                                videoBranding?.outro?.duration_seconds
-                                    ? `${videoBranding.outro.duration_seconds}s`
-                                    : undefined
-                            }
-                        />
-                        <BrandingRow
-                            icon={
-                                <span className="size-3 text-center text-[9px] text-muted-foreground">
-                                    W
+                        {/* Layout theme — visual gallery */}
+                        <div className="space-y-1">
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                Layout theme
+                            </Label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <ThemeCard
+                                    label="Default"
+                                    description="No template — minimal styling"
+                                    selected={!videoStyle.layout_theme}
+                                    onSelect={() =>
+                                        onVideoStyleChange((s) => ({ ...s, layout_theme: '' }))
+                                    }
+                                />
+                                {videoTemplates.map((t) => (
+                                    <ThemeCard
+                                        key={t.id}
+                                        label={t.name}
+                                        description={t.description}
+                                        previewHtml={t.preview_html}
+                                        primaryColor={videoStyle.primary_color}
+                                        selected={videoStyle.layout_theme === t.id}
+                                        onSelect={() =>
+                                            onVideoStyleChange((s) => ({
+                                                ...s,
+                                                layout_theme: t.id,
+                                                background_type: t.background_type,
+                                            }))
+                                        }
+                                    />
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Primary color */}
+                        <div className="space-y-1">
+                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                Primary color
+                            </Label>
+                            <div className="flex items-center gap-2">
+                                <ColorPicker
+                                    value={videoStyle.primary_color}
+                                    onChange={(color) =>
+                                        onVideoStyleChange((s) => ({ ...s, primary_color: color }))
+                                    }
+                                />
+                                <span className="font-mono text-xs text-muted-foreground">
+                                    {videoStyle.primary_color}
                                 </span>
-                            }
-                            label="Watermark"
-                            enabled={videoBranding?.watermark?.enabled}
-                            extra={videoBranding?.watermark?.position?.replace('-', ' ')}
-                        />
+                            </div>
+                        </div>
+
+                        {/* Fonts */}
+                        <div className="grid grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                                <Label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    <TypeIcon className="size-3" />
+                                    Heading
+                                </Label>
+                                <Select
+                                    value={videoStyle.heading_font}
+                                    onValueChange={(v) =>
+                                        onVideoStyleChange((s) => ({ ...s, heading_font: v }))
+                                    }
+                                >
+                                    <SelectTrigger
+                                        className="h-9 text-sm"
+                                        style={{ fontFamily: videoStyle.heading_font }}
+                                    >
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {FONT_OPTIONS.map((f) => (
+                                            <SelectItem
+                                                key={f}
+                                                value={f}
+                                                className="text-sm"
+                                                style={{ fontFamily: f }}
+                                            >
+                                                {f}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1">
+                                <Label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                    <TypeIcon className="size-3" />
+                                    Body
+                                </Label>
+                                <Select
+                                    value={videoStyle.body_font}
+                                    onValueChange={(v) =>
+                                        onVideoStyleChange((s) => ({ ...s, body_font: v }))
+                                    }
+                                >
+                                    <SelectTrigger
+                                        className="h-9 text-sm"
+                                        style={{ fontFamily: videoStyle.body_font }}
+                                    >
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {FONT_OPTIONS.map((f) => (
+                                            <SelectItem
+                                                key={f}
+                                                value={f}
+                                                className="text-sm"
+                                                style={{ fontFamily: f }}
+                                            >
+                                                {f}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="flex justify-end pt-1">
+                            <Button
+                                size="sm"
+                                onClick={handleSaveStyle}
+                                disabled={isSavingStyle}
+                                className="h-7 gap-1 text-xs"
+                            >
+                                {isSavingStyle ? (
+                                    <Loader2 className="size-3 animate-spin" />
+                                ) : (
+                                    <Save className="size-3" />
+                                )}
+                                Save style
+                            </Button>
+                        </div>
                     </div>
-                </div>
+                </details>
+
+                {/* Branding — Intro / Outro / Watermark */}
+                <details className="group rounded-md border bg-muted/30 [&_summary::-webkit-details-marker]:hidden">
+                    <summary className="flex cursor-pointer list-none items-center justify-between px-2.5 py-2 text-xs font-medium">
+                        <span className="flex items-center gap-1.5">
+                            <Film className="size-3.5 text-muted-foreground" />
+                            Intro · Outro · Watermark
+                        </span>
+                        <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="space-y-3 border-t p-2.5">
+                        {/* Intro */}
+                        <IntroOutroEditor
+                            label="Intro"
+                            value={videoBranding.intro}
+                            onChange={(next) =>
+                                onVideoBrandingChange((b) => ({ ...b, intro: next }))
+                            }
+                        />
+                        {/* Outro */}
+                        <IntroOutroEditor
+                            label="Outro"
+                            value={videoBranding.outro}
+                            onChange={(next) =>
+                                onVideoBrandingChange((b) => ({ ...b, outro: next }))
+                            }
+                        />
+                        {/* Watermark */}
+                        <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                                <Label className="text-xs font-medium">Watermark</Label>
+                                <Switch
+                                    checked={videoBranding.watermark.enabled}
+                                    onCheckedChange={(v) =>
+                                        onVideoBrandingChange((b) => ({
+                                            ...b,
+                                            watermark: { ...b.watermark, enabled: v },
+                                        }))
+                                    }
+                                />
+                            </div>
+                            {videoBranding.watermark.enabled && (
+                                <div className="grid grid-cols-2 gap-1 pl-1">
+                                    {WATERMARK_POSITIONS.map((p) => (
+                                        <button
+                                            key={p.value}
+                                            type="button"
+                                            onClick={() =>
+                                                onVideoBrandingChange((b) => ({
+                                                    ...b,
+                                                    watermark: {
+                                                        ...b.watermark,
+                                                        position: p.value as WatermarkPosition,
+                                                    },
+                                                }))
+                                            }
+                                            className={`rounded-md border px-2 py-1 text-[11px] transition-colors ${
+                                                videoBranding.watermark.position === p.value
+                                                    ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+                                                    : 'hover:bg-muted'
+                                            }`}
+                                        >
+                                            {p.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 pt-1">
+                            <Link
+                                to="/settings"
+                                search={{ selectedTab: 'aiSettings' }}
+                                className="flex items-center gap-1 text-[10px] text-violet-600 hover:underline"
+                            >
+                                <ExternalLink className="size-2.5" />
+                                Edit intro / outro / watermark content
+                            </Link>
+                            <Button
+                                size="sm"
+                                onClick={handleSaveBranding}
+                                disabled={isSavingBranding}
+                                className="h-7 gap-1 text-xs"
+                            >
+                                {isSavingBranding ? (
+                                    <Loader2 className="size-3 animate-spin" />
+                                ) : (
+                                    <Save className="size-3" />
+                                )}
+                                Save branding
+                            </Button>
+                        </div>
+                    </div>
+                </details>
             </TabsContent>
 
             {/* ============================================================ */}
@@ -680,31 +907,113 @@ function Field({
     );
 }
 
-function BrandingRow({
-    icon,
+function ThemeCard({
     label,
-    enabled,
-    extra,
+    description,
+    previewHtml,
+    primaryColor,
+    selected,
+    onSelect,
 }: {
-    icon: React.ReactNode;
     label: string;
-    enabled?: boolean;
-    extra?: string;
+    description?: string;
+    previewHtml?: string;
+    primaryColor?: string;
+    selected: boolean;
+    onSelect: () => void;
+}) {
+    // Inject the user's primary color via CSS custom properties so previews
+    // reflect the live color choice (matches AiSettings template gallery).
+    const srcDoc = previewHtml
+        ? `<style>:root{--primary-color:${primaryColor || '#6366f1'};--accent-color:${primaryColor || '#6366f1'}}</style>${previewHtml}`
+        : null;
+
+    return (
+        <button
+            type="button"
+            onClick={onSelect}
+            className={`overflow-hidden rounded-md border-2 text-left transition-all ${
+                selected
+                    ? 'border-violet-500 ring-2 ring-violet-200'
+                    : 'border-border hover:border-muted-foreground/40'
+            }`}
+        >
+            <div className="relative h-[90px] w-full overflow-hidden bg-muted">
+                {srcDoc ? (
+                    <iframe
+                        srcDoc={srcDoc}
+                        title={label}
+                        sandbox="allow-scripts"
+                        className="pointer-events-none border-0"
+                        style={{
+                            width: '1920px',
+                            height: '1080px',
+                            transformOrigin: 'top left',
+                            transform: 'scale(0.0833)', // 160 / 1920
+                        }}
+                    />
+                ) : (
+                    <div className="flex size-full items-center justify-center text-[10px] text-muted-foreground">
+                        Minimal styling
+                    </div>
+                )}
+            </div>
+            <div className="bg-background px-1.5 py-1">
+                <p
+                    className={`truncate text-[11px] font-medium ${
+                        selected ? 'text-violet-700' : 'text-foreground'
+                    }`}
+                >
+                    {label}
+                </p>
+                {description && (
+                    <p className="truncate text-[9px] text-muted-foreground">{description}</p>
+                )}
+            </div>
+        </button>
+    );
+}
+
+function IntroOutroEditor({
+    label,
+    value,
+    onChange,
+}: {
+    label: string;
+    value: { enabled: boolean; duration_seconds: number; html: string };
+    onChange: (next: { enabled: boolean; duration_seconds: number; html: string }) => void;
 }) {
     return (
-        <div className="flex items-center gap-1.5">
-            {icon}
-            <span className="text-muted-foreground">{label}:</span>
-            {enabled ? (
-                <span className="flex items-center gap-1 font-medium text-green-600">
-                    <Check className="size-3" />
-                    {extra || 'On'}
-                </span>
-            ) : (
-                <span className="flex items-center gap-1 text-muted-foreground">
-                    <X className="size-3" />
-                    Off
-                </span>
+        <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium">{label}</Label>
+                <Switch
+                    checked={value.enabled}
+                    onCheckedChange={(v) => onChange({ ...value, enabled: v })}
+                />
+            </div>
+            {value.enabled && (
+                <div className="flex items-center gap-2 pl-1">
+                    <Label className="text-[10px] text-muted-foreground">Duration</Label>
+                    <Input
+                        type="number"
+                        min={1}
+                        max={10}
+                        step={0.5}
+                        value={value.duration_seconds}
+                        onChange={(e) =>
+                            onChange({
+                                ...value,
+                                duration_seconds: Math.max(
+                                    1,
+                                    Math.min(10, Number(e.target.value) || 0)
+                                ),
+                            })
+                        }
+                        className="h-7 w-16 text-xs"
+                    />
+                    <span className="text-[10px] text-muted-foreground">seconds</span>
+                </div>
             )}
         </div>
     );

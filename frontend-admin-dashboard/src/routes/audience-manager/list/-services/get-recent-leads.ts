@@ -1,0 +1,60 @@
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { GET_CAMPAIGN_USERS } from '@/constants/urls';
+
+// The backend endpoint POST /admin-core-service/v1/audience/leads accepts a
+// `LeadFilterDTO`. When `audience_id` is omitted it returns leads across every
+// audience for the supplied `institute_id` — which is what the cross-audience
+// "Recent Leads" view wants.
+
+export interface RecentLeadDetail {
+    response_id?: string;
+    audience_id?: string;
+    campaign_name?: string;
+    user_id?: string;
+    source_type?: string;
+    source_id?: string;
+    submitted_at_local?: string;
+    parent_name?: string;
+    parent_email?: string;
+    parent_mobile?: string;
+    source_audience_name?: string;
+    user?: {
+        id?: string;
+        full_name?: string;
+        email?: string;
+        mobile_number?: string;
+    };
+}
+
+export interface RecentLeadsResponse {
+    totalElements: number;
+    totalPages: number;
+    number: number;
+    size: number;
+    first: boolean;
+    last: boolean;
+    content: RecentLeadDetail[];
+}
+
+export interface RecentLeadsRequest {
+    institute_id: string;
+    // When set, the backend's `findLeadsWithFilters` runs scoped to this
+    // audience. When omitted, `findInstituteLeadsWithFilters` returns leads
+    // across every audience for the institute. Both order by submitted_at DESC.
+    audience_id?: string;
+    submitted_from_local?: string; // ISO-8601 timestamp
+    submitted_to_local?: string;
+    search_query?: string;
+    page: number;
+    size: number;
+}
+
+export const fetchRecentLeads = async (
+    payload: RecentLeadsRequest
+): Promise<RecentLeadsResponse> => {
+    const { data } = await authenticatedAxiosInstance.post<RecentLeadsResponse>(
+        GET_CAMPAIGN_USERS,
+        payload
+    );
+    return data;
+};

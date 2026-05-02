@@ -179,6 +179,43 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         Pageable pageable);
 
         /**
+         * Find leads across all campaigns for an institute with optional date range
+         * and search filter. Used by the cross-audience "Recent Leads" view.
+         */
+        @Query(value = """
+                            SELECT ar.*
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            WHERE a.institute_id = :instituteId
+                              AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
+                              AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
+                              AND (COALESCE(:searchQuery, '') = '' OR
+                                   LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
+                                   LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
+                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%'))
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            ORDER BY ar.submitted_at DESC
+                        """, countQuery = """
+                            SELECT COUNT(*)
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            WHERE a.institute_id = :instituteId
+                              AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
+                              AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
+                              AND (COALESCE(:searchQuery, '') = '' OR
+                                   LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
+                                   LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
+                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%'))
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        Page<AudienceResponse> findInstituteLeadsWithFilters(
+                        @Param("instituteId") String instituteId,
+                        @Param("submittedFrom") Timestamp submittedFrom,
+                        @Param("submittedTo") Timestamp submittedTo,
+                        @Param("searchQuery") String searchQuery,
+                        Pageable pageable);
+
+        /**
          * Count total leads for a campaign
          */
         Long countByAudienceId(String audienceId);

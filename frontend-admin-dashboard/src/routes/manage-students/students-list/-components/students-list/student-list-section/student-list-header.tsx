@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { DropdownItemType } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
 import { useGetBatchesQuery } from '@/routes/manage-institute/batches/-services/get-batches';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import RootErrorComponent from '@/components/core/deafult-error';
+import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { InviteLink } from '@/routes/manage-students/-components/InviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { NoCourseDialog } from '@/components/common/students/no-course-dialog';
@@ -64,7 +64,7 @@ const InviteLinksDialog = ({
             {isLoading ? (
                 <DashboardLoader />
             ) : isError ? (
-                <RootErrorComponent />
+                <SmartErrorPage />
             ) : (
                 <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
                     {currentSession?.id ? (

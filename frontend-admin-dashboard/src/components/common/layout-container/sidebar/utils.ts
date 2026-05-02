@@ -18,6 +18,7 @@ import {
     FilmStrip,
     Books,
     Code,
+    UserList,
 } from '@phosphor-icons/react';
 import { StorageKey } from '@/constants/storage/storage';
 import { ContentTerms, OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -261,11 +262,6 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         category: 'CRM',
         subItems: [
             {
-                subItem: `${getTerminology(OtherTerms.AudienceList, SystemTerms.AudienceList)} List`,
-                subItemLink: '/audience-manager/list',
-                subItemId: 'lead-list',
-            },
-            {
                 subItem: 'Manage Payments',
                 subItemLink: '/manage-payments',
                 subItemId: 'manage-payments-sub',
@@ -346,6 +342,24 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: 'Website Builder',
                 subItemLink: '/manage-pages',
                 subItemId: 'website-builder',
+            },
+        ],
+    },
+    {
+        icon: UserList,
+        title: 'Leads',
+        id: 'leads',
+        category: 'CRM',
+        subItems: [
+            {
+                subItem: 'Lead List',
+                subItemLink: '/audience-manager/list',
+                subItemId: 'lead-list-leads',
+            },
+            {
+                subItem: 'Recent Leads',
+                subItemLink: '/audience-manager/recent-leads',
+                subItemId: 'recent-leads',
             },
         ],
     },

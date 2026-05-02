@@ -1394,6 +1394,22 @@ public class AudienceService {
         String overallStatusStr = filterDTO.getOverallStatuses() != null && !filterDTO.getOverallStatuses().isEmpty()
                 ? String.join(",", filterDTO.getOverallStatuses()) : null;
 
+        // Cross-audience path: when no audienceId is supplied, return leads
+        // across every campaign in the institute. Used by the "Recent Leads"
+        // view; only date range and search filter apply.
+        boolean crossAudience = filterDTO.getAudienceId() == null
+                || filterDTO.getAudienceId().isBlank();
+        if (crossAudience && filterDTO.getInstituteId() != null
+                && !filterDTO.getInstituteId().isBlank()) {
+            Page<AudienceResponse> all = audienceResponseRepository.findInstituteLeadsWithFilters(
+                    filterDTO.getInstituteId(),
+                    filterDTO.getSubmittedFromLocal(),
+                    filterDTO.getSubmittedToLocal(),
+                    filterDTO.getSearchQuery(),
+                    pageable);
+            return mapResponsesToLeadDetails(all);
+        }
+
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
                 filterDTO.getAudienceId(),
                 filterDTO.getSourceType(),
@@ -1412,6 +1428,10 @@ public class AudienceService {
                 filterDTO.getSortDirection(),
                 pageable);
 
+        return mapResponsesToLeadDetails(responses);
+    }
+
+    private Page<LeadDetailDTO> mapResponsesToLeadDetails(Page<AudienceResponse> responses) {
         List<AudienceResponse> content = responses.getContent();
 
         // Batch fetch UserDTOs
@@ -1465,6 +1485,17 @@ public class AudienceService {
                 : audienceRepository.findAllById(sourceAudienceIds).stream()
                         .collect(Collectors.toMap(Audience::getId, Audience::getCampaignName, (a, b) -> a));
 
+        // Batch fetch campaign names for the audiences these responses belong to.
+        // Used by the cross-audience "Recent Leads" view, but cheap enough to
+        // always populate.
+        Set<String> audienceIds = content.stream()
+                .map(AudienceResponse::getAudienceId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<String, String> audienceIdToName = audienceIds.isEmpty() ? Collections.emptyMap()
+                : audienceRepository.findAllById(audienceIds).stream()
+                        .collect(Collectors.toMap(Audience::getId, Audience::getCampaignName, (a, b) -> a));
+
         return responses.map(response -> {
             // Build custom field values map from batch-fetched data
             List<CustomFieldValues> responseCfValues = cfValuesByResponseId
@@ -1495,6 +1526,7 @@ public class AudienceService {
             return LeadDetailDTO.builder()
                     .responseId(response.getId())
                     .audienceId(response.getAudienceId())
+                    .campaignName(audienceIdToName.get(response.getAudienceId()))
                     .userId(response.getUserId())
                     .studentUserId(response.getStudentUserId())
                     .user(StringUtils.hasText(response.getUserId()) ? userIdToUser.get(response.getUserId()) : null)

@@ -17,6 +17,7 @@ import {
 import type { DisplaySettingsData } from '@/types/display-settings';
 import { TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
+import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
@@ -26,6 +27,8 @@ import type {
     CourseContentTypeSettings,
     CourseCreationSettings,
     StudentSideViewSettings,
+    StudentSideViewVisibilityKey,
+    StudentSideViewTabId,
     LearnerManagementSettings,
 } from '@/types/display-settings';
 
@@ -55,7 +58,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
 };
 
 const STUDENT_SIDE_VIEW_OPTIONS: Array<{
-    key: keyof StudentSideViewSettings;
+    key: StudentSideViewVisibilityKey;
     label: string;
     defaultValue: boolean;
 }> = [
@@ -1628,40 +1631,20 @@ export default function TeacherDisplaySettings() {
                 </CardContent>
             </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Student Side View Options</CardTitle>
-                    <CardDescription>
-                        Configure which tabs are visible in the student side view.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                    {STUDENT_SIDE_VIEW_OPTIONS.map(({ key, label }) => (
-                        <div
-                            key={key}
-                            className="flex items-center justify-between rounded border p-3"
-                        >
-                            <div className="text-sm">{label}</div>
-                            <Switch
-                                checked={
-                                    settings.studentSideView?.[key] ??
-                                    STUDENT_SIDE_VIEW_DEFAULTS[key]
-                                }
-                                onCheckedChange={(checked) =>
-                                    updateSettings((prev) => ({
-                                        ...prev,
-                                        studentSideView: {
-                                            ...STUDENT_SIDE_VIEW_DEFAULTS,
-                                            ...prev.studentSideView,
-                                            [key]: checked,
-                                        },
-                                    }))
-                                }
-                            />
-                        </div>
-                    ))}
-                </CardContent>
-            </Card>
+            <StudentSideViewSettingsCard
+                options={STUDENT_SIDE_VIEW_OPTIONS}
+                settings={{
+                    ...STUDENT_SIDE_VIEW_DEFAULTS,
+                    ...settings.studentSideView,
+                }}
+                defaults={STUDENT_SIDE_VIEW_DEFAULTS}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        studentSideView: next,
+                    }))
+                }
+            />
 
             <Card>
                 <CardHeader>

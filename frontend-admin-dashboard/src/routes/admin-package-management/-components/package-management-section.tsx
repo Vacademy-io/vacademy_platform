@@ -3,7 +3,7 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { MyTable } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import { DashboardLoader, ErrorBoundary } from '@/components/core/dashboard-loader';
-import RootErrorComponent from '@/components/core/deafult-error';
+import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { Package } from '@phosphor-icons/react';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
@@ -72,7 +72,7 @@ export function PackageManagementSection() {
 
     const columns = getPackageTableColumns({ onPackageClick: handlePackageClick });
 
-    if (error) return <RootErrorComponent />;
+    if (error) return <SmartErrorPage />;
 
     const EmptyState = () => (
         <div className="animate-fadeIn flex flex-col items-center justify-center px-3 py-8 text-center">

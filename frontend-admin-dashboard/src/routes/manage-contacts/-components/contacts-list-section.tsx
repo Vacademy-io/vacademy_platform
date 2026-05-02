@@ -5,7 +5,7 @@ import { ContactFilters } from './contact-filters';
 import { MyTable } from '@/components/design-system/table';
 import { MyPagination } from '@/components/design-system/pagination';
 import { DashboardLoader, ErrorBoundary } from '@/components/core/dashboard-loader';
-import RootErrorComponent from '@/components/core/deafult-error';
+import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
@@ -73,7 +73,7 @@ export const ContactsListSection = () => {
         </div>
     );
 
-    if (error) return <RootErrorComponent />;
+    if (error) return <SmartErrorPage />;
 
     // Columns — counsellor assign callback only when lead system is active
     const columns = getContactColumns(

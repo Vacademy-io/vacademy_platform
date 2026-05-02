@@ -14,7 +14,7 @@ import {
 import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import RootErrorComponent from '@/components/core/deafult-error';
+import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { StudentListHeader } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/student-list-header';
 import { StudentFilters } from '@/routes/manage-students/students-list/-components/students-list/student-list-section/student-filters';
 import { BulkActions } from '@/routes/manage-students/students-list/-components/students-list/bulk-actions';
@@ -276,7 +276,7 @@ export const StudentListTab = ({ form }: { form: UseFormReturn<TestAccessFormTyp
     }, [studentTableData?.content, page, preExistingStudentIds, studentTableFilteredData?.content]);
 
     if (isLoading) return <DashboardLoader />;
-    if (isError) return <RootErrorComponent />;
+    if (isError) return <SmartErrorPage />;
 
     return (
         <section className="flex max-w-full flex-col gap-8 overflow-visible">

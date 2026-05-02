@@ -2081,11 +2081,10 @@ class VideoGenerationPipeline:
             _script_usage = script_out.get("usage", {})
             accumulate_usage(_script_usage)
 
-            # Fix J — word-budget validation. The script LLM was told the duration
-            # cap (Fix J prompt-side), but cheap planners ignore it and produce
-            # 38s of narration for a 30s request (output(24).mp4). Validate after
-            # the draft, regen ONCE if over budget by >15%. Skipped when
-            # user-authored (verbatim takes priority over duration matching).
+            # Word-budget validation: cheap planners often ignore the duration
+            # cap in the prompt. Validate after the draft and regen once if
+            # over budget by >15%. Skipped when user-authored (verbatim takes
+            # priority over duration matching).
             if (
                 content_type == "VIDEO"
                 and not getattr(self, "_user_had_script", False)

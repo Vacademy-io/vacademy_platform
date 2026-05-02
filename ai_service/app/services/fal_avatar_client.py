@@ -67,13 +67,12 @@ def _build_payload(
             "resolution": "720p" if quality == "720p" else "480p",
         }
     if model == "veed/fabric-1.0":
-        # VEED Fabric 1.0: same canonical fields. Resolution flag is "video_size".
+        # VEED Fabric 1.0: image-to-video talking avatar. Schema uses
+        # `resolution` (same key as Kling), not `video_size`. No `prompt` field.
         return {
             "image_url": image_url,
             "audio_url": audio_url,
-            "prompt": (details_prompt or
-                       "A person speaking naturally with subtle head movements."),
-            "video_size": "720p" if quality == "720p" else "480p",
+            "resolution": "720p" if quality == "720p" else "480p",
         }
     raise ValueError(f"Unsupported fal.ai avatar model: {model!r}")
 

@@ -1157,7 +1157,7 @@ public class InvoiceService {
         Map<String, Object> tnc = (Map<String, Object>) tncRaw;
 
         String packageId = null;
-        String levelName = null;
+        String levelId = null;
         String sessionId = null;
 
         try {
@@ -1179,7 +1179,7 @@ public class InvoiceService {
                                 .findPackageAndLevelByPackageSessionId(packageSessionId);
                         if (ctx.isPresent()) {
                             packageId = ctx.get().getPackageId();
-                            levelName = ctx.get().getLevelName();
+                            levelId = ctx.get().getLevelId();
                             sessionId = ctx.get().getSessionId();
                         }
                     }
@@ -1211,21 +1211,11 @@ public class InvoiceService {
             }
         }
 
-        // 3) Per-level fallback (case-insensitive on level name)
-        if (levelName != null) {
+        // 3) Per-level fallback
+        if (levelId != null) {
             Object byLevelRaw = tnc.get("byLevel");
             if (byLevelRaw instanceof Map) {
-                Map<String, Object> byLevel = (Map<String, Object>) byLevelRaw;
-                Object html = byLevel.get(levelName);
-                if (!(html instanceof String) || ((String) html).trim().isEmpty()) {
-                    // case-insensitive lookup
-                    for (Map.Entry<String, Object> e : byLevel.entrySet()) {
-                        if (e.getKey() != null && e.getKey().equalsIgnoreCase(levelName)) {
-                            html = e.getValue();
-                            break;
-                        }
-                    }
-                }
+                Object html = ((Map<String, Object>) byLevelRaw).get(levelId);
                 if (html instanceof String && !((String) html).trim().isEmpty()) {
                     return (String) html;
                 }

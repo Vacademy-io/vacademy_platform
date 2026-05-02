@@ -1,11 +1,13 @@
-import { useRef, useState, useMemo } from 'react';
+import { useRef, useState, useMemo, useEffect } from 'react';
 import Papa from 'papaparse';
 import { UploadSimple, DownloadSimple } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { NewUserRow, CustomFieldValue } from '../../../-types/bulk-assign-types';
 import {
     getCustomFieldSettingsFromCache,
+    getCustomFieldSettings,
     CustomField,
+    CustomFieldSettingsData,
 } from '@/services/custom-field-settings';
 import { parse, isValid } from 'date-fns';
 
@@ -72,10 +74,22 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
     const [preview, setPreview] = useState<NewUserRow[]>([]);
     const [errors, setErrors] = useState<string[]>([]);
     const [isDragging, setIsDragging] = useState(false);
+    const [settings, setSettings] = useState<CustomFieldSettingsData | null>(
+        () => getCustomFieldSettingsFromCache()
+    );
+
+    // If cache is empty (e.g. after settings save invalidates it), fetch
+    // from API so the template still includes custom fields.
+    useEffect(() => {
+        if (!settings) {
+            getCustomFieldSettings()
+                .then(setSettings)
+                .catch((err) => console.error('Failed to load custom field settings:', err));
+        }
+    }, [settings]);
 
     // ─── Build dynamic column list from institute settings ────
     const { allColumns, customFieldColumns } = useMemo(() => {
-        const settings = getCustomFieldSettingsFromCache();
 
         // Determine which system fields are visible
         const visibleSystemKeys = new Set<string>();
@@ -119,7 +133,7 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
         }
 
         return { allColumns: cols, customFieldColumns: cfCols };
-    }, []);
+    }, [settings]);
 
     const REQUIRED_HEADERS = allColumns.filter((c) => c.required).map((c) => c.csvKey);
 

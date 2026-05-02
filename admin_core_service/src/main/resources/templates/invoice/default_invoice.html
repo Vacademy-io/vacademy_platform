@@ -380,6 +380,33 @@
             font-weight: normal;
         }
         
+        /* Terms & Conditions */
+        .terms-section {
+            margin-top: 15px;
+            page-break-inside: avoid;
+        }
+
+        .terms-section .section-content {
+            font-size: 13px;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        .terms-section .section-content ul,
+        .terms-section .section-content ol {
+            padding-left: 20px;
+            margin: 0;
+        }
+
+        .terms-section .section-content ul li,
+        .terms-section .section-content ol li {
+            margin: 4px 0;
+        }
+
+        .terms-section .section-content p {
+            margin: 4px 0;
+        }
+
         /* Footer */
         .footer-note {
             margin-top: 10px;
@@ -553,6 +580,16 @@
             </div>
         </div>
         
+        <!-- Terms & Conditions (stripped at render time when empty) -->
+        <!-- TERMS_AND_CONDITIONS_BLOCK -->
+        <div class="terms-section">
+            <div class="section-header">Terms &amp; Conditions</div>
+            <div class="section-content">
+                {{terms_and_conditions}}
+            </div>
+        </div>
+        <!-- /TERMS_AND_CONDITIONS_BLOCK -->
+
         <!-- Footer -->
         <div class="footer-note">
             <p>*Please note that all prices are inclusive of GST for Australian customers.</p>

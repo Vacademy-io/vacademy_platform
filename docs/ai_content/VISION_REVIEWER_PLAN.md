@@ -561,3 +561,151 @@ This feature is "shipped" when **all** of the following hold:
 - [AI_VIDEO_GENERATION.md §3.8](./AI_VIDEO_GENERATION.md) — animation density validator (the cheaper sibling this builds on)
 - [AI_VIDEO_GENERATION.md §3.16](./AI_VIDEO_GENERATION.md) — image continuity (similar pattern for tier-gated, fail-graceful enrichment)
 - The existing `_validate_shot_animation_density` in `automation_pipeline.py` — copy its structure (regen-once-then-revert) for the vision-review regen path
+
+---
+
+## 15. Host-feature considerations (added 2026-05-02)
+
+The Host (avatar) feature shipped with the on-screen narrator pipeline produces a class of failure modes that are **only visible at the rendered-frame level**. Prompt rules in [`automation_pipeline.py _run_avatar_batch_sync`](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) and the per-shot HOST instruction block reduce them but don't eliminate them. A vision reviewer is the natural enforcement layer.
+
+### 15.1 What we observed in production
+
+From `ava_log.txt` + `output (23).mp4` (prod runs on 2026-05-02):
+
+| Frame | Symptom | What prompt rules can / can't catch |
+|---|---|---|
+| 8s | Stock-photo "Project Manager" headshot rendered inside a benefit card AND host avatar full-canvas → **two faces on screen** | Prompt rule forbids `<img>` of human figures; LLM compliance ~80%. Vision regen catches the rest. |
+| 26s | "END-TO-END" text clipped to "END-TO-EI" — overflowed canvas right edge | Prompt rule clamps text-block ≤92% canvas width; LLM still occasionally exceeds. |
+| 32s | "TECH PACKS" text rendered ON the avatar's face | Old `centered` overlay-zone was at bottom 30% (avatar's torso). Fixed by repositioning to top 18%. Vision review would catch any future regression where an LLM ignores the wrapper. |
+| 41→50s | Avatar video overflowed shot window → final MP4 ran 9s past the planned outro | ffmpeg `-t {shot_duration}` trim now enforces this deterministically. Vision review redundant for this case. |
+
+### 15.2 Host-specific rubric items (add to §4 when implementing)
+
+When the shot has `host_present=true`, the reviewer must check:
+
+```jsonc
+{
+  "host_face_count": 1,                     // exactly one face — never zero, never two
+  "text_on_face": false,                    // no overlay-zone content collides with avatar's eyes/mouth
+  "text_within_canvas": true,               // every text element fits inside [0..canvas_w] × [0..canvas_h]
+  "no_secondary_human_imagery": true,       // no <img> of any other person, no stock photo headshot
+  "host_layout_consistent_with_prompt": true,  // host_layout='free_right' → host on left, overlay on right
+  "background_matches_brand_brief": true,   // user's hex codes / "no gradients" / "monochrome" rules respected
+  "avatar_lipsync_aligned": true,           // avatar mouth movement starts within 100ms of master narration's first word for this shot
+  "host_image_identity_match": true         // face matches the reference image — no age/ethnicity drift
+}
+```
+
+For shots with `host_present=false` adjacent to host shots OR in user-authored mode:
+
+```jsonc
+{
+  "no_full_canvas_face": true,              // the LLM didn't accidentally render a person filling the canvas
+  "text_within_canvas": true,
+  "respects_user_authored_spec": true       // if user said "FRAME 1: no imagery, text only", no imagery rendered
+}
+```
+
+### 15.3 Reviewer prompt additions for host shots
+
+Append to the system prompt in §4.1:
+
+```
+HOST-SHOT MODE
+When the input metadata has `host_present=true`, the shot must contain exactly ONE human face — the on-screen host. Flag a violation when:
+  • You see TWO or more faces (e.g. host + a stock photo of a different person inside an overlay card).
+  • Any overlay text intersects the bounding box of the host's face/torso (lips, eyes, neck, chest).
+  • Text appears OUTSIDE the canvas bounds (clipped at any edge).
+  • The host_layout is `free_right` (host expected on left half) but the host appears on the right half — or any layout/position mismatch.
+  • The host's apparent age, ethnicity, or facial structure differs noticeably from the supplied reference face image (identity drift).
+  • The background colour or set differs from earlier host shots in the same video (set continuity).
+
+When `host_present=false` AND the user prompt explicitly stated "text only / no imagery" for this frame, flag a violation if ANY image, photograph, or human figure appears.
+```
+
+### 15.4 Inputs the reviewer needs (extend §4.2 user prompt)
+
+Per host shot, surface to the reviewer:
+
+```jsonc
+{
+  "shot_index": 3,
+  "host_present": true,
+  "host_layout": "free_top",
+  "expected_host_position": "bottom 60% of canvas",
+  "expected_overlay_zone": "top 40% of canvas",
+  "reference_face_url": "<S3 URL of user's face image>",
+  "global_brand_brief": "Background: solid #0D0D0D. Accent: #C9A84C gold. Font: Montserrat. No gradients.",
+  "user_authored_no_imagery": false,        // true when the user's frame spec forbids imagery
+  "expected_face_count": 1                  // 0 if user_authored_no_imagery, 1 if host_present
+}
+```
+
+The `reference_face_url` lets the reviewer perform a face-similarity check on the rendered host (or skip if confidence is too low to call drift).
+
+### 15.5 Regen prompts for host failures (extend §5.4)
+
+| Failure | Corrective directive |
+|---|---|
+| `host_face_count = 2` | "Two faces detected. Remove ANY `<img>` showing a person, headshot, or human figure. Keep only the host `<video>` tag. Use inline SVG icons or text labels for any person-related concept." |
+| `text_on_face = true` | "Text overlay collides with the host's face. Move ALL text into the `.host-overlay-zone` wrapper (top band for centered/free_top, bottom band for free_bottom, side band for free_left/free_right). Do not place text outside that wrapper." |
+| `text_within_canvas = false` | "Text element clipped at canvas edge. Add `max-width:92%; word-wrap:break-word` to the text block, OR shrink the font-size by 20%." |
+| `host_layout_consistent_with_prompt = false` | "Host appears on the wrong side. The layout is `{host_layout}` which means host on the {expected_position} half. Re-emit the `<video class='host-avatar host-{host_layout}'>` tag exactly as documented." |
+| `host_image_identity_match = false` | (Avatar-batch level retry, not HTML retry) "Seedream output drifted from reference identity. Regenerate the avatar image with stricter identity anchor language." |
+| `respects_user_authored_spec = false` | "User explicitly marked this frame as 'text only / no imagery'. Remove all images, photographs, and the host video. Render pure typography only." |
+
+### 15.6 Tier gating
+
+Host runs only on `ultra` and `super_ultra`, so the host rubric only fires when those tiers are active. No additional tier gate beyond the one in §5.2.
+
+### 15.7 Integration sequencing
+
+Vision review for host shots fires **after** AvatarBatch writes `shot["avatar_video_url"]` and the per-shot HTML LLM has emitted final HTML. The check happens on the rendered shot screenshot — most host failures are about TEXT/OVERLAY composition, not the avatar video itself.
+
+Per-shot order:
+1. Animation density validator (existing)
+2. **Host HTML lint** (cheap, deterministic — see §15.8)
+3. **Host vision review** (expensive, tier-gated)
+
+### 15.8 Cheap HTML lint — ship before the full vision reviewer
+
+A regex-only pre-check that catches the most obvious violations with zero LLM cost. Would have caught **all four** failures in `output (23).mp4`:
+
+```python
+def _lint_host_shot_html(html: str, shot: dict) -> list[str]:
+    """Return a list of violation strings; empty list = OK."""
+    violations = []
+    if not shot.get("host_present"):
+        return violations
+    import re
+    # Forbid <img> of any bitmap on host shots — graphics should use inline SVG.
+    if re.search(r"<img\b[^>]*\bsrc\s*=\s*['\"][^'\"]+\.(jpg|jpeg|png|webp|gif)\b", html, re.I):
+        violations.append("host shot contains <img src='*.jpg|png|...'> — no bitmap images allowed alongside the avatar")
+    # Forbid additional <video> tags besides the host one.
+    video_tags = re.findall(r"<video\b", html, re.I)
+    if len(video_tags) > 1:
+        violations.append(f"host shot has {len(video_tags)} <video> tags; expected exactly 1 (the host)")
+    # Forbid `data-img-prompt` / `data-video-query` / `data-img-source='stock'`
+    if "data-img-prompt" in html:
+        violations.append("host shot contains data-img-prompt — forbidden")
+    if "data-video-query" in html:
+        violations.append("host shot contains data-video-query — forbidden")
+    if "data-img-source" in html and "stock" in html:
+        violations.append("host shot contains data-img-source='stock' — forbidden")
+    return violations
+```
+
+Free, deterministic, no false positives — strongly recommended to ship before the full vision reviewer.
+
+### 15.9 Definition of done — host scope
+
+On a re-run of the Krazy Kreators 30s portrait payload, all of the following should hold:
+
+- Exactly 0–2 host shots (Hook + CTA, or fewer when the user-authored deny-list excludes Hook).
+- Each host shot has exactly 1 face, never 2.
+- All text within canvas bounds, no clipping at edges.
+- No text on the avatar's face/torso for `centered` or `free_*` layouts.
+- Final MP4 duration matches `Timeline meta: total duration` ± 0.5s.
+- Audio: single voice, master TTS only, no avatar-baked echo.
+- Body-of-video frames the user wrote as "text only" render as pure typography.
+- Background + clothing consistent across host shots (identity + brand fidelity).

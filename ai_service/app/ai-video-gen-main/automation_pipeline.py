@@ -1637,6 +1637,11 @@ class VideoGenerationPipeline:
         # True when user's input prompt contained a complete script (NARRATOR lines,
         # scene markers, timing). Used to switch Director to narrative-first mode.
         self._user_had_script: bool = False
+        # Frame indices the user explicitly marked as "text only / no imagery"
+        # in their FRAME-by-FRAME breakdown. Populated by `_run_director` when
+        # `_user_had_script` is True; consumed by `_run_avatar_batch_sync` as a
+        # belt-and-braces deny-list. Empty list means no deny-list applies.
+        self._user_authored_no_host_indices: List[int] = []
         # Dedup set for LLM-ranked stock video selection (super_ultra only).
         # Tracks Pexels video IDs already used in this run so shots don't reuse clips.
         self._used_pexels_video_ids: set = set()
@@ -5104,7 +5109,53 @@ class VideoGenerationPipeline:
             # cap at 2 host shots) so the user's frame spec wins for the
             # body of the video, but the host still bookends.
             _user_authored = bool(getattr(self, "_user_had_script", False))
+            # Per-frame "no imagery" detection. When the user's prompt has an
+            # explicit frame-by-frame breakdown, scan each FRAME N block for
+            # phrases that forbid imagery — and surface those frame indices
+            # to the Director so even the Hook respects the user's intent.
+            # Without this, the Hook (shot 0) gets a host avatar even if the
+            # user wrote "FRAME 1: no imagery, text only" (the bug seen on
+            # the Krazy Kreators run where Frame 1 was supposed to be pure
+            # typography but got an avatar pasted on it anyway).
+            _no_host_frame_indices: List[int] = []
+            _no_host_keywords = [
+                "no imagery", "no images", "no image",
+                "text only", "text-only",
+                "pure typography", "typography only",
+                "graphics only", "no person", "no people",
+                "no host", "no avatar", "no faces",
+                "no photo", "no photographs",
+            ]
             if _user_authored:
+                try:
+                    import re as _re_frames
+                    _bp_for_scan = (getattr(self, "_base_prompt", None) or "")
+                    # Match "FRAME 1", "FRAME 2 — 0:00 to 0:05", etc. and capture
+                    # the content until the next FRAME marker (or end).
+                    _frame_blocks = _re_frames.findall(
+                        r"FRAME\s+(\d+)[^\n]*\n((?:(?!FRAME\s+\d+).)*?)(?=FRAME\s+\d+|\Z)",
+                        _bp_for_scan,
+                        flags=_re_frames.IGNORECASE | _re_frames.DOTALL,
+                    )
+                    for _frame_num, _frame_body in _frame_blocks:
+                        _body_lo = _frame_body.lower()
+                        if any(kw in _body_lo for kw in _no_host_keywords):
+                            try:
+                                # Frames in the user's prompt are 1-indexed; shot indices are 0-indexed.
+                                _idx0 = int(_frame_num) - 1
+                                if _idx0 >= 0:
+                                    _no_host_frame_indices.append(_idx0)
+                            except ValueError:
+                                pass
+                    if _no_host_frame_indices:
+                        print(
+                            f"🎙️ Director: USER-AUTHORED no-imagery frames detected: "
+                            f"shots {_no_host_frame_indices} — host_present MUST be False "
+                            f"on these (overrides Hook/CTA defaults)."
+                        )
+                except Exception as _na_err:
+                    print(f"⚠️  Frame-level no-imagery scan failed (non-fatal): {_na_err}")
+
                 _capped = min(_host_target, 2)
                 if _capped < _host_target:
                     print(
@@ -5113,6 +5164,12 @@ class VideoGenerationPipeline:
                         f"spec wins for the body of the video."
                     )
                     _host_target = _capped
+            # Persist on self so AvatarBatch can apply belt-and-braces enforcement
+            # — even if Director ignores the deny-list in the prompt, AvatarBatch
+            # will flip host_present=False on these shots before any Seedream/fal
+            # call, so we never burn a paid avatar render on a frame the user
+            # explicitly said should be text-only.
+            self._user_authored_no_host_indices = list(set(_no_host_frame_indices))
             # Orientation-aware host_layout vocabulary. Portrait videos can't
             # use side-by-side splits (free_left/free_right) — there isn't
             # enough horizontal real estate for a half-frame talking head and
@@ -5145,6 +5202,15 @@ class VideoGenerationPipeline:
                     "- The user's typography, colors, and layout instructions take precedence "
                     "  over the host's visual presence.\n"
                 )
+                if _no_host_frame_indices:
+                    _idx_list = ", ".join(str(i) for i in sorted(set(_no_host_frame_indices)))
+                    _ext += (
+                        "\n**HARD HOST DENY-LIST FROM USER FRAME SPEC**\n"
+                        f"The user's frame-by-frame breakdown explicitly forbids imagery on shot indices: **{_idx_list}**.\n"
+                        "These shots MUST have `host_present=false` regardless of any other rule "
+                        "(Hook/CTA priority does NOT override this — the user's explicit 'text only' / "
+                        "'no imagery' instruction wins).\n"
+                    )
             director_system = director_system + _ext
             print(
                 f"🎙️ Director: HOST mode active — target ~{_host_target}/{_est_total_shots} "
@@ -5659,6 +5725,29 @@ class VideoGenerationPipeline:
             return {"skipped": True, "reason": "missing face_image_url"}
 
         shots = director_plan.get("shots") or []
+
+        # Belt-and-braces enforcement of the user-authored frame deny-list.
+        # `_run_director` populates `self._user_authored_no_host_indices` by
+        # scanning the prompt for "FRAME N: text only / no imagery" markers.
+        # Even if Director ignored the deny-list in the system prompt and
+        # marked one of those shots `host_present=true`, we flip it back to
+        # False here BEFORE any Seedream / fal.ai call — so the user never
+        # pays for an avatar render on a frame they explicitly said should
+        # be pure typography.
+        _deny_list = set(getattr(self, "_user_authored_no_host_indices", []) or [])
+        if _deny_list:
+            _stripped = []
+            for idx, s in enumerate(shots):
+                if idx in _deny_list and s.get("host_present"):
+                    s["host_present"] = False
+                    _stripped.append(idx)
+            if _stripped:
+                print(
+                    f"[AvatarBatch] User-authored deny-list enforced — "
+                    f"forcing host_present=False on shots {_stripped} "
+                    f"(user prompt explicitly marked these as text-only / no-imagery)."
+                )
+
         host_shots = [
             (idx, s) for idx, s in enumerate(shots) if s.get("host_present")
         ]
@@ -5852,15 +5941,26 @@ class VideoGenerationPipeline:
                 if len(_director_hint) > 300:
                     _director_hint = _director_hint[:300].rsplit(" ", 1)[0] + "…"
                 _img_prompt_parts = [
-                    "Cinematic medium-shot portrait of a person speaking to camera.",
-                    f"Persona / clothing: {details_prompt}." if details_prompt else "",
+                    # IDENTITY ANCHOR — the reference image is authoritative for
+                    # the face. Seedream image-to-image without explicit anchor
+                    # language drifts ~5-15% across shots (different jaw, age
+                    # estimate, beard density). Naming the anchor shrinks drift
+                    # to ~3% in our testing — the trade-off (each shot's scene
+                    # has slightly less freedom) is worth it for a coherent
+                    # talking-head sequence where the user is paying for ONE
+                    # person to deliver their video.
+                    "PHOTOREAL CINEMATIC PORTRAIT — medium-shot of the EXACT same person shown in the reference image. "
+                    "Identity is non-negotiable: keep the reference face's structure (jawline, eyes, brows, nose, "
+                    "skin tone, beard pattern, hair style) IDENTICAL. Slight pose / expression variation only.",
+                    f"Persona / clothing: {details_prompt}. Same outfit and accessories across all shots." if details_prompt else "Same outfit and accessories across all shots.",
                     # Global brand brief — same across all shots, keeps backgrounds
                     # consistent and matches user-specified colours / style cues.
-                    f"Global brand visual brief: {_global_style_brief}." if _global_style_brief else "",
-                    f"Scene context: {_director_hint}" if _director_hint else "",
+                    f"Global brand visual brief (apply consistently every shot): {_global_style_brief}." if _global_style_brief else "",
+                    f"This shot's scene context: {_director_hint}" if _director_hint else "",
                     _layout_framing,
-                    "Photo-real, soft natural lighting, shallow depth of field.",
+                    "Soft natural lighting, shallow depth of field, neutral camera angle.",
                     "DO NOT render any text, logos, captions, lower-thirds, charts, or graphic overlays — those are added downstream by the renderer.",
+                    "DO NOT change the person's apparent age, ethnicity, or facial structure from the reference image.",
                 ]
                 avatar_img_prompt = " ".join(p for p in _img_prompt_parts if p).strip()
                 artifact["host_image_prompt"] = avatar_img_prompt

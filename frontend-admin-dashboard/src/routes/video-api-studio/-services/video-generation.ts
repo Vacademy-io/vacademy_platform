@@ -83,7 +83,11 @@ export const CONTENT_TYPES = [
         label: '🖼️ Slides',
         description: 'Slide decks with images, charts, and diagrams',
     },
-    { value: 'QUIZ' as ContentType, label: '❓ Quiz', description: 'Interactive quizzes to test knowledge' },
+    {
+        value: 'QUIZ' as ContentType,
+        label: '❓ Quiz',
+        description: 'Interactive quizzes to test knowledge',
+    },
     {
         value: 'STORYBOOK' as ContentType,
         label: '📚 Storybook',
@@ -148,6 +152,53 @@ export interface ReferenceFile {
     type: 'image' | 'pdf';
 }
 
+// ── Host (on-screen narrator) ──────────────────────────────────────────
+// Mirrors the BE schema in app/schemas/video_generation.py (HostConfig).
+// Available on ultra / super_ultra only — lower tiers reject at the API edge.
+
+export type AvatarModel = 'fal-ai/kling-video/ai-avatar/v2/standard' | 'veed/fabric-1.0';
+
+export type AvatarQuality = '480p' | '720p';
+
+export type HostType = 'avatar' | 'raw';
+
+export interface HostAvatarConfig {
+    /** Public S3 URL of a clear, front-facing face photo. Used as the per-shot Seedream image-to-image reference. */
+    face_image_url: string;
+    /** Free-form description: clothing, demeanour, background hints. Threaded into per-shot avatar image prompts. */
+    details_prompt?: string;
+    /** fal.ai model. Default Kling v2 ($0.0562/sec). */
+    avatar_model?: AvatarModel;
+    /** Avatar video resolution. Same per-second price for both. */
+    quality?: AvatarQuality;
+}
+
+export interface HostRawConfig {
+    /** Already-indexed input video IDs (mode='podcast'). Plumbed only — BE rejects raw with a clear message until shipped. */
+    input_video_ids: string[];
+}
+
+export interface HostConfig {
+    type: HostType;
+    /** Percentage of shots showing host on screen (0-100). Narration audio always plays. */
+    host_in_video_percentage: number;
+    avatar?: HostAvatarConfig;
+    raw?: HostRawConfig;
+}
+
+export const AVATAR_MODELS: Array<{ value: AvatarModel; label: string; perSecondUsd: number }> = [
+    {
+        value: 'fal-ai/kling-video/ai-avatar/v2/standard',
+        label: 'Kling AI Avatar v2 (Standard)',
+        perSecondUsd: 0.0562,
+    },
+    {
+        value: 'veed/fabric-1.0',
+        label: 'VEED Fabric 1.0',
+        perSecondUsd: 0.08,
+    },
+];
+
 export interface GenerateVideoRequest {
     prompt: string;
     content_type?: ContentType; // NEW: Default "VIDEO"
@@ -178,6 +229,8 @@ export interface GenerateVideoRequest {
     sub_shots_enabled?: boolean;
     /** Sparse override for the auto-routing plan. User toggles win over router decisions. */
     routing_overrides?: RoutingOverrides;
+    /** Optional on-screen host (narrator). Available on ultra / super_ultra only; rejected at the API edge on lower tiers. */
+    host?: HostConfig;
 }
 
 // ── Intent Router types ─────────────────────────────────────────────────
@@ -221,7 +274,7 @@ export interface RoutePreviewRequest {
 
 export async function fetchRoutePreview(
     apiKey: string,
-    body: RoutePreviewRequest,
+    body: RoutePreviewRequest
 ): Promise<RoutingPlan> {
     const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/route-preview`, {
         method: 'POST',
@@ -325,7 +378,11 @@ export interface SubStageEvent {
     /** Director shot count — only present when sub_stage === 'director_done' */
     shot_count?: number;
     /** Per-shot token cost — only present on script/html stage completion sub-stages */
-    token_delta?: { prompt_tokens: number; completion_tokens: number; estimated_cost_usd?: number | null };
+    token_delta?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        estimated_cost_usd?: number | null;
+    };
 }
 
 /** Emitted after each shot's HTML is generated */
@@ -340,7 +397,11 @@ export interface ShotDoneEvent {
     model?: string;
     message?: string;
     video_id?: string;
-    token_delta?: { prompt_tokens: number; completion_tokens: number; estimated_cost_usd?: number | null };
+    token_delta?: {
+        prompt_tokens: number;
+        completion_tokens: number;
+        estimated_cost_usd?: number | null;
+    };
     cumulative_tokens?: {
         prompt_tokens: number;
         completion_tokens: number;
@@ -418,8 +479,17 @@ export interface GenerationProgress {
         start_time: number;
         end_time: number;
         model?: string;
-        token_delta?: { prompt_tokens: number; completion_tokens: number; estimated_cost_usd?: number | null };
-        cumulative_tokens?: { prompt_tokens: number; completion_tokens: number; total_tokens: number; estimated_cost_usd?: number | null };
+        token_delta?: {
+            prompt_tokens: number;
+            completion_tokens: number;
+            estimated_cost_usd?: number | null;
+        };
+        cumulative_tokens?: {
+            prompt_tokens: number;
+            completion_tokens: number;
+            total_tokens: number;
+            estimated_cost_usd?: number | null;
+        };
     }>;
     errors?: Array<{
         shot_index: number;
@@ -538,8 +608,16 @@ export const VOICE_GENDERS = [
 ] as const;
 
 export const TTS_PROVIDERS = [
-    { value: 'standard' as TtsProvider, label: 'Standard', description: 'Microsoft Edge TTS (Free)' },
-    { value: 'premium' as TtsProvider, label: 'Premium', description: 'Google Cloud / Sarvam AI (2x credits)' },
+    {
+        value: 'standard' as TtsProvider,
+        label: 'Standard',
+        description: 'Microsoft Edge TTS (Free)',
+    },
+    {
+        value: 'premium' as TtsProvider,
+        label: 'Premium',
+        description: 'Google Cloud / Sarvam AI (2x credits)',
+    },
 ] as const;
 
 export const TARGET_AUDIENCES = [
@@ -588,12 +666,10 @@ export function generateVideoId(): string {
 export async function fetchTtsVoices(
     language: string,
     gender: VoiceGender,
-    tier: TtsProvider,
+    tier: TtsProvider
 ): Promise<TtsVoicesResponse> {
     const params = new URLSearchParams({ language, gender, tier });
-    const resp = await fetch(
-        `${AI_SERVICE_BASE_URL}/external/video/v1/tts/voices?${params}`,
-    );
+    const resp = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/tts/voices?${params}`);
     if (!resp.ok) throw new Error(`Failed to fetch TTS voices: ${resp.status}`);
     return resp.json();
 }
@@ -629,15 +705,18 @@ export function generateVideo(
     };
 
     const targetStage = target_stage || 'HTML';
-    fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/generate?target_stage=${encodeURIComponent(targetStage)}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Institute-Key': apiKey,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-    })
+    fetch(
+        `${AI_SERVICE_BASE_URL}/external/video/v1/generate?target_stage=${encodeURIComponent(targetStage)}`,
+        {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Institute-Key': apiKey,
+            },
+            body: JSON.stringify(body),
+            signal: controller.signal,
+        }
+    )
         .then(async (response) => {
             if (!response.ok) {
                 const errorText = await response.text().catch(() => response.statusText);
@@ -806,7 +885,13 @@ export function resumeVideo(
                 const errorText = await response.text().catch(() => response.statusText);
                 if (response.status === 402) {
                     const err = new Error(
-                        (() => { try { return JSON.parse(errorText).detail; } catch { return errorText || 'Insufficient credits'; } })()
+                        (() => {
+                            try {
+                                return JSON.parse(errorText).detail;
+                            } catch {
+                                return errorText || 'Insufficient credits';
+                            }
+                        })()
                     );
                     err.name = 'InsufficientCreditsError';
                     throw err;
@@ -868,20 +953,23 @@ export function retryVideo(
 ): { abort: () => void } {
     const controller = new AbortController();
 
-    fetch(
-        `${AI_SERVICE_BASE_URL}/external/video/v1/retry/${encodeURIComponent(videoId)}`,
-        {
-            method: 'POST',
-            headers: { 'X-Institute-Key': apiKey },
-            signal: controller.signal,
-        }
-    )
+    fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/retry/${encodeURIComponent(videoId)}`, {
+        method: 'POST',
+        headers: { 'X-Institute-Key': apiKey },
+        signal: controller.signal,
+    })
         .then(async (response) => {
             if (!response.ok) {
                 const errorText = await response.text().catch(() => response.statusText);
                 if (response.status === 402) {
                     const err = new Error(
-                        (() => { try { return JSON.parse(errorText).detail; } catch { return errorText || 'Insufficient credits'; } })()
+                        (() => {
+                            try {
+                                return JSON.parse(errorText).detail;
+                            } catch {
+                                return errorText || 'Insufficient credits';
+                            }
+                        })()
                     );
                     err.name = 'InsufficientCreditsError';
                     throw err;
@@ -1024,7 +1112,7 @@ export interface RenderStatus {
 export async function getRenderStatus(
     jobId: string,
     apiKey: string,
-    videoId?: string,
+    videoId?: string
 ): Promise<RenderStatus> {
     // Pass video_id as a query param so the backend watchdog can detect
     // stuck render jobs (jobs queued > RENDER_TIMEOUT_SECONDS), mark them
@@ -1049,19 +1137,13 @@ export async function getRenderStatus(
  * Clear the cached rendered MP4 for a video so it can be re-rendered.
  * Removes `video` from s3_urls and `render_job_id` from metadata.
  */
-export async function clearRenderedVideo(
-    videoId: string,
-    apiKey: string
-): Promise<void> {
-    const response = await fetch(
-        `${AI_SERVICE_BASE_URL}/external/video/v1/render/${videoId}`,
-        {
-            method: 'DELETE',
-            headers: {
-                'X-Institute-Key': apiKey,
-            },
-        }
-    );
+export async function clearRenderedVideo(videoId: string, apiKey: string): Promise<void> {
+    const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/render/${videoId}`, {
+        method: 'DELETE',
+        headers: {
+            'X-Institute-Key': apiKey,
+        },
+    });
 
     if (!response.ok) {
         const text = await response.text().catch(() => response.statusText);
@@ -1169,16 +1251,26 @@ interface RemoteHistoryItem {
 /** Map backend status strings (uppercase) to FE HistoryItem status. */
 function mapRemoteStatus(status: string): HistoryItem['status'] {
     switch (status.toUpperCase()) {
-        case 'COMPLETED': return 'completed';
-        case 'FAILED':    return 'failed';
-        case 'STALLED':   return 'failed';
-        case 'IN_PROGRESS': return 'generating';
-        case 'PENDING':   return 'pending';
-        default:          return 'pending';
+        case 'COMPLETED':
+            return 'completed';
+        case 'FAILED':
+            return 'failed';
+        case 'STALLED':
+            return 'failed';
+        case 'IN_PROGRESS':
+            return 'generating';
+        case 'PENDING':
+            return 'pending';
+        default:
+            return 'pending';
     }
 }
 
-export async function getRemoteHistory(apiKey: string, limit: number = 20, offset: number = 0): Promise<HistoryItem[]> {
+export async function getRemoteHistory(
+    apiKey: string,
+    limit: number = 20,
+    offset: number = 0
+): Promise<HistoryItem[]> {
     const response = await fetch(
         `${AI_SERVICE_BASE_URL}/external/video/v1/history?limit=${limit}&offset=${offset}`,
         {
@@ -1200,9 +1292,14 @@ export async function getRemoteHistory(apiKey: string, limit: number = 20, offse
         // The pipeline stores visual_style, orientation, quality_tier here so history
         // can reconstruct the original generation settings faithfully.
         const meta = (item.metadata || {}) as Record<string, unknown>;
-        const metaVisualStyle = typeof meta.visual_style === 'string' ? (meta.visual_style as VisualStyle) : 'standard';
-        const metaOrientation = typeof meta.orientation === 'string' ? (meta.orientation as VideoOrientation) : 'landscape';
-        const metaQualityTier = typeof meta.quality_tier === 'string' ? (meta.quality_tier as QualityTier) : 'ultra';
+        const metaVisualStyle =
+            typeof meta.visual_style === 'string' ? (meta.visual_style as VisualStyle) : 'standard';
+        const metaOrientation =
+            typeof meta.orientation === 'string'
+                ? (meta.orientation as VideoOrientation)
+                : 'landscape';
+        const metaQualityTier =
+            typeof meta.quality_tier === 'string' ? (meta.quality_tier as QualityTier) : 'ultra';
         return {
             id: item.id,
             video_id: item.video_id,
@@ -1302,6 +1399,8 @@ export interface VideoCostPreviewRequest {
     html_quality: 'classic' | 'advanced';
     review_mode: boolean;
     attachments_count: number;
+    /** Optional on-screen host. Adds avatar synthesis cost lines on ultra+ tiers. */
+    host?: HostConfig;
 }
 
 export interface VideoCostPreviewBreakdownRow {
@@ -1356,21 +1455,17 @@ export async function previewVideoCost(
     payload: VideoCostPreviewRequest,
     apiKey: string
 ): Promise<VideoCostPreviewResponse> {
-    const response = await fetch(
-        `${AI_SERVICE_BASE_URL}/external/video/v1/preview-cost`,
-        {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Institute-Key': apiKey,
-            },
-            body: JSON.stringify(payload),
-        }
-    );
+    const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/preview-cost`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Institute-Key': apiKey,
+        },
+        body: JSON.stringify(payload),
+    });
     if (!response.ok) {
         const text = await response.text().catch(() => response.statusText);
         throw new Error(`Failed to preview cost: ${text}`);
     }
     return response.json();
 }
-

@@ -556,6 +556,37 @@ function VideoConsole() {
                 return;
             }
 
+            // ── Host pre-flight validation (fail fast on the FE so users don't
+            //    burn a request to discover what they should have fixed locally).
+            if (request.host) {
+                const tierOk =
+                    request.quality_tier === 'ultra' ||
+                    request.quality_tier === 'super_ultra';
+                if (!tierOk) {
+                    toast.error(
+                        'Host requires Ultra or Super Ultra tier. ' +
+                            'Either upgrade the tier or disable Host in the settings.'
+                    );
+                    return;
+                }
+                if (request.host.type === 'avatar') {
+                    const faceUrl = request.host.avatar?.face_image_url?.trim();
+                    if (!faceUrl) {
+                        toast.error(
+                            'Please upload a face image for the host before generating.'
+                        );
+                        return;
+                    }
+                }
+                if (request.host.type === 'raw') {
+                    toast.error(
+                        'Real-footage host is not yet supported. ' +
+                            "Switch host type to 'AI Avatar' or disable Host."
+                    );
+                    return;
+                }
+            }
+
             // Cancel any active poll (new generation takes over)
             if (pollingRef.current) {
                 clearInterval(pollingRef.current);
@@ -751,7 +782,45 @@ function VideoConsole() {
                         setCurrentGeneration((prev) => {
                             if (!prev) return null;
                             const updates: Partial<CurrentGeneration> = {};
-                            if (event.message) updates.message = event.message;
+                            // Avatar-host sub-stages live INSIDE the HTML stage. Pin
+                            // the stage + percentage so the progress UI doesn't
+                            // regress, and prefix the message with a 🎙️ marker so
+                            // the user sees host work distinctly from regular
+                            // shot generation.
+                            const sub = event.sub_stage || '';
+                            const isHostSubStage = sub.startsWith('avatar_');
+                            if (isHostSubStage) {
+                                updates.stage = 'HTML';
+                                updates.percentage = stageToPercentage('HTML');
+                                updates.message = event.message
+                                    ? `🎙️ ${event.message}`
+                                    : `🎙️ ${sub.replace(/_/g, ' ')}`;
+                            } else if (event.message) {
+                                updates.message = event.message;
+                            }
+                            // Per-shot avatar failure → record into recentErrors so
+                            // the user can see which shots fell back to non-host.
+                            if (sub === 'avatar_failed') {
+                                const failEvt = event as unknown as Record<string, unknown>;
+                                const failIdx =
+                                    typeof failEvt.shot_index === 'number'
+                                        ? (failEvt.shot_index as number)
+                                        : -1;
+                                const failErr =
+                                    typeof failEvt.error === 'string'
+                                        ? (failEvt.error as string)
+                                        : 'fal.ai render failed';
+                                const existing = prev.recentErrors ?? [];
+                                updates.recentErrors = [
+                                    ...existing,
+                                    {
+                                        shot_index: failIdx,
+                                        shot_type: 'AVATAR',
+                                        error: failErr,
+                                        retrying: false,
+                                    },
+                                ].slice(-50);
+                            }
                             // director_done carries shot_count and shot_plan
                             if (event.shot_count != null) {
                                 updates.shotsTotal = event.shot_count;
@@ -1397,7 +1466,7 @@ function VideoConsole() {
 
                 {/* Collapsible History Sidebar (desktop only) */}
                 <div
-                    className="hidden flex-shrink-0 flex-col border-r bg-white dark:bg-card md:flex"
+                    className="hidden shrink-0 flex-col border-r bg-white dark:bg-card md:flex"
                     style={{
                         width: isSidebarOpen ? 280 : 48,
                         transition: 'width 0.25s ease',

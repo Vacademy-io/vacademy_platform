@@ -158,9 +158,26 @@ Top-level shape (Pydantic models in [extractor/schemas.py](../../ai_service/rend
     "t_start": 1240.5,
     "t_end": 1295.0,
     "reason": "speaker delivers the core thesis with high energy and clear scene break"
+  },
+  "audio": {
+    "present": true,
+    "total_words": 8421,
+    "words_per_minute": 139.78,
+    "speech_coverage": 0.823
   }
 }
 ```
+
+**`audio` block** — top-level audio descriptors so downstream pipelines can short-circuit before loading the transcript:
+
+| Field | Meaning |
+|---|---|
+| `present` | `true` iff the transcript has at least one word AND `prosody.mean_rms > 0.001`. Use this as the "should I bother with audio?" gate — a silent track can still produce stray Whisper artifacts, hence the energy check. |
+| `total_words` | Sum of word timestamps across the whole transcript (full video, not just the highlight window). |
+| `words_per_minute` | `total_words / duration_s * 60`. Global average. For per-sentence pacing, use `transcript[].speech_rate_wps`. |
+| `speech_coverage` | Fraction of `duration_s` covered by transcribed sentence spans (0-1). Low values indicate long stretches of silence/music/noise — useful for distinguishing "talky podcast" from "gameplay footage with occasional commentary". |
+
+A consumer that only needs visuals can branch on `meta.audio.present == false` and skip transcript/prosody loading entirely.
 
 ### 5.2 `transcript` — list[Sentence]
 

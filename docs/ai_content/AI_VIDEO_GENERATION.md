@@ -328,6 +328,38 @@ Both are gated on `start_stage_idx <= 1` (i.e. the run has not yet generated a s
 
 The routing decision is cached at `<run_dir>/routing_plan.json` so resumes (start_stage_idx ≥ 2) reuse it without re-scraping.
 
+#### 3.2.2 Pre-script video-type classification
+
+Runs **in parallel** with the IntentRouter (single `asyncio.gather`) at [video_generation_service.py:705-773](../../ai_service/app/services/video_generation_service.py#L705-L773). `VideoTypeClassifierService.classify()` reads prompt + attachments + duration + orientation and emits a `VideoTypePlan`:
+
+```json
+{
+  "type": "explainer | tutorial | news_recap | product_promo | case_study | documentary | story | listicle | reel | demo_walkthrough | pitch",
+  "confidence": 0.0-1.0,
+  "reason": "<short justification>",
+  "cadence_hint": "reel | marketing | education | documentary",
+  "source": "router | user | default"
+}
+```
+
+The plan is cached at `<run_dir>/video_type.json` (resume-safe) and threaded into `automation_pipeline.run(video_type_plan=...)`. The pipeline reads `cadence_hint` to pick `_pacing_style` ([automation_pipeline.py:1644-1664](../../ai_service/app/ai-video-gen-main/automation_pipeline.py#L1644-L1664)) — overriding the duration-only heuristic at `_derive_pacing_style`. Non-VIDEO content types (QUIZ, STORYBOOK, …) skip classification (they have their own dedicated prompts).
+
+User can pre-pick a type via `routing_overrides.video_type` (the request payload's existing override channel); user picks win over LLM classification with `source="user"`.
+
+#### 3.2.3 Persisted snapshot in `extra_metadata`
+
+After both pre-script calls succeed, the service writes two keys onto the video record's `extra_metadata` JSON (alongside the existing `token_usage` snapshot):
+
+- **`user_selections`** — full snapshot of what the user requested: prompt, content_type, quality_tier, model, target_duration, target_audience, orientation, language, voice_*, html_quality, captions, avatar, sound/music flags, sub_shots, input_video_ids, reference_files_count, routing_overrides.
+- **`intent_outcomes`** — what the pre-script preamble decided AND produced:
+  - `video_type` (full VideoTypePlan)
+  - `routing_plan` (full RoutingPlan)
+  - `tools_enabled` (flat list of enabled tool names)
+  - `scrape_url_artifacts` — `{urls_attempted, files_captured (S3 URLs), files_count, screenshot_count, inline_image_count, text_chars, text_excerpt (≤ 4000 chars)}`. Lets you verify *which* article/page was actually scraped, *which images* came back, and *what text* the script LLM saw — critical for diagnosing weak runs (e.g. the Telangana e-POR scrape that returned thin context).
+  - `web_search_artifacts` — `{query, answer (≤ 2000 chars), answer_chars, sources (host + url), sources_count}`. Captures Sonar's synthesized answer + cited sources so we can trace whether a given fact in the script was supported by retrieval.
+
+This lets history views, debugging, FE confirmation modals, and quality analysis reproduce the exact context the pipeline ran with — without poking at `run_dir/*.json` files. Only written for fresh runs (`start_stage_idx <= 1`); resume paths reuse the cached run-dir JSONs without overwriting metadata. Text fields are capped to keep the metadata column lean; full text remains in `reference_context` and the run dir.
+
 ### 3.3 `QUALITY_TIERS`
 
 Defined at [automation_pipeline.py:268](../../ai_service/app/ai-video-gen-main/automation_pipeline.py#L268). Controls per-tier feature gates.
@@ -421,6 +453,136 @@ All injected by `_ensure_fonts` regardless of tier or shot type. The Director ca
 **SVG filters** in the global `<defs>` block: `#roughen`, `#roughen-strong`.
 
 **Fonts** always loaded: Montserrat (headings), Inter (body), Fira Code (code), **Bebas Neue** (display — no longer gated on illustrated mode).
+
+### 3.4.6 Host (avatar / raw)  — first-class on-screen narrator
+
+**Tier-gated**: `ultra` and `super_ultra` only. Lower tiers reject `host` at the API layer.
+
+The pipeline supports a first-class **host** concept: an on-screen narrator who delivers the video. Two kinds:
+
+| Kind | Visual source | Audio source | Status |
+|---|---|---|---|
+| `avatar` | Per-shot Seedream image-to-image (conditioned on user-supplied face image) → fal.ai talking-head video | Existing TTS (1st-person rewrite of the script) | Shipped |
+| `raw` | Clips from already-indexed input videos (uses `face_segments[].free_regions`) | Source video audio (no TTS) | Plumbing only — generation path returns warning + non-host fallback |
+
+Old single-PiP avatar (RunPod EchoMimic) keeps working for the legacy `generate_avatar=true` flag — it's a separate, narrower feature.
+
+#### 3.4.6.1 Request shape
+
+```jsonc
+{
+  "quality_tier": "ultra",
+  "host": {
+    "type": "avatar",
+    "host_in_video_percentage": 50,           // 0..100 — % of shots showing host
+    "avatar": {
+      "face_image_url": "https://s3.../face.jpg",
+      "details_prompt": "navy blazer, neutral office",
+      "avatar_model": "fal-ai/kling-video/ai-avatar/v2/standard",   // or veed/fabric-1.0
+      "quality": "480p"                                              // or "720p"
+    }
+  }
+}
+```
+
+`host_in_video_percentage` controls how often the host appears on screen. **Narration audio plays continuously regardless** — only the visual host toggles per shot. The Director picks which shots based on emphasis weighting.
+
+#### 3.4.6.2 Pipeline integration
+
+```
+Pre-script preamble
+  └─ HostPlanner [validates + tier-gates + builds HostPlan]
+     persists run_dir/host_plan.json + extra_metadata.host (inputs)
+
+SCRIPT stage
+  └─ when host.type=avatar: append 1st-person directive to script user prompt
+
+HTML stage  ← per-shot avatar gen lives here
+  ├─ Director plans shots — extension prompts mark per-shot:
+  │     host_present (bool) · host_layout (free_left|free_right|free_top|free_bottom|centered) · host_image_prompt
+  ├─ AvatarBatch (sub-stage)
+  │     • For each host_present shot:
+  │         - Seedream image-to-image (face_image_url + details + layout) → S3 PNG
+  │         - ffmpeg slice master TTS MP3 at [start_time, end_time]       → S3 MP3
+  │         - fal.ai render (image + audio + quality)                     → S3 MP4
+  │         - mutate director_plan["shots"][i].avatar_video_url
+  │     • Bounded concurrency: 4 shots in flight
+  │     • Per-shot failures → host_present=false (graceful fallback to non-host shot)
+  │     • Persists run_dir/host_outputs.json
+  └─ Per-shot HTML LLM call receives avatar_video_url + host_layout
+        emits <video class="host-avatar host-{layout}" src="{url}" autoplay muted playsinline>
+        with overlays inside .host-overlay-zone in the free region
+
+After HTML stage:
+  └─ video_generation_service merges run_dir/host_outputs.json
+     into extra_metadata.host.outputs (per-shot artifacts, fal job ids,
+     total_host_seconds, errors)
+```
+
+#### 3.4.6.3 What lives in `extra_metadata.host`
+
+```jsonc
+{
+  "enabled": true,
+  "type": "avatar",
+  "host_in_video_percentage": 50,
+  "avatar": { face_image_url, details_prompt, avatar_model, quality },
+  "raw": null,
+  "outputs": {                              // populated after HTML stage
+    "host_shot_indices": [0, 3, 5, 11, 17],
+    "host_shot_count": 5,
+    "total_host_seconds": 27.4,
+    "shot_artifacts": [
+      {
+        "shot_index": 0,
+        "host_image_prompt": "Cinematic medium-shot... right half empty...",
+        "host_image_url": "https://s3.../host_shot_000.png",
+        "audio_slice_url": "https://s3.../host_audio_000.mp3",
+        "fal_request_id": "fal_job_abc",
+        "avatar_video_url": "https://s3.../host_video_000.mp4",
+        "duration_s": 5.2,
+        "duration_s_actual": 5.18,
+        "model": "fal-ai/kling-video/ai-avatar/v2/standard",
+        "quality": "480p",
+        "status": "completed"
+      }
+    ],
+    "errors": [{"shot_index": 7, "stage": "fal_render", "error": "rate_limit"}]
+  }
+}
+```
+
+#### 3.4.6.4 SSE events
+
+Avatar batch emits these `sub_stage` events under `stage="html"`:
+- `avatar_batch_start` — total host shots known
+- `avatar_image_audio_ready` — per-shot Seedream + ffmpeg slice done
+- `avatar_render_done` — per-shot fal.ai render complete (carries `host_shot_completed / host_shot_count`)
+- `avatar_failed` — per-shot failure (non-fatal — that shot reverts to non-host)
+- `avatar_batch_done` — full summary
+
+#### 3.4.6.5 Cost model (5-min ultra, 50% host, Kling default)
+
+| Item | Calls | Total |
+|---|---|---|
+| Seedream image (per host shot) | ~25 | $1.50 |
+| TTS slice (ffmpeg only) | 25 | $0 |
+| fal.ai Kling avatar | 150s | **$8.43** |
+
+Per-second video price comes from `ai_models.video_price_per_second` (added in V224). Cost preview surfaces "Avatar video synthesis (host)" + "Avatar reference images (host)" as separate line items.
+
+#### 3.4.6.6 Failure modes
+
+- **fal.ai per-shot failure** → that shot reverts to `host_present=false`; per-shot HTML LLM gen falls through to a regular non-host shot. Pipeline succeeds.
+- **fal.ai catastrophic failure** (e.g. quota exceeded) → all host shots revert; pipeline succeeds as a non-host video. Errors captured under `extra_metadata.host.outputs.errors`.
+- **Master TTS MP3 missing** in run_dir → entire avatar batch skipped; non-host fallback.
+- **`FAL_API_KEY` not set** → API rejects request at HostPlanner tier-gate. Cleaner than failing mid-pipeline.
+
+#### 3.4.6.7 Resume safety
+
+- `run_dir/host_plan.json` cached on first preamble — resume reads cache, skips re-validation.
+- `run_dir/host_outputs.json` written by AvatarBatch — resume reads it, skips already-completed shots (idempotent on `avatar_video_url` presence).
+- Per-shot HTML cache layer (`shot_cache_dir/shot_NNN.json`) is unchanged; cached shots that referenced an old avatar URL re-render via existing cache invalidation paths if the URL changes.
 
 ### 3.5 Script generation — `_generate_script_plan()`
 

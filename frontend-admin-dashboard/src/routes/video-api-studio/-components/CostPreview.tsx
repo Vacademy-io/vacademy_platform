@@ -48,6 +48,10 @@ function buildPreviewPayload(
         html_quality: options.html_quality,
         review_mode: extras.reviewMode,
         attachments_count: extras.attachmentsCount,
+        // Forward the host config so the BE estimator can add the avatar
+        // synthesis + reference-image cost lines. BE silently ignores `host`
+        // for tiers below ultra (matches the API-edge tier gate).
+        host: options.host,
     };
 }
 

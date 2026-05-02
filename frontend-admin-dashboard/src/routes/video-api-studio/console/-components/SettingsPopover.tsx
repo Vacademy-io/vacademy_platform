@@ -38,7 +38,15 @@ import {
     Sparkles as SparklesIcon,
     Save,
     ChevronDown,
+    User as UserIcon,
+    Upload as UploadIcon,
+    X as XIcon,
+    Lock as LockIcon,
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { getUserId } from '@/utils/userDetails';
 import { Link } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
@@ -58,6 +66,11 @@ import {
     VideoOrientation,
     TtsVoice,
     DEFAULT_OPTIONS,
+    AVATAR_MODELS,
+    AvatarModel,
+    AvatarQuality,
+    HostConfig,
+    HostType,
 } from '../../-services/video-generation';
 import {
     type VideoBrandingConfig,
@@ -199,12 +212,15 @@ function SettingsBody({
 
     return (
         <Tabs defaultValue="output" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="output" className="text-xs">
                     Output
                 </TabsTrigger>
                 <TabsTrigger value="voice" className="text-xs">
                     Voice
+                </TabsTrigger>
+                <TabsTrigger value="host" className="text-xs">
+                    Host
                 </TabsTrigger>
                 <TabsTrigger value="visuals" className="text-xs">
                     Branding
@@ -452,10 +468,7 @@ function SettingsBody({
                     {availableVoices.length > 0 ? (
                         <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border p-1">
                             {availableVoices.map((voice) => {
-                                const isSelected =
-                                    options.tts_provider === 'standard'
-                                        ? !options.voice_id
-                                        : options.voice_id === voice.id;
+                                const isSelected = options.voice_id === voice.id;
                                 const isPlaying = playingVoiceId === voice.id;
                                 return (
                                     <div
@@ -470,12 +483,10 @@ function SettingsBody({
                                             type="button"
                                             className="flex-1 text-left"
                                             onClick={() => {
-                                                if (options.tts_provider === 'premium') {
-                                                    onOptionsChange({
-                                                        ...options,
-                                                        voice_id: voice.id,
-                                                    });
-                                                }
+                                                onOptionsChange({
+                                                    ...options,
+                                                    voice_id: voice.id,
+                                                });
                                             }}
                                         >
                                             <span className="font-medium">{voice.name}</span>
@@ -838,6 +849,13 @@ function SettingsBody({
             {/* ============================================================ */}
             {/* ADVANCED — Sub-shots, Review script, etc                     */}
             {/* ============================================================ */}
+            {/* ============================================================ */}
+            {/* HOST — On-screen narrator (avatar / raw)                     */}
+            {/* ============================================================ */}
+            <TabsContent value="host" className="mt-3 space-y-3">
+                <HostTabBody options={options} onOptionsChange={onOptionsChange} />
+            </TabsContent>
+
             <TabsContent value="advanced" className="mt-3 space-y-3">
                 {onReviewModeChange && (
                     <div className="space-y-1">
@@ -903,6 +921,399 @@ function Field({
             </Label>
             {children}
             {helper && <p className="text-[10px] text-muted-foreground">{helper}</p>}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// HostTabBody — on-screen narrator config (Host feature, ultra+ only).
+// Mirrors the BE `HostConfig` schema in app/schemas/video_generation.py.
+// Tier-gated UX: when quality_tier is below ultra, controls render disabled
+// with a clear "upgrade to ultra" hint instead of being hidden — matches
+// the answer captured during planning.
+// ─────────────────────────────────────────────────────────────────────────
+function HostTabBody({
+    options,
+    onOptionsChange,
+}: {
+    options: Omit<GenerateVideoRequest, 'prompt'>;
+    onOptionsChange: (options: Omit<GenerateVideoRequest, 'prompt'>) => void;
+}) {
+    const tier = options.quality_tier || 'ultra';
+    const tierAllowed = tier === 'ultra' || tier === 'super_ultra';
+    const host = options.host;
+    const hostEnabled = !!host;
+
+    const { uploadFile, getPublicUrl, isUploading } = useFileUpload();
+    const [uploadError, setUploadError] = useState<string | null>(null);
+
+    /** Replace the entire `host` block on options. */
+    const setHost = (next: HostConfig | undefined) => {
+        onOptionsChange({ ...options, host: next });
+    };
+
+    /** Patch the host.avatar sub-block. */
+    const patchAvatar = (patch: Partial<NonNullable<HostConfig['avatar']>>) => {
+        if (!host || host.type !== 'avatar') return;
+        setHost({
+            ...host,
+            avatar: { ...(host.avatar || { face_image_url: '' }), ...patch },
+        });
+    };
+
+    const handleEnableToggle = (on: boolean) => {
+        if (on) {
+            // Default to avatar with Kling at 480p, 100% on screen.
+            setHost({
+                type: 'avatar',
+                host_in_video_percentage: 100,
+                avatar: {
+                    face_image_url: '',
+                    details_prompt: '',
+                    avatar_model: 'fal-ai/kling-video/ai-avatar/v2/standard',
+                    quality: '480p',
+                },
+            });
+        } else {
+            setHost(undefined);
+        }
+    };
+
+    const handleFileSelect = async (file: File | null) => {
+        if (!file) return;
+        setUploadError(null);
+        if (!file.type.startsWith('image/')) {
+            setUploadError('Please pick an image file (PNG / JPG).');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            setUploadError('Image must be under 10 MB.');
+            return;
+        }
+        try {
+            const fileId = await uploadFile({
+                file,
+                setIsUploading: () => {},
+                userId: getUserId(),
+                source: 'AVATAR_FACES',
+                sourceId: 'ADMIN',
+                publicUrl: true,
+            });
+            if (!fileId) throw new Error('Upload failed');
+            const url = await getPublicUrl(fileId);
+            if (!url) throw new Error('Could not get public URL');
+            patchAvatar({ face_image_url: url });
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Upload failed';
+            setUploadError(msg);
+            toast.error(`Face image upload failed: ${msg}`);
+        }
+    };
+
+    // Locked / upgrade-required state — show controls but disabled.
+    if (!tierAllowed) {
+        return (
+            <div className="space-y-3">
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+                    <div className="mb-1 flex items-center gap-1.5 font-medium text-amber-700 dark:text-amber-400">
+                        <LockIcon className="size-3.5" />
+                        On-screen host requires Ultra
+                    </div>
+                    <p className="text-muted-foreground">
+                        The Host feature (AI avatar narrator) is available on{' '}
+                        <span className="font-medium">Ultra</span> and{' '}
+                        <span className="font-medium">Super Ultra</span> tiers only. Switch the
+                        Quality tier in the Output tab to enable it.
+                    </p>
+                </div>
+                {/* If a host config was previously enabled on a higher tier,
+                    surface a clear button — otherwise the user submits and
+                    discovers their host config is invalid via a 400 error. */}
+                {hostEnabled && (
+                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs">
+                        <div className="mb-1 font-medium text-destructive">
+                            Saved host config will be ignored
+                        </div>
+                        <p className="mb-2 text-muted-foreground">
+                            You have a host configuration saved from a higher tier. It will
+                            cause this generation to fail unless you switch back to Ultra or
+                            clear it now.
+                        </p>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[10px]"
+                            onClick={() => setHost(undefined)}
+                        >
+                            <XIcon className="size-3" />
+                            Clear host config
+                        </Button>
+                    </div>
+                )}
+                {/* Disabled preview of the controls */}
+                <div className="pointer-events-none space-y-3 opacity-50">
+                    <div className="flex items-center justify-between">
+                        <Label className="flex items-center gap-1.5 text-xs">
+                            <UserIcon className="size-3.5 text-muted-foreground" />
+                            Enable on-screen host
+                        </Label>
+                        <Switch checked={false} />
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-3">
+            {/* Master toggle */}
+            <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                    <Label className="flex items-center gap-1.5 text-xs">
+                        <UserIcon className="size-3.5 text-muted-foreground" />
+                        Enable on-screen host
+                    </Label>
+                    <Switch checked={hostEnabled} onCheckedChange={handleEnableToggle} />
+                </div>
+                <p className="pl-5 text-[10px] text-muted-foreground">
+                    A talking-head host appears in some shots and narrates in 1st person. Costs
+                    $0.0562/sec of host footage on top of the base video.
+                </p>
+            </div>
+
+            {hostEnabled && host && (
+                <>
+                    {/* Type selector: avatar | raw (raw is plumbed but disabled in v1) */}
+                    <Field icon={<Wand2 className="size-3.5" />} label="Host type">
+                        <div className="inline-flex w-full rounded-lg border bg-muted p-0.5">
+                            {(
+                                [
+                                    { value: 'avatar', label: 'AI Avatar' },
+                                    { value: 'raw', label: 'Real footage' },
+                                ] as const
+                            ).map(({ value, label }) => {
+                                const disabled = value === 'raw';
+                                const active = host.type === value;
+                                return (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        disabled={disabled}
+                                        onClick={() =>
+                                            setHost({
+                                                ...host,
+                                                type: value as HostType,
+                                                avatar:
+                                                    value === 'avatar'
+                                                        ? host.avatar || {
+                                                              face_image_url: '',
+                                                              avatar_model:
+                                                                  'fal-ai/kling-video/ai-avatar/v2/standard',
+                                                              quality: '480p',
+                                                              details_prompt: '',
+                                                          }
+                                                        : undefined,
+                                                raw:
+                                                    value === 'raw'
+                                                        ? host.raw || { input_video_ids: [] }
+                                                        : undefined,
+                                            })
+                                        }
+                                        className={`relative inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                            active
+                                                ? 'bg-background text-foreground shadow-sm'
+                                                : disabled
+                                                  ? 'cursor-not-allowed text-muted-foreground/50'
+                                                  : 'text-muted-foreground hover:text-foreground'
+                                        }`}
+                                    >
+                                        {label}
+                                        {disabled && (
+                                            <Badge
+                                                variant="outline"
+                                                className="h-4 px-1 text-[8px] uppercase"
+                                            >
+                                                Soon
+                                            </Badge>
+                                        )}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </Field>
+
+                    {host.type === 'avatar' && (
+                        <>
+                            {/* Face image dropzone with preview */}
+                            <Field
+                                icon={<UploadIcon className="size-3.5" />}
+                                label="Host face image"
+                                helper="Clear, front-facing portrait. Used as the per-shot identity reference."
+                            >
+                                {host.avatar?.face_image_url ? (
+                                    <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-2">
+                                        <img
+                                            src={host.avatar.face_image_url}
+                                            alt="Host face"
+                                            className="size-16 shrink-0 rounded-md object-cover"
+                                        />
+                                        <div className="flex-1 space-y-1">
+                                            <div className="break-all text-[10px] text-muted-foreground">
+                                                {host.avatar.face_image_url
+                                                    .split('/')
+                                                    .pop()
+                                                    ?.slice(0, 40)}
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 px-2 text-[10px]"
+                                                onClick={() => patchAvatar({ face_image_url: '' })}
+                                            >
+                                                <XIcon className="size-3" />
+                                                Replace
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <label
+                                        htmlFor="host-face-upload"
+                                        className="flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed bg-muted/30 px-3 py-4 text-xs text-muted-foreground hover:bg-muted/50"
+                                    >
+                                        {isUploading ? (
+                                            <>
+                                                <Loader2 className="size-4 animate-spin" />
+                                                <span>Uploading…</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <UploadIcon className="size-4" />
+                                                <span>
+                                                    Click or drop a face photo (PNG / JPG, ≤10 MB)
+                                                </span>
+                                            </>
+                                        )}
+                                        <input
+                                            id="host-face-upload"
+                                            type="file"
+                                            accept="image/*"
+                                            className="hidden"
+                                            onChange={(e) =>
+                                                handleFileSelect(e.target.files?.[0] ?? null)
+                                            }
+                                        />
+                                    </label>
+                                )}
+                                {uploadError && (
+                                    <p className="text-[10px] text-destructive">{uploadError}</p>
+                                )}
+                            </Field>
+
+                            {/* Details prompt */}
+                            <Field
+                                icon={<TypeIcon className="size-3.5" />}
+                                label="Host details (clothing, persona)"
+                                helper="Free-form. Threaded into every per-shot avatar image prompt for consistency."
+                            >
+                                <Textarea
+                                    value={host.avatar?.details_prompt || ''}
+                                    onChange={(e) =>
+                                        patchAvatar({ details_prompt: e.target.value })
+                                    }
+                                    placeholder="e.g. navy blazer, neutral office background, professional demeanour"
+                                    rows={2}
+                                    className="resize-none text-xs"
+                                />
+                            </Field>
+
+                            {/* Model picker */}
+                            <Field icon={<Film className="size-3.5" />} label="Avatar model">
+                                <Select
+                                    value={
+                                        host.avatar?.avatar_model ||
+                                        'fal-ai/kling-video/ai-avatar/v2/standard'
+                                    }
+                                    onValueChange={(v) =>
+                                        patchAvatar({ avatar_model: v as AvatarModel })
+                                    }
+                                >
+                                    <SelectTrigger className="h-8 text-xs">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {AVATAR_MODELS.map((m) => (
+                                            <SelectItem
+                                                key={m.value}
+                                                value={m.value}
+                                                className="text-xs"
+                                            >
+                                                <div className="flex flex-col">
+                                                    <span>{m.label}</span>
+                                                    <span className="text-[10px] text-muted-foreground">
+                                                        ${m.perSecondUsd.toFixed(4)}/sec
+                                                    </span>
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </Field>
+
+                            {/* Quality picker */}
+                            <Field
+                                icon={<Monitor className="size-3.5" />}
+                                label="Avatar quality"
+                                helper="Same per-second price; 720p produces a heavier file."
+                            >
+                                <div className="inline-flex w-full rounded-lg border bg-muted p-0.5">
+                                    {(['480p', '720p'] as const).map((q) => {
+                                        const active = (host.avatar?.quality || '480p') === q;
+                                        return (
+                                            <button
+                                                key={q}
+                                                type="button"
+                                                onClick={() =>
+                                                    patchAvatar({ quality: q as AvatarQuality })
+                                                }
+                                                className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                                                    active
+                                                        ? 'bg-background text-foreground shadow-sm'
+                                                        : 'text-muted-foreground hover:text-foreground'
+                                                }`}
+                                            >
+                                                {q}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </Field>
+
+                            {/* Host-in-video percentage */}
+                            <Field
+                                icon={<Users className="size-3.5" />}
+                                label={`Host on screen — ${host.host_in_video_percentage}%`}
+                                helper="Director picks which shots show the host (Hook, Recap, CTA, high-emphasis beats are prioritised). Narration audio plays continuously regardless."
+                            >
+                                <Slider
+                                    value={[host.host_in_video_percentage]}
+                                    min={5}
+                                    max={100}
+                                    step={5}
+                                    onValueChange={(v) =>
+                                        setHost({ ...host, host_in_video_percentage: v[0] ?? 100 })
+                                    }
+                                />
+                                <p className="text-[10px] text-muted-foreground">
+                                    Tip: Below ~25% the host barely appears — disable Host
+                                    instead to save on avatar synthesis costs.
+                                </p>
+                            </Field>
+                        </>
+                    )}
+                </>
+            )}
         </div>
     );
 }

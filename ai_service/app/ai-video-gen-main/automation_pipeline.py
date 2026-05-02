@@ -5666,6 +5666,25 @@ class VideoGenerationPipeline:
         host_assets_dir = _Path(run_dir) / "host_assets"
         host_assets_dir.mkdir(parents=True, exist_ok=True)
 
+        # The pipeline class doesn't carry an s3_service attribute — it
+        # instantiates one locally where needed (mirrors the existing pattern
+        # at automation_pipeline.py:10420 for the legacy avatar upload).
+        # Without this, AvatarBatch crashes with AttributeError on the very
+        # first shot (witnessed in ai_pipe.txt run @ 06:31).
+        try:
+            import sys as _sys_s3
+            from pathlib import Path as _Path_s3
+            _app_dir = _Path_s3(__file__).parent.parent
+            if str(_app_dir.parent) not in _sys_s3.path:
+                _sys_s3.path.insert(0, str(_app_dir.parent))
+            from app.services.s3_service import S3Service
+            s3_service = S3Service()
+        except Exception as _s3_err:
+            print(f"[AvatarBatch] ❌ Could not instantiate S3Service: {_s3_err} — disabling host")
+            for _, s in host_shots:
+                s["host_present"] = False
+            return {"skipped": True, "reason": f"s3_service unavailable: {_s3_err}"}
+
         # Resume idempotency: load any prior host_outputs.json so we skip
         # already-completed shots (Seedream + fal.ai are the expensive parts;
         # re-running them on resume would double-bill the user). Indexed by
@@ -5777,7 +5796,7 @@ class VideoGenerationPipeline:
                 local_img.write_bytes(img_bytes)
                 # Upload to S3
                 _img_s3_key = f"ai-videos/host-assets/{getattr(self, '_run_name', 'run')}/host_shot_{shot_idx:03d}.png"
-                img_s3_url = self.s3_service.upload_file(
+                img_s3_url = s3_service.upload_file(
                     local_img, s3_key=_img_s3_key, content_type="image/png"
                 )
                 if not img_s3_url:
@@ -5809,7 +5828,7 @@ class VideoGenerationPipeline:
                 if _r.returncode != 0 or not local_audio.exists():
                     raise RuntimeError(f"ffmpeg slice failed: {_r.stderr or '<no stderr>'}")
                 _aud_s3_key = f"ai-videos/host-assets/{getattr(self, '_run_name', 'run')}/host_audio_{shot_idx:03d}.mp3"
-                aud_s3_url = self.s3_service.upload_file(
+                aud_s3_url = s3_service.upload_file(
                     local_audio, s3_key=_aud_s3_key, content_type="audio/mpeg"
                 )
                 if not aud_s3_url:

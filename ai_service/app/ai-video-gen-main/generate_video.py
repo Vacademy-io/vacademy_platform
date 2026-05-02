@@ -2522,6 +2522,7 @@ def render_video_from_json(
     frames_dir.mkdir(parents=True, exist_ok=True)
 
     # Render frames using Playwright (CSS animations run in real-time between frames)
+    print("[RENDER-STAGE] launching chromium", flush=True)
     with sync_playwright() as p:
         browser = p.chromium.launch(
             channel="chrome",  # Google Chrome — includes H.264/AAC codecs (Playwright Chromium lacks them)
@@ -2539,13 +2540,15 @@ def render_video_from_json(
                 "--enable-gpu-rasterization",
             ],
         )
+        print("[RENDER-STAGE] chromium launched, opening context", flush=True)
         _dpi_scale = device_scale_factor if device_scale_factor is not None else 1
-        print(f"🎥 Rendering with DPI Scale Factor: {_dpi_scale}")
+        print(f"🎥 Rendering with DPI Scale Factor: {_dpi_scale}", flush=True)
         context = browser.new_context(
             viewport={"width": width, "height": height},
             device_scale_factor=_dpi_scale,
         )
         page = context.new_page()
+        print("[RENDER-STAGE] page created, preparing harness", flush=True)
         
         # Hook up console logging to Python stdout for debugging
         # Log errors, warnings, and info for full visibility
@@ -2580,7 +2583,7 @@ def render_video_from_json(
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
         # ── Build version marker ── (bump this when deploying changes)
-        print(f"[RENDER-VERSION] generate_video.py build=2026-04-30-v14 (gsap-array-targets, fps={fps})")
+        print(f"[RENDER-VERSION] generate_video.py build=2026-05-01-v15 (vx-tweens-conv, diag-heartbeats, fps={fps})", flush=True)
         # Wait for fonts to load before rendering frames
         try:
             page.evaluate("() => document.fonts.ready")

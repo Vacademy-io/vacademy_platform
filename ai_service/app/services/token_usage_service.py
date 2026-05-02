@@ -138,6 +138,7 @@ class TokenUsageService:
         total_price: Optional[float] = None,
         tts_provider: Optional[str] = None,
         character_count: Optional[int] = None,
+        seconds: Optional[int] = None,
         batch_id: Optional[str] = None,
     ) -> AiTokenUsage:
         """
@@ -190,6 +191,7 @@ class TokenUsageService:
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     character_count=character_count or 0,
+                    seconds=seconds or 0,
                     usage_log_id=str(usage_record.id) if usage_record and hasattr(usage_record, 'id') else None,
                     batch_id=batch_id,
                 )

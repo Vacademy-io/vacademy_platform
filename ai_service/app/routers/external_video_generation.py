@@ -190,6 +190,7 @@ def preview_video_cost(
         html_quality=payload.html_quality,
         review_mode=payload.review_mode,
         attachments_count=payload.attachments_count,
+        host=(payload.host.model_dump() if getattr(payload, "host", None) else None),
     )
     return VideoCostPreviewResponse(**result)
 
@@ -320,6 +321,7 @@ async def generate_video_external(
                         background_music_volume=p.background_music_volume,
                         sub_shots_enabled=p.sub_shots_enabled,
                         routing_overrides=p.routing_overrides,
+                        host=p.host,
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:

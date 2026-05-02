@@ -152,6 +152,34 @@ def _get_image_unit_price(db: Session, model_id: str = _VIDEO_IMAGE_MODEL_ID) ->
     return _IMAGE_COST_USD_FALLBACK
 
 
+def _get_video_second_price(db: Session, model_id: str) -> Optional[float]:
+    """Per-second USD cost for video models (avatar synthesis). NULL → not registered."""
+    try:
+        row = db.execute(
+            text(
+                "SELECT video_price_per_second FROM ai_models "
+                "WHERE model_id = :m AND is_active = TRUE LIMIT 1"
+            ),
+            {"m": model_id},
+        ).fetchone()
+        if row and row.video_price_per_second is not None:
+            return float(row.video_price_per_second)
+    except Exception as e:
+        logger.warning(f"[VideoEstimation] Video pricing lookup failed: {e}")
+    return None
+
+
+def _duration_seconds_from_band(band: str) -> float:
+    """Median seconds for a duration band — used for host-cost extrapolation."""
+    return {
+        "<1 minute":   45.0,
+        "1-2 minutes": 90.0,
+        "2-3 minutes": 150.0,
+        "3-5 minutes": 240.0,
+        "5+ minutes":  360.0,
+    }.get(band, 150.0)
+
+
 def _resolve_default_video_model(db: Session) -> Optional[str]:
     """Same fallback chain video_generation_service uses."""
     try:
@@ -210,6 +238,7 @@ def estimate_video_generation(
     html_quality: str,
     review_mode: bool,
     attachments_count: int,
+    host: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Estimate credits and USD cost for a video generation request, plus echo back
@@ -254,6 +283,39 @@ def estimate_video_generation(
 
     image_unit = _get_image_unit_price(db)
     tts_per_1k = _tts_cost_per_1k(tts_provider)
+
+    # Host (avatar) cost: per-second × estimated host-on-screen seconds.
+    # host_in_video_percentage of the median duration for the band yields the
+    # rough seconds we'll bill at the avatar model's per-second rate. Only
+    # priced for avatar host on ultra/super_ultra (matches feature gating).
+    host_cost_row: Optional[Dict[str, Any]] = None
+    host_extra_image_count = 0
+    host_extra_image_usd = 0.0
+    if (
+        isinstance(host, dict)
+        and host.get("type") == "avatar"
+        and quality_tier in ("ultra", "super_ultra")
+    ):
+        avatar_cfg = host.get("avatar") or {}
+        host_model = avatar_cfg.get("avatar_model") or "fal-ai/kling-video/ai-avatar/v2/standard"
+        host_pct = max(0, min(100, int(host.get("host_in_video_percentage", 100))))
+        approx_seconds = _duration_seconds_from_band(duration_band) * (host_pct / 100.0)
+        host_per_sec = _get_video_second_price(db, host_model)
+        if host_per_sec is not None and approx_seconds > 0:
+            host_usd = approx_seconds * host_per_sec
+            host_cost_row = {
+                "component": "Avatar video synthesis (host)",
+                "detail": (
+                    f"~{approx_seconds:.0f}s @ {host_model} "
+                    f"({avatar_cfg.get('quality', '480p')}, {host_pct}% of video)"
+                ),
+                "cost_usd": round(host_usd, 4),
+                "credits": float(_credits_from_usd("video", host_usd)),
+            }
+            # Per-shot avatar reference image gen (Seedream image-to-image).
+            # Rough estimate: 1 image per ~6s of host content.
+            host_extra_image_count = max(1, int(approx_seconds / 6.0))
+            host_extra_image_usd = host_extra_image_count * image_unit
 
     def _components(
         d_in: int, d_out: int, s_in: int, s_out: int, imgs: int
@@ -302,6 +364,17 @@ def estimate_video_generation(
                 "cost_usd": round(bg_usd, 4),
                 "credits": float(_credits_from_usd("video", bg_usd)),
             })
+        # Host (avatar) cost — appended last so the FE can render it as a
+        # distinct line item below the standard breakdown.
+        if host_cost_row:
+            rows.append(host_cost_row)
+            if host_extra_image_count > 0 and host_extra_image_usd > 0:
+                rows.append({
+                    "component": "Avatar reference images (host)",
+                    "detail": f"~{host_extra_image_count} images · seedream-4.5 (per-shot identity)",
+                    "cost_usd": round(host_extra_image_usd, 4),
+                    "credits": float(_credits_from_usd("image", host_extra_image_usd)),
+                })
         return rows
 
     def _scale(v: int, factor: float) -> int:
@@ -373,6 +446,7 @@ def estimate_video_generation(
         "html_quality": html_quality,
         "review_mode": review_mode,
         "attachments_count": attachments_count,
+        "host": host if isinstance(host, dict) else None,
     }
 
     # --- Balance lookup --------------------------------------------------

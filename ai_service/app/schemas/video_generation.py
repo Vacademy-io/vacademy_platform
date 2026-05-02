@@ -33,6 +33,7 @@ class VideoCostPreviewRequest(BaseModel):
     html_quality: str = "advanced"
     review_mode: bool = False
     attachments_count: int = 0
+    host: Optional["HostConfig"] = None
 
 
 class VideoCostPreviewResponse(BaseModel):
@@ -46,6 +47,82 @@ class ReferenceFileItem(BaseModel):
     url: str = Field(..., description="Public S3 URL of the file")
     name: str = Field(..., description="Original filename (e.g., 'diagram.png')")
     type: Literal["image", "pdf"] = Field(..., description="File type: 'image' or 'pdf'")
+
+
+# ---------------------------------------------------------------------------
+# Host (on-screen narrator) — first-class concept added in this round.
+# Two host kinds:
+#   • avatar — AI talking head (per-shot Seedream image-to-image conditioned on
+#     the user's face image, then fal.ai turns each (image + audio slice) into
+#     a lip-synced video).
+#   • raw    — splice clips from already-indexed input videos (uses
+#     face_segments[].free_regions for overlay placement). Plumbing only this
+#     round; generation path returns 501 until we ship raw-host logic.
+#
+# Tier-gated: ultra / super_ultra only. Lower tiers reject at the API layer.
+# ---------------------------------------------------------------------------
+
+AvatarModelLiteral = Literal[
+    "fal-ai/kling-video/ai-avatar/v2/standard",
+    "veed/fabric-1.0",
+]
+
+
+class HostAvatarConfig(BaseModel):
+    """Avatar-host inputs. Required when host.type='avatar'."""
+    face_image_url: str = Field(
+        ...,
+        description="Public S3 URL of a clear, front-facing face photo. Used as the Seedream image-to-image reference for every host shot.",
+    )
+    details_prompt: str = Field(
+        default="",
+        description="User-supplied description of the host: clothing, demeanour, background hints. Threaded into per-shot avatar image prompts.",
+    )
+    avatar_model: AvatarModelLiteral = Field(
+        default="fal-ai/kling-video/ai-avatar/v2/standard",
+        description="fal.ai model used for the talking-head video. Default Kling v2 Standard ($0.0562/sec).",
+    )
+    quality: Literal["480p", "720p"] = Field(
+        default="480p",
+        description="Avatar video resolution. Same per-second price for both qualities.",
+    )
+
+
+class HostRawConfig(BaseModel):
+    """Raw-host inputs. Required when host.type='raw'. Generation path is plumbed only this round."""
+    input_video_ids: List[str] = Field(
+        ...,
+        min_length=1,
+        description="One or more already-indexed input video IDs (must be COMPLETED). Director picks clips from these.",
+    )
+
+
+class HostConfig(BaseModel):
+    """Optional on-screen host. ultra / super_ultra only."""
+    type: Literal["avatar", "raw"] = Field(
+        default="avatar",
+        description="'avatar' = AI talking head per shot. 'raw' = clips from indexed input videos.",
+    )
+    host_in_video_percentage: int = Field(
+        default=100, ge=0, le=100,
+        description=(
+            "Percentage of shots that feature the host on screen. "
+            "100 = host on screen for every shot. "
+            "Lower values = host appears in N% of shots, picked by the Director "
+            "with emphasis weighting (Hook, Recap, CTA, high-emphasis beats). "
+            "Narration audio plays continuously regardless."
+        ),
+    )
+    avatar: Optional[HostAvatarConfig] = None
+    raw: Optional[HostRawConfig] = None
+
+    @model_validator(mode="after")
+    def _validate(self):
+        if self.type == "avatar" and not self.avatar:
+            raise ValueError("host.avatar is required when host.type == 'avatar'")
+        if self.type == "raw" and not self.raw:
+            raise ValueError("host.raw is required when host.type == 'raw'")
+        return self
 
 
 # Content types supported by the generation pipeline
@@ -220,6 +297,16 @@ class VideoGenerationRequest(BaseModel):
             "source video clips are visual-only. Use True for podcast-style videos "
             "where you want to hear the speaker. Use False for marketing/explainer "
             "videos where the TTS script is the main content."
+        )
+    )
+    host: Optional[HostConfig] = Field(
+        default=None,
+        description=(
+            "Optional on-screen host (narrator). Available on ultra / super_ultra "
+            "tiers only — request is rejected on lower tiers when host is set. "
+            "When set, the script is rewritten in 1st person and the host appears "
+            "in `host_in_video_percentage`%% of shots, full-frame, with motion "
+            "graphics overlaid in free regions."
         )
     )
 

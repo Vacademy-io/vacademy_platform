@@ -176,6 +176,7 @@ class VideoGenerationService:
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
         routing_overrides: Optional[Dict[str, Any]] = None,
+        host: Optional[Any] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -211,7 +212,36 @@ class VideoGenerationService:
                 "message": error_msg
             }
             return
-        
+
+        # Tier-gate the Host feature BEFORE creating any DB record / charging
+        # credits. Mirrors the early-fail UX of stage validation above.
+        if host is not None and not resume:
+            try:
+                from .host_planner_service import make_host_plan, HostFeatureError
+                from ..config import get_settings as _get_settings
+                _settings = _get_settings()
+                _early_host_plan = make_host_plan(
+                    host,
+                    quality_tier=quality_tier,
+                    fal_api_key=getattr(_settings, "fal_api_key", None) or "",
+                )
+                # New host pipeline supersedes the legacy single-PiP avatar.
+                # If both `host.type=avatar` and `generate_avatar=true` are set,
+                # the new per-shot host already covers the on-screen narrator —
+                # running EchoMimic on top would produce a redundant corner PiP.
+                # Suppress the legacy path here (mutate the local kwarg) so the
+                # rest of the pipeline only sees the new host configuration.
+                if _early_host_plan.is_avatar() and generate_avatar:
+                    logger.info(
+                        "[VideoGenService] host.type=avatar is set — suppressing legacy "
+                        "generate_avatar=true (PiP) to avoid double-rendering the host."
+                    )
+                    generate_avatar = False
+            except HostFeatureError as he:
+                logger.warning(f"[VideoGenService] Host validation failed: {he}")
+                yield {"type": "error", "message": str(he)}
+                return
+
         # Get or create video record
         video_record = self.repository.get_by_video_id(video_id)
         
@@ -337,6 +367,7 @@ class VideoGenerationService:
                     background_music_volume=background_music_volume,
                     sub_shots_enabled=sub_shots_enabled,
                     routing_overrides=routing_overrides,
+                    host=host,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -424,6 +455,7 @@ class VideoGenerationService:
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
         routing_overrides: Optional[Dict[str, Any]] = None,
+        host: Optional[Any] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -696,33 +728,101 @@ class VideoGenerationService:
                         if self.s3_service.download_file(branding_meta_url, branding_meta_path):
                             logger.info(f"[VideoGenService] Successfully downloaded branding_meta.json")
         
-        # ── Intent router — decide which tools to invoke and how the pipeline behaves ──
-        # Gate <=1 (not ==0) because fresh videos start at stage_idx=1 (SCRIPT). The
-        # PENDING stage is never entered, so an ==0 gate would mean intent routing
-        # never fires for new generations — leaving URL/web_search dead code.
-        from ..schemas.routing import RoutingPlan
+        # ── Intent router + Video-type classifier — pre-script preamble ──
+        # Both run once per fresh video (gate <=1 because new videos start at
+        # stage_idx=1 — PENDING is never entered, so ==0 would dead-code these).
+        # They share inputs and have no mutual dependency, so we fan them out
+        # in parallel and pay only the slower call's wall-clock.
+        from ..schemas.routing import HostPlan, RoutingPlan, VideoTypePlan
         routing_plan = RoutingPlan()  # safe default
+        video_type_plan = VideoTypePlan()  # safe default ("explainer", education)
+        host_plan = HostPlan(enabled=False)  # safe default
         if start_stage_idx <= 1 and prompt:
             try:
+                import asyncio as _asyncio
                 from .intent_router_service import IntentRouterService, apply_overrides
+                from .video_type_classifier_service import (
+                    VideoTypeClassifierService,
+                    apply_user_override as apply_video_type_override,
+                )
                 from .web_content_capture_service import extract_urls
                 urls_found = extract_urls(prompt, max_urls=5)
                 router_svc = IntentRouterService(openrouter_key=openrouter_key)
-                routing_plan = await router_svc.route(
-                    prompt=prompt,
-                    input_video_count=len(input_video_ids or []),
-                    attached_file_count=len(reference_files or []),
-                    urls_in_prompt=urls_found,
-                    orientation=orientation,
-                    content_type=content_type,
+                type_svc = VideoTypeClassifierService(openrouter_key=openrouter_key)
+
+                # User can pre-pick a type via routing_overrides.video_type — wins
+                # over LLM classification (mirrors how tool overrides work today).
+                user_type_override = None
+                if isinstance(routing_overrides, dict):
+                    user_type_override = routing_overrides.get("video_type")
+
+                routing_plan, video_type_plan = await _asyncio.gather(
+                    router_svc.route(
+                        prompt=prompt,
+                        input_video_count=len(input_video_ids or []),
+                        attached_file_count=len(reference_files or []),
+                        urls_in_prompt=urls_found,
+                        orientation=orientation,
+                        content_type=content_type,
+                    ),
+                    type_svc.classify(
+                        prompt=prompt,
+                        input_video_count=len(input_video_ids or []),
+                        attached_file_count=len(reference_files or []),
+                        urls_in_prompt=urls_found,
+                        orientation=orientation,
+                        content_type=content_type,
+                        target_duration=target_duration,
+                    ),
                 )
                 routing_plan = apply_overrides(routing_plan, routing_overrides)
+                video_type_plan = apply_video_type_override(video_type_plan, user_type_override)
                 (run_dir / "routing_plan.json").write_text(
                     routing_plan.model_dump_json(indent=2), encoding="utf-8"
                 )
+                (run_dir / "video_type.json").write_text(
+                    video_type_plan.model_dump_json(indent=2), encoding="utf-8"
+                )
                 logger.info(f"[VideoGenService] Routing plan: {routing_plan.explanation}")
+                logger.info(
+                    f"[VideoGenService] Video type: {video_type_plan.type} "
+                    f"(cadence={video_type_plan.cadence_hint}, "
+                    f"conf={video_type_plan.confidence:.2f}) — {video_type_plan.reason}"
+                )
+
+                # Host plan (no LLM call — pure validation + normalisation).
+                # Tier-gate already passed at the top of generate_till_stage,
+                # so any failure here is a programmer error and we re-raise.
+                if host is not None:
+                    try:
+                        from .host_planner_service import make_host_plan
+                        from ..config import get_settings as _get_settings_inner
+                        host_plan = make_host_plan(
+                            host,
+                            quality_tier=quality_tier,
+                            fal_api_key=getattr(_get_settings_inner(), "fal_api_key", None) or "",
+                        )
+                        (run_dir / "host_plan.json").write_text(
+                            host_plan.model_dump_json(indent=2), encoding="utf-8"
+                        )
+                        if host_plan.enabled:
+                            _hp_summary = (
+                                f"avatar model={host_plan.avatar.avatar_model} q={host_plan.avatar.quality}"
+                                if host_plan.is_avatar() and host_plan.avatar
+                                else (
+                                    f"raw input_videos={len(host_plan.raw.input_video_ids) if host_plan.raw else 0}"
+                                    if host_plan.is_raw()
+                                    else "(unknown)"
+                                )
+                            )
+                            logger.info(
+                                f"[VideoGenService] Host plan: type={host_plan.type} "
+                                f"pct={host_plan.host_in_video_percentage}% — {_hp_summary}"
+                            )
+                    except Exception as he:
+                        logger.warning(f"[VideoGenService] Host plan failed (non-fatal): {he}")
             except Exception as e:
-                logger.warning(f"[VideoGenService] Intent router failed (non-fatal): {e}")
+                logger.warning(f"[VideoGenService] Pre-script preamble failed (non-fatal): {e}")
         else:
             cached_plan = run_dir / "routing_plan.json"
             if cached_plan.exists():
@@ -730,9 +830,25 @@ class VideoGenerationService:
                     routing_plan = RoutingPlan.model_validate_json(cached_plan.read_text(encoding="utf-8"))
                 except Exception as e:
                     logger.warning(f"[VideoGenService] Cached routing plan unreadable: {e}")
+            cached_type = run_dir / "video_type.json"
+            if cached_type.exists():
+                try:
+                    video_type_plan = VideoTypePlan.model_validate_json(cached_type.read_text(encoding="utf-8"))
+                except Exception as e:
+                    logger.warning(f"[VideoGenService] Cached video_type unreadable: {e}")
+            cached_host = run_dir / "host_plan.json"
+            if cached_host.exists():
+                try:
+                    host_plan = HostPlan.model_validate_json(cached_host.read_text(encoding="utf-8"))
+                except Exception as e:
+                    logger.warning(f"[VideoGenService] Cached host_plan unreadable: {e}")
 
         # ── Web capture (only if router enabled scrape_url) ──
+        # Artifacts are captured into _scrape_artifacts so we can persist them
+        # to extra_metadata.intent_outcomes for later quality analysis (e.g.
+        # the Telangana run where scrape returned thin content).
         captured_text_context = ""
+        _scrape_artifacts: Optional[Dict[str, Any]] = None
         if start_stage_idx <= 1 and prompt and routing_plan.is_tool_enabled("scrape_url"):
             try:
                 from .web_content_capture_service import WebContentCaptureService, extract_urls
@@ -747,11 +863,26 @@ class VideoGenerationService:
                             f"[VideoGenService] Web capture added {len(captured_files)} "
                             f"reference files, {len(captured_text_context)} chars text"
                         )
+                    # Snapshot for analysis. Cap text at 4000 chars to keep the
+                    # metadata column lean while still preserving enough excerpt
+                    # to judge whether the scrape captured the article body.
+                    _captured_files_safe = captured_files if isinstance(captured_files, list) else []
+                    _scrape_artifacts = {
+                        "urls_attempted": urls,
+                        "files_captured": _captured_files_safe,
+                        "files_count": len(_captured_files_safe),
+                        "screenshot_count": sum(1 for f in _captured_files_safe if "screenshot" in (f.get("name") or "")),
+                        "inline_image_count": sum(1 for f in _captured_files_safe if "screenshot" not in (f.get("name") or "")),
+                        "text_chars": len(captured_text_context or ""),
+                        "text_excerpt": (captured_text_context or "")[:4000],
+                    }
             except Exception as e:
                 logger.warning(f"[VideoGenService] Web capture failed (non-fatal): {e}")
+                _scrape_artifacts = {"error": str(e)}
 
         # ── Web search (only if router enabled web_search) ──
         searched_text_context = ""
+        _search_artifacts: Optional[Dict[str, Any]] = None
         if start_stage_idx <= 1 and routing_plan.is_tool_enabled("web_search"):
             try:
                 ws_tool = routing_plan.get_tool("web_search")
@@ -762,8 +893,20 @@ class VideoGenerationService:
                     search_svc = WebSearchService(openrouter_key=openrouter_key)
                     result = await search_svc.search(query)
                     searched_text_context = format_search_for_context(result)
+                    # Snapshot. Cap synthesized answer at 2000 chars; sources
+                    # are already small (host+url+empty snippet).
+                    _ans = (result.get("answer") or "") if isinstance(result, dict) else ""
+                    _src = result.get("sources") if isinstance(result, dict) else []
+                    _search_artifacts = {
+                        "query": query,
+                        "answer": _ans[:2000],
+                        "answer_chars": len(_ans),
+                        "sources": _src or [],
+                        "sources_count": len(_src or []),
+                    }
             except Exception as e:
                 logger.warning(f"[VideoGenService] Web search failed (non-fatal): {e}")
+                _search_artifacts = {"error": str(e)}
 
         # ── Resolve mute_tts_on_source_clips from routing plan ──
         # apply_overrides() has already merged any user toggle into routing_plan.config,
@@ -772,6 +915,75 @@ class VideoGenerationService:
         if routing_plan.config.mute_tts_on_source_clips and not mute_tts_on_source_clips:
             mute_tts_on_source_clips = True
             logger.info("[VideoGenService] mute_tts_on_source_clips=true per routing plan")
+
+        # ── Persist user_selections + intent_outcomes to extra_metadata ──
+        # Snapshot of what the user asked for + what the pre-script preamble
+        # decided on their behalf, INCLUDING the raw artifacts produced by
+        # scrape_url and web_search. Lets history, debugging, and quality
+        # analysis reproduce the exact context the pipeline ran with — without
+        # poking at run_dir/*.json files. Only persists for fresh runs (resume
+        # paths read the cached run_dir/*.json instead and skip re-classification).
+        if start_stage_idx <= 1:
+            try:
+                _vrec = self.repository.get_by_video_id(video_id)
+                _emeta = (_vrec.extra_metadata or {}) if _vrec else {}
+                _emeta["user_selections"] = {
+                    "prompt": prompt,
+                    "content_type": content_type,
+                    "quality_tier": quality_tier,
+                    "model": model,
+                    "target_duration": target_duration,
+                    "target_audience": target_audience,
+                    "orientation": orientation,
+                    "language": language,
+                    "voice_gender": voice_gender,
+                    "tts_provider": tts_provider,
+                    "voice_id": voice_id,
+                    "html_quality": html_quality,
+                    "captions_enabled": captions_enabled,
+                    "generate_avatar": generate_avatar,
+                    "avatar_image_url": avatar_image_url,
+                    "sound_effects_enabled": sound_effects_enabled,
+                    "background_music_enabled": background_music_enabled,
+                    "background_music_volume": background_music_volume,
+                    "sub_shots_enabled": sub_shots_enabled,
+                    "mute_tts_on_source_clips_kwarg": mute_tts_on_source_clips,
+                    "input_video_ids": input_video_ids,
+                    "input_video_audio": input_video_audio,
+                    "reference_files_count": len(reference_files or []),
+                    "routing_overrides": routing_overrides,
+                }
+                _emeta["intent_outcomes"] = {
+                    "video_type": video_type_plan.model_dump(),
+                    "routing_plan": routing_plan.model_dump(),
+                    "tools_enabled": [
+                        t.name for t in routing_plan.tools if t.enabled
+                    ],
+                    "scrape_url_artifacts": _scrape_artifacts,
+                    "web_search_artifacts": _search_artifacts,
+                }
+                # Host snapshot. Inputs come from the HostPlan (post-tier-gate);
+                # outputs (per-shot avatar URLs, fal job ids, total seconds) are
+                # written by the AvatarBatch sub-stage during HTML generation.
+                if host_plan and host_plan.enabled:
+                    _hp_dump = host_plan.model_dump()
+                    _existing_host = _emeta.get("host") or {}
+                    _emeta["host"] = {
+                        **_hp_dump,
+                        # Preserve any outputs already written by an earlier
+                        # AvatarBatch run (resume safety).
+                        "outputs": _existing_host.get("outputs", {
+                            "host_shot_indices": [],
+                            "host_shot_count": 0,
+                            "total_host_seconds": 0.0,
+                            "shot_artifacts": [],
+                            "errors": [],
+                        }),
+                        "estimated_cost_usd": _existing_host.get("estimated_cost_usd"),
+                    }
+                self.repository.update_metadata(video_id, _emeta)
+            except Exception as _e:
+                logger.warning(f"[VideoGenService] Failed to persist selections/outcomes: {_e}")
 
         # ── Process reference files (images/PDFs) ──
         reference_context = None
@@ -1046,6 +1258,8 @@ class VideoGenerationService:
                     background_music_volume=background_music_volume,
                     sub_shots_enabled=sub_shots_enabled,
                     routing_plan=routing_plan.model_dump() if routing_plan else None,
+                    video_type_plan=video_type_plan.model_dump() if video_type_plan else None,
+                    host_plan=host_plan.model_dump() if host_plan else None,
                     progress_callback=_progress_cb,
                 )
 
@@ -1231,6 +1445,135 @@ class VideoGenerationService:
 
                 if outputs and "run_dir" in outputs:
                     run_dir = outputs["run_dir"]
+
+                # ── Merge host_outputs.json (written by AvatarBatch) into extra_metadata.host ──
+                # AvatarBatch persists per-shot artifacts to run_dir/host_outputs.json
+                # during the HTML stage. We pull it forward into extra_metadata.host.outputs
+                # so analysis / debugging / cost reconciliation can read the full picture
+                # without inspecting the run dir. We ALSO deduct credits for the avatar
+                # work here, because the standard token-usage deduction loop only knows
+                # about LLM tokens / images / stock / TTS — fal.ai per-second avatar and
+                # the per-shot Seedream identity images are separate billable units.
+                if stage_pipeline_name == "html" and run_dir:
+                    _host_out_file = run_dir / "host_outputs.json"
+                    if _host_out_file.exists():
+                        try:
+                            import json as _json_h
+                            _host_outputs = _json_h.loads(_host_out_file.read_text(encoding="utf-8"))
+                            _vrec_h = self.repository.get_by_video_id(video_id)
+                            _emeta_h = (_vrec_h.extra_metadata or {}) if _vrec_h else {}
+                            _host_block = _emeta_h.get("host") or {}
+                            _host_block["outputs"] = _host_outputs
+                            _emeta_h["host"] = _host_block
+                            self.repository.update_metadata(video_id, _emeta_h)
+                            logger.info(
+                                f"[VideoGenService] Merged host_outputs.json into extra_metadata.host.outputs "
+                                f"({_host_outputs.get('host_shot_count', 0)} shots, "
+                                f"{_host_outputs.get('total_host_seconds', 0):.1f}s)"
+                            )
+
+                            # ── Deduct credits for avatar-host work ──
+                            # Two separate units:
+                            #   1. RequestType.IMAGE — per-shot Seedream identity image
+                            #      (one per completed avatar shot). Same rate as any
+                            #      other AI image generation.
+                            #   2. RequestType.AVATAR_VIDEO — total_host_seconds at the
+                            #      avatar model's video_price_per_second.
+                            #
+                            # Resume-safe: each shot artifact gets a `deducted_at`
+                            # timestamp once charged. On resume, we skip artifacts
+                            # that already carry one — otherwise a partial AvatarBatch
+                            # run that resumes would double-bill the user for the
+                            # shots that completed in the prior attempt.
+                            if institute_id and db_session:
+                                try:
+                                    from datetime import datetime as _dt_dh
+                                    _all_artifacts = list(_host_outputs.get("shot_artifacts") or [])
+                                    _completed_shots = [
+                                        a for a in _all_artifacts
+                                        if a.get("status") == "completed"
+                                    ]
+                                    _undeducted_completed = [
+                                        a for a in _completed_shots
+                                        if not a.get("deducted_at")
+                                    ]
+                                    _undeducted_seconds = int(round(sum(
+                                        float(a.get("duration_s_actual") or a.get("duration_s") or 0)
+                                        for a in _undeducted_completed
+                                    )))
+                                    _host_model = (
+                                        (_host_block.get("avatar") or {}).get("avatar_model")
+                                        or "fal-ai/kling-video/ai-avatar/v2/standard"
+                                    )
+
+                                    if not _undeducted_completed and not _undeducted_seconds:
+                                        logger.info(
+                                            "[VideoGenService] Host credits already deducted "
+                                            "in a prior run — skipping (resume idempotency)."
+                                        )
+                                    else:
+                                        _ts = TokenUsageService(db_session)
+                                        _now_iso = _dt_dh.utcnow().isoformat()
+
+                                        # Per-shot Seedream identity image
+                                        for _shot_art in _undeducted_completed:
+                                            _ts.record_usage_and_deduct_credits(
+                                                api_provider=ApiProvider.GEMINI,
+                                                prompt_tokens=0,
+                                                completion_tokens=0,
+                                                total_tokens=0,
+                                                request_type=RequestType.IMAGE,
+                                                institute_id=institute_id,
+                                                user_id=user_id,
+                                                model="bytedance-seed/seedream-4.5",
+                                                metadata={
+                                                    "video_id": video_id,
+                                                    "stage": "html",
+                                                    "purpose": "host_avatar_identity",
+                                                    "shot_index": _shot_art.get("shot_index"),
+                                                },
+                                                batch_id=video_id,
+                                            )
+                                            _shot_art["deducted_at"] = _now_iso
+                                        # Avatar video seconds — single charge per dedup-run
+                                        if _undeducted_seconds > 0:
+                                            _ts.record_usage_and_deduct_credits(
+                                                api_provider=ApiProvider.OPENAI,
+                                                prompt_tokens=0,
+                                                completion_tokens=0,
+                                                total_tokens=0,
+                                                request_type=RequestType.AVATAR_VIDEO,
+                                                institute_id=institute_id,
+                                                user_id=user_id,
+                                                model=_host_model,
+                                                metadata={
+                                                    "video_id": video_id,
+                                                    "stage": "html",
+                                                    "host_shot_count": len(_undeducted_completed),
+                                                    "quality": (_host_block.get("avatar") or {}).get("quality"),
+                                                },
+                                                seconds=_undeducted_seconds,
+                                                batch_id=video_id,
+                                            )
+
+                                        # Persist deducted_at stamps back into extra_metadata.
+                                        # _host_block["outputs"] points at the same dict we
+                                        # just mutated, so re-saving is sufficient.
+                                        _host_block["outputs"]["shot_artifacts"] = _all_artifacts
+                                        _emeta_h["host"] = _host_block
+                                        self.repository.update_metadata(video_id, _emeta_h)
+
+                                        logger.info(
+                                            f"[VideoGenService] Deducted host credits: "
+                                            f"{len(_undeducted_completed)} identity images + "
+                                            f"{_undeducted_seconds}s of {_host_model}"
+                                        )
+                                except Exception as _hd_err:
+                                    logger.warning(
+                                        f"[VideoGenService] Failed to deduct host credits: {_hd_err}"
+                                    )
+                        except Exception as _hm_err:
+                            logger.warning(f"[VideoGenService] Failed to merge host_outputs.json: {_hm_err}")
 
                 # ── Validate required outputs for this stage ──
                 # If the pipeline returned but critical output files are missing,

@@ -343,7 +343,10 @@ SUPER_ULTRA_DIRECTOR_EXTENSION = (
     '"text_elements":["SIX","STAGES."],'
     '"animation_strategy":"black background, \\"SIX\\" wipes up large, 0.8s later \\"STAGES.\\" wipes up below in accent color, 1.6s a horizontal accent line draws beneath both",'
     '"transition_in":"fade"},\n'
-    '    /* ... shots 8-12 expand on each stage with appropriate type variety ... */\n'
+    '    {"shot_index":8,"shot_type":"TEXT_DIAGRAM","start_time":36.0,"end_time":42.0,'
+    '"narration_excerpt":"design,",'
+    '"animation_strategy":"sketch-style line art of a designer at a tablet draws in (SVG path stroke), 1.5s the word \\"01 DESIGN\\" types in below, 3.0s key terms (\'sketch\', \'reference\') get accent underlines",'
+    '"transition_in":"slide_right"},\n'
     '    {"shot_index":36,"shot_type":"DATA_STORY","start_time":228.0,"end_time":234.0,'
     '"narration_excerpt":"Get them right, and the brand survives",'
     '"animation_strategy":"line chart drawing left to right showing two trajectories — one labeled \\"WITH TECH PACK\\" climbing, one labeled \\"WITHOUT\\" flatlining; final values appear as bold callouts",'
@@ -580,6 +583,63 @@ OVERLAY_INFOGRAPHIC_DIRECTOR_EXTENSION = (
     "- For demo walkthroughs, the most natural pattern is one `top-right` step card per clip.\n"
     "- Non-SOURCE_CLIP shots ignore overlay_slots — only the source-clip layout uses them.\n"
 )
+
+
+# ---------------------------------------------------------------------------
+# Host-led video extension — emitted when host_plan.enabled == True.
+# Tells the Director to mark per-shot host_present + host_layout +
+# host_image_prompt fields, with emphasis-weighted distribution to hit the
+# target percentage. Consumed by the AvatarBatch sub-stage during HTML.
+# ---------------------------------------------------------------------------
+HOST_DIRECTOR_EXTENSION = (
+    "\n\n## 🎙️ HOST-LED VIDEO MODE — ON-SCREEN NARRATOR\n"
+    "An on-screen host delivers the narration. Your job: pick which shots show "
+    "the host (full-frame talking head) and which shots are pure visuals/graphics.\n\n"
+    "**Target distribution:**\n"
+    "- Host appears in approximately {host_pct}% of all shots "
+    "(target ≈ {host_target} of ~{host_total} planned shots).\n"
+    "- Narration audio plays continuously regardless — only the *visual* host toggles per shot.\n\n"
+    "**Which shots get host_present=true (PRIORITISE in this order):**\n"
+    "1. Hook (shot 0) — host opens the video looking at camera.\n"
+    "2. Every Recap beat — host re-anchors the viewer.\n"
+    "3. CTA / Conclusion (final shot) — host closes the video.\n"
+    "4. Beats with high-emphasis sync_points (energy_spike words) — host punctuates.\n"
+    "5. Personal / opinion / 1st-person stretches (\"I think…\", \"let me show you…\").\n\n"
+    "**Which shots stay host_present=false:**\n"
+    "- Dense diagrams: TEXT_DIAGRAM, EQUATION_BUILD, DATA_STORY, ANNOTATION_MAP, PROCESS_STEPS.\n"
+    "- Pure typography: KINETIC_TEXT, KINETIC_TITLE.\n"
+    "- VIDEO_HERO / IMAGE_HERO shots where the visual is the point.\n"
+    "- Any shot where a full-frame face would compete with the diagram for attention.\n\n"
+    "**Per host_present=true shot, ALSO emit:**\n"
+    "```json\n"
+    "{\n"
+    "  \"host_present\": true,\n"
+    "  \"host_layout\": \"<one of the allowed layouts below>\",\n"
+    "  \"host_image_prompt\": \"<2 short sentences describing scene, background, framing for the chosen layout>\"\n"
+    "}\n"
+    "```\n"
+    "**Allowed `host_layout` values for this video ({orientation_label}):**\n"
+    "{layout_vocabulary}\n\n"
+    "**`host_layout` choice — pick by overlay needs:**\n"
+    "- `free_right` → host on LEFT half, motion graphics/text overlay on RIGHT half. Use when shot has a callout. (Landscape only.)\n"
+    "- `free_left`  → host on RIGHT half, overlay on LEFT half. (Landscape only.)\n"
+    "- `free_top`   → host on BOTTOM, banner / data callout on TOP.\n"
+    "- `free_bottom`→ host on TOP, lower-third info on BOTTOM.\n"
+    "- `centered`   → pure to-camera, no overlay graphics. Use for Hook, CTA, emotional beats.\n\n"
+    "**`host_image_prompt` rules:**\n"
+    "- Describe scene + background + framing for the chosen layout. Example for free_right: "
+    "  \"Close-up portrait, host shifted to left third of frame, looking just past camera, soft "
+    "  blurred background suggesting an office. Right half intentionally empty for diagram overlay.\"\n"
+    "- DO NOT describe the host's face / clothing / age — those come from the user-supplied "
+    "  reference image and host details, threaded by the pipeline.\n"
+    "- Keep ≤ 2 sentences. The image generator already knows the visual style of the video.\n\n"
+    "**For host_present=false shots: omit all three host_* fields entirely.**\n"
+    "**Hard cap on host shots:** **never exceed {host_target_plus_one}** "
+    "(target {host_target} + 1 tolerance). Falling under by 1-2 is acceptable; "
+    "running over would push the user past their requested host budget.\n"
+)
+
+
 # ---------------------------------------------------------------------------
 # Director user prompt template
 # ---------------------------------------------------------------------------

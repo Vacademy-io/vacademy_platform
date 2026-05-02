@@ -113,6 +113,7 @@ class RequestType(str, enum.Enum):
     ANALYTICS = "analytics"          # Student analytics
     COPILOT = "copilot"              # Instructor copilot
     STOCK = "stock"                  # Stock photos and videos
+    AVATAR_VIDEO = "avatar_video"    # Per-second avatar video (fal.ai talking-head, Host feature)
 
 
 class AiTokenUsage(Base):

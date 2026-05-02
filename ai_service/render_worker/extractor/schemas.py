@@ -147,6 +147,15 @@ class DemoContext(BaseModel):
 # Top-level
 # ---------------------------------------------------------------------------
 
+class AudioSummary(BaseModel):
+    """Top-level audio descriptors so downstream pipelines can decide whether
+    they need to load the transcript / re-run audio analysis at all."""
+    present: bool                     # transcript has words AND non-trivial RMS energy
+    total_words: int = 0              # full transcript word count
+    words_per_minute: float = 0.0     # total_words / (duration_s / 60)
+    speech_coverage: float = 0.0      # fraction of duration covered by transcript sentences (0-1)
+
+
 class VideoMeta(BaseModel):
     mode: str  # "podcast" or "demo"
     duration_s: float
@@ -154,6 +163,7 @@ class VideoMeta(BaseModel):
     fps_original: float
     fps_sampled_visual: float
     highlight_window: HighlightWindow
+    audio: Optional[AudioSummary] = None
 
 
 class VideoContext(BaseModel):

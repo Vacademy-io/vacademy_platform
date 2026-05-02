@@ -478,14 +478,25 @@ class RenderWorker:
 
             def _run_chunk(start: int, end: int) -> subprocess.CompletedProcess:
                 chunk_cmd = base_cmd + ["--start-frame", str(start), "--end-frame", str(end)]
-                return subprocess.run(
-                    chunk_cmd,
-                    check=False,
-                    cwd=str(REPO_ROOT),
-                    capture_output=True,
-                    text=True,
-                    timeout=5400,
-                )
+                try:
+                    return subprocess.run(
+                        chunk_cmd,
+                        check=False,
+                        cwd=str(REPO_ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=5400,
+                    )
+                except subprocess.TimeoutExpired as te:
+                    return subprocess.CompletedProcess(
+                        chunk_cmd,
+                        returncode=124,
+                        stdout=(te.stdout.decode("utf-8", "replace") if isinstance(te.stdout, bytes) else (te.stdout or "")),
+                        stderr=(
+                            (te.stderr.decode("utf-8", "replace") if isinstance(te.stderr, bytes) else (te.stderr or ""))
+                            + f"\n[WORKER-TIMEOUT] subprocess exceeded 5400s for frames ({start}, {end})\n"
+                        ),
+                    )
 
             loop = asyncio.get_event_loop()
             from concurrent.futures import ThreadPoolExecutor
@@ -509,11 +520,35 @@ class RenderWorker:
                     pass
 
                 if result.returncode != 0:
-                    logger.error(f"Worker {i} STDERR:\n{result.stderr[-2000:]}")
-                    logger.error(f"Worker {i} STDOUT:\n{result.stdout[-1000:]}")
+                    stderr_full = result.stderr or ""
+                    stdout_full = result.stdout or ""
+                    # Pick the most informative tail: Python traceback wins over generic stderr.
+                    tb_idx = stderr_full.rfind("Traceback (most recent call last)")
+                    if tb_idx == -1:
+                        for marker in ("[WORKER-TIMEOUT]", "playwright._impl._errors.", "Error:", "Exception:"):
+                            mi = stderr_full.rfind(marker)
+                            if mi != -1:
+                                tb_idx = mi
+                                break
+                    err_excerpt = stderr_full[tb_idx:tb_idx + 2000] if tb_idx != -1 else stderr_full[-2000:]
+                    # How far did the worker get before dying? Last [RENDER-VERSION]/frame log tells us.
+                    progress_tag = ""
+                    if "[RENDER-VERSION]" not in stdout_full:
+                        progress_tag = " [never reached page setup]"
+                    elif "Frames-only mode complete" not in stdout_full:
+                        last_frame = 0
+                        for line in stdout_full.splitlines():
+                            if "Rendered frame" in line or "Wrote frame" in line:
+                                try:
+                                    last_frame = max(last_frame, int(''.join(c for c in line.split()[-1] if c.isdigit()) or 0))
+                                except Exception:
+                                    pass
+                        progress_tag = f" [setup reached, dies mid-render; last frame ~{last_frame}]" if last_frame else " [setup reached, dies before first frame]"
+                    logger.error(f"Worker {i} STDERR (full saved to {worker_err_path}):\n{err_excerpt}")
+                    logger.error(f"Worker {i} STDOUT tail:\n{stdout_full[-1500:]}")
                     raise RuntimeError(
-                        f"Render worker {i} (frames {frame_ranges[i]}) failed: "
-                        f"{result.stderr[-500:]}"
+                        f"Render worker {i} (frames {frame_ranges[i]}) failed{progress_tag}: "
+                        f"{err_excerpt[:1200]}"
                     )
                 # Collect ALL browser errors/warnings from successful workers
                 if "[BROWSER ERROR]" in result.stdout or "[BROWSER EXCEPTION]" in result.stdout:

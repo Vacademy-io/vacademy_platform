@@ -92,6 +92,13 @@ DEFAULT_PRICING = {
     "tts": {"base_cost": Decimal("0.02"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.02"), "unit": "characters"},
     "tts_premium": {"base_cost": Decimal("0.04"), "token_rate": Decimal("0.00002"), "min_charge": Decimal("0.04"), "unit": "characters"},
     "stock": {"base_cost": Decimal("0.10"), "token_rate": Decimal("0"), "min_charge": Decimal("0.10"), "unit": "none"},
+    # Avatar video — billed per second of generated talking-head footage.
+    # Real cost path: seconds × ai_models.video_price_per_second × USD_TO_CREDIT_RATIO.
+    # Fallback: base_cost + (seconds × token_rate × multiplier) when the model
+    # row is missing video_price_per_second. token_rate ≈ 8 credits/sec covers
+    # both Kling ($0.0562/s × 150 ≈ 8.4) and Fabric ($0.08/s × 150 = 12) on the
+    # conservative-low side; the real-cost path picks the actual rate.
+    "avatar_video": {"base_cost": Decimal("0.05"), "token_rate": Decimal("8"), "min_charge": Decimal("0.05"), "unit": "seconds"},
 }
 
 
@@ -373,6 +380,7 @@ class CreditService:
             prompt_tokens=request.prompt_tokens,
             completion_tokens=request.completion_tokens,
             character_count=request.character_count,
+            seconds=getattr(request, "seconds", 0) or 0,
         )
         
         now = datetime.utcnow()
@@ -553,6 +561,7 @@ class CreditService:
         prompt_tokens: int = 0,
         completion_tokens: int = 0,
         character_count: int = 0,
+        seconds: int = 0,
     ) -> Decimal:
         """
         Calculate credits for an AI operation.
@@ -579,6 +588,15 @@ class CreditService:
                 result = max(pricing["min_charge"], calculated)
                 return result.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
+        # --- Real-cost path for per-second video models (avatar / future synthesis) ---
+        if model and pricing["unit"] == "seconds" and seconds > 0:
+            per_sec = self._get_model_video_per_second(model)
+            if per_sec is not None:
+                actual_usd = Decimal(str(seconds)) * per_sec
+                calculated = pricing["base_cost"] + (actual_usd * USD_TO_CREDIT_RATIO)
+                result = max(pricing["min_charge"], calculated)
+                return result.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+
         # --- Fallback path: existing formula for unknown models / flat-rate / characters ---
         multiplier = self._get_model_multiplier(model)
 
@@ -586,6 +604,8 @@ class CreditService:
             units = (prompt_tokens + completion_tokens) / 1000
         elif pricing["unit"] == "characters":
             units = character_count / 1000
+        elif pricing["unit"] == "seconds":
+            units = seconds  # token_rate is "credits per second" in this branch
         else:  # "none" - flat rate
             units = 0
 
@@ -638,6 +658,25 @@ class CreditService:
                 return (Decimal(str(row.input_price_per_1m)), Decimal(str(row.output_price_per_1m)))
         except Exception as e:
             logger.warning(f"Failed to get model USD pricing from ai_models: {e}")
+        return None
+
+    def _get_model_video_per_second(self, model: str) -> Optional[Decimal]:
+        """Per-second USD price for video models (avatar synthesis, future video gen).
+
+        Reads `ai_models.video_price_per_second` (added in V224). Returns None
+        when the model row is missing or the price is unset — caller falls
+        back to the token_rate formula.
+        """
+        try:
+            query = text(
+                "SELECT video_price_per_second FROM ai_models "
+                "WHERE model_id = :model_id AND is_active = TRUE LIMIT 1"
+            )
+            row = self.db.execute(query, {"model_id": model}).fetchone()
+            if row and row.video_price_per_second is not None:
+                return Decimal(str(row.video_price_per_second))
+        except Exception as e:
+            logger.warning(f"Failed to get video per-second pricing from ai_models: {e}")
         return None
 
     def _get_model_multiplier(self, model: Optional[str]) -> Decimal:

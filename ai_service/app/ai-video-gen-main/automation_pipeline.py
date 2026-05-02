@@ -1562,6 +1562,8 @@ class VideoGenerationPipeline:
         background_music_volume: Optional[float] = None,
         sub_shots_enabled: bool = False,
         routing_plan: Optional[Dict[str, Any]] = None,
+        video_type_plan: Optional[Dict[str, Any]] = None,
+        host_plan: Optional[Dict[str, Any]] = None,
         progress_callback: Optional[Any] = None,
     ) -> Dict[str, Any]:
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
@@ -1641,9 +1643,45 @@ class VideoGenerationPipeline:
         # Store max_segments for use in concept-aligned segmentation
         self._max_segments = max_segments
 
+        # Video type plan (from VideoTypeClassifierService) — drives:
+        # • pacing style override (cadence_hint wins over duration heuristic)
+        # • script narration tone (downstream prompt sites read self._video_type)
+        # • Director cadence label (long-form vs reel)
+        # When None: pipeline falls back to duration-only pacing as before.
+        self._video_type_plan: Dict[str, Any] = video_type_plan or {}
+        self._video_type: str = str(self._video_type_plan.get("type") or "explainer")
+        _cadence_hint = str(self._video_type_plan.get("cadence_hint") or "").strip()
+
+        # Host plan (from HostPlannerService — runs in pre-script preamble).
+        # When enabled=True, downstream stages branch:
+        #   • script LLM       → 1st-person directive (Change 7)
+        #   • Director         → HOST_DIRECTOR_EXTENSION + per-shot host fields (Change 8)
+        #   • HTML stage       → AvatarBatch sub-stage generates per-shot avatars (Change 9)
+        # When enabled=False (default): pipeline behaves identically to today.
+        self._host_plan: Dict[str, Any] = host_plan or {}
+        self._host_enabled: bool = bool(self._host_plan.get("enabled"))
+        self._host_type: str = str(self._host_plan.get("type") or "avatar")
+        # Convenience: host-in-video % as a 0–100 int for downstream math.
+        try:
+            self._host_pct: int = int(self._host_plan.get("host_in_video_percentage") or 0)
+        except (TypeError, ValueError):
+            self._host_pct = 0
+        if self._host_enabled:
+            print(
+                f"🎙️ Host enabled: type={self._host_type} pct={self._host_pct}% "
+                f"(avatar_model={(self._host_plan.get('avatar') or {}).get('avatar_model', '?')})"
+            )
+
         # ── Pacing profile ──
-        # Derived from target_duration: short→reels, medium→marketing, long→education
-        self._pacing_style = self._derive_pacing_style(target_duration, content_type)
+        # Cadence hint from the type classifier wins when present (it's already
+        # an LLM-grounded read of the prompt). Otherwise fall back to the
+        # duration-only heuristic.
+        if _cadence_hint in self.PACING_PROFILES or _cadence_hint == "documentary":
+            # PACING_PROFILES has reels/marketing/education; map "documentary"
+            # to education-paced (slowest profile we have today).
+            self._pacing_style = "education" if _cadence_hint == "documentary" else _cadence_hint
+        else:
+            self._pacing_style = self._derive_pacing_style(target_duration, content_type)
 
         # Tier-aware shot cap for Director-based tiers (videos > 2 min only).
         # super_ultra: no cap — two-pass Director, motion_bias, and kinetic_text_shots all
@@ -2399,6 +2437,43 @@ class VideoGenerationPipeline:
                 if _director_plan and _director_plan.get("shots"):
                     # Per-shot HTML generation using Director plan
                     print(f"🎬 Using Director plan: {len(_director_plan['shots'])} shots")
+
+                    # Avatar batch — run BEFORE per-shot HTML gen so each shot's
+                    # prompt receives its avatar_video_url (no post-swap needed).
+                    # No-op when host is disabled or content_type != VIDEO.
+                    if (
+                        getattr(self, "_host_enabled", False)
+                        and getattr(self, "_host_type", "") == "avatar"
+                        and content_type == "VIDEO"
+                    ):
+                        try:
+                            # Side-effects only: writes run_dir/host_outputs.json,
+                            # mutates director_plan["shots"][i] with avatar_video_url,
+                            # and flips host_present=false for any failed shots.
+                            self._run_avatar_batch_sync(_director_plan, run_dir)
+                        except Exception as _ab_err:
+                            print(f"[AvatarBatch] ⚠️  catastrophic failure: {_ab_err}")
+                            # Disable host on every shot so per-shot HTML falls through
+                            for _s in _director_plan.get("shots", []):
+                                if _s.get("host_present"):
+                                    _s["host_present"] = False
+                    elif (
+                        getattr(self, "_host_enabled", False)
+                        and getattr(self, "_host_type", "") == "raw"
+                    ):
+                        # Raw-host generation is plumbed only this round.
+                        # Surface a clear error event but keep the run going as
+                        # a regular non-host video.
+                        print("[AvatarBatch] host.type='raw' is not yet implemented — falling back to non-host run")
+                        for _s in _director_plan.get("shots", []):
+                            if _s.get("host_present"):
+                                _s["host_present"] = False
+                        self._emit_progress({
+                            "type": "warning",
+                            "stage": "html",
+                            "message": "host.type='raw' is not implemented yet; rendering without host",
+                        })
+
                     self._emit_progress({
                         "type": "sub_stage", "sub_stage": "html_generating",
                         "message": f"Generating visuals for {len(_director_plan['shots'])} shots...",
@@ -2778,6 +2853,30 @@ class VideoGenerationPipeline:
                     "6. Only generate new content if a section has no narration specified.\n"
                 )
                 user_prompt = user_prompt + _priority_block
+
+            # Host-led narration — 1st-person rewrite when host=avatar.
+            # Skipped on host=raw (script comes from input video transcripts).
+            if getattr(self, "_host_enabled", False) and getattr(self, "_host_type", "") == "avatar":
+                _host_details = (
+                    (self._host_plan.get("avatar") or {}).get("details_prompt") or ""
+                ).strip()
+                _host_block = (
+                    "\n\n🎙️ HOST-LED NARRATION (1ST PERSON):\n"
+                    "This video is delivered by an on-screen host who speaks every line. "
+                    "Write the narration as the host speaking DIRECTLY to the viewer.\n"
+                    "RULES:\n"
+                    "- Use 1st-person voice: 'I', 'we', 'let me show you', 'I'll walk you through'.\n"
+                    "- Avoid 3rd-person framing: 'the speaker says…', 'we'll see how…', 'this video covers…'.\n"
+                    "- The host IS the narration — make their voice present, warm, and conversational.\n"
+                    "- Do not write stage directions, scene markers, or 3rd-person summaries — that's the Director's job.\n"
+                    "- Keep the narration self-contained: the host should be able to read it cold without external cues.\n"
+                )
+                if _host_details:
+                    _host_block += (
+                        f"- Host context (clothing / setting / persona): {_host_details}\n"
+                        "  Use this only to keep tone consistent — don't describe their appearance in narration.\n"
+                    )
+                user_prompt = user_prompt + _host_block
         else:
             # Use content-type-specific prompts
             system_prompt = ct_prompts["system"]
@@ -4691,6 +4790,7 @@ class VideoGenerationPipeline:
             MUSIC_PLAN_EXTENSION,
             STRICT_SOURCE_CLIP_DIRECTOR_EXTENSION,
             OVERLAY_INFOGRAPHIC_DIRECTOR_EXTENSION,
+            HOST_DIRECTOR_EXTENSION,
             ACT_PLANNER_SYSTEM_PROMPT,
             build_director_user_prompt,
             build_act_planner_user_prompt,
@@ -4969,20 +5069,88 @@ class VideoGenerationPipeline:
         ):
             director_system = director_system + OVERLAY_INFOGRAPHIC_DIRECTOR_EXTENSION
             print("🪟 Director: OVERLAY infographic mode active")
+
+        # Host extension — only when host=avatar. (host=raw uses SOURCE_CLIP path,
+        # which already covers shot selection; raw-host generation is plumbing-only
+        # this round and short-circuits later in the HTML stage.)
+        if self._host_enabled and self._host_type == "avatar" and self._host_pct > 0:
+            _is_portrait_h = _h > _w
+            # Average shot duration must agree with the pacing style downstream
+            # consumers use (PACING_PROFILES["seconds_per_shot"]). Otherwise
+            # the host_target count we tell the Director will mismatch the
+            # total-shot count the Director actually plans — Director will
+            # under-allocate host shots and we'll burn fewer fal.ai calls
+            # than the user paid for.
+            _ps = getattr(self, "_pacing_style", "education")
+            _profile = self.PACING_PROFILES.get(_ps) or self.PACING_PROFILES["education"]
+            _avg_shot_dur = float(_profile.get("seconds_per_shot", 5.0))
+            # Portrait nudge: portrait videos always feel faster. Pull the
+            # average down a notch to match cheap-model bias toward shorter
+            # vertical shots.
+            if _is_portrait_h and _avg_shot_dur > 4.0:
+                _avg_shot_dur = 3.0
+            _est_total_shots = max(4, int(round(audio_duration / _avg_shot_dur)))
+            _host_target = max(1, int(round(_est_total_shots * self._host_pct / 100.0)))
+            # Orientation-aware host_layout vocabulary. Portrait videos can't
+            # use side-by-side splits (free_left/free_right) — there isn't
+            # enough horizontal real estate for a half-frame talking head and
+            # a half-frame overlay to both stay legible at 1080×1920. Allow
+            # only vertical splits + centered.
+            if _is_portrait_h:
+                _layout_vocab = '"free_top" | "free_bottom" | "centered"'
+                _orientation_label = "9:16 PORTRAIT — horizontal splits forbidden"
+            else:
+                _layout_vocab = '"free_left" | "free_right" | "free_top" | "free_bottom" | "centered"'
+                _orientation_label = "16:9 LANDSCAPE — all five layouts allowed"
+            director_system = director_system + HOST_DIRECTOR_EXTENSION.format(
+                host_pct=self._host_pct,
+                host_target=_host_target,
+                host_target_plus_one=_host_target + 1,
+                host_total=_est_total_shots,
+                orientation_label=_orientation_label,
+                layout_vocabulary=_layout_vocab,
+            )
+            print(
+                f"🎙️ Director: HOST mode active — target ~{_host_target}/{_est_total_shots} "
+                f"shots host_present (={self._host_pct}%, "
+                f"layouts={'portrait-vertical' if _is_portrait_h else 'all-five'})"
+            )
         if self._tier_config.get("director_motion_bias"):
             _is_portrait = _h > _w
-            _target_shot_dur = "2-3.5 seconds" if _is_portrait else "2-4 seconds"
+            # Cadence is content-aware: portrait OR short audio (<90s) is reel-pace;
+            # landscape long-form (≥90s) is educational-explainer cadence — same
+            # animation density requirement, but longer shots are appropriate
+            # because the content is doing the work, not rapid cutting.
+            _is_long_form = (audio_duration >= 90.0) and (not _is_portrait)
+            if _is_long_form:
+                _target_shot_dur = "4-7 seconds"
+                _shots_divisor   = 5  # avg ~5s/shot
+                _cadence_label   = "EDUCATIONAL EXPLAINER CADENCE"
+                _format_para     = (
+                    "This is long-form educational content (≥90s landscape). Shots should breathe — "
+                    "every idea gets 4-7 seconds, complex internal animations (counters, draw-ins, "
+                    "diagrams building) can run up to 8s when the motion fills the time. This is NOT "
+                    "a TikTok reel. But it is also NOT a slow lecture — every shot still needs visible "
+                    "motion throughout, no static screens for >0.8s."
+                )
+            else:
+                _target_shot_dur = "2-3.5 seconds" if _is_portrait else "2-4 seconds"
+                _shots_divisor   = 3  # avg ~3s/shot
+                _cadence_label   = "REEL PACE + MOTION BIAS"
+                _format_para     = (
+                    "This is short-form social video (Reels/TikTok/Shorts) — shots must feel snappy, "
+                    "not like a classroom explainer. Longer shots (max 5s) are only allowed for "
+                    "PROCESS_STEPS / EQUATION_BUILD / DATA_STORY where the shot itself has heavy motion."
+                )
             _min_shots_hint = (
-                f"For a {int(audio_duration)}s audio, target ~{max(1, int(audio_duration / 3))} shots "
-                f"(roughly one per 2.5-3.5 seconds of narration)."
+                f"For a {int(audio_duration)}s audio, target ~{max(1, int(audio_duration / _shots_divisor))} shots "
+                f"(roughly one per {_target_shot_dur} of narration)."
             ) if audio_duration > 0 else ""
             director_system = director_system + (
-                "\n\n**⚡ SUPER ULTRA — REEL PACE + MOTION BIAS** (overrides rules 2, 4, 11):\n"
-                f"- REEL PACE: every shot should be {_target_shot_dur} long. "
+                f"\n\n**⚡ {_cadence_label}** (overrides rules 2, 4, 11):\n"
+                f"- TARGET: every shot should be {_target_shot_dur} long. "
                 f"{_min_shots_hint} "
-                "This is short-form social video (Reels/TikTok/Shorts) — shots must feel snappy, "
-                "not like a classroom explainer. Longer shots (max 5s) are only allowed for "
-                "PROCESS_STEPS / EQUATION_BUILD / DATA_STORY where the shot itself has heavy motion.\n"
+                f"{_format_para}\n"
                 "- At least 50% of shots MUST be motion-graphics types: "
                 "TEXT_DIAGRAM, PROCESS_STEPS, EQUATION_BUILD, DATA_STORY, ANIMATED_ASSET, KINETIC_TEXT.\n"
                 "- Never schedule 2+ consecutive IMAGE_HERO / VIDEO_HERO shots — "
@@ -4994,13 +5162,13 @@ class VideoGenerationPipeline:
                 "steps with shot-relative seconds. Example: 'At 0.0s SVG heart draws on (path stroke), "
                 "0.4s label fades in + slides up, 1.1s number counter runs 0→75bpm, 2.0s pulse ring "
                 "expands.' Never write vague strategies like 'fade in text'. All step timings must "
-                "fit inside the shot duration (so for a 3s shot, last animation starts by 2.5s).\n"
+                "fit inside the shot duration.\n"
                 "- Each shot's `sync_points` array MUST contain at least 2 entries tied to specific "
                 "narration words from the script.\n"
                 "- Prefer shots that have visible continuous motion throughout — the screen should "
                 "NEVER be fully static for more than 0.8s.\n"
-                "- First shot may still be VIDEO_HERO / IMAGE_HERO (cinematic hook) but must be "
-                "≤3 seconds with an animated text overlay appearing by 0.3s.\n"
+                "- First shot may still be VIDEO_HERO / IMAGE_HERO (cinematic hook); for short-form keep "
+                "it ≤3s with an animated text overlay appearing by 0.3s, for long-form up to 5s is fine.\n"
             )
 
         print("🎬 Running Director stage (shot planning)...")
@@ -5399,6 +5567,464 @@ class VideoGenerationPipeline:
         return [a, b]
 
     # ------------------------------------------------------------------
+    # Avatar Batch — per-shot host-avatar generation (runs INSIDE HTML stage)
+    # ------------------------------------------------------------------
+    # When host_plan is enabled, this runs after the Director plan is ready
+    # but BEFORE per-shot HTML generation, so each host_present shot already
+    # carries its avatar_video_url when the per-shot LLM prompt is built.
+    #
+    # Pipeline (per host_present=true shot):
+    #   1. Build avatar image prompt (host details + scene/layout from Director)
+    #   2. Seedream image-to-image conditioned on user-supplied face_image_url
+    #      → upload PNG to S3
+    #   3. Slice master TTS MP3 at [start_time, end_time] using ffmpeg
+    #      → upload MP3 slice to S3
+    #   4. fal.ai talking-head: (image, audio) → MP4 → S3
+    #   5. Mutate shot["avatar_video_url"], shot["host_image_url"], shot["audio_slice_url"]
+    #
+    # All per-shot operations run with bounded concurrency. Per-shot failures
+    # (any stage) flip that shot's host_present back to False so per-shot HTML
+    # gen falls through to the regular non-host path. The full batch never
+    # aborts on a single failure.
+
+    def _run_avatar_batch_sync(
+        self,
+        director_plan: Dict[str, Any],
+        run_dir: "Path",
+    ) -> Dict[str, Any]:
+        """Generate per-shot avatar videos for every host_present shot.
+
+        MUTATES `director_plan["shots"]` in place — host shots get
+        `avatar_video_url`, `host_image_url`, `audio_slice_url` populated;
+        failed shots get `host_present` flipped to False.
+
+        Returns a summary dict suitable for persistence into
+        extra_metadata.host.outputs.
+        """
+        from pathlib import Path as _Path
+        import json as _json
+        import subprocess as _sp
+        import asyncio as _asyncio
+
+        if not (self._host_enabled and self._host_type == "avatar"):
+            return {"skipped": True, "reason": "host not avatar-enabled"}
+
+        avatar_cfg = self._host_plan.get("avatar") or {}
+        host_model = avatar_cfg.get("avatar_model") or "fal-ai/kling-video/ai-avatar/v2/standard"
+        host_quality = avatar_cfg.get("quality") or "480p"
+        face_image_url = avatar_cfg.get("face_image_url") or ""
+        details_prompt = avatar_cfg.get("details_prompt") or ""
+
+        if not face_image_url:
+            print("[AvatarBatch] ⚠️  No face_image_url — disabling host for this run")
+            for s in director_plan.get("shots", []):
+                if s.get("host_present"):
+                    s["host_present"] = False
+            return {"skipped": True, "reason": "missing face_image_url"}
+
+        shots = director_plan.get("shots") or []
+        host_shots = [
+            (idx, s) for idx, s in enumerate(shots) if s.get("host_present")
+        ]
+        if not host_shots:
+            print("[AvatarBatch] No host_present shots — nothing to render")
+            return {"skipped": True, "reason": "no host_present shots"}
+
+        print(f"[AvatarBatch] Rendering {len(host_shots)} host shot(s) "
+              f"(model={host_model}, quality={host_quality})")
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "avatar_batch_start",
+            "stage": "html",
+            "message": f"Rendering {len(host_shots)} host avatar shot(s)...",
+            "host_shot_count": len(host_shots),
+        })
+
+        # --- 0. Master audio path (master TTS MP3 already on disk in run_dir) ---
+        # Canonical location is run_dir/narration.mp3 (TTS stage writes it
+        # there + the resume path downloads it from S3 to the same name).
+        # Probe a couple of legacy fallbacks defensively.
+        master_audio = None
+        for cand_name in ("narration.mp3", "audio/narration.mp3", "audio.mp3", "tts.mp3"):
+            cand = _Path(run_dir) / cand_name
+            if cand.exists():
+                master_audio = cand
+                break
+        if master_audio is None:
+            print(f"[AvatarBatch] ❌ master TTS MP3 not found in {run_dir} — disabling host")
+            for _, s in host_shots:
+                s["host_present"] = False
+            return {"skipped": True, "reason": "master audio missing"}
+
+        # --- 1. Per-shot image gen + audio slice (sequential — fast, in-process) ---
+        # We do these synchronously because Seedream and ffmpeg are quick (<5s
+        # each) and serialising avoids overlapping S3 multipart uploads.
+        per_shot_inputs: List[Dict[str, Any]] = []
+        per_shot_artifacts: List[Dict[str, Any]] = []
+        errors: List[Dict[str, Any]] = []
+
+        host_assets_dir = _Path(run_dir) / "host_assets"
+        host_assets_dir.mkdir(parents=True, exist_ok=True)
+
+        # Resume idempotency: load any prior host_outputs.json so we skip
+        # already-completed shots (Seedream + fal.ai are the expensive parts;
+        # re-running them on resume would double-bill the user). Indexed by
+        # shot_index. Failed shots are NOT carried over — we retry those.
+        _prior_artifacts: Dict[int, Dict[str, Any]] = {}
+        _prior_outputs_file = _Path(run_dir) / "host_outputs.json"
+        if _prior_outputs_file.exists():
+            try:
+                import json as _json_resume
+                _prior = _json_resume.loads(_prior_outputs_file.read_text(encoding="utf-8"))
+                for art in (_prior.get("shot_artifacts") or []):
+                    if (
+                        art.get("status") == "completed"
+                        and art.get("avatar_video_url")
+                        and isinstance(art.get("shot_index"), int)
+                    ):
+                        _prior_artifacts[int(art["shot_index"])] = art
+                if _prior_artifacts:
+                    print(
+                        f"[AvatarBatch] ♻️  Resume: {len(_prior_artifacts)} shots already "
+                        f"completed in prior run — will skip + reuse their avatars"
+                    )
+            except Exception as _re_err:
+                print(f"[AvatarBatch] ⚠️  Could not load prior host_outputs.json on resume: {_re_err}")
+
+        for shot_idx, shot in host_shots:
+            # Resume short-circuit: already-completed shot — reuse the URL,
+            # skip Seedream + ffmpeg + fal.ai.
+            if shot_idx in _prior_artifacts:
+                _cached = _prior_artifacts[shot_idx]
+                shot["avatar_video_url"] = _cached["avatar_video_url"]
+                if _cached.get("host_image_url"):
+                    shot["host_image_url"] = _cached["host_image_url"]
+                if _cached.get("audio_slice_url"):
+                    shot["audio_slice_url"] = _cached["audio_slice_url"]
+                # Strip background-visual fields (same logic as success path)
+                shot.pop("image_prompt", None)
+                shot.pop("video_query", None)
+                per_shot_artifacts.append(_cached)
+                continue
+
+            artifact: Dict[str, Any] = {
+                "shot_index": shot_idx,
+                "model": host_model,
+                "quality": host_quality,
+                "status": "pending",
+            }
+            try:
+                # 1a. Image gen
+                # Compose the Seedream prompt from three sources, in order of
+                # precedence:
+                #   1. STRUCTURAL framing instruction (derived from host_layout)
+                #      — non-negotiable, dictates which half/quadrant of canvas
+                #      stays empty so the per-shot HTML overlay zone has space.
+                #   2. DIRECTOR'S scene hint (host_image_prompt) — Director-LLM
+                #      output describing the scene/background tailored to this
+                #      shot's narration. We treat this as flavour, NOT framing,
+                #      so we strip layout-style language from it.
+                #   3. PERSONA/CLOTHING from the user's host_details_prompt —
+                #      kept consistent across shots.
+                layout = shot.get("host_layout") or "centered"
+                _layout_framing = {
+                    "free_left":   "Subject framed on the RIGHT half of the canvas; LEFT half intentionally empty (clean background, no objects) — reserved for graphics overlay.",
+                    "free_right":  "Subject framed on the LEFT half of the canvas; RIGHT half intentionally empty (clean background) — reserved for graphics overlay.",
+                    "free_top":    "Subject framed in the BOTTOM 60% of the canvas; TOP 40% intentionally empty — reserved for headline/banner overlay.",
+                    "free_bottom": "Subject framed in the TOP 60%; BOTTOM 40% empty — reserved for lower-third overlay.",
+                    "centered":    "Subject centered in the frame, looking just past camera. Pure to-camera shot, no overlay zones reserved.",
+                }.get(layout, "")
+                # Defensive coercion: portrait videos can't use side splits.
+                # If Director ignored our HOST_DIRECTOR_EXTENSION restriction
+                # and emitted free_left/free_right on a portrait shot, force
+                # `centered` (safest fallback) and stamp the original choice
+                # into the artifact so we can spot Director non-compliance.
+                _is_portrait_render = self.video_height > self.video_width
+                if _is_portrait_render and layout in ("free_left", "free_right"):
+                    print(f"[AvatarBatch] ⚠️  shot={shot_idx} layout={layout} invalid for portrait — coercing to 'centered'")
+                    artifact["host_layout_original"] = layout
+                    layout = "centered"
+                    shot["host_layout"] = "centered"
+
+                # Director's per-shot scene hint — keep it short and sanitise
+                # any layout-style instructions (we own the framing, not the LLM).
+                _director_hint = (shot.get("host_image_prompt") or "").strip()
+                if len(_director_hint) > 300:
+                    _director_hint = _director_hint[:300].rsplit(" ", 1)[0] + "…"
+                _img_prompt_parts = [
+                    "Cinematic medium-shot portrait of a person speaking to camera.",
+                    f"Persona / clothing: {details_prompt}." if details_prompt else "",
+                    f"Scene context: {_director_hint}" if _director_hint else "",
+                    _layout_framing,
+                    "Photo-real, soft natural lighting, shallow depth of field.",
+                    "DO NOT render any text, logos, captions, lower-thirds, charts, or graphic overlays — those are added downstream by the renderer.",
+                ]
+                avatar_img_prompt = " ".join(p for p in _img_prompt_parts if p).strip()
+                artifact["host_image_prompt"] = avatar_img_prompt
+                artifact["director_scene_hint"] = _director_hint
+
+                _img_w = self.video_width
+                _img_h = self.video_height
+                img_bytes, _img_usage = self._call_image_generation_llm(
+                    avatar_img_prompt,
+                    width=_img_w,
+                    height=_img_h,
+                    reference_image_url=face_image_url,
+                )
+                if not img_bytes:
+                    raise RuntimeError("Seedream returned no bytes for host image")
+                local_img = host_assets_dir / f"host_shot_{shot_idx:03d}.png"
+                local_img.write_bytes(img_bytes)
+                # Upload to S3
+                _img_s3_key = f"ai-videos/host-assets/{getattr(self, '_run_name', 'run')}/host_shot_{shot_idx:03d}.png"
+                img_s3_url = self.s3_service.upload_file(
+                    local_img, s3_key=_img_s3_key, content_type="image/png"
+                )
+                if not img_s3_url:
+                    raise RuntimeError("S3 upload failed for host image")
+                shot["host_image_url"] = img_s3_url
+                artifact["host_image_url"] = img_s3_url
+
+                # 1b. Audio slice via ffmpeg.
+                # Always re-encode (libmp3lame). Stream-copy slicing on VBR MP3
+                # produces frame-misaligned output that fal.ai sometimes
+                # rejects, and the timing offset causes lipsync drift. Use
+                # PRE-`-i` -ss for fast seek, then re-encode at q=4 (~165kbps).
+                # Cost: ~30-100ms per shot — negligible vs fal.ai's 10-30s.
+                start_time = float(shot.get("start_time", 0))
+                end_time = float(shot.get("end_time", start_time + 6))
+                duration_s = max(0.5, end_time - start_time)
+                local_audio = host_assets_dir / f"host_audio_{shot_idx:03d}.mp3"
+                _ff_cmd = [
+                    "ffmpeg", "-y", "-loglevel", "error",
+                    "-ss", f"{start_time:.3f}",         # fast pre-seek
+                    "-i", str(master_audio),
+                    "-t", f"{duration_s:.3f}",
+                    "-vn",
+                    "-acodec", "libmp3lame", "-q:a", "4",
+                    "-ac", "2", "-ar", "44100",
+                    str(local_audio),
+                ]
+                _r = _sp.run(_ff_cmd, capture_output=True, text=True)
+                if _r.returncode != 0 or not local_audio.exists():
+                    raise RuntimeError(f"ffmpeg slice failed: {_r.stderr or '<no stderr>'}")
+                _aud_s3_key = f"ai-videos/host-assets/{getattr(self, '_run_name', 'run')}/host_audio_{shot_idx:03d}.mp3"
+                aud_s3_url = self.s3_service.upload_file(
+                    local_audio, s3_key=_aud_s3_key, content_type="audio/mpeg"
+                )
+                if not aud_s3_url:
+                    raise RuntimeError("S3 upload failed for host audio slice")
+                shot["audio_slice_url"] = aud_s3_url
+                artifact["audio_slice_url"] = aud_s3_url
+                artifact["duration_s"] = duration_s
+
+                per_shot_inputs.append({
+                    "shot_index": shot_idx,
+                    "image_url": img_s3_url,
+                    "audio_url": aud_s3_url,
+                })
+                self._emit_progress({
+                    "type": "sub_stage",
+                    "sub_stage": "avatar_image_audio_ready",
+                    "stage": "html",
+                    "message": (
+                        f"Host shot {len(per_shot_inputs)}/{len(host_shots)} prepared "
+                        f"(image + audio slice ready)"
+                    ),
+                    "shot_index": shot_idx,
+                    "host_shot_completed": len(per_shot_inputs),
+                    "host_shot_count": len(host_shots),
+                })
+            except Exception as e:
+                print(f"[AvatarBatch] ❌ shot={shot_idx} pre-render failed: {e}")
+                errors.append({"shot_index": shot_idx, "stage": "pre_render", "error": str(e)})
+                shot["host_present"] = False  # fall back to non-host
+                artifact["status"] = "failed"
+                artifact["error"] = str(e)
+                artifact["error_stage"] = "pre_render"
+            finally:
+                per_shot_artifacts.append(artifact)
+
+        if not per_shot_inputs:
+            print("[AvatarBatch] No shots survived pre-render — disabling all host shots")
+            return {
+                "host_shot_count": 0,
+                "shot_artifacts": per_shot_artifacts,
+                "errors": errors,
+                "total_host_seconds": 0.0,
+            }
+
+        # --- 2. fal.ai render in parallel with bounded concurrency ---
+        try:
+            from app.config import get_settings as _get_settings_p
+        except Exception:
+            from ..config import get_settings as _get_settings_p  # type: ignore[no-redef]
+        try:
+            _settings_p = _get_settings_p()
+            fal_key = getattr(_settings_p, "fal_api_key", None) or ""
+        except Exception:
+            fal_key = ""
+        if not fal_key:
+            print("[AvatarBatch] ❌ FAL_API_KEY not set — disabling host shots")
+            for inp in per_shot_inputs:
+                idx = inp["shot_index"]
+                shots[idx]["host_present"] = False
+                for art in per_shot_artifacts:
+                    if art.get("shot_index") == idx:
+                        art["status"] = "failed"
+                        art["error"] = "FAL_API_KEY not set"
+                        art["error_stage"] = "fal_submit"
+            return {
+                "host_shot_count": 0,
+                "shot_artifacts": per_shot_artifacts,
+                "errors": errors + [{"stage": "fal_submit", "error": "FAL_API_KEY not set"}],
+                "total_host_seconds": 0.0,
+            }
+
+        try:
+            from app.services.fal_avatar_client import FalAvatarClient
+        except Exception:
+            # When automation_pipeline runs out of the ai-video-gen-main dir,
+            # the absolute import path may not resolve — try the relative path
+            # from sys.path's app root.
+            import importlib
+            FalAvatarClient = importlib.import_module("app.services.fal_avatar_client").FalAvatarClient
+
+        client = FalAvatarClient(api_key=fal_key, concurrency=4)
+        try:
+            fal_results = _asyncio.run(
+                client.render_batch(
+                    per_shot_inputs,
+                    model=host_model,
+                    quality=host_quality,
+                    details_prompt=details_prompt,
+                )
+            )
+        except Exception as e:
+            print(f"[AvatarBatch] ❌ fal.ai batch failed catastrophically: {e}")
+            for inp in per_shot_inputs:
+                idx = inp["shot_index"]
+                shots[idx]["host_present"] = False
+            for art in per_shot_artifacts:
+                if art.get("status") == "pending":
+                    art["status"] = "failed"
+                    art["error"] = str(e)
+                    art["error_stage"] = "fal_batch"
+            errors.append({"stage": "fal_batch", "error": str(e)})
+            return {
+                "host_shot_count": 0,
+                "shot_artifacts": per_shot_artifacts,
+                "errors": errors,
+                "total_host_seconds": 0.0,
+            }
+
+        # --- 3. Apply fal results to shots + artifacts ---
+        # Seed with resumed-and-already-completed shots so the run summary
+        # reflects the union of prior + new work. Without this, total_host_seconds
+        # would be wrong on a resume that re-renders only the failed subset.
+        total_host_seconds = 0.0
+        ok_shots: List[int] = []
+        for _seed in per_shot_artifacts:
+            if _seed.get("status") == "completed":
+                _sd = float(_seed.get("duration_s_actual") or _seed.get("duration_s") or 0.0)
+                total_host_seconds += _sd
+                _idx_seed = _seed.get("shot_index")
+                if isinstance(_idx_seed, int):
+                    ok_shots.append(_idx_seed)
+        for r in fal_results:
+            idx = r.shot_index
+            target_artifact = next(
+                (a for a in per_shot_artifacts if a.get("shot_index") == idx),
+                None,
+            )
+            if r.error:
+                if idx < len(shots):
+                    shots[idx]["host_present"] = False
+                if target_artifact:
+                    target_artifact["status"] = "failed"
+                    target_artifact["error"] = r.error
+                    target_artifact["error_stage"] = r.error_stage
+                    target_artifact["fal_request_id"] = r.fal_request_id
+                errors.append({
+                    "shot_index": idx,
+                    "stage": r.error_stage or "fal",
+                    "error": r.error,
+                })
+                self._emit_progress({
+                    "type": "sub_stage",
+                    "sub_stage": "avatar_failed",
+                    "stage": "html",
+                    "message": f"Host shot #{idx} failed — falling back to non-host: {r.error}",
+                    "shot_index": idx,
+                    "error": r.error,
+                })
+                continue
+            # Success
+            if idx < len(shots):
+                shots[idx]["avatar_video_url"] = r.video_url
+                # Strip background-visual fields from a successful host shot —
+                # the host video IS the background, and the per-shot HTML LLM
+                # would otherwise dutifully also emit a data-img-prompt or
+                # data-video-query, layering a stock/AI image UNDER the host.
+                # Removing the fields makes the per-shot HOST instruction
+                # block (which says "no full-canvas background") unambiguous.
+                _host_shot_dict = shots[idx]
+                _host_shot_dict.pop("image_prompt", None)
+                _host_shot_dict.pop("video_query", None)
+            if target_artifact:
+                target_artifact["status"] = "completed"
+                target_artifact["avatar_video_url"] = r.video_url
+                target_artifact["fal_request_id"] = r.fal_request_id
+                if r.duration_s:
+                    target_artifact["duration_s_actual"] = r.duration_s
+            # Use the actual avatar duration if reported, else the audio slice length.
+            _dur = r.duration_s
+            if _dur is None and target_artifact:
+                _dur = target_artifact.get("duration_s")
+            total_host_seconds += float(_dur or 0.0)
+            ok_shots.append(idx)
+            self._emit_progress({
+                "type": "sub_stage",
+                "sub_stage": "avatar_render_done",
+                "stage": "html",
+                "message": f"Host shot {len(ok_shots)}/{len(host_shots)} rendered",
+                "shot_index": idx,
+                "host_shot_completed": len(ok_shots),
+                "host_shot_count": len(host_shots),
+            })
+
+        # --- 4. Persist host_outputs.json beside director_plan.json ---
+        outputs = {
+            "host_shot_indices": ok_shots,
+            "host_shot_count": len(ok_shots),
+            "total_host_seconds": round(total_host_seconds, 2),
+            "shot_artifacts": per_shot_artifacts,
+            "errors": errors,
+        }
+        try:
+            (_Path(run_dir) / "host_outputs.json").write_text(
+                _json.dumps(outputs, indent=2), encoding="utf-8"
+            )
+        except Exception as e:
+            print(f"[AvatarBatch] ⚠️  Could not persist host_outputs.json: {e}")
+
+        print(
+            f"[AvatarBatch] Done: {len(ok_shots)}/{len(host_shots)} shots OK, "
+            f"{len(errors)} errors, ~{total_host_seconds:.1f}s of avatar video"
+        )
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "avatar_batch_done",
+            "stage": "html",
+            "message": (
+                f"Avatar batch done: {len(ok_shots)}/{len(host_shots)} OK, "
+                f"{len(errors)} failed, {total_host_seconds:.0f}s"
+            ),
+            "host_shot_count": len(ok_shots),
+        })
+        return outputs
+
+    # ------------------------------------------------------------------
     # Per-Shot HTML generation — uses Director plan + focused prompts
     # ------------------------------------------------------------------
 
@@ -5767,6 +6393,60 @@ class VideoGenerationPipeline:
             if _stock_instruction:
                 user_prompt = user_prompt + _stock_instruction
 
+            # ── Host-shot injection ──
+            # When AvatarBatch produced an avatar video for this shot, tell the
+            # LLM to embed it as a full-frame <video> layer with overlays in the
+            # free region per shot.host_layout. The avatar plays muted (the
+            # global TTS narration is the audio source) and is always autoplay.
+            if shot.get("host_present") and shot.get("avatar_video_url"):
+                _host_layout = shot.get("host_layout") or "centered"
+                _host_url = shot["avatar_video_url"]
+                _host_block = (
+                    "\n\n## 🎙️ HOST SHOT — FULL-FRAME AVATAR + OVERLAYS\n"
+                    f"This shot features the on-screen host. Lay out as follows:\n\n"
+                    "**Layer 0 (BOTTOM — host video, full canvas):**\n"
+                    "```html\n"
+                    f"<video class=\"host-avatar host-{_host_layout}\" "
+                    f"src=\"{_host_url}\" "
+                    "autoplay muted playsinline "
+                    "style=\"position:absolute; inset:0; width:100%; height:100%; "
+                    "object-fit:cover; z-index:0;\"></video>\n"
+                    "```\n\n"
+                    "**Layer 1+ (overlays — text, callouts, animated graphics):**\n"
+                    "Place ALL your overlays inside this wrapper, sized to the FREE region:\n"
+                    "```html\n"
+                    "<div class=\"host-overlay-zone\" style=\"position:absolute; z-index:10; "
+                )
+                if _host_layout == "free_left":
+                    _host_block += "left:0; right:50%; top:0; bottom:0; padding:4%;\">\n"
+                elif _host_layout == "free_right":
+                    _host_block += "left:50%; right:0; top:0; bottom:0; padding:4%;\">\n"
+                elif _host_layout == "free_top":
+                    _host_block += "left:0; right:0; top:0; bottom:60%; padding:4%;\">\n"
+                elif _host_layout == "free_bottom":
+                    _host_block += "left:0; right:0; top:60%; bottom:0; padding:4%;\">\n"
+                else:  # centered — minimal overlay (lower-third only or skip)
+                    _host_block += "left:0; right:0; bottom:0; height:30%; padding:4%; pointer-events:none;\">\n"
+                _host_block += (
+                    "  <!-- Your text, KaTeX, SVG, GSAP-animated callouts go here -->\n"
+                    "</div>\n"
+                    "```\n\n"
+                    "**Rules:**\n"
+                    "- The host <video> tag MUST be present and unmodified (do not re-encode the URL).\n"
+                    "- Do NOT add any background/full-canvas image, gradient, or solid color — the host fills the canvas.\n"
+                    "- Animations + text content go INSIDE the .host-overlay-zone wrapper only.\n"
+                    "- Do not occlude the host's face/body region; respect the chosen layout.\n"
+                    f"- Layout chosen for this shot: **{_host_layout}** "
+                    f"(host occupies the {('right' if _host_layout == 'free_left' else 'left' if _host_layout == 'free_right' else 'bottom' if _host_layout == 'free_top' else 'top' if _host_layout == 'free_bottom' else 'whole canvas')} side).\n\n"
+                    "**HARD DO-NOT (this shot only):**\n"
+                    "- ❌ Do NOT emit `data-img-prompt` (would generate an AI image and composite it under the host).\n"
+                    "- ❌ Do NOT emit `data-video-query` or `data-img-source='stock'` (would composite stock media under the host).\n"
+                    "- ❌ Do NOT add a `<video>` tag other than the host one above.\n"
+                    "- ❌ Do NOT use `position:fixed` / negative z-index — host is z=0, overlays are z≥10.\n"
+                    "- ❌ Do NOT set `body` or full-canvas backgrounds — leave them transparent so the host video shows through.\n"
+                )
+                user_prompt = user_prompt + _host_block
+
             # Inject the shared shot pack (premium/ultra/super_ultra only).
             # Rewrite the id_prefix placeholder with this shot's concrete index.
             if _shot_pack_block:
@@ -5776,7 +6456,7 @@ class VideoGenerationPipeline:
                     "s{shot_idx}_", f"s{shot_idx}_"
                 )
 
-            # Super Ultra: append motion-density + reel-pace + brand-palette requirement
+            # Append motion-density + cadence + brand-palette requirement
             # (skipped for KINETIC_TEXT since it's bypassed anyway)
             if (
                 self._tier_config.get("motion_density_enforcement")
@@ -5784,13 +6464,34 @@ class VideoGenerationPipeline:
             ):
                 _min_anim = self._tier_config.get("min_animated_elements", 6)
                 _is_portrait = _h > _w
-                _format_label = "9:16 portrait reel / Shorts / TikTok" if _is_portrait else "16:9"
+                _shot_duration_s = end_time - start_time
+                # Per-shot framing: shots ≥ 5s on landscape are explainer-cadence;
+                # everything else is reel-pace. The animation rules (snappy entrances,
+                # active backgrounds, text-must-animate) apply identically — only the
+                # shot-duration target and headline framing change.
+                _is_explainer = (_shot_duration_s >= 5.0) and (not _is_portrait)
+                if _is_explainer:
+                    _format_label   = "16:9 landscape educational"
+                    _cadence_header = "MOTION DENSITY + EXPLAINER CADENCE + BRAND PALETTE"
+                    _format_para    = (
+                        f"This is a long shot ({_shot_duration_s:.1f}s) in landscape educational content. "
+                        "Internal motion (counters, draw-ins, sequential reveals, diagram building) MUST "
+                        "carry the time — never let the screen sit static. Animations should still feel "
+                        "deliberate and snappy at the element level; what's NOT 'reel-pace' is the cutting, "
+                        "not the entrances."
+                    )
+                else:
+                    _format_label   = "9:16 portrait reel / Shorts / TikTok" if _is_portrait else "16:9 short-form"
+                    _cadence_header = "REEL PACE + MOTION DENSITY + BRAND PALETTE"
+                    _format_para    = (
+                        f"This is short-form social video ({_shot_duration_s:.1f}s shot). Animations must "
+                        "feel punchy and snappy."
+                    )
                 user_prompt = user_prompt + (
-                    "\n\n**⚡ SUPER ULTRA — REEL PACE + MOTION DENSITY + BRAND PALETTE** (non-negotiable):\n"
-                    f"\n🎞️ FORMAT: {_format_label}. This is short-form social video, NOT a classroom "
-                    "explainer. Target shot duration is 2–5s. Animations must feel punchy and snappy.\n"
-                    "\n⚡ REEL-PACE ANIMATION TIMING:\n"
-                    "- Default entrance duration: 0.25–0.4s (NOT 0.8–1.2s). Slow fades kill reel pace.\n"
+                    f"\n\n**⚡ {_cadence_header}** (non-negotiable):\n"
+                    f"\n🎞️ FORMAT: {_format_label}. {_format_para}\n"
+                    "\n⚡ ANIMATION TIMING (snappy at the element level regardless of cadence):\n"
+                    "- Default entrance duration: 0.25–0.4s (NOT 0.8–1.2s). Slow fades feel amateur.\n"
                     "- Stagger entrance delays: 0.08–0.25s apart (tight), NOT 0.4–0.8s (loose).\n"
                     "- Exit animations (when needed): 0.15–0.25s.\n"
                     "- First meaningful element must appear by 0.2s — no dead-air opens.\n"

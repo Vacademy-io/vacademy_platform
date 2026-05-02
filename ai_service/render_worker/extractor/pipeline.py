@@ -35,6 +35,7 @@ from .highlight import select_highlight
 from .matting import SelfieSegMatter
 from .scene import detect_scenes
 from .schemas import (
+    AudioSummary,
     FaceSegment,
     SpeakerForeground,
     VideoContext,
@@ -399,6 +400,20 @@ def run_index_pipeline(
         # Per-sentence prosody enrichment (energy, pitch, speech rate).
         assign_sentence_prosody(sentences, rms_times, rms_values, f0_times, f0_values)
 
+        # Top-level audio summary so downstream pipelines can decide whether
+        # they need to load the transcript at all.
+        total_words = sum(len(s.words) for s in sentences)
+        speech_seconds = sum(max(0.0, s.end - s.start) for s in sentences)
+        # "Present" = there's a transcribed word AND the audio has real energy
+        # (a silent track can still produce stray Whisper artifacts).
+        audio_present = total_words > 0 and prosody.mean_rms > 0.001
+        audio_summary = AudioSummary(
+            present=audio_present,
+            total_words=total_words,
+            words_per_minute=round((total_words / duration_s) * 60.0, 2) if duration_s > 0 else 0.0,
+            speech_coverage=round(min(1.0, speech_seconds / duration_s), 3) if duration_s > 0 else 0.0,
+        )
+
         # Persist full-video face data into the spatial DB for SQL queries.
         if face_samples:
             face_sample_rows = [
@@ -439,6 +454,7 @@ def run_index_pipeline(
                 fps_original=round(fps_original, 2),
                 fps_sampled_visual=sample_fps,
                 highlight_window=highlight,
+                audio=audio_summary,
             ),
             transcript=sentences,
             emphasis=emphasis,

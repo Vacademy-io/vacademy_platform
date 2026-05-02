@@ -60,3 +60,79 @@ class RoutePreviewRequest(BaseModel):
     attached_file_count: int = 0
     orientation: Literal["landscape", "portrait"] = "landscape"
     content_type: str = "VIDEO"
+
+
+# ---------------------------------------------------------------------------
+# Video type classification (runs alongside IntentRouter, before SCRIPT)
+# ---------------------------------------------------------------------------
+
+# 11 canonical video types. Picked once per fresh video, threaded into
+# pacing/cadence/Director/script prompts. Adding a new type = add label here +
+# extend the rubric in video_type_classifier_service._SYSTEM_PROMPT.
+VideoTypeLabel = Literal[
+    "explainer",          # general educational concept walkthrough
+    "tutorial",           # step-by-step how-to
+    "news_recap",         # summarize an article / event / news story
+    "product_promo",      # SaaS / consumer product marketing reel
+    "case_study",         # business outcome storytelling
+    "documentary",        # long-form factual narration
+    "story",              # narrative / fictional storytelling
+    "listicle",           # top-N / countdown-style
+    "reel",               # short social-media-style hook
+    "demo_walkthrough",   # UI / app / feature demo
+    "pitch",              # investor / sales pitch
+]
+
+
+class VideoTypePlan(BaseModel):
+    """Structured output of the VideoTypeClassifier, persisted to run_dir/video_type.json."""
+    type: VideoTypeLabel = "explainer"
+    confidence: float = 0.5  # 0..1
+    reason: str = ""
+    # Cadence preference *suggested* by the type, expressed in shot-density terms.
+    # Director cadence still reads (duration, orientation, type) — this is a hint,
+    # not an override.
+    cadence_hint: Literal["reel", "marketing", "education", "documentary"] = "education"
+    source: Literal["router", "user", "default"] = "router"
+
+
+# ---------------------------------------------------------------------------
+# Host plan (output of HostPlannerService — runs in pre-script preamble)
+# ---------------------------------------------------------------------------
+
+# HostConfig (the request shape) lives in schemas/video_generation.py to keep
+# request-side schemas grouped. HostPlan is the *derived* runtime shape the
+# pipeline operates on after tier-gating + normalisation. Persisted to
+# run_dir/host_plan.json + extra_metadata.host (inputs block).
+
+class HostAvatarPlan(BaseModel):
+    face_image_url: str
+    details_prompt: str = ""
+    avatar_model: Literal[
+        "fal-ai/kling-video/ai-avatar/v2/standard",
+        "veed/fabric-1.0",
+    ]
+    quality: Literal["480p", "720p"]
+
+
+class HostRawPlan(BaseModel):
+    input_video_ids: List[str]
+
+
+class HostPlan(BaseModel):
+    """Pipeline-side host plan. Built once in the pre-script preamble.
+
+    `enabled=False` means: request had no host OR tier-gate dropped it.
+    Downstream stages branch on `enabled` and on `type`.
+    """
+    enabled: bool = False
+    type: Literal["avatar", "raw"] = "avatar"
+    host_in_video_percentage: int = 100
+    avatar: Optional[HostAvatarPlan] = None
+    raw: Optional[HostRawPlan] = None
+
+    def is_avatar(self) -> bool:
+        return self.enabled and self.type == "avatar" and self.avatar is not None
+
+    def is_raw(self) -> bool:
+        return self.enabled and self.type == "raw" and self.raw is not None

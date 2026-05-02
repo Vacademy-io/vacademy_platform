@@ -104,9 +104,14 @@ class Settings(BaseSettings):
     # Google Generative AI Configuration (for Gemini image generation)
     gemini_api_key: Optional[str] = None
 
-    # RunPod Configuration (for avatar video generation via EchoMimic)
+    # RunPod Configuration (legacy PiP avatar via EchoMimic)
     runpod_api_key: Optional[str] = None
     runpod_endpoint_id: Optional[str] = None
+
+    # fal.ai Configuration (per-shot host-avatar talking-head video).
+    # Used by app/services/fal_avatar_client.py when request.host.type == "avatar".
+    # Two supported models: fal-ai/kling-video/ai-avatar/v2/standard and veed/fabric-1.0.
+    fal_api_key: Optional[str] = None
 
     # YouTube API Configuration
     youtube_api_key: Optional[str] = None

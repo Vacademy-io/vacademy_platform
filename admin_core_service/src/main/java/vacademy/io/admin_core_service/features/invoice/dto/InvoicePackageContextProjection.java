@@ -4,4 +4,6 @@ public interface InvoicePackageContextProjection {
     String getPackageId();
 
     String getLevelName();
+
+    String getSessionId();
 }

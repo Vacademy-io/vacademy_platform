@@ -1158,6 +1158,7 @@ public class InvoiceService {
 
         String packageId = null;
         String levelName = null;
+        String sessionId = null;
 
         try {
             UserPlan userPlan = invoiceData.getUserPlan();
@@ -1179,12 +1180,13 @@ public class InvoiceService {
                         if (ctx.isPresent()) {
                             packageId = ctx.get().getPackageId();
                             levelName = ctx.get().getLevelName();
+                            sessionId = ctx.get().getSessionId();
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            log.warn("Failed to resolve package/level context for T&C lookup: {}", e.getMessage());
+            log.warn("Failed to resolve package/level/session context for T&C lookup: {}", e.getMessage());
         }
 
         // 1) Per-package override
@@ -1198,7 +1200,18 @@ public class InvoiceService {
             }
         }
 
-        // 2) Per-level fallback (case-insensitive on level name)
+        // 2) Per-session fallback
+        if (sessionId != null) {
+            Object bySessionRaw = tnc.get("bySession");
+            if (bySessionRaw instanceof Map) {
+                Object html = ((Map<String, Object>) bySessionRaw).get(sessionId);
+                if (html instanceof String && !((String) html).trim().isEmpty()) {
+                    return (String) html;
+                }
+            }
+        }
+
+        // 3) Per-level fallback (case-insensitive on level name)
         if (levelName != null) {
             Object byLevelRaw = tnc.get("byLevel");
             if (byLevelRaw instanceof Map) {
@@ -1219,7 +1232,7 @@ public class InvoiceService {
             }
         }
 
-        // 3) Institute-wide default
+        // 4) Institute-wide default
         Object defaultHtml = tnc.get("default");
         if (defaultHtml instanceof String && !((String) defaultHtml).trim().isEmpty()) {
             return (String) defaultHtml;

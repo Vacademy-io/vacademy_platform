@@ -225,7 +225,8 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
     @Query("""
                 SELECT
                     p.id        AS packageId,
-                    l.levelName AS levelName
+                    l.levelName AS levelName,
+                    ps.session.id AS sessionId
                 FROM PackageSession ps
                 JOIN ps.level l
                 JOIN ps.packageEntity p

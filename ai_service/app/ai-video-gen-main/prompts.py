@@ -272,7 +272,10 @@ Target Duration: {target_duration}
 - 5 minutes = ~775 words
 - 7 minutes = ~1085 words
 - 10 minutes = ~1550 words
-⚠️ CRITICAL: Count your words carefully. The final script MUST match the target duration above. Do NOT write more content than needed — a 1-minute video needs ~155 words, NOT 300. Going over means the video will exceed the requested length.
+⚠️ HARD CAP — your script will be REJECTED and require regeneration if it exceeds the target by >15%. Count your words carefully. The final script MUST match the target duration above. Do NOT write more content than needed — a 1-minute video needs ~155 words, NOT 300. Going over means the video will exceed the requested length AND trigger a costly retry. WRITE FEWER WORDS, NOT MORE.
+
+**HEX-CODE HANDLING — MANDATORY**:
+Any hex code (`#XXXXXX` format like `#0D0D0D` or `#C9A84C`) that appears in the user's prompt above is a CSS STYLING value (background colour, accent colour, text colour). NEVER include the literal hex string in the narration script — the host won't say "hashtag zero D zero D zero D" out loud. Hex codes are passed downstream as CSS values via background-color / color / border-color properties; they belong in the visual layer, not the narration.
 
 Requirements:
 - **MATCH vocabulary and examples to the target audience's age/grade level.**

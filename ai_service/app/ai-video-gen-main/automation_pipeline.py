@@ -1642,6 +1642,12 @@ class VideoGenerationPipeline:
         # `_user_had_script` is True; consumed by `_run_avatar_batch_sync` as a
         # belt-and-braces deny-list. Empty list means no deny-list applies.
         self._user_authored_no_host_indices: List[int] = []
+        # One cinematic studio-set description shared across all host shots in
+        # the run. Picked once per run via `_pick_host_set_description` (small
+        # LLM call, ~$0.001) so every avatar shot lands in the same coherent
+        # space — eliminates the per-shot bg drift (factory at 19s vs void
+        # at 1s in output(24).mp4) without the boring flat-wall fallback.
+        self._host_set_description: Optional[str] = None
         # Dedup set for LLM-ranked stock video selection (super_ultra only).
         # Tracks Pexels video IDs already used in this run so shots don't reuse clips.
         self._used_pexels_video_ids: set = set()
@@ -2074,6 +2080,100 @@ class VideoGenerationPipeline:
             script_plan = script_out["result"]
             _script_usage = script_out.get("usage", {})
             accumulate_usage(_script_usage)
+
+            # Fix J — word-budget validation. The script LLM was told the duration
+            # cap (Fix J prompt-side), but cheap planners ignore it and produce
+            # 38s of narration for a 30s request (output(24).mp4). Validate after
+            # the draft, regen ONCE if over budget by >15%. Skipped when
+            # user-authored (verbatim takes priority over duration matching).
+            if (
+                content_type == "VIDEO"
+                and not getattr(self, "_user_had_script", False)
+            ):
+                try:
+                    import re as _re_dur
+                    # Parse target_duration → seconds (mirrors _derive_pacing_style).
+                    _td_lower = (target_duration or "").lower().strip()
+                    _nums = [float(n) for n in _re_dur.findall(r"[\d.]+", _td_lower)]
+                    if _nums:
+                        if "second" in _td_lower:
+                            _target_seconds = sum(_nums) / len(_nums)
+                        else:
+                            _target_seconds = (sum(_nums) / len(_nums)) * 60.0
+                    else:
+                        _target_seconds = 150.0  # 2.5min fallback
+
+                    # Pull script text out of various shapes.
+                    _draft_text = ""
+                    if isinstance(script_plan, dict):
+                        _draft_text = (
+                            script_plan.get("script_text")
+                            or (script_plan.get("plan") or {}).get("script")
+                            or ""
+                        )
+                    _word_count = len(str(_draft_text).split())
+                    # ~155 wpm = ~2.58 wps; use 2.6 to be slightly forgiving.
+                    _target_words = max(20, int(_target_seconds * 2.6))
+                    _budget_max = int(_target_words * 1.15)
+                    print(
+                        f"📏 Script word-count check: {_word_count} words / "
+                        f"{_target_words} target ({int(_target_seconds)}s × 2.6 wpm/s × 1.15 cap = {_budget_max})"
+                    )
+                    if _word_count > _budget_max:
+                        # Regen once with an explicit cut directive prepended.
+                        _cut_to = max(20, int(_target_words * 0.95))
+                        print(
+                            f"⚠️ Script over budget ({_word_count} > {_budget_max}). "
+                            f"Regenerating with hard cap = {_cut_to} words (Fix J)."
+                        )
+                        _retry_prompt = (
+                            f"⚠️ URGENT REVISION REQUIRED: a previous draft of this script "
+                            f"was {_word_count} words for a {int(_target_seconds)}s target — "
+                            f"that exceeds the duration budget. Rewrite the narration with a "
+                            f"HARD CAP of {_cut_to} words. Cut filler, examples, and any "
+                            f"sentence that doesn't directly serve the core message. "
+                            f"Quality over quantity.\n\n"
+                            f"---\n\n{base_prompt}"
+                        )
+                        try:
+                            _retry_out = self._draft_script(
+                                _retry_prompt, run_dir,
+                                language=language,
+                                target_audience=target_audience,
+                                target_duration=target_duration,
+                                content_type=content_type,
+                            )
+                            _retry_plan = _retry_out.get("result")
+                            _retry_usage = _retry_out.get("usage", {})
+                            accumulate_usage(_retry_usage)
+                            # Validate the retry — if it's STILL over, ship it
+                            # anyway (avoid infinite regen loops). Log the result.
+                            _retry_text = ""
+                            if isinstance(_retry_plan, dict):
+                                _retry_text = (
+                                    _retry_plan.get("script_text")
+                                    or (_retry_plan.get("plan") or {}).get("script")
+                                    or ""
+                                )
+                            _retry_words = len(str(_retry_text).split())
+                            print(
+                                f"📏 Script regen result: {_retry_words} words "
+                                f"(was {_word_count}, cap {_budget_max})."
+                            )
+                            if _retry_plan and _retry_words <= _budget_max:
+                                script_plan = _retry_plan
+                            elif _retry_plan and _retry_words < _word_count:
+                                # Improved but still over — keep the better version.
+                                script_plan = _retry_plan
+                                print("⚠️ Retry still over budget but improved; using retry version.")
+                            else:
+                                print("⚠️ Retry failed to improve; keeping original draft.")
+                        except Exception as _retry_err:
+                            print(f"⚠️ Word-budget regen failed (non-fatal): {_retry_err}")
+                    else:
+                        print(f"✅ Script within budget ({_word_count} ≤ {_budget_max} words).")
+                except Exception as _wb_err:
+                    print(f"⚠️ Word-budget validation failed (non-fatal): {_wb_err}")
             self._emit_progress({
                 "type": "sub_stage", "sub_stage": "script_done",
                 "message": "Script ready",
@@ -2084,19 +2184,29 @@ class VideoGenerationPipeline:
                 "cumulative_tokens": dict(total_usage),
             })
 
-            # Two-pass script review (Premium/Ultra tiers)
+            # Two-pass script review (Premium/Ultra tiers).
+            # Skipped when the user supplied an explicit script — the review LLM
+            # rewrites narration into "marketing-friendly" copy, which destroys
+            # the user's verbatim text. User-authored mode is detected at
+            # _draft_script time and surfaced via self._user_had_script.
             if self._tier_config.get("two_pass_script") and content_type == "VIDEO":
-                reviewed_plan = self._review_script(script_plan.get("plan", script_plan), run_dir)
-                if reviewed_plan:
-                    script_plan["plan"] = reviewed_plan
-                    reviewed_text = str(reviewed_plan.get("script") or reviewed_plan.get("script_text") or "").strip()
-                    if reviewed_text:
-                        script_plan["script_text"] = reviewed_text
-                    # Repair narrations after review (reviewer may have edited the script)
-                    script_plan["plan"] = self._repair_beat_narrations(
-                        script_plan["plan"],
-                        script_plan.get("script_text", ""),
+                if getattr(self, "_user_had_script", False):
+                    print(
+                        "✋ Skipping two-pass script review — user-authored prompt detected, "
+                        "preserving verbatim narration (Fix A)."
                     )
+                else:
+                    reviewed_plan = self._review_script(script_plan.get("plan", script_plan), run_dir)
+                    if reviewed_plan:
+                        script_plan["plan"] = reviewed_plan
+                        reviewed_text = str(reviewed_plan.get("script") or reviewed_plan.get("script_text") or "").strip()
+                        if reviewed_text:
+                            script_plan["script_text"] = reviewed_text
+                        # Repair narrations after review (reviewer may have edited the script)
+                        script_plan["plan"] = self._repair_beat_narrations(
+                            script_plan["plan"],
+                            script_plan.get("script_text", ""),
+                        )
         else:
             self._require_file(script_path, "script.txt (narration text)")
             # Try to load the plan if it exists, otherwise provide a dummy one
@@ -5689,6 +5799,200 @@ class VideoGenerationPipeline:
     # gen falls through to the regular non-host path. The full batch never
     # aborts on a single failure.
 
+    def _extract_brand_brief(self) -> Dict[str, Any]:
+        """Extract structured brand-styling cues from the user's base_prompt.
+
+        Reads `self._base_prompt` for explicit hex codes, font hints, and
+        visual-style keywords (background, color, minimal, etc.). Returns a
+        normalised dict consumed by:
+          - The Seedream avatar image prompt (raw_brief)
+          - The per-shot HTML LLM user prompt (bg_hex / accent_hex / font_family)
+          - The per-shot fallback typography card when LLM fails
+
+        Returns: {
+            "bg_hex":      Optional[str] — first hex code that appears AFTER a
+                           "background" keyword in the prompt (or first hex if no
+                           background keyword found).
+            "accent_hex":  Optional[str] — second/distinct hex code.
+            "font_family": Optional[str] — first matched font name (Montserrat,
+                           Inter, Bebas Neue, …) or None.
+            "raw_brief":   str — concatenated style-relevant lines, ≤450 chars,
+                           same shape as the legacy `_global_style_brief`.
+        }
+        Empty fields when nothing is found — callers should treat absence as
+        "no brand directive present" and skip injection.
+        """
+        result: Dict[str, Any] = {
+            "bg_hex": None,
+            "accent_hex": None,
+            "font_family": None,
+            "raw_brief": "",
+        }
+        try:
+            bp = (getattr(self, "_base_prompt", None) or "").strip()
+            if not bp:
+                return result
+
+            import re as _re_brief
+            # 1) Pull all hex codes in order of appearance + their nearby context.
+            #    A hex preceded within 60 chars by "background"-ish keyword is
+            #    flagged as bg; the first non-bg hex becomes accent.
+            hex_pattern = _re_brief.compile(r"#[0-9a-fA-F]{6}\b")
+            bg_hex: Optional[str] = None
+            accent_hex: Optional[str] = None
+            for m in hex_pattern.finditer(bp):
+                h = m.group(0)
+                ctx = bp[max(0, m.start() - 60): m.start()].lower()
+                if bg_hex is None and any(kw in ctx for kw in (
+                    "background", "bg", "backdrop", "behind", "primary"
+                )):
+                    bg_hex = h
+                elif accent_hex is None and h != bg_hex:
+                    accent_hex = h
+            # Fallback — first hex is bg if nothing matched on context.
+            if bg_hex is None:
+                _all = hex_pattern.findall(bp)
+                if _all:
+                    bg_hex = _all[0]
+                    if accent_hex is None and len(_all) > 1:
+                        accent_hex = _all[1]
+
+            # 2) Font detection — known web-safe / common typography brands.
+            font_candidates = [
+                "Montserrat", "Inter", "Bebas Neue", "Lato", "Roboto",
+                "Open Sans", "Poppins", "Playfair Display", "Oswald",
+                "Helvetica", "Arial", "Georgia", "Fira Code",
+            ]
+            for f in font_candidates:
+                if _re_brief.search(rf"\b{_re_brief.escape(f)}\b", bp, _re_brief.IGNORECASE):
+                    result["font_family"] = f
+                    break
+
+            # 3) Raw brief — same scoring as the previous `_global_style_brief`
+            #    builder, kept identical so existing Seedream-prompt callers
+            #    don't change behaviour.
+            candidates = []
+            for line in bp.split("\n"):
+                ln = line.strip()
+                if not ln or len(ln) > 200:
+                    continue
+                lo = ln.lower()
+                if hex_pattern.search(ln) or any(kw in lo for kw in (
+                    "background", "color", "colour", "font",
+                    "visual style", "minimal", "clean",
+                    "high-contrast", "high contrast", "no gradient",
+                    "no blur", "monochrome", "brand",
+                )):
+                    candidates.append(ln)
+            if candidates:
+                joined = " ".join(candidates)
+                if len(joined) > 450:
+                    joined = joined[:450].rsplit(" ", 1)[0] + "…"
+                result["raw_brief"] = joined
+
+            result["bg_hex"] = bg_hex
+            result["accent_hex"] = accent_hex
+        except Exception as e:
+            print(f"[BrandBrief] ⚠️ extraction failed (non-fatal): {e}")
+        return result
+
+    def _pick_host_set_description(self, brand_brief: Dict[str, Any]) -> str:
+        """One-shot LLM call: compose a single cinematic studio-set description
+        used for EVERY host shot in this run.
+
+        Replaces the old "flat solid backdrop" directive with something visually
+        rich + brand-anchored + overlay-friendly. Same set every shot eliminates
+        the per-shot drift problem (factory floor at 19s vs void at 1s) without
+        making the video feel like a corporate Zoom call.
+
+        Cached on `self._host_set_description` so resume runs reuse it.
+        Failure mode: returns a sensible generic fallback (no crash).
+        """
+        # Reuse if already picked this run (resume safety + idempotency)
+        cached = getattr(self, "_host_set_description", None)
+        if cached:
+            return str(cached)
+
+        try:
+            subject_domain = getattr(self, "_current_subject_domain", "general") or "general"
+            visual_style = getattr(self, "_current_image_style", "realistic cinematic photograph") or ""
+            bg_hex = brand_brief.get("bg_hex") or "#0D0D0D"
+            accent_hex = brand_brief.get("accent_hex") or ""
+            font_family = brand_brief.get("font_family") or ""
+            base_excerpt = (getattr(self, "_base_prompt", "") or "")[:400]
+
+            system_prompt = (
+                "You compose a single short cinematic studio-set description for an "
+                "on-screen host (talking head) video. The set must:\n"
+                "- Be VISUALLY INTERESTING (cinematic lighting, slight depth, atmosphere) — NOT a flat colour wall.\n"
+                "- Use the brand's primary background colour as the dominant tone.\n"
+                "- Be MINIMALIST — no factory floors, no busy machinery, no architectural detail. Atmosphere over clutter.\n"
+                "- Have ONE quiet zone (one half / one corner) where the wall is plain so an overlay reads cleanly.\n"
+                "- Match the brand's energy / domain (luxury atelier, modern tech studio, warm library, lab-adjacent studio, etc).\n"
+                "- Be re-usable: the SAME set is used in every host shot of this video, so describe a single coherent space.\n\n"
+                "Output ONLY the scene description as one paragraph, ≤80 words. "
+                "No preamble, no explanation, no markdown. Just the prose description."
+            )
+            user_prompt = (
+                f"User prompt excerpt:\n---\n{base_excerpt}\n---\n\n"
+                f"subject_domain: {subject_domain}\n"
+                f"visual_style: {visual_style}\n"
+                f"brand background: {bg_hex}\n"
+                f"brand accent: {accent_hex or '(none)'}\n"
+                f"brand font: {font_family or '(none)'}\n\n"
+                "Compose the host studio-set description now."
+            )
+
+            api_key = getattr(self.script_client, "api_key", None)
+            if not api_key:
+                raise RuntimeError("no API key on script_client")
+
+            # Cheap fast model — same one IntentRouter / VideoTypeClassifier use.
+            raw, _usage = self.script_client.chat(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                model="google/gemini-2.0-flash-lite-001",
+                temperature=0.4,
+                max_tokens=200,
+            )
+            scene = (raw or "").strip()
+            # Strip leading/trailing quotes/code-fences if the model wrapped them.
+            for ch in ('```', '"', "'"):
+                if scene.startswith(ch) and scene.endswith(ch):
+                    scene = scene.strip(ch).strip()
+            if len(scene) > 800:
+                scene = scene[:800].rsplit(" ", 1)[0] + "…"
+            if len(scene) < 30:
+                raise RuntimeError(f"scene too short: {scene!r}")
+            self._host_set_description = scene
+            print(f"[AvatarBatch] Host set: {scene[:160]}{'…' if len(scene) > 160 else ''}")
+            return scene
+        except Exception as e:
+            # Sensible domain-aware fallback — better than a flat wall.
+            sd = (getattr(self, "_current_subject_domain", "general") or "general").lower()
+            bg = brand_brief.get("bg_hex") or "#0D0D0D"
+            fallback_map = {
+                "saas_marketing":     f"Modern minimalist tech studio with a {bg} accent wall, soft warm rim light from upper-left, subtle gradient depth, single quiet zone for overlay text.",
+                "saas_demo":          f"Clean tech studio with a {bg} matte backdrop, soft daylight, hint of out-of-focus monitor glow, one plain zone for overlay.",
+                "business_marketing": f"Premium minimalist atelier with {bg} walls, fine fabric-grain texture, single warm rim light, out-of-focus product forms in background bokeh, one quiet zone for overlay.",
+                "coding":             f"Soft-focus dev studio, {bg} walls, subtle monitor glow on the back wall, warm rim light, one plain zone for overlay.",
+                "science":            f"Lab-adjacent minimalist studio, {bg} backdrop, soft cyan rim accents, atmospheric depth, one quiet zone for overlay.",
+                "biology":            f"Soft natural-history studio, {bg} backdrop, warm rim light, subtle organic texture, one plain zone for overlay.",
+                "chemistry":          f"Lab-adjacent studio, {bg} backdrop, soft cyan rim accents, atmospheric haze, one quiet zone for overlay.",
+                "history":            f"Warm library studio, {bg} walls, sepia rim light, blurred bookshelf bokeh, one plain zone for overlay.",
+                "geography":          f"Minimalist studio with {bg} backdrop, soft daylight, hint of map texture in deep background bokeh, one quiet zone for overlay.",
+                "math":               f"Clean studio, {bg} walls, soft directional rim light, one plain zone for overlay.",
+                "language":           f"Soft-focus literary studio, {bg} walls, warm rim light, blurred bookshelf bokeh, one plain zone for overlay.",
+                "visual_storytelling": f"Cinematic dark studio, {bg} backdrop, single hard rim light, atmospheric depth, one quiet zone for overlay.",
+                "general":            f"Cinematic minimalist studio, {bg} walls, single soft rim light from upper-left, slight depth-of-field, atmospheric — not a flat wall — with one plain zone for overlay text.",
+            }
+            scene = fallback_map.get(sd, fallback_map["general"])
+            self._host_set_description = scene
+            print(f"[AvatarBatch] Host set picker failed ({e}); using domain={sd} fallback: {scene[:120]}…")
+            return scene
+
     def _run_avatar_batch_sync(
         self,
         director_plan: Dict[str, Any],
@@ -5751,6 +6055,32 @@ class VideoGenerationPipeline:
         host_shots = [
             (idx, s) for idx, s in enumerate(shots) if s.get("host_present")
         ]
+
+        # Fix D — belt-and-braces cap-to-2 in user-authored mode.
+        # The Director SHOULD honor the cap-to-2 directive in HOST_DIRECTOR_EXTENSION,
+        # but production runs (output(24).mp4) showed Director shipping target ~10/13.
+        # Even with the system-prompt rule, cheap planners ignore the cap. AvatarBatch
+        # is the last gate before billable Seedream + fal.ai calls — enforce here
+        # too. We keep shot 0 (Hook) and the LAST host shot (CTA proxy); flip
+        # everything else to host_present=False so per-shot HTML falls through to
+        # pure typography on the user's "text only" frames.
+        if (
+            getattr(self, "_user_had_script", False)
+            and len(host_shots) > 2
+        ):
+            _keep_first = host_shots[0]
+            _keep_last = host_shots[-1]
+            _drop = [idx for idx, _ in host_shots[1:-1]]
+            for idx in _drop:
+                if idx < len(shots):
+                    shots[idx]["host_present"] = False
+            host_shots = [_keep_first, _keep_last]
+            print(
+                f"🎙️ AvatarBatch: user-authored mode — capping host shots to 2 "
+                f"(Hook idx={_keep_first[0]} + CTA idx={_keep_last[0]}), "
+                f"dropping {_drop} (Fix D belt-and-braces)."
+            )
+
         if not host_shots:
             print("[AvatarBatch] No host_present shots — nothing to render")
             return {"skipped": True, "reason": "no host_present shots"}
@@ -5804,37 +6134,26 @@ class VideoGenerationPipeline:
         # — hex colors, "background", "color", "font", "style" lines —
         # and concatenate ≤450 chars worth into a single brief. Bounded
         # so we don't fill the Seedream prompt with narrative content.
-        _global_style_brief = ""
-        try:
-            _bp = (getattr(self, "_base_prompt", None) or "").strip()
-            if _bp:
-                import re as _re_brief
-                # Lines mentioning visual style, color, background, font,
-                # or hex codes are the most useful signal for image gen.
-                _candidates = []
-                for _line in _bp.split("\n"):
-                    _l = _line.strip()
-                    if not _l or len(_l) > 200:
-                        continue
-                    _l_lo = _l.lower()
-                    if (
-                        _re_brief.search(r"#[0-9a-fA-F]{3,8}\b", _l)
-                        or any(kw in _l_lo for kw in (
-                            "background", "color", "colour", "font",
-                            "visual style", "minimal", "clean",
-                            "high-contrast", "high contrast", "no gradient",
-                            "no blur", "monochrome", "brand",
-                        ))
-                    ):
-                        _candidates.append(_l)
-                if _candidates:
-                    _joined = " ".join(_candidates)
-                    if len(_joined) > 450:
-                        _joined = _joined[:450].rsplit(" ", 1)[0] + "…"
-                    _global_style_brief = _joined
-                    print(f"[AvatarBatch] Global style brief: {_global_style_brief[:120]}…")
-        except Exception as _gs_err:
-            print(f"[AvatarBatch] ⚠️ Global style extraction failed (non-fatal): {_gs_err}")
+        # Brand brief — structured extraction (refactored helper). Returns
+        # {bg_hex, accent_hex, font_family, raw_brief}. Used here for the
+        # Seedream prompt; Fix E threads the same dict into the per-shot HTML
+        # LLM, and Fix I uses bg_hex for the typography fallback card.
+        _brand = self._extract_brand_brief()
+        _global_style_brief = _brand.get("raw_brief", "") or ""
+        if _global_style_brief:
+            print(
+                f"[AvatarBatch] Brand brief: bg={_brand.get('bg_hex') or '?'} "
+                f"accent={_brand.get('accent_hex') or '?'} "
+                f"font={_brand.get('font_family') or '?'} "
+                f"raw='{_global_style_brief[:80]}…'"
+            )
+
+        # Pick the host studio-set ONCE per run (Option 2). Every host shot
+        # in this run uses the same scene description in its Seedream prompt,
+        # so backgrounds stay consistent across shots without falling back to
+        # the boring flat-wall directive. Cached on self._host_set_description
+        # for resume safety.
+        _host_set = self._pick_host_set_description(_brand)
 
         # The pipeline class doesn't carry an s3_service attribute — it
         # instantiates one locally where needed (mirrors the existing pattern
@@ -5916,11 +6235,30 @@ class VideoGenerationPipeline:
                 #   3. PERSONA/CLOTHING from the user's host_details_prompt —
                 #      kept consistent across shots.
                 layout = shot.get("host_layout") or "centered"
+                # Fix F enrichment — layout framing now also names what the
+                # reserved area is reserved FOR. Director already emits text
+                # content per shot (`text_elements` + `visual_description`);
+                # passing those into Seedream lets the model leave the right
+                # kind of negative space (a clear band where a stat card or
+                # headline lands well, not just "empty pixels").
+                _shot_text_elems = shot.get("text_elements") or []
+                if isinstance(_shot_text_elems, list):
+                    _overlay_hint = ", ".join(str(e) for e in _shot_text_elems[:3])
+                else:
+                    _overlay_hint = str(_shot_text_elems)[:120]
+                _overlay_hint = _overlay_hint.strip()
+                _vis_desc = (shot.get("visual_description") or "").strip()
+                if _vis_desc and len(_vis_desc) > 120:
+                    _vis_desc = _vis_desc[:120].rsplit(" ", 1)[0] + "…"
+                _reserved_for = (
+                    f' (reserved for: "{_overlay_hint}")' if _overlay_hint
+                    else (f' (reserved for: {_vis_desc})' if _vis_desc else "")
+                )
                 _layout_framing = {
-                    "free_left":   "Subject framed on the RIGHT half of the canvas; LEFT half intentionally empty (clean background, no objects) — reserved for graphics overlay.",
-                    "free_right":  "Subject framed on the LEFT half of the canvas; RIGHT half intentionally empty (clean background) — reserved for graphics overlay.",
-                    "free_top":    "Subject framed in the BOTTOM 60% of the canvas; TOP 40% intentionally empty — reserved for headline/banner overlay.",
-                    "free_bottom": "Subject framed in the TOP 60%; BOTTOM 40% empty — reserved for lower-third overlay.",
+                    "free_left":   f"Subject framed on the RIGHT half of the canvas; LEFT half intentionally empty{_reserved_for} — keep this zone visually plain (no objects, no busy texture) so a coloured overlay reads cleanly against it.",
+                    "free_right":  f"Subject framed on the LEFT half of the canvas; RIGHT half intentionally empty{_reserved_for} — keep this zone visually plain so a coloured overlay reads cleanly against it.",
+                    "free_top":    f"Subject framed in the BOTTOM 60% of the canvas; TOP 40% intentionally empty{_reserved_for} — keep this zone clean for a headline/banner.",
+                    "free_bottom": f"Subject framed in the TOP 60%; BOTTOM 40% empty{_reserved_for} — keep this zone clean for a lower-third banner.",
                     "centered":    "Subject centered in the frame, looking just past camera. Pure to-camera shot, no overlay zones reserved.",
                 }.get(layout, "")
                 # Defensive coercion: portrait videos can't use side splits.
@@ -5940,6 +6278,41 @@ class VideoGenerationPipeline:
                 _director_hint = (shot.get("host_image_prompt") or "").strip()
                 if len(_director_hint) > 300:
                     _director_hint = _director_hint[:300].rsplit(" ", 1)[0] + "…"
+                # Fix F (revised — Option 2 LLM-picked scene per run).
+                # Replaces the boring flat-wall directive with a single
+                # cinematic studio set chosen ONCE for the whole run by
+                # `_pick_host_set_description`. Same set in every host shot
+                # → consistent backgrounds, no factory-vs-void drift, but
+                # visually rich (rim lighting, atmosphere, brand-anchored
+                # tone). The per-shot Director scene_hint is intentionally
+                # superseded — we own the set, the LLM owns the script.
+                _scene_directive = (
+                    f"SET (locked across all host shots in this video): {_host_set} "
+                    "Do NOT invent new environmental scenes per shot. The set is fixed."
+                ) if _host_set else (
+                    "SET: minimalist cinematic studio with brand-color rim light, "
+                    "subtle atmospheric depth, NO factory/office/outdoor/architectural detail."
+                )
+
+                # Fix G — explicit medium-shot framing constraint to prevent
+                # extreme close-ups (output(24).mp4 frame 32 had face-only
+                # crop with text on the forehead).
+                _framing_directive = (
+                    "FRAMING: MEDIUM SHOT — head AND shoulders both visible. Face occupies "
+                    "AT MOST 30% of frame height. Eyes positioned at 25–35% from top of frame. "
+                    "NOT an extreme close-up. NOT a face-only crop."
+                )
+
+                # Fix G — optional prop. Director may set `host_prop` per shot
+                # (new field). Kling Standard animates lips/face only — props
+                # stay static, so they appear naturally in the final video.
+                _prop = (shot.get("host_prop") or "").strip() if isinstance(shot.get("host_prop"), str) else ""
+                _prop_directive = (
+                    f"Subject is holding a {_prop} in their hand, visible in the frame."
+                    if _prop and len(_prop) < 80
+                    else ""
+                )
+
                 _img_prompt_parts = [
                     # IDENTITY ANCHOR — the reference image is authoritative for
                     # the face. Seedream image-to-image without explicit anchor
@@ -5956,9 +6329,14 @@ class VideoGenerationPipeline:
                     # Global brand brief — same across all shots, keeps backgrounds
                     # consistent and matches user-specified colours / style cues.
                     f"Global brand visual brief (apply consistently every shot): {_global_style_brief}." if _global_style_brief else "",
-                    f"This shot's scene context: {_director_hint}" if _director_hint else "",
+                    # Director's per-shot scene hint is intentionally suppressed —
+                    # it was the source of factory-floor drift at frame 19 of
+                    # output(24).mp4. The locked-set directive below replaces it.
                     _layout_framing,
-                    "Soft natural lighting, shallow depth of field, neutral camera angle.",
+                    _framing_directive,
+                    _scene_directive,
+                    _prop_directive,
+                    "Soft natural lighting, neutral camera angle.",
                     "DO NOT render any text, logos, captions, lower-thirds, charts, or graphic overlays — those are added downstream by the renderer.",
                     "DO NOT change the person's apparent age, ethnicity, or facial structure from the reference image.",
                 ]
@@ -6668,6 +7046,54 @@ class VideoGenerationPipeline:
             if _stock_instruction:
                 user_prompt = user_prompt + _stock_instruction
 
+            # ── Fix B + Fix E: Hex-code-as-CSS rule + Global brand directives ──
+            # Both apply to EVERY shot (host or non-host). Surfaces:
+            #   • Fix B  — explicit "hex codes are CSS, not text content" rule
+            #              prevents the LLM from rendering '#0D0D0D' as a visible
+            #              label (output(24).mp4 frame 11 produced literal hex
+            #              text on screen).
+            #   • Fix E  — passes the user's hex codes / accent / font into the
+            #              per-shot HTML prompt so the LLM applies them as
+            #              background-color etc. Without this, half the shots
+            #              defaulted to white background despite the user's
+            #              explicit '#0D0D0D' charcoal spec.
+            try:
+                _shot_brand = self._extract_brand_brief()
+            except Exception:
+                _shot_brand = {"bg_hex": None, "accent_hex": None, "font_family": None, "raw_brief": ""}
+            _bg_hex = _shot_brand.get("bg_hex")
+            _accent_hex = _shot_brand.get("accent_hex")
+            _font_family = _shot_brand.get("font_family")
+            _hex_rule = (
+                "\n\n**HEX-CODE HANDLING — MANDATORY**:\n"
+                "Any hex code (`#XXXXXX` format) appearing in the prompt or in this shot's metadata "
+                "is a CSS STYLING VALUE — apply it via `background-color`, `color`, `border-color`, etc. "
+                "NEVER render the hex string as visible text. The hex code IS the colour, not the label.\n"
+            )
+            user_prompt = user_prompt + _hex_rule
+            if _bg_hex or _accent_hex or _font_family:
+                _brand_lines = [
+                    "\n\n**GLOBAL BRAND CSS DIRECTIVES** (the user supplied these — apply on every shot):",
+                ]
+                if _bg_hex:
+                    _brand_lines.append(
+                        f"- `background-color: {_bg_hex}` on the shot wrapper. Do NOT use white "
+                        f"(#FFFFFF) or other defaults — the user explicitly chose {_bg_hex}."
+                    )
+                if _accent_hex:
+                    _brand_lines.append(
+                        f"- Accent / highlight colour: `{_accent_hex}` for emphasised words, "
+                        f"underlines, badges, gold lines, etc."
+                    )
+                if _font_family:
+                    _brand_lines.append(
+                        f"- `font-family: '{_font_family}', sans-serif` for headlines and body text."
+                    )
+                _brand_lines.append(
+                    "Reject any temptation to override these with stock defaults. The brand brief wins."
+                )
+                user_prompt = user_prompt + "\n".join(_brand_lines)
+
             # ── Host-shot injection ──
             # When AvatarBatch produced an avatar video for this shot, tell the
             # LLM to embed it as a full-frame <video> layer with overlays in the
@@ -6676,6 +7102,21 @@ class VideoGenerationPipeline:
             if shot.get("host_present") and shot.get("avatar_video_url"):
                 _host_layout = shot.get("host_layout") or "centered"
                 _host_url = shot["avatar_video_url"]
+
+                # Fix H — corner-gradient layer between the avatar video (z=0)
+                # and the overlay zone (z=10). Darkens the band where the
+                # overlay text lands so light-on-dark text always reads cleanly,
+                # regardless of what colour the Seedream backdrop turned out
+                # (charcoal, off-white, navy — gradient handles them all).
+                # The overlay-zone selector instructs the LLM to use light text.
+                _gradient_css = {
+                    "free_left":   "linear-gradient(to right, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 35%, transparent 50%)",
+                    "free_right":  "linear-gradient(to left,  rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.6) 35%, transparent 50%)",
+                    "free_top":    "linear-gradient(to bottom, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 30%, transparent 45%)",
+                    "free_bottom": "linear-gradient(to top,    rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.55) 30%, transparent 45%)",
+                    "centered":    "linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 18%, transparent 22%)",
+                }.get(_host_layout, "")
+
                 _host_block = (
                     "\n\n## 🎙️ HOST SHOT — FULL-FRAME AVATAR + OVERLAYS\n"
                     f"This shot features the on-screen host. Lay out as follows:\n\n"
@@ -6687,8 +7128,15 @@ class VideoGenerationPipeline:
                     "style=\"position:absolute; inset:0; width:100%; height:100%; "
                     "object-fit:cover; z-index:0;\"></video>\n"
                     "```\n\n"
-                    "**Layer 1+ (overlays — text, callouts, animated graphics):**\n"
-                    "Place ALL your overlays inside this wrapper, sized to the FREE region:\n"
+                    "**Layer 0.5 (corner gradient — improves text legibility over the avatar):**\n"
+                    "```html\n"
+                    f"<div class=\"host-gradient host-gradient-{_host_layout}\" "
+                    "style=\"position:absolute; inset:0; z-index:5; pointer-events:none; "
+                    f"background:{_gradient_css};\"></div>\n"
+                    "```\n\n"
+                    "**Layer 1+ (overlays — text, callouts, animated graphics — light colour on the gradient):**\n"
+                    "Place ALL your overlays inside this wrapper, sized to the FREE region. Use **light text** "
+                    "(e.g. `#FFFFFF` or the brand accent) so it reads against the dark gradient band:\n"
                     "```html\n"
                     "<div class=\"host-overlay-zone\" style=\"position:absolute; z-index:10; "
                 )
@@ -7230,21 +7678,59 @@ class VideoGenerationPipeline:
                             "max_attempts": max_attempts,
                             "message": f"Shot {shot_idx + 1} failed: {str(e)[:120]}",
                         })
-                        # Build minimal fallback instead of leaving a gap in the timeline
-                        _fb_accent = (palette or {}).get("accent", "#6366f1")
-                        _fb_text = (
-                            (shot.get("visual_description") or shot.get("narration_excerpt") or "")
-                            .strip()[:200]
+                        # Fix I — branded typography fallback (was: navy card,
+                        # often appeared blank when narration_excerpt was empty
+                        # — saw this at frame 25 of output(24).mp4).
+                        # Now always shows VISIBLE branded text, drawing from
+                        # a multi-source priority: narration_excerpt > visual_description >
+                        # text_elements > shot_type label. Background + accent + font
+                        # come from the user's brand brief; text colour auto-inverses
+                        # against bg luminance so it's always legible.
+                        try:
+                            _fb_brand = self._extract_brand_brief()
+                        except Exception:
+                            _fb_brand = {"bg_hex": None, "accent_hex": None, "font_family": None, "raw_brief": ""}
+                        _fb_bg = _fb_brand.get("bg_hex") or "#0D0D0D"
+                        _fb_accent = (
+                            _fb_brand.get("accent_hex")
+                            or (palette or {}).get("accent")
+                            or "#C9A84C"
                         )
+                        _fb_font = _fb_brand.get("font_family") or "Inter"
+                        # Auto-invert text colour against bg luminance (#XXXXXX).
+                        try:
+                            _hex = _fb_bg.lstrip("#")
+                            _lum = (
+                                int(_hex[0:2], 16) * 299
+                                + int(_hex[2:4], 16) * 587
+                                + int(_hex[4:6], 16) * 114
+                            ) / 1000
+                            _fb_text_color = "#FFFFFF" if _lum < 128 else "#0D0D0D"
+                        except Exception:
+                            _fb_text_color = "#FFFFFF"
+
+                        # Multi-source text — never empty.
+                        _text_elems = shot.get("text_elements") or []
+                        if isinstance(_text_elems, list):
+                            _elem_text = " · ".join(str(e) for e in _text_elems[:2]).strip()
+                        else:
+                            _elem_text = str(_text_elems).strip()
+                        _fb_text = (
+                            (shot.get("narration_excerpt") or "").strip()
+                            or (shot.get("visual_description") or "").strip()
+                            or _elem_text
+                            or shot_type.replace("_", " ").title()
+                            or "Generating..."
+                        )[:200]
                         _fb_html = (
                             "<div id='shot-root' style='position:relative;width:100%;height:100%;"
-                            f"overflow:hidden;background:#0f172a;display:flex;align-items:center;"
-                            "justify-content:center;'>"
-                            f"<div style='max-width:80%;text-align:center;font-family:Inter,sans-serif;"
-                            f"font-size:2.4rem;font-weight:600;color:#f1f5f9;line-height:1.4;opacity:0;' id='fb_t'>"
+                            f"overflow:hidden;background:{_fb_bg};display:flex;align-items:center;"
+                            "justify-content:center;padding:6%;'>"
+                            f"<div style='max-width:88%;text-align:center;font-family:{_fb_font},sans-serif;"
+                            f"font-size:2.4rem;font-weight:700;color:{_fb_text_color};line-height:1.4;opacity:0;' id='fb_t'>"
                             f"{_fb_text}</div>"
-                            f"<div style='position:absolute;bottom:10%;width:6rem;height:4px;"
-                            f"background:{_fb_accent};border-radius:2px;opacity:0;' id='fb_b'></div>"
+                            f"<div style='position:absolute;bottom:10%;left:50%;transform:translateX(-50%);"
+                            f"width:6rem;height:4px;background:{_fb_accent};border-radius:2px;opacity:0;' id='fb_b'></div>"
                             "<script>window.addEventListener('load',function(){"
                             "if(typeof gsap!=='undefined'){"
                             "gsap.to('#fb_t',{opacity:1,y:-10,duration:0.5,delay:0.1,ease:'power2.out'});"

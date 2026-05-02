@@ -793,6 +793,48 @@ class RenderWorker:
 
             logger.info(f"Video assembled: {output_path} ({output_path.stat().st_size / 1024 / 1024:.1f} MB)")
 
+            # ── Fix C — Defensive post-trim to planned timeline duration ──
+            # Production runs (output(24).mp4) shipped 62.35s containers when
+            # the planned timeline was 38.5s — 24s of trailing dead frames.
+            # The container claims a longer duration than the visual track;
+            # ffmpeg's earlier assembly step appears to over-shoot. We trim
+            # the assembled MP4 to the exact planned `total_duration` before
+            # S3 upload so downstream consumers get the file the timeline
+            # promised. Real render-server bug should be filed separately.
+            try:
+                _planned_dur = float(total_duration)
+                if _planned_dur > 0.5:
+                    _trimmed_path = output_path.with_name("output_trimmed.mp4")
+                    _trim_cmd = [
+                        "ffmpeg", "-y", "-loglevel", "error",
+                        "-i", str(output_path),
+                        "-t", f"{_planned_dur:.3f}",
+                        # Re-encode video (keyframe-accurate cut); stream-copy audio.
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                        "-pix_fmt", "yuv420p",
+                        "-c:a", "copy",
+                        "-movflags", "+faststart",
+                        str(_trimmed_path),
+                    ]
+                    _trim_res = subprocess.run(
+                        _trim_cmd, check=False, capture_output=True, text=True, timeout=300,
+                    )
+                    if _trim_res.returncode == 0 and _trimmed_path.exists():
+                        _orig_mb = output_path.stat().st_size / 1024 / 1024
+                        _new_mb = _trimmed_path.stat().st_size / 1024 / 1024
+                        logger.info(
+                            f"[Render worker] Post-trimmed output.mp4 to {_planned_dur:.2f}s "
+                            f"({_orig_mb:.1f} MB → {_new_mb:.1f} MB) (Fix C)"
+                        )
+                        output_path = _trimmed_path
+                    else:
+                        logger.warning(
+                            f"[Render worker] Post-trim ffmpeg failed (using original): "
+                            f"{(_trim_res.stderr or '')[-300:]}"
+                        )
+            except Exception as _trim_err:
+                logger.warning(f"[Render worker] Post-trim exception (using original): {_trim_err}")
+
             if on_progress:
                 on_progress(85)
 

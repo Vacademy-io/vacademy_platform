@@ -5091,6 +5091,28 @@ class VideoGenerationPipeline:
                 _avg_shot_dur = 3.0
             _est_total_shots = max(4, int(round(audio_duration / _avg_shot_dur)))
             _host_target = max(1, int(round(_est_total_shots * self._host_pct / 100.0)))
+            # User-authored frame breakdown override: when the script LLM
+            # detected the prompt as user-dictated (e.g. "FRAME 1: text
+            # only, no imagery, fade in over 0.5s"), the user has already
+            # specified what each frame should contain. Letting host=80%
+            # overlay an avatar onto those carefully-typeset frames is
+            # exactly what produced the bad output(23).mp4 (avatar coming
+            # with text on the face at 32s — the user's text-only frame
+            # got a talking head pasted on top).
+            #
+            # Resolution: keep host enabled on Hook + CTA only (effective
+            # cap at 2 host shots) so the user's frame spec wins for the
+            # body of the video, but the host still bookends.
+            _user_authored = bool(getattr(self, "_user_had_script", False))
+            if _user_authored:
+                _capped = min(_host_target, 2)
+                if _capped < _host_target:
+                    print(
+                        f"🎙️ Director: USER-AUTHORED frames detected — capping host shots "
+                        f"from {_host_target} to {_capped} (Hook + CTA only). User's frame-by-frame "
+                        f"spec wins for the body of the video."
+                    )
+                    _host_target = _capped
             # Orientation-aware host_layout vocabulary. Portrait videos can't
             # use side-by-side splits (free_left/free_right) — there isn't
             # enough horizontal real estate for a half-frame talking head and
@@ -5102,7 +5124,7 @@ class VideoGenerationPipeline:
             else:
                 _layout_vocab = '"free_left" | "free_right" | "free_top" | "free_bottom" | "centered"'
                 _orientation_label = "16:9 LANDSCAPE — all five layouts allowed"
-            director_system = director_system + HOST_DIRECTOR_EXTENSION.format(
+            _ext = HOST_DIRECTOR_EXTENSION.format(
                 host_pct=self._host_pct,
                 host_target=_host_target,
                 host_target_plus_one=_host_target + 1,
@@ -5110,6 +5132,20 @@ class VideoGenerationPipeline:
                 orientation_label=_orientation_label,
                 layout_vocabulary=_layout_vocab,
             )
+            if _user_authored:
+                _ext += (
+                    "\n\n## ⚠️ USER-AUTHORED FRAME SPEC OVERRIDE\n"
+                    "The user's prompt contains EXPLICIT frame-by-frame instructions "
+                    "(e.g. 'FRAME 1: text only, no imagery'). Host shots must NOT override "
+                    "those instructions.\n"
+                    "- Use `host_present=true` ONLY on the Hook (shot 0) and the CTA "
+                    "  (final shot). Body-of-video shots that the user described as "
+                    "  'text only' / 'no imagery' / 'graphics only' MUST stay "
+                    "  `host_present=false`.\n"
+                    "- The user's typography, colors, and layout instructions take precedence "
+                    "  over the host's visual presence.\n"
+                )
+            director_system = director_system + _ext
             print(
                 f"🎙️ Director: HOST mode active — target ~{_host_target}/{_est_total_shots} "
                 f"shots host_present (={self._host_pct}%, "
@@ -5666,6 +5702,51 @@ class VideoGenerationPipeline:
         host_assets_dir = _Path(run_dir) / "host_assets"
         host_assets_dir.mkdir(parents=True, exist_ok=True)
 
+        # ── Extract a "global visual brief" from the original user prompt
+        # so the Seedream calls hold a consistent background across all
+        # host shots. Without this, each shot's Seedream prompt carries
+        # only the per-shot Director scene hint + persona/clothing — and
+        # Seedream invents a slightly different room/wall/lighting for
+        # every shot, producing the "host arrives in a new setting every
+        # time" effect (output(23).mp4 backgrounds drifted through office
+        # walls, blurred rooms, charcoal voids).
+        #
+        # Strategy: grep the original base_prompt for explicit visual cues
+        # — hex colors, "background", "color", "font", "style" lines —
+        # and concatenate ≤450 chars worth into a single brief. Bounded
+        # so we don't fill the Seedream prompt with narrative content.
+        _global_style_brief = ""
+        try:
+            _bp = (getattr(self, "_base_prompt", None) or "").strip()
+            if _bp:
+                import re as _re_brief
+                # Lines mentioning visual style, color, background, font,
+                # or hex codes are the most useful signal for image gen.
+                _candidates = []
+                for _line in _bp.split("\n"):
+                    _l = _line.strip()
+                    if not _l or len(_l) > 200:
+                        continue
+                    _l_lo = _l.lower()
+                    if (
+                        _re_brief.search(r"#[0-9a-fA-F]{3,8}\b", _l)
+                        or any(kw in _l_lo for kw in (
+                            "background", "color", "colour", "font",
+                            "visual style", "minimal", "clean",
+                            "high-contrast", "high contrast", "no gradient",
+                            "no blur", "monochrome", "brand",
+                        ))
+                    ):
+                        _candidates.append(_l)
+                if _candidates:
+                    _joined = " ".join(_candidates)
+                    if len(_joined) > 450:
+                        _joined = _joined[:450].rsplit(" ", 1)[0] + "…"
+                    _global_style_brief = _joined
+                    print(f"[AvatarBatch] Global style brief: {_global_style_brief[:120]}…")
+        except Exception as _gs_err:
+            print(f"[AvatarBatch] ⚠️ Global style extraction failed (non-fatal): {_gs_err}")
+
         # The pipeline class doesn't carry an s3_service attribute — it
         # instantiates one locally where needed (mirrors the existing pattern
         # at automation_pipeline.py:10420 for the legacy avatar upload).
@@ -5773,6 +5854,9 @@ class VideoGenerationPipeline:
                 _img_prompt_parts = [
                     "Cinematic medium-shot portrait of a person speaking to camera.",
                     f"Persona / clothing: {details_prompt}." if details_prompt else "",
+                    # Global brand brief — same across all shots, keeps backgrounds
+                    # consistent and matches user-specified colours / style cues.
+                    f"Global brand visual brief: {_global_style_brief}." if _global_style_brief else "",
                     f"Scene context: {_director_hint}" if _director_hint else "",
                     _layout_framing,
                     "Photo-real, soft natural lighting, shallow depth of field.",
@@ -5979,8 +6063,80 @@ class VideoGenerationPipeline:
                 })
                 continue
             # Success
+            # Post-process the fal.ai output BEFORE we expose it to the
+            # timeline. Two surgical ffmpeg passes (combined into one for
+            # speed):
+            #   1. -an  → strip the lip-synced audio Kling bakes into the MP4.
+            #             The render server doesn't reliably honour the HTML
+            #             `muted` attribute, so a baked audio track becomes
+            #             a second voice playing alongside master TTS — the
+            #             "avatar voice 2 times" symptom seen in output(23).mp4
+            #             at 8s.
+            #   2. -t {shot_duration} → cut the avatar to the exact shot
+            #             window. Kling Standard pads to 4-5s minimum even
+            #             when we feed it a 3.5s audio slice; without trim
+            #             the avatar spills past the shot end and stretches
+            #             the rendered timeline (the 41→50s drift seen in
+            #             output(23).mp4).
+            # We re-encode (libx264, copy isn't safe at non-keyframe trim
+            # boundaries) at veryfast preset — ~150-300ms per shot, run in
+            # parallel with the next fal.ai poll thanks to the bounded
+            # render_batch already returning all results at once.
+            _final_video_url = r.video_url
+            try:
+                _shot_for_dur = shots[idx] if idx < len(shots) else None
+                _shot_dur = float(
+                    _shot_for_dur.get("end_time", 0) - _shot_for_dur.get("start_time", 0)
+                ) if _shot_for_dur else 0.0
+                if _shot_dur < 0.5:
+                    _shot_dur = (target_artifact or {}).get("duration_s") or 0.0
+                if _shot_dur >= 0.5 and _final_video_url:
+                    import urllib.request as _urlreq
+                    _raw_local = host_assets_dir / f"host_video_raw_{idx:03d}.mp4"
+                    _final_local = host_assets_dir / f"host_video_{idx:03d}.mp4"
+                    # Download fal.ai output to local disk
+                    _urlreq.urlretrieve(_final_video_url, str(_raw_local))
+                    # Strip audio + trim to exact shot duration
+                    _proc_cmd = [
+                        "ffmpeg", "-y", "-loglevel", "error",
+                        "-i", str(_raw_local),
+                        "-t", f"{_shot_dur:.3f}",
+                        "-an",                              # no audio
+                        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                        "-pix_fmt", "yuv420p",              # safe playback in browsers
+                        "-movflags", "+faststart",
+                        str(_final_local),
+                    ]
+                    _proc = _sp.run(_proc_cmd, capture_output=True, text=True)
+                    if _proc.returncode == 0 and _final_local.exists():
+                        _final_s3_key = (
+                            f"ai-videos/host-assets/{getattr(self, '_run_name', 'run')}/"
+                            f"host_video_{idx:03d}.mp4"
+                        )
+                        _final_url = s3_service.upload_file(
+                            _final_local,
+                            s3_key=_final_s3_key,
+                            content_type="video/mp4",
+                        )
+                        if _final_url:
+                            _final_video_url = _final_url
+                            print(
+                                f"[AvatarBatch] shot={idx} processed: "
+                                f"audio stripped + trimmed to {_shot_dur:.2f}s → {_final_url}"
+                            )
+                        else:
+                            print(f"[AvatarBatch] shot={idx} processed but S3 upload of trimmed file failed; using fal CDN URL")
+                    else:
+                        print(
+                            f"[AvatarBatch] shot={idx} ffmpeg post-process failed "
+                            f"({_proc.stderr.strip() if _proc.stderr else 'no stderr'}); "
+                            f"using raw fal CDN URL as fallback"
+                        )
+            except Exception as _pp_err:
+                print(f"[AvatarBatch] shot={idx} post-process exception ({_pp_err}); using raw fal CDN URL")
+
             if idx < len(shots):
-                shots[idx]["avatar_video_url"] = r.video_url
+                shots[idx]["avatar_video_url"] = _final_video_url
                 # Strip background-visual fields from a successful host shot —
                 # the host video IS the background, and the per-shot HTML LLM
                 # would otherwise dutifully also emit a data-img-prompt or
@@ -5992,7 +6148,7 @@ class VideoGenerationPipeline:
                 _host_shot_dict.pop("video_query", None)
             if target_artifact:
                 target_artifact["status"] = "completed"
-                target_artifact["avatar_video_url"] = r.video_url
+                target_artifact["avatar_video_url"] = _final_video_url
                 target_artifact["fal_request_id"] = r.fal_request_id
                 if r.duration_s:
                     target_artifact["duration_s_actual"] = r.duration_s
@@ -6441,11 +6597,19 @@ class VideoGenerationPipeline:
                 elif _host_layout == "free_right":
                     _host_block += "left:50%; right:0; top:0; bottom:0; padding:4%;\">\n"
                 elif _host_layout == "free_top":
-                    _host_block += "left:0; right:0; top:0; bottom:60%; padding:4%;\">\n"
+                    # host on bottom 60%, overlay on top 40% — clear of the head
+                    _host_block += "left:0; right:0; top:0; height:40%; padding:4%;\">\n"
                 elif _host_layout == "free_bottom":
-                    _host_block += "left:0; right:0; top:60%; bottom:0; padding:4%;\">\n"
-                else:  # centered — minimal overlay (lower-third only or skip)
-                    _host_block += "left:0; right:0; bottom:0; height:30%; padding:4%; pointer-events:none;\">\n"
+                    # host on top 60%, overlay on bottom 40% — clear of the body
+                    _host_block += "left:0; right:0; bottom:0; height:40%; padding:4%;\">\n"
+                else:  # centered — text MUST go ABOVE the head (top band), not on the body.
+                    # Previous design parked overlays in the bottom 30% which is exactly the
+                    # avatar's torso region — every centered shot rendered text on the chest
+                    # (output(23).mp4 @ 32s). New band is the top 18% (above-the-head),
+                    # which fits the user's spec frames where centered = pure to-camera with
+                    # an optional title bar above. Removed pointer-events:none so any
+                    # interactive overlay still works in player previews.
+                    _host_block += "left:0; right:0; top:0; height:18%; padding:3% 4%;\">\n"
                 _host_block += (
                     "  <!-- Your text, KaTeX, SVG, GSAP-animated callouts go here -->\n"
                     "</div>\n"
@@ -6461,8 +6625,24 @@ class VideoGenerationPipeline:
                     "- ❌ Do NOT emit `data-img-prompt` (would generate an AI image and composite it under the host).\n"
                     "- ❌ Do NOT emit `data-video-query` or `data-img-source='stock'` (would composite stock media under the host).\n"
                     "- ❌ Do NOT add a `<video>` tag other than the host one above.\n"
+                    "- ❌ Do NOT add **any `<img>` of a person, face, headshot, portrait, or human figure** —\n"
+                    "      the on-screen host IS the only person in this shot. If a label/role like\n"
+                    "      'Project Manager' / 'Designer' / 'Customer' needs an icon, use an INLINE SVG\n"
+                    "      (a simple stroke-based pictogram) or a text/emoji bullet. Never a photograph.\n"
+                    "      (Symptom prevented: the 8s frame in output(23).mp4 where a stock-photo\n"
+                    "      'Project Manager' headshot was rendered below the host's own avatar — two\n"
+                    "      faces on screen.)\n"
                     "- ❌ Do NOT use `position:fixed` / negative z-index — host is z=0, overlays are z≥10.\n"
                     "- ❌ Do NOT set `body` or full-canvas backgrounds — leave them transparent so the host video shows through.\n"
+                    "- ❌ Do NOT place text outside the .host-overlay-zone wrapper. Anything outside that zone\n"
+                    "      will collide with the avatar's face or torso (the symptom seen at 32s in output(23).mp4).\n"
+                    "- ❌ Do NOT make text larger than 60% of the overlay-zone height — for `centered` (top band) that\n"
+                    "      means single-line headlines only, ≤4 words, font-size ≤56px portrait / ≤72px landscape.\n"
+                    "- ❌ Do NOT let text-block width exceed 92% of the canvas width. Always wrap or scale down.\n"
+                    "      For portrait (1080×1920), keep text-block ≤1000px wide. Use `max-width:92%`,\n"
+                    "      `word-wrap:break-word`, or shrink the font when the headline is long.\n"
+                    "      (Symptom prevented: 'END-TO-END' clipped to 'END-TO-EI' on the right edge\n"
+                    "      at 26s in output(23).mp4.)\n"
                 )
                 user_prompt = user_prompt + _host_block
 

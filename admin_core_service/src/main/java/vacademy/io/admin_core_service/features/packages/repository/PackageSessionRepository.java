@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import vacademy.io.admin_core_service.features.invoice.dto.InvoicePackageContextProjection;
 import vacademy.io.admin_core_service.features.packages.dto.BatchProjection;
 import vacademy.io.admin_core_service.features.session.dto.BatchInstituteProjection;
 import vacademy.io.common.institute.entity.PackageEntity;
@@ -219,6 +220,22 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
                 WHERE ps.id = :packageSessionId
             """)
     Optional<BatchInstituteProjection> findBatchAndInstituteByPackageSessionId(
+            @Param("packageSessionId") String packageSessionId);
+
+    @Query("""
+                SELECT
+                    p.id          AS packageId,
+                    p.packageName AS packageName,
+                    l.id          AS levelId,
+                    l.levelName   AS levelName,
+                    ps.session.id          AS sessionId,
+                    ps.session.sessionName AS sessionName
+                FROM PackageSession ps
+                JOIN ps.level l
+                JOIN ps.packageEntity p
+                WHERE ps.id = :packageSessionId
+            """)
+    Optional<InvoicePackageContextProjection> findPackageAndLevelByPackageSessionId(
             @Param("packageSessionId") String packageSessionId);
 
     @Query("SELECT ps FROM PackageSession ps WHERE ps.packageEntity.id IN :packageIds")

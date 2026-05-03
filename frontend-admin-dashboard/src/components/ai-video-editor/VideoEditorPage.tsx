@@ -39,7 +39,16 @@ import {
 } from '@/routes/video-api-studio/-services/video-generation';
 import { toast } from 'sonner';
 
-interface VideoEditorPageProps extends InitParams {}
+interface VideoEditorPageProps extends InitParams {
+    /**
+     * Deep-link target — seconds into the timeline. When set, the page seeks
+     * to this time and selects the entry whose [inTime, exitTime) range
+     * contains it, once the timeline finishes loading. Used by the pipeline
+     * view's "Edit this scene" affordance to drop the user straight on the
+     * shot they wanted to tweak. Applied exactly once per mount.
+     */
+    focusTime?: number;
+}
 
 // ── Render job localStorage helpers ────────────────────────────────────────
 
@@ -88,6 +97,9 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
         isLoading,
         error,
         meta,
+        entries,
+        seek,
+        selectEntry,
         dirtyEntryIds,
         entryTransforms,
         past,
@@ -132,6 +144,28 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     useEffect(() => {
         loadTimeline();
     }, [props.htmlUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Deep-link focus ────────────────────────────────────────────────────
+    // When a `focusTime` search param is set (pipeline view's "Edit this
+    // scene" deep-link), seek to that time and select the entry whose range
+    // covers it. Applied once per mount after entries land — earlier and
+    // there's nothing to match against; later and we'd fight a user who's
+    // already clicked elsewhere.
+    const focusAppliedRef = useRef(false);
+    useEffect(() => {
+        if (focusAppliedRef.current) return;
+        if (props.focusTime == null) return;
+        if (entries.length === 0) return;
+        focusAppliedRef.current = true;
+        const t = props.focusTime;
+        seek(t);
+        const target = entries.find((e) => {
+            const start = e.inTime ?? e.start ?? 0;
+            const end = e.exitTime ?? e.end ?? Number.POSITIVE_INFINITY;
+            return start <= t && t < end;
+        });
+        if (target) selectEntry(target.id);
+    }, [entries, props.focusTime, seek, selectEntry]);
 
     // ── Resume render job on mount ─────────────────────────────────────────
     useEffect(() => {

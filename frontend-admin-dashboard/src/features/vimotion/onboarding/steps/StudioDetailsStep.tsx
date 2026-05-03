@@ -1,0 +1,165 @@
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useMutation } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { useNavigate } from '@tanstack/react-router';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from '@/components/ui/form';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import { ColorPickerField } from '@/routes/manage-pages/-components/ColorPickerField';
+import { ImageUploadField } from '@/routes/manage-pages/-components/ImageUploadField';
+import { useVimotionOnboardingStore } from '../store';
+import { studioSchema, type StudioValues } from '../schema';
+import { COMPANY_SIZE_OPTIONS } from '../../constants';
+import { vimotionSignup } from '../../api/signup';
+import { setAuthorizationCookie } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
+
+export function StudioDetailsStep() {
+    const navigate = useNavigate();
+    const { contact, signupToken, accountType, studio, setStudio, setStep, reset } =
+        useVimotionOnboardingStore();
+
+    const form = useForm<StudioValues>({
+        resolver: zodResolver(studioSchema),
+        defaultValues: studio,
+    });
+
+    const signup = useMutation({
+        mutationFn: (values: StudioValues) =>
+            vimotionSignup({
+                signup_token: signupToken!,
+                full_name: contact.fullName,
+                email: contact.email,
+                phone_number: contact.phoneNumber,
+                account_type: accountType ?? 'studio',
+                studio_name: values.studioName,
+                logo_file_id: values.logoFileId,
+                brand_color: values.brandColor,
+                company_size: values.companySize,
+            }),
+        onSuccess: (data) => {
+            setAuthorizationCookie(TokenKey.accessToken, data.accessToken);
+            setAuthorizationCookie(TokenKey.refreshToken, data.refreshToken);
+            toast.success('Welcome to Vimotion!');
+            reset();
+            navigate({ to: '/vim/dashboard' });
+        },
+        onError: (err: unknown) => {
+            const msg = err instanceof Error ? err.message : 'Failed to create account';
+            toast.error(msg);
+        },
+    });
+
+    const onSubmit = (values: StudioValues) => {
+        setStudio(values);
+        signup.mutate(values);
+    };
+
+    return (
+        <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+                <FormField
+                    control={form.control}
+                    name="studioName"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Studio name</FormLabel>
+                            <FormControl>
+                                <Input placeholder="Acme Studio" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+
+                <FormField
+                    control={form.control}
+                    name="logoFileId"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormControl>
+                                <ImageUploadField
+                                    label="Logo (optional)"
+                                    value={field.value ?? ''}
+                                    onChange={(fileId) => field.onChange(fileId)}
+                                    placeholder="Upload your studio logo"
+                                />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+
+                <FormField
+                    control={form.control}
+                    name="brandColor"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormControl>
+                                <ColorPickerField
+                                    label="Brand color"
+                                    value={field.value}
+                                    onChange={(color) => field.onChange(color)}
+                                />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+
+                <FormField
+                    control={form.control}
+                    name="companySize"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>How many people are in your company?</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value}>
+                                <FormControl>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select team size" />
+                                    </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                    {COMPANY_SIZE_OPTIONS.map((opt) => (
+                                        <SelectItem key={opt.value} value={opt.value}>
+                                            {opt.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+
+                <div className="flex flex-col gap-2">
+                    <Button type="submit" className="w-full" disabled={signup.isPending}>
+                        {signup.isPending ? 'Creating account…' : 'Create account'}
+                    </Button>
+                    <button
+                        type="button"
+                        className="text-sm text-muted-foreground hover:underline"
+                        onClick={() => setStep('account-type')}
+                    >
+                        Back
+                    </button>
+                </div>
+            </form>
+        </Form>
+    );
+}

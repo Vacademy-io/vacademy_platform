@@ -46,6 +46,10 @@ export const REQUEST_WHATSAPP_OTP = `${BASE_URL}/auth-service/v1/request-generic
 export const VERIFY_WHATSAPP_OTP = `${BASE_URL}/auth-service/v1/verify-generic-whatsapp-otp`;
 export const VERIFY_WHATSAPP_OTP_LOGIN = `${BASE_URL}/auth-service/v1/verify-generic-whatsapp-otp-login`;
 export const LOGIN_OTP = `${BASE_URL}/auth-service/v1/login-otp`;
+
+export const VIMOTION_REQUEST_SIGNUP_OTP = `${BASE_URL}/auth-service/v1/vimotion/request-signup-otp`;
+export const VIMOTION_VERIFY_SIGNUP_OTP = `${BASE_URL}/auth-service/v1/vimotion/verify-signup-otp`;
+export const VIMOTION_SIGNUP = `${BASE_URL}/auth-service/v1/vimotion/signup`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
 export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/certificate/update-setting`;
 // Add this with your other constants

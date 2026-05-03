@@ -1,0 +1,64 @@
+import { useQuery } from '@tanstack/react-query';
+import {
+    parseTimelineThumbnails,
+    pickBackgroundMusicTrack,
+    type SceneThumbnails,
+    type TimelineAudioTrack,
+    type TimelineJson,
+} from './parse-timeline-thumbnails';
+
+/**
+ * Lazily fetch the finished `time_based_frame.json` and pre-extract per-shot
+ * thumbnails. Used by `<PipelineFlow>` to enrich scene nodes with image /
+ * stock-video preview URLs once a run wraps.
+ *
+ * Cached per-`videoId` (the `timelineUrl` is technically the cache key but
+ * `videoId` is the stable handle the caller has). 5-minute stale time —
+ * timeline JSONs are immutable after the run finishes; the only reason to
+ * refetch is if the user navigates back hours later, which is fine to
+ * re-pull from S3.
+ */
+export function useTimelineJson(videoId: string | undefined, timelineUrl: string | undefined) {
+    return useQuery({
+        queryKey: ['video-timeline', videoId, timelineUrl],
+        queryFn: async (): Promise<TimelineJson> => {
+            if (!timelineUrl) throw new Error('no timeline url');
+            const resp = await fetch(timelineUrl);
+            if (!resp.ok) throw new Error(`timeline fetch failed: ${resp.status}`);
+            return (await resp.json()) as TimelineJson;
+        },
+        enabled: !!timelineUrl,
+        staleTime: 5 * 60 * 1000,
+        // Timeline JSONs are big (~50KB×N entries) — keep one in memory but
+        // don't aggressively retry on transient network blips.
+        retry: 1,
+        refetchOnWindowFocus: false,
+    });
+}
+
+export function useSceneThumbnails(
+    videoId: string | undefined,
+    timelineUrl: string | undefined
+): { byIndex: Record<number, SceneThumbnails>; loading: boolean } {
+    const { data, isLoading } = useTimelineJson(videoId, timelineUrl);
+    return {
+        byIndex: data ? parseTimelineThumbnails(data) : {},
+        loading: isLoading,
+    };
+}
+
+/**
+ * Background-music track extracted from the same cached timeline.json, so
+ * `<ScoreNode>` (and its detail body) can play the merged Lyria score for
+ * already-finished videos without a second fetch.
+ */
+export function useBackgroundMusicTrack(
+    videoId: string | undefined,
+    timelineUrl: string | undefined
+): { track: TimelineAudioTrack | undefined; loading: boolean } {
+    const { data, isLoading } = useTimelineJson(videoId, timelineUrl);
+    return {
+        track: data ? pickBackgroundMusicTrack(data) : undefined,
+        loading: isLoading,
+    };
+}

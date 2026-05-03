@@ -29,6 +29,20 @@ public class WhatsAppOTPController {
     }
 
     /**
+     * Send a WhatsApp OTP using the platform-default Meta credentials.
+     * No institute scope — used for pre-signup flows (e.g. Vimotion onboarding).
+     */
+    @PostMapping("/send-platform-default-whatsapp-otp")
+    public ResponseEntity<WhatsAppOTPResponse> sendPlatformDefaultWhatsAppOtp(
+            @RequestBody WhatsAppOTPRequest request) {
+        log.info("Received platform-default WhatsApp OTP request for phone: {}",
+                request.getPhoneNumber());
+        WhatsAppOTPResponse response = whatsAppOTPService.sendPlatformDefaultOtp(
+                request.getPhoneNumber());
+        return ResponseEntity.ok(response);
+    }
+
+    /**
      * Verify WhatsApp OTP
      * This is an internal endpoint called by auth-service
      */

@@ -13,6 +13,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { Route as rootRouteImport } from "./routes/__root"
 import { Route as LockedFeatureRouteImport } from "./routes/locked-feature"
 import { Route as AgentChatRouteImport } from "./routes/agent-chat"
+import { Route as VimIndexRouteImport } from "./routes/vim/index"
 import { Route as VideoApiStudioIndexRouteImport } from "./routes/video-api-studio/index"
 import { Route as StudyLibraryIndexRouteImport } from "./routes/study-library/index"
 import { Route as SignupIndexRouteImport } from "./routes/signup/index"
@@ -42,9 +43,12 @@ import { Route as AssessmentIndexRouteImport } from "./routes/assessment/index"
 import { Route as AiCenterIndexRouteImport } from "./routes/ai-center/index"
 import { Route as AdmissionsIndexRouteImport } from "./routes/admissions/index"
 import { Route as AdminPackageManagementIndexRouteImport } from "./routes/admin-package-management/index"
+import { Route as VimLoginRouteImport } from "./routes/vim/login"
+import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
 import { Route as WorkflowCreateIndexRouteImport } from "./routes/workflow/create/index"
 import { Route as WorkflowWorkflowIdIndexRouteImport } from "./routes/workflow/$workflowId/index"
+import { Route as VimOnboardingIndexRouteImport } from "./routes/vim/onboarding/index"
 import { Route as VideoApiStudioInputVideosIndexRouteImport } from "./routes/video-api-studio/input-videos/index"
 import { Route as VideoApiStudioConsoleIndexRouteImport } from "./routes/video-api-studio/console/index"
 import { Route as UserTagsLinkIndexRouteImport } from "./routes/user-tags/link/index"
@@ -195,6 +199,11 @@ const AgentChatRoute = AgentChatRouteImport.update({
   path: "/agent-chat",
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() => import("./routes/agent-chat.lazy").then((d) => d.Route))
+const VimIndexRoute = VimIndexRouteImport.update({
+  id: "/vim/",
+  path: "/vim/",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VideoApiStudioIndexRoute = VideoApiStudioIndexRouteImport.update({
   id: "/video-api-studio/",
   path: "/video-api-studio/",
@@ -392,6 +401,16 @@ const AdminPackageManagementIndexRoute =
   } as any).lazy(() =>
     import("./routes/admin-package-management/index.lazy").then((d) => d.Route),
   )
+const VimLoginRoute = VimLoginRouteImport.update({
+  id: "/vim/login",
+  path: "/vim/login",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VimDashboardRoute = VimDashboardRouteImport.update({
+  id: "/vim/dashboard",
+  path: "/vim/dashboard",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WorkflowListIndexRoute = WorkflowListIndexRouteImport.update({
   id: "/workflow/list/",
   path: "/workflow/list/",
@@ -413,6 +432,11 @@ const WorkflowWorkflowIdIndexRoute = WorkflowWorkflowIdIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/workflow/$workflowId/index.lazy").then((d) => d.Route),
 )
+const VimOnboardingIndexRoute = VimOnboardingIndexRouteImport.update({
+  id: "/vim/onboarding/",
+  path: "/vim/onboarding/",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VideoApiStudioInputVideosIndexRoute =
   VideoApiStudioInputVideosIndexRouteImport.update({
     id: "/video-api-studio/input-videos/",
@@ -1366,6 +1390,8 @@ export interface FileRoutesByFullPath {
   "/landing": typeof LandingLazyRoute
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
   "/pricing": typeof PricingLazyRoute
+  "/vim/dashboard": typeof VimDashboardRoute
+  "/vim/login": typeof VimLoginRoute
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
   "/ai-center/": typeof AiCenterIndexRoute
@@ -1395,6 +1421,7 @@ export interface FileRoutesByFullPath {
   "/signup/": typeof SignupIndexRoute
   "/study-library/": typeof StudyLibraryIndexRoute
   "/video-api-studio/": typeof VideoApiStudioIndexRoute
+  "/vim/": typeof VimIndexRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
@@ -1463,6 +1490,7 @@ export interface FileRoutesByFullPath {
   "/user-tags/link/": typeof UserTagsLinkIndexRoute
   "/video-api-studio/console/": typeof VideoApiStudioConsoleIndexRoute
   "/video-api-studio/input-videos/": typeof VideoApiStudioInputVideosIndexRoute
+  "/vim/onboarding/": typeof VimOnboardingIndexRoute
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
@@ -1517,6 +1545,8 @@ export interface FileRoutesByTo {
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
   "/pricing": typeof PricingLazyRoute
+  "/vim/dashboard": typeof VimDashboardRoute
+  "/vim/login": typeof VimLoginRoute
   "/admin-package-management": typeof AdminPackageManagementIndexRoute
   "/admissions": typeof AdmissionsIndexRoute
   "/ai-center": typeof AiCenterIndexRoute
@@ -1546,6 +1576,7 @@ export interface FileRoutesByTo {
   "/signup": typeof SignupIndexRoute
   "/study-library": typeof StudyLibraryIndexRoute
   "/video-api-studio": typeof VideoApiStudioIndexRoute
+  "/vim": typeof VimIndexRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
@@ -1614,6 +1645,7 @@ export interface FileRoutesByTo {
   "/user-tags/link": typeof UserTagsLinkIndexRoute
   "/video-api-studio/console": typeof VideoApiStudioConsoleIndexRoute
   "/video-api-studio/input-videos": typeof VideoApiStudioInputVideosIndexRoute
+  "/vim/onboarding": typeof VimOnboardingIndexRoute
   "/workflow/$workflowId": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create": typeof WorkflowCreateIndexRoute
   "/workflow/list": typeof WorkflowListIndexRoute
@@ -1670,6 +1702,8 @@ export interface FileRoutesById {
   "/landing": typeof LandingLazyRoute
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
   "/pricing": typeof PricingLazyRoute
+  "/vim/dashboard": typeof VimDashboardRoute
+  "/vim/login": typeof VimLoginRoute
   "/admin-package-management/": typeof AdminPackageManagementIndexRoute
   "/admissions/": typeof AdmissionsIndexRoute
   "/ai-center/": typeof AiCenterIndexRoute
@@ -1699,6 +1733,7 @@ export interface FileRoutesById {
   "/signup/": typeof SignupIndexRoute
   "/study-library/": typeof StudyLibraryIndexRoute
   "/video-api-studio/": typeof VideoApiStudioIndexRoute
+  "/vim/": typeof VimIndexRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
@@ -1767,6 +1802,7 @@ export interface FileRoutesById {
   "/user-tags/link/": typeof UserTagsLinkIndexRoute
   "/video-api-studio/console/": typeof VideoApiStudioConsoleIndexRoute
   "/video-api-studio/input-videos/": typeof VideoApiStudioInputVideosIndexRoute
+  "/vim/onboarding/": typeof VimOnboardingIndexRoute
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
@@ -1824,6 +1860,8 @@ export interface FileRouteTypes {
     | "/landing"
     | "/learner-insights"
     | "/pricing"
+    | "/vim/dashboard"
+    | "/vim/login"
     | "/admin-package-management/"
     | "/admissions/"
     | "/ai-center/"
@@ -1853,6 +1891,7 @@ export interface FileRouteTypes {
     | "/signup/"
     | "/study-library/"
     | "/video-api-studio/"
+    | "/vim/"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-pages/editor/$tagName"
@@ -1921,6 +1960,7 @@ export interface FileRouteTypes {
     | "/user-tags/link/"
     | "/video-api-studio/console/"
     | "/video-api-studio/input-videos/"
+    | "/vim/onboarding/"
     | "/workflow/$workflowId/"
     | "/workflow/create/"
     | "/workflow/list/"
@@ -1975,6 +2015,8 @@ export interface FileRouteTypes {
     | "/explore-ai"
     | "/landing"
     | "/pricing"
+    | "/vim/dashboard"
+    | "/vim/login"
     | "/admin-package-management"
     | "/admissions"
     | "/ai-center"
@@ -2004,6 +2046,7 @@ export interface FileRouteTypes {
     | "/signup"
     | "/study-library"
     | "/video-api-studio"
+    | "/vim"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-pages/editor/$tagName"
@@ -2072,6 +2115,7 @@ export interface FileRouteTypes {
     | "/user-tags/link"
     | "/video-api-studio/console"
     | "/video-api-studio/input-videos"
+    | "/vim/onboarding"
     | "/workflow/$workflowId"
     | "/workflow/create"
     | "/workflow/list"
@@ -2127,6 +2171,8 @@ export interface FileRouteTypes {
     | "/landing"
     | "/learner-insights"
     | "/pricing"
+    | "/vim/dashboard"
+    | "/vim/login"
     | "/admin-package-management/"
     | "/admissions/"
     | "/ai-center/"
@@ -2156,6 +2202,7 @@ export interface FileRouteTypes {
     | "/signup/"
     | "/study-library/"
     | "/video-api-studio/"
+    | "/vim/"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-pages/editor/$tagName"
@@ -2224,6 +2271,7 @@ export interface FileRouteTypes {
     | "/user-tags/link/"
     | "/video-api-studio/console/"
     | "/video-api-studio/input-videos/"
+    | "/vim/onboarding/"
     | "/workflow/$workflowId/"
     | "/workflow/create/"
     | "/workflow/list/"
@@ -2280,6 +2328,8 @@ export interface RootRouteChildren {
   LandingLazyRoute: typeof LandingLazyRoute
   LearnerInsightsLazyRoute: typeof LearnerInsightsLazyRouteWithChildren
   PricingLazyRoute: typeof PricingLazyRoute
+  VimDashboardRoute: typeof VimDashboardRoute
+  VimLoginRoute: typeof VimLoginRoute
   AdminPackageManagementIndexRoute: typeof AdminPackageManagementIndexRoute
   AdmissionsIndexRoute: typeof AdmissionsIndexRoute
   AiCenterIndexRoute: typeof AiCenterIndexRoute
@@ -2308,6 +2358,7 @@ export interface RootRouteChildren {
   SignupIndexRoute: typeof SignupIndexRoute
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   VideoApiStudioIndexRoute: typeof VideoApiStudioIndexRoute
+  VimIndexRoute: typeof VimIndexRoute
   AutomationChatbotFlowsFlowIdRoute: typeof AutomationChatbotFlowsFlowIdRoute
   LoginOauthRedirectRoute: typeof LoginOauthRedirectRoute
   ManagePagesEditorTagNameRoute: typeof ManagePagesEditorTagNameRoute
@@ -2376,6 +2427,7 @@ export interface RootRouteChildren {
   UserTagsLinkIndexRoute: typeof UserTagsLinkIndexRoute
   VideoApiStudioConsoleIndexRoute: typeof VideoApiStudioConsoleIndexRoute
   VideoApiStudioInputVideosIndexRoute: typeof VideoApiStudioInputVideosIndexRoute
+  VimOnboardingIndexRoute: typeof VimOnboardingIndexRoute
   WorkflowWorkflowIdIndexRoute: typeof WorkflowWorkflowIdIndexRoute
   WorkflowCreateIndexRoute: typeof WorkflowCreateIndexRoute
   WorkflowListIndexRoute: typeof WorkflowListIndexRoute
@@ -2467,6 +2519,13 @@ declare module "@tanstack/react-router" {
       path: "/agent-chat"
       fullPath: "/agent-chat"
       preLoaderRoute: typeof AgentChatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/vim/": {
+      id: "/vim/"
+      path: "/vim"
+      fullPath: "/vim/"
+      preLoaderRoute: typeof VimIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/video-api-studio/": {
@@ -2672,6 +2731,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminPackageManagementIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/vim/login": {
+      id: "/vim/login"
+      path: "/vim/login"
+      fullPath: "/vim/login"
+      preLoaderRoute: typeof VimLoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/vim/dashboard": {
+      id: "/vim/dashboard"
+      path: "/vim/dashboard"
+      fullPath: "/vim/dashboard"
+      preLoaderRoute: typeof VimDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/workflow/list/": {
       id: "/workflow/list/"
       path: "/workflow/list"
@@ -2691,6 +2764,13 @@ declare module "@tanstack/react-router" {
       path: "/workflow/$workflowId"
       fullPath: "/workflow/$workflowId/"
       preLoaderRoute: typeof WorkflowWorkflowIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/vim/onboarding/": {
+      id: "/vim/onboarding/"
+      path: "/vim/onboarding"
+      fullPath: "/vim/onboarding/"
+      preLoaderRoute: typeof VimOnboardingIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/video-api-studio/input-videos/": {
@@ -3498,6 +3578,8 @@ const rootRouteChildren: RootRouteChildren = {
   LandingLazyRoute: LandingLazyRoute,
   LearnerInsightsLazyRoute: LearnerInsightsLazyRouteWithChildren,
   PricingLazyRoute: PricingLazyRoute,
+  VimDashboardRoute: VimDashboardRoute,
+  VimLoginRoute: VimLoginRoute,
   AdminPackageManagementIndexRoute: AdminPackageManagementIndexRoute,
   AdmissionsIndexRoute: AdmissionsIndexRoute,
   AiCenterIndexRoute: AiCenterIndexRoute,
@@ -3526,6 +3608,7 @@ const rootRouteChildren: RootRouteChildren = {
   SignupIndexRoute: SignupIndexRoute,
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   VideoApiStudioIndexRoute: VideoApiStudioIndexRoute,
+  VimIndexRoute: VimIndexRoute,
   AutomationChatbotFlowsFlowIdRoute: AutomationChatbotFlowsFlowIdRoute,
   LoginOauthRedirectRoute: LoginOauthRedirectRoute,
   ManagePagesEditorTagNameRoute: ManagePagesEditorTagNameRoute,
@@ -3605,6 +3688,7 @@ const rootRouteChildren: RootRouteChildren = {
   UserTagsLinkIndexRoute: UserTagsLinkIndexRoute,
   VideoApiStudioConsoleIndexRoute: VideoApiStudioConsoleIndexRoute,
   VideoApiStudioInputVideosIndexRoute: VideoApiStudioInputVideosIndexRoute,
+  VimOnboardingIndexRoute: VimOnboardingIndexRoute,
   WorkflowWorkflowIdIndexRoute: WorkflowWorkflowIdIndexRoute,
   WorkflowCreateIndexRoute: WorkflowCreateIndexRoute,
   WorkflowListIndexRoute: WorkflowListIndexRoute,

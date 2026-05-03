@@ -77,15 +77,20 @@ class Settings(BaseSettings):
     # LLM Configuration - Using OpenRouter (your working API key)
     llm_base_url: str = "https://openrouter.ai/api/v1/chat/completions"
     openrouter_api_key: Optional[str] = None  # Will be populated from OPENROUTER_API_KEY env var
-    # Default to free tier model, can be overridden via LLM_DEFAULT_MODEL env var
-    llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "xiaomi/mimo-v2-flash:free")
-    # Free tier models (fallback chain):
+    # Strong default for production-grade tasks (script writing, director planning,
+    # per-shot HTML, frame regeneration). Free-tier models like
+    # `xiaomi/mimo-v2-flash:free` were producing too-variable HTML for the
+    # frame-regen path — bumping the default raises the floor without
+    # changing the env override. Override via `LLM_DEFAULT_MODEL` if needed.
+    llm_default_model: str = os.getenv("LLM_DEFAULT_MODEL", "google/gemini-3.1-pro-preview")
+    # Other models we've validated:
+    # - google/gemini-2.5-pro
+    # - openai/gpt-4o
+    # - openai/gpt-4o-mini
+    # Free-tier (low quality on structured HTML output, kept as last-resort fallback only):
     # - xiaomi/mimo-v2-flash:free
     # - mistralai/devstral-2512:free
     # - nvidia/nemotron-3-nano-30b-a3b:free
-    # Alternative paid models:
-    # - google/gemini-2.5-pro
-    # - openai/gpt-4o-mini
     llm_timeout_seconds: float = 60.0
 
     # S3 Configuration (for generated course images and AI videos)

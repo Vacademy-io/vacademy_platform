@@ -2,6 +2,7 @@ package vacademy.io.notification_service.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,6 +33,26 @@ public class WhatsAppOTPService {
 
     @Autowired
     private WhatsAppProviderFactory whatsAppProviderFactory;
+
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Value("${meta.whatsapp.api.base.url:https://graph.facebook.com/v22.0}")
+    private String metaApiBaseUrl;
+
+    // Platform-default WhatsApp credentials, used for system flows that have no
+    // institute scope yet (e.g. Vimotion onboarding before signup).
+    @Value("${whatsapp.access-token.vidyayatan:}")
+    private String platformAccessToken;
+
+    @Value("${whatsapp.phone-number-id.vidyayatan:}")
+    private String platformPhoneNumberId;
+
+    @Value("${whatsapp.platform-default.template-name:otp_ll}")
+    private String platformTemplateName;
+
+    @Value("${whatsapp.platform-default.language-code:en}")
+    private String platformLanguageCode;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -82,6 +103,50 @@ public class WhatsAppOTPService {
                     .send();
             throw new VacademyException("Failed to send WhatsApp OTP: " + e.getMessage());
         }
+    }
+
+    /**
+     * Send a WhatsApp OTP using the platform-default Meta credentials, with no
+     * institute scope. Intended for pre-signup flows (e.g. Vimotion onboarding).
+     * Reuses MetaWhatsAppServiceProvider so retries/template handling stay consistent.
+     */
+    public WhatsAppOTPResponse sendPlatformDefaultOtp(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            throw new VacademyException("Phone number is required");
+        }
+        if (platformAccessToken == null || platformAccessToken.isBlank()
+                || platformPhoneNumberId == null || platformPhoneNumberId.isBlank()) {
+            throw new VacademyException(
+                    "Platform-default WhatsApp credentials are not configured");
+        }
+        if (platformTemplateName == null || platformTemplateName.isBlank()) {
+            throw new VacademyException(
+                    "Platform-default WhatsApp template name is not configured");
+        }
+
+        String otp = generateOTP(6);
+
+        EmailOtp emailOtp = EmailOtp.builder()
+                .phoneNumber(phoneNumber)
+                .otp(otp)
+                .service(NotificationConstants.OTP_SERVICE_WHATSAPP_AUTH)
+                .type(NotificationConstants.OTP_TYPE_WHATSAPP)
+                .build();
+        otpRepository.save(emailOtp);
+
+        ObjectNode credentials = objectMapper.createObjectNode()
+                .put("accessToken", platformAccessToken)
+                .put("phoneNumberId", platformPhoneNumberId);
+
+        WhatsAppOTPRequest request = WhatsAppOTPRequest.builder()
+                .phoneNumber(phoneNumber)
+                .templateName(platformTemplateName)
+                .languageCode(platformLanguageCode)
+                .build();
+
+        MetaWhatsAppServiceProvider provider = new MetaWhatsAppServiceProvider(
+                objectMapper, restTemplate, metaApiBaseUrl);
+        return provider.sendOtp(request, otp, credentials);
     }
 
     /**

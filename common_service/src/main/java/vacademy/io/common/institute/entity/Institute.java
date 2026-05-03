@@ -122,6 +122,15 @@ public class Institute {
     @Column(name = "lead_tag")
     private String leadTag;
 
+    @Column(name = "account_type")
+    private String accountType;
+
+    @Column(name = "product")
+    private String product;
+
+    @Column(name = "company_size")
+    private String companySize;
+
     @PrePersist
     @PreUpdate
     private void normalizeEmails() {

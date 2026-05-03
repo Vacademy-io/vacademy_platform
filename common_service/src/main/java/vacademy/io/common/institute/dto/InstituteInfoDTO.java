@@ -56,4 +56,7 @@ public class InstituteInfoDTO {
     private String affiliationNumber;
     private Integer staffStrength;
     private Integer schoolStrength;
+    private String accountType;
+    private String product;
+    private String companySize;
 }

@@ -32,9 +32,12 @@ import {
     DEFAULT_OPTIONS,
 } from '../-services/video-generation';
 import { HistorySidebar } from '../-components/HistorySidebar';
-import { GenerationProgress } from '../-components/GenerationProgress';
-import { VideoResult } from '../-components/VideoResult';
 import { ScriptReview } from '../-components/ScriptReview';
+import { PipelineLayout } from '../-components/pipeline/PipelineLayout';
+import {
+    derivePipelineFromLive,
+    type LiveCurrentGeneration,
+} from '../-components/pipeline/-utils/derive-pipeline-state';
 import { CenteredHero } from './-components/CenteredHero';
 import { IntentChips } from './-components/IntentChips';
 import { Composer } from './-components/Composer';
@@ -70,6 +73,39 @@ function stageToPercentage(stage: string): number {
         RENDER: 98,
     };
     return map[stage] ?? 0;
+}
+
+/**
+ * Polling-time HTML-stage percentage. The HTML stage owns 60–95% of the bar;
+ * within that window we interpolate by `shots_completed / shots_total` so the
+ * progress bar advances per-shot instead of sticking at 90% the whole HTML phase.
+ */
+function computeHtmlPercentage(
+    shotsCompleted: number | undefined,
+    shotsTotal: number | undefined
+): number {
+    if (!shotsTotal || shotsTotal <= 0) return stageToPercentage('HTML'); // 90 fallback
+    const ratio = Math.min(1, Math.max(0, (shotsCompleted ?? 0) / shotsTotal));
+    return Math.round(60 + ratio * 35); // 60..95
+}
+
+/** Unified cap for the "live" recent-errors list shown in the progress UI. */
+const RECENT_ERRORS_CAP = 10;
+
+/** Map backend uppercase status to HistoryItem.status used by the sidebar. */
+function mapVideoStatusToRow(status: string): HistoryItem['status'] {
+    switch (status.toUpperCase()) {
+        case 'COMPLETED':
+            return 'completed';
+        case 'FAILED':
+        case 'STALLED':
+            return 'failed';
+        case 'IN_PROGRESS':
+            return 'generating';
+        case 'PENDING':
+        default:
+            return 'pending';
+    }
 }
 
 type ConsoleState = 'idle' | 'generating' | 'reviewing' | 'complete';
@@ -110,12 +146,49 @@ interface CurrentGeneration {
         duration_s: number;
         narration_excerpt?: string;
     }>;
+    /**
+     * Avatar-host counters captured from `avatar_*` sub_stage events. The BE
+     * doesn't push these on `progress`/`completed` events — only on per-shot
+     * `sub_stage` events — so we accumulate them onto `currentGeneration` so
+     * the pipeline view can keep rendering Talent state after the message
+     * field has rolled to a different stage.
+     */
+    hostShotCount?: number;
+    hostShotCompleted?: number;
+    /** True after `avatar_batch_done` fires — drives the Talent node to wrapped. */
+    hostBatchDone?: boolean;
+    /** Latest `avatar_*` sub_stage seen — used as the Talent node's active sub-status. */
+    hostSubStage?: string;
+    /**
+     * Background-music counters from `background_music_*` sub_stage events.
+     * Same rationale as above: BE only emits these on transient sub_stage
+     * events, but the Score node needs to keep rendering its progress.
+     */
+    musicSegmentsTotal?: number;
+    musicSegmentsCompleted?: number;
+    musicDone?: boolean;
+    /** S3 URL of the merged background-music track — only present after `background_music_done`. */
+    musicUrl?: string;
+    musicSubStage?: string;
 }
 
 /** Persisted across page navigations so polling can resume after SSE disconnect */
 const PENDING_GENERATION_KEY = 'video-console-pending-gen';
-/** Persisted so VideoResult can restore render progress after reload */
+/**
+ * Persisted so VideoResult can restore in-flight render polling state after a
+ * reload (the render job ID lives in render-job-{videoId} but VideoResult only
+ * mounts when the parent has a complete `currentGeneration` to hand off).
+ *
+ * TTL'd to match the render-job lifetime — restoring an hours-old completed
+ * video on a fresh tab open isn't useful, just surprising.
+ */
 const COMPLETE_GENERATION_KEY = 'video-console-complete-gen';
+const COMPLETE_GENERATION_TTL_MS = 90 * 60 * 1000; // 90 min — matches MAX_RENDER_AGE_MS in VideoResult
+
+interface PersistedCompleteGeneration {
+    savedAt: number;
+    generation: CurrentGeneration;
+}
 
 /** Content types that produce no audio — html_url alone is sufficient for "complete" */
 const NO_AUDIO_TYPES = new Set<ContentType>(['SLIDES']);
@@ -189,6 +262,12 @@ function VideoConsole() {
 
     const abortRef = useRef<(() => void) | null>(null);
     const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    /**
+     * Mirror of `currentGeneration` for synchronous reads from inside async
+     * SSE callbacks (their closure captures the stateful value at the time the
+     * callback was created — stale by the time the event fires).
+     */
+    const currentGenerationRef = useRef<CurrentGeneration | null>(null);
 
     // Load API keys
     useEffect(() => {
@@ -262,27 +341,85 @@ function VideoConsole() {
         [activeApiKey]
     );
 
-    // Are any items on the current page still in flight? Polling is only useful
-    // when something can actually change — otherwise we just hammer the endpoint.
-    const hasInflightHistoryItems = useMemo(
-        () => history.some((h) => h.status === 'pending' || h.status === 'generating'),
-        [history]
-    );
-
-    // Single effect: fetch on mount / page change, and poll every 10s only while
-    // there are in-flight items on the current page or an active local generation.
+    // Initial / page-change fetch. The polling effect below only updates rows
+    // already on the page; this fills the page when the user changes pages or
+    // the API key becomes available.
     useEffect(() => {
         if (!activeApiKey) return;
         fetchHistoryPage(historyPage);
+    }, [activeApiKey, historyPage, fetchHistoryPage]);
 
-        const shouldPoll = hasInflightHistoryItems || consoleState === 'generating';
-        if (!shouldPoll) return;
+    // Stable string of in-flight ids so the polling effect only restarts when
+    // the *set* of in-flight rows changes — not on every history mutation.
+    const inflightIdsKey = useMemo(
+        () =>
+            history
+                .filter((h) => h.status === 'pending' || h.status === 'generating')
+                .map((h) => h.video_id)
+                .sort()
+                .join(','),
+        [history]
+    );
 
-        const interval = setInterval(() => {
-            fetchHistoryPage(historyPage);
-        }, 10000);
-        return () => clearInterval(interval);
-    }, [activeApiKey, historyPage, fetchHistoryPage, hasInflightHistoryItems, consoleState]);
+    // Per-item status polling. For each in-flight row, hit /status/{id} every
+    // 10s and patch just that row. Only do a full-page refetch when a row
+    // transitions to a terminal state (so URLs / token_usage land from the
+    // history endpoint).
+    useEffect(() => {
+        if (!activeApiKey || !inflightIdsKey) return;
+        const ids = inflightIdsKey.split(',').filter(Boolean);
+        if (ids.length === 0) return;
+
+        let cancelled = false;
+
+        const tick = async () => {
+            const results = await Promise.all(
+                ids.map((id) =>
+                    getVideoStatus(id, activeApiKey)
+                        .then((status) => ({ id, status, ok: true as const }))
+                        .catch(() => ({ id, status: null, ok: false as const }))
+                )
+            );
+            if (cancelled) return;
+
+            const successful = results.filter(
+                (r): r is { id: string; status: NonNullable<typeof r.status>; ok: true } => r.ok
+            );
+            if (successful.length === 0) return;
+
+            let anyTerminal = false;
+            for (const r of successful) {
+                const mapped = mapVideoStatusToRow(r.status.status);
+                if (mapped === 'completed' || mapped === 'failed') {
+                    anyTerminal = true;
+                    break;
+                }
+            }
+
+            setHistory((prev) =>
+                prev.map((row) => {
+                    const r = successful.find((x) => x.id === row.video_id);
+                    if (!r) return row;
+                    return {
+                        ...row,
+                        status: mapVideoStatusToRow(r.status.status),
+                        stage: r.status.current_stage,
+                    };
+                })
+            );
+
+            if (anyTerminal) {
+                fetchHistoryPage(historyPage);
+            }
+        };
+
+        tick();
+        const interval = setInterval(tick, 10000);
+        return () => {
+            cancelled = true;
+            clearInterval(interval);
+        };
+    }, [activeApiKey, inflightIdsKey, historyPage, fetchHistoryPage]);
 
     const handlePageChange = useCallback((page: number) => {
         setHistoryPage(page);
@@ -349,27 +486,36 @@ function VideoConsole() {
                     getVideoStatus(pending.videoId, apiKey).catch(() => null),
                 ]);
                 const genProg = statusResp?.generation_progress ?? null;
+                // /urls doesn't return script_url; pull it from /status.s3_urls.script
+                // so the GenerationProgress's "Script" panel shows up during polling.
+                const scriptUrlFromStatus =
+                    (statusResp?.s3_urls as Record<string, string | undefined> | undefined)
+                        ?.script ?? undefined;
 
                 if (urls.html_url && (urls.audio_url || !needsAudio(pending.contentType))) {
-                    // Success — content is ready
+                    // Success — fill URLs into state and let the auto-complete useEffect
+                    // perform the consoleState transition + toast (single source of truth).
                     if (pollingRef.current) clearInterval(pollingRef.current);
                     pollingRef.current = null;
-                    localStorage.removeItem(PENDING_GENERATION_KEY);
                     setCurrentGeneration((prev) =>
                         prev
                             ? {
                                   ...prev,
-                                  stage: urls.current_stage || 'HTML',
+                                  stage: (urls.current_stage as VideoStage) || 'HTML',
                                   percentage: 100,
                                   message: '',
                                   htmlUrl: urls.html_url!,
-                                  audioUrl: urls.audio_url ?? undefined,
-                                  wordsUrl: urls.words_url ?? undefined,
+                                  audioUrl: urls.audio_url ?? prev.audioUrl,
+                                  wordsUrl: urls.words_url ?? prev.wordsUrl,
+                                  scriptUrl: scriptUrlFromStatus ?? prev.scriptUrl,
+                                  cumulativeTokens:
+                                      genProg?.cumulative_tokens ?? prev.cumulativeTokens,
+                                  shotsCompleted: genProg?.shots_completed ?? prev.shotsCompleted,
+                                  shotsTotal: genProg?.shots_total ?? prev.shotsTotal,
+                                  shotPlan: genProg?.shot_plan ?? prev.shotPlan,
                               }
                             : null
                     );
-                    setConsoleState('complete');
-                    toast.success('Content is ready!');
                 } else if (urls.status === 'FAILED') {
                     if (pollingRef.current) clearInterval(pollingRef.current);
                     pollingRef.current = null;
@@ -391,42 +537,40 @@ function VideoConsole() {
                             `Generation appears stuck at "${friendlyStage(urls.current_stage)}" step. Please try again.`
                     );
                 } else if (urls.status === 'COMPLETED' && !urls.html_url) {
-                    // COMPLETED without html_url.
-                    // Two signals determine if generation is still active:
-                    // 1. Stage-based: pre-HTML stages (WORDS, TTS, AUDIO) showing COMPLETED means
-                    //    sub-stage finished and pipeline is transitioning — not a terminal state.
-                    // 2. Progress-based: if status API returned generation_progress with sub_stage
-                    //    or shot data, the pipeline was actively running recently.
+                    // COMPLETED without html_url. Two signals determine activity:
+                    // 1. Stage-based: pre-HTML stages COMPLETED = sub-stage finished, pipeline transitioning.
+                    // 2. Progress-based: generation_progress with sub_stage or shot data → still running.
                     const PRE_HTML_STAGES = new Set(['PENDING', 'SCRIPT', 'TTS', 'AUDIO', 'WORDS']);
                     const stageIsTransitioning =
                         PRE_HTML_STAGES.has(urls.current_stage) && pending.targetStage !== 'SCRIPT';
-                    // generation_progress exists and has pipeline activity data → still running
                     const progressSignalsActive =
                         genProg != null &&
                         (genProg.sub_stage != null || (genProg.shots_total ?? 0) > 0);
                     const isTransitioning = stageIsTransitioning || progressSignalsActive;
 
                     if (isTransitioning) {
-                        // Keep polling — use richer progress message if available from status API
                         const msg =
                             genProg?.shots_completed != null && genProg?.shots_total
                                 ? `Generating visuals… shot ${genProg.shots_completed} / ${genProg.shots_total}`
                                 : genProg?.sub_stage
                                   ? genProg.sub_stage.replace(/_/g, ' ')
                                   : `${friendlyStage(urls.current_stage)} complete, preparing visuals…`;
+                        const hasShots = (genProg?.shots_total ?? 0) > 0;
                         setCurrentGeneration((prev) =>
                             prev
                                 ? {
                                       ...prev,
-                                      stage:
-                                          (genProg?.shots_total ?? 0) > 0
-                                              ? 'HTML'
-                                              : (urls.current_stage as VideoStage) || prev.stage,
-                                      percentage:
-                                          (genProg?.shots_total ?? 0) > 0
-                                              ? stageToPercentage('HTML')
-                                              : stageToPercentage(urls.current_stage),
+                                      stage: hasShots
+                                          ? 'HTML'
+                                          : (urls.current_stage as VideoStage) || prev.stage,
+                                      percentage: hasShots
+                                          ? computeHtmlPercentage(
+                                                genProg?.shots_completed,
+                                                genProg?.shots_total
+                                            )
+                                          : stageToPercentage(urls.current_stage),
                                       message: msg,
+                                      scriptUrl: scriptUrlFromStatus ?? prev.scriptUrl,
                                       shotsCompleted:
                                           genProg?.shots_completed ?? prev.shotsCompleted,
                                       shotsTotal: genProg?.shots_total ?? prev.shotsTotal,
@@ -439,12 +583,47 @@ function VideoConsole() {
                         return;
                     }
 
+                    // Pipeline parked at SCRIPT for review-mode runs → auto-fetch the
+                    // script and transition straight into the reviewing UI instead of
+                    // forcing the user back through the History sidebar.
+                    const wasReviewModeStop =
+                        pending.targetStage === 'SCRIPT' || urls.current_stage === 'SCRIPT';
+                    if (wasReviewModeStop && scriptUrlFromStatus) {
+                        if (pollingRef.current) clearInterval(pollingRef.current);
+                        pollingRef.current = null;
+                        localStorage.removeItem(PENDING_GENERATION_KEY);
+                        setCurrentGeneration((prev) =>
+                            prev
+                                ? {
+                                      ...prev,
+                                      stage: 'SCRIPT',
+                                      percentage: 100,
+                                      scriptUrl: scriptUrlFromStatus,
+                                      message: '',
+                                  }
+                                : null
+                        );
+                        fetchScriptText(scriptUrlFromStatus)
+                            .then((text) => {
+                                setReviewScript(text);
+                                setConsoleState('reviewing');
+                                toast.success('Script ready for review!');
+                            })
+                            .catch((err) => {
+                                console.error('Failed to fetch script:', err);
+                                toast.error('Failed to load script for review');
+                                setConsoleState('idle');
+                                setCurrentGeneration(null);
+                            });
+                        return;
+                    }
+
                     if (pollingRef.current) clearInterval(pollingRef.current);
                     pollingRef.current = null;
                     localStorage.removeItem(PENDING_GENERATION_KEY);
                     setConsoleState('idle');
                     setCurrentGeneration(null);
-                    if (pending.targetStage === 'SCRIPT' || urls.current_stage === 'SCRIPT') {
+                    if (wasReviewModeStop) {
                         toast.info('Script is ready. Open from History to review and continue.');
                     } else {
                         toast.error(
@@ -454,8 +633,8 @@ function VideoConsole() {
                     }
                 } else {
                     // Still IN_PROGRESS — update stage + sub-stage progress from DB.
-                    // When shots are being generated, override stage to HTML even if the
-                    // urls endpoint still reports WORDS (transitioning window).
+                    // When shots are in flight, override stage to HTML even if the urls
+                    // endpoint still reports WORDS (transitioning window).
                     const hasShots = (genProg?.shots_total ?? 0) > 0;
                     const effectiveStage: VideoStage = hasShots
                         ? 'HTML'
@@ -473,18 +652,25 @@ function VideoConsole() {
                             ? {
                                   ...prev,
                                   stage: effectiveStage,
-                                  percentage: stageToPercentage(effectiveStage),
+                                  // Per-shot progress when in HTML stage; stage-bucket otherwise.
+                                  percentage: hasShots
+                                      ? computeHtmlPercentage(
+                                            genProg?.shots_completed,
+                                            genProg?.shots_total
+                                        )
+                                      : stageToPercentage(effectiveStage),
                                   message: subStageMsg,
                                   htmlUrl: urls.html_url ?? prev.htmlUrl,
                                   audioUrl: urls.audio_url ?? prev.audioUrl,
                                   wordsUrl: urls.words_url ?? prev.wordsUrl,
+                                  scriptUrl: scriptUrlFromStatus ?? prev.scriptUrl,
                                   shotsCompleted: genProg?.shots_completed ?? prev.shotsCompleted,
                                   shotsTotal: genProg?.shots_total ?? prev.shotsTotal,
                                   cumulativeTokens:
                                       genProg?.cumulative_tokens ?? prev.cumulativeTokens,
                                   shotPlan: genProg?.shot_plan ?? prev.shotPlan,
                                   recentErrors: genProg?.errors
-                                      ? genProg.errors.slice(-5).map((e) => ({
+                                      ? genProg.errors.slice(-RECENT_ERRORS_CAP).map((e) => ({
                                             shot_index: e.shot_index,
                                             shot_type: e.shot_type,
                                             error: e.error,
@@ -524,14 +710,34 @@ function VideoConsole() {
             return;
         }
 
-        // Restore completed generation (so VideoResult mounts and can resume render progress)
+        // Restore completed generation (so VideoResult mounts and can resume render progress).
+        // Drop entries older than COMPLETE_GENERATION_TTL_MS — past that window the
+        // render-job recovery they exist for is no longer relevant, and silently
+        // landing the user back on a stale video is worse than starting fresh.
         const completeRaw = localStorage.getItem(COMPLETE_GENERATION_KEY);
         if (completeRaw && consoleState === 'idle' && !currentGeneration) {
             try {
-                const saved = JSON.parse(completeRaw) as CurrentGeneration;
-                if (saved.videoId && saved.htmlUrl) {
-                    setCurrentGeneration(saved);
-                    setConsoleState('complete');
+                const parsed = JSON.parse(completeRaw) as
+                    | PersistedCompleteGeneration
+                    | CurrentGeneration; // tolerate the legacy un-wrapped shape
+                const isWrapped =
+                    typeof (parsed as PersistedCompleteGeneration).savedAt === 'number' &&
+                    !!(parsed as PersistedCompleteGeneration).generation;
+                if (isWrapped) {
+                    const wrapper = parsed as PersistedCompleteGeneration;
+                    const age = Date.now() - wrapper.savedAt;
+                    if (age > COMPLETE_GENERATION_TTL_MS) {
+                        localStorage.removeItem(COMPLETE_GENERATION_KEY);
+                    } else if (wrapper.generation.videoId && wrapper.generation.htmlUrl) {
+                        setCurrentGeneration(wrapper.generation);
+                        setConsoleState('complete');
+                    }
+                } else {
+                    // Legacy entries pre-date the TTL wrapper — discard them so the
+                    // user gets a clean idle state instead of an indefinitely-stale
+                    // video. They'll naturally be re-persisted in the new shape on
+                    // their next completion.
+                    localStorage.removeItem(COMPLETE_GENERATION_KEY);
                 }
             } catch {
                 localStorage.removeItem(COMPLETE_GENERATION_KEY);
@@ -543,10 +749,41 @@ function VideoConsole() {
     // Persist complete state so VideoResult can restore render progress after reload
     useEffect(() => {
         if (consoleState === 'complete' && currentGeneration?.htmlUrl) {
-            localStorage.setItem(COMPLETE_GENERATION_KEY, JSON.stringify(currentGeneration));
+            const wrapper: PersistedCompleteGeneration = {
+                savedAt: Date.now(),
+                generation: currentGeneration,
+            };
+            localStorage.setItem(COMPLETE_GENERATION_KEY, JSON.stringify(wrapper));
         } else if (consoleState === 'idle') {
             localStorage.removeItem(COMPLETE_GENERATION_KEY);
         }
+    }, [consoleState, currentGeneration]);
+
+    // Mirror currentGeneration into a ref so async SSE callbacks can read the
+    // *latest* value synchronously (their closure captures stale state otherwise).
+    useEffect(() => {
+        currentGenerationRef.current = currentGeneration;
+    }, [currentGeneration]);
+
+    /**
+     * Single source of truth for the `generating → complete` transition.
+     *
+     * Watches `currentGeneration` and fires exactly once when the necessary URLs
+     * become available, regardless of which code path filled them in (SSE
+     * `progress`, SSE `completed`, polling success, retry stream). Avoids:
+     *   - double toasts from setState reducers being non-pure
+     *   - StrictMode double invocation issues
+     *   - inconsistencies across the 4 code paths that used to each trigger
+     *     the transition manually.
+     */
+    useEffect(() => {
+        if (consoleState !== 'generating') return;
+        const cg = currentGeneration;
+        if (!cg?.htmlUrl) return;
+        if (needsAudio(cg.contentType) && !cg.audioUrl) return;
+        setConsoleState('complete');
+        toast.success('Content generated successfully!');
+        localStorage.removeItem(PENDING_GENERATION_KEY);
     }, [consoleState, currentGeneration]);
 
     const handleGenerate = useCallback(
@@ -560,8 +797,7 @@ function VideoConsole() {
             //    burn a request to discover what they should have fixed locally).
             if (request.host) {
                 const tierOk =
-                    request.quality_tier === 'ultra' ||
-                    request.quality_tier === 'super_ultra';
+                    request.quality_tier === 'ultra' || request.quality_tier === 'super_ultra';
                 if (!tierOk) {
                     toast.error(
                         'Host requires Ultra or Super Ultra tier. ' +
@@ -572,9 +808,7 @@ function VideoConsole() {
                 if (request.host.type === 'avatar') {
                     const faceUrl = request.host.avatar?.face_image_url?.trim();
                     if (!faceUrl) {
-                        toast.error(
-                            'Please upload a face image for the host before generating.'
-                        );
+                        toast.error('Please upload a face image for the host before generating.');
                         return;
                     }
                 }
@@ -618,6 +852,23 @@ function VideoConsole() {
                 target_stage: reviewModeEnabled ? 'SCRIPT' : 'HTML',
             };
 
+            // Hoisted so SSE callback closures capture a defined value. Used both for
+            // the in-memory CurrentGeneration.options and the persisted PENDING_GENERATION_KEY.
+            const pendingOptions: Omit<GenerateVideoRequest, 'prompt'> = {
+                content_type: contentType,
+                orientation: request.orientation || options.orientation || 'landscape',
+                language: request.language,
+                voice_gender: request.voice_gender,
+                tts_provider: request.tts_provider,
+                voice_id: request.voice_id,
+                captions_enabled: request.captions_enabled,
+                html_quality: request.html_quality,
+                target_audience: request.target_audience,
+                target_duration: request.target_duration,
+                model: request.model,
+                quality_tier: request.quality_tier,
+            };
+
             const { abort, videoId } = generateVideo(
                 finalRequest,
                 activeApiKey,
@@ -629,35 +880,40 @@ function VideoConsole() {
                         const wordsUrl = event.files?.words?.s3_url;
                         const scriptUrl = event.files?.script?.s3_url;
 
-                        setCurrentGeneration((prev) => ({
-                            videoId,
-                            prompt: request.prompt,
-                            contentType,
-                            orientation:
-                                request.orientation ||
-                                (options.orientation as VideoOrientation) ||
-                                'landscape',
-                            stage: event.stage,
-                            percentage: event.percentage,
-                            message: event.message,
-                            htmlUrl: timelineUrl || prev?.htmlUrl,
-                            audioUrl: audioUrl || prev?.audioUrl,
-                            wordsUrl: wordsUrl || prev?.wordsUrl,
-                            scriptUrl: scriptUrl || prev?.scriptUrl,
-                            options: {
-                                content_type: contentType,
-                                language: request.language,
-                                voice_gender: request.voice_gender,
-                                tts_provider: request.tts_provider,
-                                voice_id: request.voice_id,
-                                captions_enabled: request.captions_enabled,
-                                html_quality: request.html_quality,
-                                target_audience: request.target_audience,
-                                target_duration: request.target_duration,
-                                model: request.model,
-                                quality_tier: request.quality_tier,
-                            },
-                        }));
+                        // Spread prev so `shotsCompleted/shotsTotal/cumulativeTokens/
+                        // recentErrors/shotPlan` set by other event branches survive
+                        // a stage-transition `progress` event.
+                        setCurrentGeneration((prev) => {
+                            if (!prev) {
+                                return {
+                                    videoId,
+                                    prompt: request.prompt,
+                                    contentType,
+                                    orientation:
+                                        request.orientation ||
+                                        (options.orientation as VideoOrientation) ||
+                                        'landscape',
+                                    stage: event.stage,
+                                    percentage: event.percentage,
+                                    message: event.message,
+                                    htmlUrl: timelineUrl,
+                                    audioUrl,
+                                    wordsUrl,
+                                    scriptUrl,
+                                    options: pendingOptions,
+                                };
+                            }
+                            return {
+                                ...prev,
+                                stage: event.stage,
+                                percentage: event.percentage,
+                                message: event.message,
+                                htmlUrl: timelineUrl || prev.htmlUrl,
+                                audioUrl: audioUrl || prev.audioUrl,
+                                wordsUrl: wordsUrl || prev.wordsUrl,
+                                scriptUrl: scriptUrl || prev.scriptUrl,
+                            };
+                        });
 
                         // Update history in state
                         updateHistoryState({
@@ -671,54 +927,21 @@ function VideoConsole() {
                             html_url: timelineUrl,
                             audio_url: audioUrl,
                             words_url: wordsUrl,
-                            options: {
-                                content_type: contentType,
-                                orientation:
-                                    request.orientation || options.orientation || 'landscape',
-                                language: request.language,
-                                voice_gender: request.voice_gender,
-                                tts_provider: request.tts_provider,
-                                voice_id: request.voice_id,
-                                captions_enabled: request.captions_enabled,
-                                html_quality: request.html_quality,
-                                target_audience: request.target_audience,
-                                target_duration: request.target_duration,
-                                model: request.model,
-                                quality_tier: request.quality_tier,
-                            },
+                            options: pendingOptions,
                         });
-
-                        // When HTML stage is reached, show the player - content is ready
-                        // Audio URL comes from TTS stage, timeline from HTML stage
-                        setCurrentGeneration((prev) => {
-                            if (
-                                event.stage === 'HTML' &&
-                                (timelineUrl || prev?.htmlUrl) &&
-                                (prev?.audioUrl || !needsAudio(contentType))
-                            ) {
-                                // HTML stage complete = content ready, show result
-                                setConsoleState('complete');
-                                toast.success('Content generated successfully!');
-                            }
-                            return prev
-                                ? {
-                                      ...prev,
-                                      htmlUrl: timelineUrl || prev.htmlUrl,
-                                      audioUrl: audioUrl || prev.audioUrl,
-                                      wordsUrl: wordsUrl || prev.wordsUrl,
-                                  }
-                                : null;
-                        });
+                        // The complete-transition is handled by a single useEffect
+                        // watching currentGeneration.htmlUrl/audioUrl — no inline
+                        // setConsoleState here. Keeps reducers pure.
                     } else if (event.type === 'completed') {
-                        localStorage.removeItem(PENDING_GENERATION_KEY);
-
-                        // Review mode: if we stopped at SCRIPT, transition to reviewing
+                        // Review mode: if we stopped at SCRIPT, transition to reviewing.
+                        // (Special path — useEffect-based completion only handles the
+                        // happy-path HTML→complete transition.)
                         if (reviewModeEnabled && finalRequest.target_stage === 'SCRIPT') {
+                            localStorage.removeItem(PENDING_GENERATION_KEY);
                             setCurrentGeneration((prev) =>
                                 prev ? { ...prev, stage: 'SCRIPT', percentage: 100 } : null
                             );
-                            // Fetch script text outside setState to avoid side effects
-                            // In CompletedEvent, files.script is a direct URL string
+                            // CompletedEvent.files has direct URL strings (not {file_id, s3_url}).
                             const scriptUrl = event.files?.script;
                             if (scriptUrl) {
                                 fetchScriptText(scriptUrl)
@@ -739,17 +962,19 @@ function VideoConsole() {
                             return;
                         }
 
-                        // Normal flow: content is complete
-                        setConsoleState('complete');
-                        toast.success('Content generated successfully!');
-
-                        // Update history as completed
+                        // Normal flow: ensure URLs are present in state, then let the
+                        // auto-complete useEffect (which watches currentGeneration)
+                        // fire setConsoleState('complete') exactly once.
                         setCurrentGeneration((prev) =>
                             prev
                                 ? {
                                       ...prev,
                                       stage: 'HTML',
                                       percentage: 100,
+                                      htmlUrl: prev.htmlUrl || event.files?.timeline,
+                                      audioUrl: prev.audioUrl || event.files?.audio,
+                                      wordsUrl: prev.wordsUrl || event.files?.words,
+                                      scriptUrl: prev.scriptUrl || event.files?.script,
                                   }
                                 : null
                         );
@@ -762,53 +987,80 @@ function VideoConsole() {
                             status: 'completed',
                             stage: 'HTML',
                             created_at: new Date().toISOString(),
-                            options: {
-                                content_type: contentType,
-                                orientation:
-                                    request.orientation || options.orientation || 'landscape',
-                                language: request.language,
-                                captions_enabled: request.captions_enabled,
-                                html_quality: request.html_quality,
-                                target_audience: request.target_audience,
-                                voice_gender: request.voice_gender,
-                                tts_provider: request.tts_provider,
-                                voice_id: request.voice_id,
-                                target_duration: request.target_duration,
-                                model: request.model,
-                                quality_tier: request.quality_tier,
-                            },
+                            html_url: event.files?.timeline,
+                            audio_url: event.files?.audio,
+                            words_url: event.files?.words,
+                            options: pendingOptions,
                         });
                     } else if (event.type === 'sub_stage') {
                         setCurrentGeneration((prev) => {
                             if (!prev) return null;
                             const updates: Partial<CurrentGeneration> = {};
                             // Avatar-host sub-stages live INSIDE the HTML stage. Pin
-                            // the stage + percentage so the progress UI doesn't
-                            // regress, and prefix the message with a 🎙️ marker so
-                            // the user sees host work distinctly from regular
-                            // shot generation.
+                            // the stage so the progress UI doesn't regress, and
+                            // prefix the message with 🎙️ so host work reads
+                            // distinctly from regular shot generation.
                             const sub = event.sub_stage || '';
                             const isHostSubStage = sub.startsWith('avatar_');
+                            const isMusicSubStage = sub.startsWith('background_music_');
                             if (isHostSubStage) {
                                 updates.stage = 'HTML';
-                                updates.percentage = stageToPercentage('HTML');
+                                updates.percentage = computeHtmlPercentage(
+                                    prev.shotsCompleted,
+                                    prev.shotsTotal
+                                );
                                 updates.message = event.message
                                     ? `🎙️ ${event.message}`
                                     : `🎙️ ${sub.replace(/_/g, ' ')}`;
+                                updates.hostSubStage = sub;
+                                if (typeof event.host_shot_count === 'number') {
+                                    updates.hostShotCount = event.host_shot_count;
+                                }
+                                if (typeof event.host_shot_completed === 'number') {
+                                    updates.hostShotCompleted = event.host_shot_completed;
+                                }
+                                if (sub === 'avatar_batch_done') {
+                                    updates.hostBatchDone = true;
+                                    updates.hostShotCompleted =
+                                        event.host_shot_count ??
+                                        event.host_shot_completed ??
+                                        prev.hostShotCount ??
+                                        prev.hostShotCompleted;
+                                }
+                            } else if (isMusicSubStage) {
+                                updates.message = event.message
+                                    ? `🎼 ${event.message}`
+                                    : `🎼 ${sub.replace(/_/g, ' ')}`;
+                                updates.musicSubStage = sub;
+                                if (typeof event.segment_total === 'number') {
+                                    updates.musicSegmentsTotal = event.segment_total;
+                                }
+                                if (typeof event.segment_index === 'number') {
+                                    // segment_index is 0-based; +1 reads as "segment N of M".
+                                    updates.musicSegmentsCompleted = event.segment_index + 1;
+                                }
+                                if (sub === 'background_music_done') {
+                                    updates.musicDone = true;
+                                    if (typeof event.url === 'string') {
+                                        updates.musicUrl = event.url;
+                                    }
+                                    if (
+                                        prev.musicSegmentsTotal &&
+                                        (prev.musicSegmentsCompleted ?? 0) < prev.musicSegmentsTotal
+                                    ) {
+                                        updates.musicSegmentsCompleted = prev.musicSegmentsTotal;
+                                    }
+                                }
                             } else if (event.message) {
                                 updates.message = event.message;
                             }
-                            // Per-shot avatar failure → record into recentErrors so
-                            // the user can see which shots fell back to non-host.
+                            // Per-shot avatar failure → record into recentErrors.
                             if (sub === 'avatar_failed') {
-                                const failEvt = event as unknown as Record<string, unknown>;
                                 const failIdx =
-                                    typeof failEvt.shot_index === 'number'
-                                        ? (failEvt.shot_index as number)
-                                        : -1;
+                                    typeof event.shot_index === 'number' ? event.shot_index : -1;
                                 const failErr =
-                                    typeof failEvt.error === 'string'
-                                        ? (failEvt.error as string)
+                                    typeof event.error === 'string'
+                                        ? event.error
                                         : 'fal.ai render failed';
                                 const existing = prev.recentErrors ?? [];
                                 updates.recentErrors = [
@@ -819,17 +1071,19 @@ function VideoConsole() {
                                         error: failErr,
                                         retrying: false,
                                     },
-                                ].slice(-50);
+                                ].slice(-RECENT_ERRORS_CAP);
                             }
                             // director_done carries shot_count and shot_plan
                             if (event.shot_count != null) {
                                 updates.shotsTotal = event.shot_count;
                                 updates.stage = 'HTML';
-                                updates.percentage = stageToPercentage('HTML');
+                                updates.percentage = computeHtmlPercentage(
+                                    prev.shotsCompleted,
+                                    event.shot_count
+                                );
                             }
-                            if ((event as unknown as Record<string, unknown>).shot_plan) {
-                                updates.shotPlan = (event as unknown as Record<string, unknown>)
-                                    .shot_plan as CurrentGeneration['shotPlan'];
+                            if (event.shot_plan) {
+                                updates.shotPlan = event.shot_plan;
                             }
                             return { ...prev, ...updates };
                         });
@@ -837,20 +1091,20 @@ function VideoConsole() {
                         const shotMsg = event.total_shots
                             ? `Generating visuals… shot ${event.shot_index + 1} / ${event.total_shots}`
                             : event.message || 'Generating visuals…';
-                        setCurrentGeneration((prev) =>
-                            prev
-                                ? {
-                                      ...prev,
-                                      stage: 'HTML',
-                                      percentage: stageToPercentage('HTML'),
-                                      message: shotMsg,
-                                      shotsCompleted: (event.shot_index ?? 0) + 1,
-                                      shotsTotal: event.total_shots ?? prev.shotsTotal,
-                                      cumulativeTokens:
-                                          event.cumulative_tokens ?? prev.cumulativeTokens,
-                                  }
-                                : null
-                        );
+                        setCurrentGeneration((prev) => {
+                            if (!prev) return null;
+                            const completed = (event.shot_index ?? 0) + 1;
+                            const total = event.total_shots ?? prev.shotsTotal;
+                            return {
+                                ...prev,
+                                stage: 'HTML',
+                                percentage: computeHtmlPercentage(completed, total),
+                                message: shotMsg,
+                                shotsCompleted: completed,
+                                shotsTotal: total,
+                                cumulativeTokens: event.cumulative_tokens ?? prev.cumulativeTokens,
+                            };
+                        });
                     } else if (event.type === 'shot_error') {
                         const errEntry = {
                             shot_index: event.shot_index,
@@ -865,101 +1119,100 @@ function VideoConsole() {
                                 ...prev,
                                 message:
                                     event.retrying && event.message ? event.message : prev.message,
-                                recentErrors: [...existing.slice(-4), errEntry],
+                                recentErrors: [...existing, errEntry].slice(-RECENT_ERRORS_CAP),
                             };
                         });
                     } else if (event.type === 'error') {
-                        // Check if error happened after HTML stage
+                        // Use the ref so we read the *latest* state (the closure value
+                        // is stale by the time SSE error events arrive). If we already
+                        // have html+audio, we keep the player on screen; the
+                        // auto-complete useEffect picks up the htmlUrl and transitions.
                         const errorStage = event.stage;
-                        const hasContent = errorStage === 'HTML';
+                        const cg = currentGenerationRef.current;
+                        const recoverable =
+                            errorStage === 'HTML' &&
+                            !!cg?.htmlUrl &&
+                            (!!cg.audioUrl || !needsAudio(contentType));
 
-                        setCurrentGeneration((prev) => {
-                            // If we have HTML URLs, keep showing the player
-                            if (
-                                prev?.htmlUrl &&
-                                (prev?.audioUrl || !needsAudio(contentType)) &&
-                                hasContent
-                            ) {
-                                localStorage.removeItem(PENDING_GENERATION_KEY);
-                                toast.error(
-                                    'Generation encountered an issue. Content is still available.'
-                                );
-                                setConsoleState('complete');
-                                return {
-                                    ...prev,
-                                    message: 'Generation completed with issues',
-                                };
-                            } else {
-                                localStorage.removeItem(PENDING_GENERATION_KEY);
-                                toast.error(event.message || 'Generation failed');
-                                setConsoleState('idle');
-                                return null;
-                            }
-                        });
+                        localStorage.removeItem(PENDING_GENERATION_KEY);
+                        if (recoverable) {
+                            toast.error(
+                                'Generation encountered an issue. Content is still available.'
+                            );
+                            setCurrentGeneration((prev) =>
+                                prev
+                                    ? { ...prev, message: 'Generation completed with issues' }
+                                    : null
+                            );
+                        } else {
+                            toast.error(event.message || 'Generation failed');
+                            setCurrentGeneration(null);
+                            setConsoleState('idle');
+                        }
 
-                        // Update history
                         updateHistoryState({
                             id: videoId,
                             video_id: videoId,
                             prompt: request.prompt,
                             content_type: contentType,
-                            status: hasContent ? 'completed' : 'failed',
+                            status: recoverable ? 'completed' : 'failed',
                             stage: errorStage || 'PENDING',
                             created_at: new Date().toISOString(),
-                            options: {
-                                content_type: contentType,
-                                orientation:
-                                    request.orientation || options.orientation || 'landscape',
-                                language: request.language,
-                                captions_enabled: request.captions_enabled,
-                                html_quality: request.html_quality,
-                                target_audience: request.target_audience,
-                                target_duration: request.target_duration,
-                                voice_gender: request.voice_gender,
-                                tts_provider: request.tts_provider,
-                                voice_id: request.voice_id,
-                                model: request.model,
-                                quality_tier: request.quality_tier,
-                            },
+                            options: pendingOptions,
                         });
                     }
                 },
                 (error) => {
-                    localStorage.removeItem(PENDING_GENERATION_KEY);
-                    if (error.name === 'InsufficientCreditsError') {
-                        toast.error(error.message || 'Insufficient credits', {
-                            description: 'Please add more credits to continue generating content.',
-                            duration: 8000,
-                        });
-                    } else if (error.name === 'RateLimitError') {
-                        toast.error(error.message || 'Rate limit exceeded', {
-                            description: 'Please wait a moment before starting another generation.',
-                            duration: 8000,
-                        });
-                    } else {
-                        toast.error(`Generation failed: ${error.message}`);
+                    // Terminal errors (the BE never started the pipeline) → clean key,
+                    // go idle. The pipeline will not be running, so polling can't recover.
+                    if (
+                        error.name === 'InsufficientCreditsError' ||
+                        error.name === 'RateLimitError'
+                    ) {
+                        localStorage.removeItem(PENDING_GENERATION_KEY);
+                        if (error.name === 'InsufficientCreditsError') {
+                            toast.error(error.message || 'Insufficient credits', {
+                                description:
+                                    'Please add more credits to continue generating content.',
+                                duration: 8000,
+                            });
+                        } else {
+                            toast.error(error.message || 'Rate limit exceeded', {
+                                description:
+                                    'Please wait a moment before starting another generation.',
+                                duration: 8000,
+                            });
+                        }
+                        setConsoleState('idle');
+                        setCurrentGeneration(null);
+                        return;
+                    }
+
+                    // Transient error (network drop, mid-stream EOF, proxy timeout).
+                    // The BE background task continues — keep PENDING_GENERATION_KEY
+                    // and fall back to /status + /urls polling so the UI recovers.
+                    toast.error(`Connection lost — reconnecting…`, {
+                        description: error.message,
+                        duration: 5000,
+                    });
+                    const pendingRaw = localStorage.getItem(PENDING_GENERATION_KEY);
+                    if (pendingRaw && activeApiKey) {
+                        try {
+                            const pending = JSON.parse(pendingRaw) as PendingGeneration;
+                            startPollingForVideo(pending, activeApiKey);
+                            return;
+                        } catch {
+                            localStorage.removeItem(PENDING_GENERATION_KEY);
+                        }
                     }
                     setConsoleState('idle');
+                    setCurrentGeneration(null);
                 }
             );
 
             abortRef.current = abort;
 
-            // Persist so polling can resume if the user navigates away
-            const pendingOptions = {
-                content_type: contentType,
-                orientation: request.orientation || options.orientation || 'landscape',
-                language: request.language,
-                captions_enabled: request.captions_enabled,
-                html_quality: request.html_quality,
-                target_audience: request.target_audience,
-                voice_gender: request.voice_gender,
-                tts_provider: request.tts_provider,
-                voice_id: request.voice_id,
-                target_duration: request.target_duration,
-                model: request.model,
-                quality_tier: request.quality_tier,
-            };
+            // Persist so polling can resume if the user navigates away or SSE drops.
             localStorage.setItem(
                 PENDING_GENERATION_KEY,
                 JSON.stringify({
@@ -993,23 +1246,14 @@ function VideoConsole() {
                 status: 'pending',
                 stage: 'PENDING',
                 created_at: new Date().toISOString(),
-                options: {
-                    content_type: contentType,
-                    orientation: request.orientation || options.orientation || 'landscape',
-                    language: request.language,
-                    captions_enabled: request.captions_enabled,
-                    html_quality: request.html_quality,
-                    voice_gender: request.voice_gender,
-                    tts_provider: request.tts_provider,
-                    voice_id: request.voice_id,
-                    target_audience: request.target_audience,
-                    target_duration: request.target_duration,
-                    model: request.model,
-                    quality_tier: request.quality_tier,
-                },
+                options: pendingOptions,
             });
         },
-        [activeApiKey, reviewModeEnabled]
+        // currentGeneration intentionally omitted from deps — the closure reads it
+        // only inside async callbacks where staleness is acceptable; including it
+        // would cause every progress event to trigger a re-render of the consumer.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [activeApiKey, reviewModeEnabled, options.orientation, startPollingForVideo]
     );
 
     const handleSelectHistory = useCallback(
@@ -1155,9 +1399,13 @@ function VideoConsole() {
                 return;
             }
 
-            // Failed items with no content to show
+            // Failed items with no content to show — give the user a clear hint
+            // that the row was clicked and explain why nothing rendered.
             setConsoleState('idle');
             setCurrentGeneration(null);
+            if (item.status === 'failed') {
+                toast.error('This generation failed. Click "Retry" in the row to resume.');
+            }
         },
         [activeApiKey, startPollingForVideo]
     );
@@ -1200,14 +1448,39 @@ function VideoConsole() {
         setConsoleState('idle');
     }, []);
 
+    /**
+     * Cancel an in-flight production from the pipeline panel. Aborts the
+     * SSE stream, kills polling, and clears the persisted pending key. The
+     * BE background task may keep running for a few more seconds before it
+     * notices the disconnect — we surface that via toast so the user
+     * doesn't expect immediate cleanup. Composer context is preserved so
+     * the user can re-submit with the same prompt + attachments.
+     */
+    const handleAbort = useCallback(() => {
+        if (abortRef.current) {
+            abortRef.current();
+            abortRef.current = null;
+        }
+        if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+        }
+        localStorage.removeItem(PENDING_GENERATION_KEY);
+        setSelectedHistoryId(null);
+        setCurrentGeneration(null);
+        setReviewScript('');
+        setConsoleState('idle');
+        toast.info(
+            "Stopped on your end. The server may take a moment to wind down — that's normal."
+        );
+    }, []);
+
     // Resume generation after script review
     const handleResumeFromReview = useCallback(() => {
         if (!activeApiKey || !currentGeneration) return;
 
         // Capture values from currentGeneration before entering the closure
         const resumeVideoId = currentGeneration.videoId;
-        const resumePrompt = currentGeneration.prompt;
-        const resumeContentType = currentGeneration.contentType;
         const resumeOptions = currentGeneration.options;
 
         setConsoleState('generating');
@@ -1225,7 +1498,10 @@ function VideoConsole() {
                     const audioUrl = event.files?.audio?.s3_url;
                     const timelineUrl = event.files?.timeline?.s3_url;
                     const wordsUrl = event.files?.words?.s3_url;
+                    const scriptUrl = event.files?.script?.s3_url;
 
+                    // Spread prev so per-shot/cumulative state survives stage transitions.
+                    // Auto-complete useEffect handles consoleState=complete.
                     setCurrentGeneration((prev) =>
                         prev
                             ? {
@@ -1236,11 +1512,11 @@ function VideoConsole() {
                                   htmlUrl: timelineUrl || prev.htmlUrl,
                                   audioUrl: audioUrl || prev.audioUrl,
                                   wordsUrl: wordsUrl || prev.wordsUrl,
+                                  scriptUrl: scriptUrl || prev.scriptUrl,
                               }
                             : null
                     );
 
-                    // Update history state during resume
                     setHistory((prev) =>
                         prev.map((h) =>
                             h.video_id === resumeVideoId
@@ -1255,27 +1531,19 @@ function VideoConsole() {
                                 : h
                         )
                     );
-
-                    // When HTML stage is complete, show the result
-                    // Use functional check via setCurrentGeneration to avoid stale closure
-                    setCurrentGeneration((prev) => {
-                        if (
-                            event.stage === 'HTML' &&
-                            (timelineUrl || prev?.htmlUrl) &&
-                            (audioUrl || prev?.audioUrl || !needsAudio(resumeContentType))
-                        ) {
-                            setConsoleState('complete');
-                            toast.success('Content generated successfully!');
-                        }
-                        return prev;
-                    });
                 } else if (event.type === 'completed') {
-                    setConsoleState('complete');
-                    toast.success('Content generated successfully!');
                     setCurrentGeneration((prev) =>
-                        prev ? { ...prev, stage: 'HTML', percentage: 100 } : null
+                        prev
+                            ? {
+                                  ...prev,
+                                  stage: 'HTML',
+                                  percentage: 100,
+                                  htmlUrl: prev.htmlUrl || event.files?.timeline,
+                                  audioUrl: prev.audioUrl || event.files?.audio,
+                                  wordsUrl: prev.wordsUrl || event.files?.words,
+                              }
+                            : null
                     );
-                    // Update history
                     setHistory((prev) =>
                         prev.map((h) =>
                             h.video_id === resumeVideoId
@@ -1283,6 +1551,24 @@ function VideoConsole() {
                                 : h
                         )
                     );
+                } else if (event.type === 'shot_done') {
+                    const shotMsg = event.total_shots
+                        ? `Generating visuals… shot ${event.shot_index + 1} / ${event.total_shots}`
+                        : event.message || 'Generating visuals…';
+                    setCurrentGeneration((prev) => {
+                        if (!prev) return null;
+                        const completed = (event.shot_index ?? 0) + 1;
+                        const total = event.total_shots ?? prev.shotsTotal;
+                        return {
+                            ...prev,
+                            stage: 'HTML',
+                            percentage: computeHtmlPercentage(completed, total),
+                            message: shotMsg,
+                            shotsCompleted: completed,
+                            shotsTotal: total,
+                            cumulativeTokens: event.cumulative_tokens ?? prev.cumulativeTokens,
+                        };
+                    });
                 } else if (event.type === 'error') {
                     toast.error(event.message || 'Generation failed');
                     setConsoleState('idle');
@@ -1329,7 +1615,9 @@ function VideoConsole() {
                         const audioUrl = event.files?.audio?.s3_url;
                         const timelineUrl = event.files?.timeline?.s3_url;
                         const wordsUrl = event.files?.words?.s3_url;
+                        const scriptUrl = event.files?.script?.s3_url;
 
+                        // Auto-complete useEffect handles the consoleState transition.
                         setCurrentGeneration((prev) =>
                             prev
                                 ? {
@@ -1340,6 +1628,7 @@ function VideoConsole() {
                                       htmlUrl: timelineUrl || prev.htmlUrl,
                                       audioUrl: audioUrl || prev.audioUrl,
                                       wordsUrl: wordsUrl || prev.wordsUrl,
+                                      scriptUrl: scriptUrl || prev.scriptUrl,
                                   }
                                 : null
                         );
@@ -1350,22 +1639,18 @@ function VideoConsole() {
                                     : h
                             )
                         );
-                        setCurrentGeneration((prev) => {
-                            if (
-                                event.stage === 'HTML' &&
-                                (timelineUrl || prev?.htmlUrl) &&
-                                (audioUrl || prev?.audioUrl)
-                            ) {
-                                setConsoleState('complete');
-                                toast.success('Content regenerated successfully!');
-                            }
-                            return prev;
-                        });
                     } else if (event.type === 'completed') {
-                        setConsoleState('complete');
-                        toast.success('Content regenerated successfully!');
                         setCurrentGeneration((prev) =>
-                            prev ? { ...prev, stage: 'HTML', percentage: 100 } : null
+                            prev
+                                ? {
+                                      ...prev,
+                                      stage: 'HTML',
+                                      percentage: 100,
+                                      htmlUrl: prev.htmlUrl || event.files?.timeline,
+                                      audioUrl: prev.audioUrl || event.files?.audio,
+                                      wordsUrl: prev.wordsUrl || event.files?.words,
+                                  }
+                                : null
                         );
                         setHistory((prev) =>
                             prev.map((h) =>
@@ -1374,6 +1659,24 @@ function VideoConsole() {
                                     : h
                             )
                         );
+                    } else if (event.type === 'shot_done') {
+                        const shotMsg = event.total_shots
+                            ? `Generating visuals… shot ${event.shot_index + 1} / ${event.total_shots}`
+                            : event.message || 'Generating visuals…';
+                        setCurrentGeneration((prev) => {
+                            if (!prev) return null;
+                            const completed = (event.shot_index ?? 0) + 1;
+                            const total = event.total_shots ?? prev.shotsTotal;
+                            return {
+                                ...prev,
+                                stage: 'HTML',
+                                percentage: computeHtmlPercentage(completed, total),
+                                message: shotMsg,
+                                shotsCompleted: completed,
+                                shotsTotal: total,
+                                cumulativeTokens: event.cumulative_tokens ?? prev.cumulativeTokens,
+                            };
+                        });
                     } else if (event.type === 'error') {
                         toast.error(event.message || 'Retry failed');
                         setConsoleState('idle');
@@ -1577,24 +1880,23 @@ function VideoConsole() {
                             </div>
                         )}
 
-                        {consoleState === 'generating' && currentGeneration && (
-                            <div className="mx-auto w-full max-w-3xl px-2 py-4 sm:px-4">
-                                <GenerationProgress
-                                    currentStage={currentGeneration.stage}
-                                    percentage={currentGeneration.percentage}
-                                    message={currentGeneration.message}
-                                    contentType={currentGeneration.contentType}
-                                    scriptUrl={currentGeneration.scriptUrl}
-                                    audioUrl={currentGeneration.audioUrl}
-                                    wordsUrl={currentGeneration.wordsUrl}
-                                    shotsCompleted={currentGeneration.shotsCompleted}
-                                    shotsTotal={currentGeneration.shotsTotal}
-                                    cumulativeTokens={currentGeneration.cumulativeTokens}
-                                    recentErrors={currentGeneration.recentErrors}
-                                    shotPlan={currentGeneration.shotPlan}
+                        {(consoleState === 'generating' || consoleState === 'complete') &&
+                            currentGeneration && (
+                                <PipelineLayout
+                                    state={derivePipelineFromLive(
+                                        currentGeneration satisfies LiveCurrentGeneration
+                                    )}
+                                    apiKey={activeApiKey ?? undefined}
+                                    onAbort={
+                                        consoleState === 'generating' ? handleAbort : undefined
+                                    }
+                                    onRetry={
+                                        currentGeneration?.videoId
+                                            ? () => handleRetry(currentGeneration.videoId)
+                                            : undefined
+                                    }
                                 />
-                            </div>
-                        )}
+                            )}
 
                         {consoleState === 'reviewing' && currentGeneration && (
                             <ScriptReview
@@ -1605,65 +1907,15 @@ function VideoConsole() {
                                 onDiscard={handleDiscardReview}
                             />
                         )}
-
-                        {consoleState === 'complete' &&
-                            currentGeneration?.htmlUrl &&
-                            (currentGeneration?.audioUrl ||
-                                !needsAudio(currentGeneration?.contentType)) &&
-                            activeApiKey && (
-                                <VideoResult
-                                    videoId={currentGeneration.videoId}
-                                    htmlUrl={currentGeneration.htmlUrl}
-                                    audioUrl={currentGeneration.audioUrl}
-                                    wordsUrl={currentGeneration.wordsUrl}
-                                    contentType={currentGeneration.contentType}
-                                    orientation={
-                                        currentGeneration.orientation ||
-                                        (options.orientation as VideoOrientation) ||
-                                        'landscape'
-                                    }
-                                    prompt={currentGeneration.prompt}
-                                    apiKey={activeApiKey}
-                                    tokenUsage={currentGeneration.tokenUsage}
-                                />
-                            )}
                     </div>
 
-                    {/* Composer pinned at the bottom only after a generation completes
-                        — so the user can refine or kick off a new prompt. In other
-                        states the Composer either lives inside the centered hero (idle)
-                        or is hidden entirely (generating / reviewing). */}
-                    {consoleState === 'complete' && (
-                        <div className="sticky bottom-0 z-20 border-t bg-background/80 p-2 backdrop-blur-md sm:p-3">
-                            <div className="mx-auto w-full max-w-3xl">
-                                <Composer
-                                    onGenerate={handleGenerate}
-                                    isGenerating={isGenerating}
-                                    disabled={!activeApiKey}
-                                    prompt={prompt}
-                                    onPromptChange={setPrompt}
-                                    options={options}
-                                    onOptionsChange={setOptions}
-                                    reviewModeEnabled={reviewModeEnabled}
-                                    onReviewModeChange={setReviewModeEnabled}
-                                    apiKey={activeApiKey}
-                                    variant="docked"
-                                    attachments={attachments}
-                                    onAttachmentsChange={setAttachments}
-                                    selectedInputVideoIds={selectedInputVideoIds}
-                                    onSelectedInputVideoIdsChange={setSelectedInputVideoIds}
-                                    inputVideoAudio={inputVideoAudio}
-                                    onInputVideoAudioChange={setInputVideoAudio}
-                                    muteTtsDuringSourceClips={muteTtsDuringSourceClips}
-                                    onMuteTtsDuringSourceClipsChange={setMuteTtsDuringSourceClips}
-                                    ignoredUrls={ignoredUrls}
-                                    onIgnoredUrlsChange={setIgnoredUrls}
-                                    routingOverrides={routingOverrides}
-                                    onRoutingOverridesChange={setRoutingOverrides}
-                                />
-                            </div>
-                        </div>
-                    )}
+                    {/* No docked Composer at the bottom while a video is in
+                        production or being inspected. Starting a new
+                        generation is intentionally a deliberate action — the
+                        "New Video" button in the History sidebar is the
+                        canonical entry point. Keeping the input here invited
+                        accidental new runs while the user was still reading
+                        through the current production. */}
                 </div>
             </div>
         </LayoutContainer>

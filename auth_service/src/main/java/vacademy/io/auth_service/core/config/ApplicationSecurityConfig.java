@@ -81,7 +81,12 @@ public class ApplicationSecurityConfig {
             "/auth-service/health/**",
             "/auth-service/v1/request-generic-whatsapp-otp",
             "/auth-service/v1/verify-generic-whatsapp-otp",
-            "/auth-service/v1/verify-generic-whatsapp-otp-login"
+            "/auth-service/v1/verify-generic-whatsapp-otp-login",
+
+            // Vimotion onboarding (sister product) — public signup flow
+            "/auth-service/v1/vimotion/request-signup-otp",
+            "/auth-service/v1/vimotion/verify-signup-otp",
+            "/auth-service/v1/vimotion/signup"
     };
 
     @Autowired

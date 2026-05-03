@@ -377,6 +377,29 @@ export interface SubStageEvent {
     video_id?: string;
     /** Director shot count — only present when sub_stage === 'director_done' */
     shot_count?: number;
+    /** Full Director shot plan — only present when sub_stage === 'director_done' */
+    shot_plan?: Array<{
+        shot_index: number;
+        shot_type: string;
+        start_time: number;
+        end_time: number;
+        duration_s: number;
+        narration_excerpt?: string;
+    }>;
+    /** Per-shot index for avatar_* sub-stages */
+    shot_index?: number;
+    /** Per-shot total for avatar_* sub-stages */
+    host_shot_count?: number;
+    /** Per-shot completed count for avatar_* sub-stages */
+    host_shot_completed?: number;
+    /** Error string for avatar_failed sub-stage */
+    error?: string;
+    /** Lyria chunk index for background_music_segment */
+    segment_index?: number;
+    /** Lyria total chunks for background_music_segment */
+    segment_total?: number;
+    /** Final S3 URL of the merged track for background_music_done */
+    url?: string;
     /** Per-shot token cost — only present on script/html stage completion sub-stages */
     token_delta?: {
         prompt_tokens: number;
@@ -509,6 +532,100 @@ export interface GenerationProgress {
     last_event?: Record<string, unknown>;
 }
 
+/**
+ * Avatar host snapshot persisted at `extra_metadata.host` once the AvatarBatch
+ * sub-stage runs. Mirrors the BE `_emeta["host"]` block. Only the fields the
+ * FE currently reads are typed — additional cost/diagnostics fields exist on
+ * the BE block but aren't surfaced here.
+ */
+export interface VideoMetadataHostBlock {
+    enabled?: boolean;
+    type?: 'avatar' | 'raw';
+    avatar?: {
+        face_image_url?: string;
+        avatar_model?: string;
+        quality?: '480p' | '720p';
+    };
+    outputs?: {
+        host_shot_count?: number;
+        total_host_seconds?: number;
+        shot_artifacts?: Array<{
+            shot_index: number;
+            host_image_url?: string;
+            avatar_video_url?: string;
+            duration_s?: number;
+            duration_s_actual?: number;
+            status?: string;
+            error?: string;
+        }>;
+        errors?: Array<{ shot_index: number; error?: string; stage?: string }>;
+    };
+}
+
+/**
+ * Snapshot of pre-script `scrape_url` outcomes. BE writes this from
+ * WebContentCaptureService.capture_urls() into `intent_outcomes`.
+ */
+export interface VideoMetadataScrapeArtifacts {
+    urls_attempted?: string[];
+    files_captured?: Array<{
+        url?: string;
+        name?: string;
+        type?: string;
+    }>;
+    files_count?: number;
+    screenshot_count?: number;
+    inline_image_count?: number;
+    text_chars?: number;
+    text_excerpt?: string;
+    error?: string;
+}
+
+/** Snapshot of pre-script `web_search` outcomes. */
+export interface VideoMetadataSearchArtifacts {
+    query?: string;
+    answer?: string;
+    answer_chars?: number;
+    sources?: Array<{
+        url?: string;
+        host?: string;
+        title?: string;
+        snippet?: string;
+    }>;
+    sources_count?: number;
+    error?: string;
+}
+
+/**
+ * Pre-script preamble outcomes — what the intent router decided to do and
+ * what the resulting tool calls captured. Persisted at
+ * `extra_metadata.intent_outcomes`.
+ */
+export interface VideoMetadataIntentOutcomes {
+    tools_enabled?: string[];
+    scrape_url_artifacts?: VideoMetadataScrapeArtifacts | null;
+    web_search_artifacts?: VideoMetadataSearchArtifacts | null;
+    video_type?: Record<string, unknown>;
+    routing_plan?: Record<string, unknown>;
+}
+
+/**
+ * Subset of `extra_metadata` the FE pipeline view reads. Returned inside
+ * `VideoStatusResponse.metadata` (BE writes `metadata` via `extra_metadata`).
+ */
+export interface VideoStatusMetadata {
+    user_selections?: {
+        host?: { type?: 'avatar' | 'raw' };
+        generate_avatar?: boolean;
+        background_music_enabled?: boolean | null;
+    };
+    host?: VideoMetadataHostBlock;
+    /** Top-level legacy mirror of background_music_enabled. */
+    background_music_enabled?: boolean | null;
+    intent_outcomes?: VideoMetadataIntentOutcomes;
+    [key: string]: unknown;
+}
+
 export interface VideoStatusResponse {
     id: string;
     video_id: string;
@@ -522,6 +639,9 @@ export interface VideoStatusResponse {
     created_at: string;
     /** Real-time sub-stage breakdown — populated while generation is in progress and after completion */
     generation_progress?: GenerationProgress | null;
+    /** BE-side `extra_metadata` — see VideoStatusMetadata for the surface area we read. */
+    metadata?: VideoStatusMetadata | null;
+    token_usage?: TokenUsage | null;
 }
 
 export interface HistoryItem {
@@ -781,14 +901,9 @@ export function generateVideo(
 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
+                        const jsonStr = line.slice(6).trim();
+                        if (!jsonStr) continue;
                         try {
-                            let jsonStr = line.slice(6).trim();
-                            // Handle Python-style single quotes by converting to double quotes
-                            jsonStr = jsonStr
-                                .replace(/'/g, '"')
-                                .replace(/None/g, 'null')
-                                .replace(/True/g, 'true')
-                                .replace(/False/g, 'false');
                             const data = JSON.parse(jsonStr) as SSEEvent;
                             onProgress(data);
                         } catch (e) {
@@ -916,13 +1031,9 @@ export function resumeVideo(
 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
+                        const jsonStr = line.slice(6).trim();
+                        if (!jsonStr) continue;
                         try {
-                            let jsonStr = line.slice(6).trim();
-                            jsonStr = jsonStr
-                                .replace(/'/g, '"')
-                                .replace(/None/g, 'null')
-                                .replace(/True/g, 'true')
-                                .replace(/False/g, 'false');
                             const data = JSON.parse(jsonStr) as SSEEvent;
                             onProgress(data);
                         } catch (e) {
@@ -994,13 +1105,9 @@ export function retryVideo(
 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
+                        const jsonStr = line.slice(6).trim();
+                        if (!jsonStr) continue;
                         try {
-                            let jsonStr = line.slice(6).trim();
-                            jsonStr = jsonStr
-                                .replace(/'/g, '"')
-                                .replace(/None/g, 'null')
-                                .replace(/True/g, 'true')
-                                .replace(/False/g, 'false');
                             const data = JSON.parse(jsonStr) as SSEEvent;
                             onProgress(data);
                         } catch (e) {
@@ -1288,18 +1395,34 @@ export async function getRemoteHistory(
     const data: RemoteHistoryItem[] = await response.json();
 
     return data.map((item) => {
-        // Pull persisted fields out of item.metadata when present.
-        // The pipeline stores visual_style, orientation, quality_tier here so history
-        // can reconstruct the original generation settings faithfully.
+        // Pull persisted fields out of item.metadata when present. The pipeline
+        // writes the original request snapshot to metadata.user_selections (and
+        // a subset to top-level legacy keys) so history can reconstruct the
+        // original generation settings faithfully.
         const meta = (item.metadata || {}) as Record<string, unknown>;
-        const metaVisualStyle =
-            typeof meta.visual_style === 'string' ? (meta.visual_style as VisualStyle) : 'standard';
-        const metaOrientation =
-            typeof meta.orientation === 'string'
-                ? (meta.orientation as VideoOrientation)
-                : 'landscape';
-        const metaQualityTier =
-            typeof meta.quality_tier === 'string' ? (meta.quality_tier as QualityTier) : 'ultra';
+        const sel =
+            (meta.user_selections as Record<string, unknown> | undefined) ||
+            ({} as Record<string, unknown>);
+
+        const pickStr = (key: string, fallback: string): string => {
+            const v = sel[key] ?? meta[key];
+            return typeof v === 'string' ? v : fallback;
+        };
+        const pickBool = (key: string, fallback: boolean): boolean => {
+            const v = sel[key] ?? meta[key];
+            return typeof v === 'boolean' ? v : fallback;
+        };
+        const pickStrOrUndef = (key: string): string | undefined => {
+            const v = sel[key] ?? meta[key];
+            return typeof v === 'string' ? v : undefined;
+        };
+
+        const orientation = pickStr('orientation', 'landscape') as VideoOrientation;
+        const qualityTier = pickStr('quality_tier', 'ultra') as QualityTier;
+        const visualStyle = pickStr('visual_style', 'standard') as VisualStyle;
+        const voiceGender = pickStr('voice_gender', 'female') as VoiceGender;
+        const ttsProvider = pickStr('tts_provider', 'standard') as TtsProvider;
+        const htmlQuality = pickStr('html_quality', 'advanced') as 'classic' | 'advanced';
         return {
             id: item.id,
             video_id: item.video_id,
@@ -1311,20 +1434,20 @@ export async function getRemoteHistory(
             html_url: item.s3_urls.timeline,
             audio_url: item.s3_urls.audio,
             words_url: item.s3_urls.words,
-            // Reconstruct options, preferring values from item.metadata over static defaults
             options: {
                 content_type: item.content_type,
-                language: item.language,
-                voice_gender: 'female',
-                tts_provider: 'standard',
-                captions_enabled: true,
-                html_quality: 'advanced',
-                target_audience: 'General/Adult',
-                target_duration: '2-3 minutes',
-                model: '',
-                quality_tier: metaQualityTier,
-                orientation: metaOrientation,
-                visual_style: metaVisualStyle,
+                language: pickStr('language', item.language),
+                voice_gender: voiceGender,
+                tts_provider: ttsProvider,
+                voice_id: pickStrOrUndef('voice_id'),
+                captions_enabled: pickBool('captions_enabled', true),
+                html_quality: htmlQuality,
+                target_audience: pickStr('target_audience', 'General/Adult'),
+                target_duration: pickStr('target_duration', '2-3 minutes'),
+                model: pickStr('model', ''),
+                quality_tier: qualityTier,
+                orientation,
+                visual_style: visualStyle,
             },
             token_usage: item.token_usage ?? null,
         };
@@ -1374,6 +1497,39 @@ export async function regenerateFrame(
     }
 
     return response.json();
+}
+
+/**
+ * Persist a single frame's HTML back to the timeline. Companion to
+ * `regenerateFrame`: call this with the `frame_index` + `new_html` returned
+ * from regenerate (or any locally-edited HTML) to commit the change.
+ *
+ * The pipeline view's "Regenerate this scene" panel uses this to accept
+ * the AI's new HTML directly — no roundtrip through the editor's save path.
+ */
+export async function updateFrame(
+    videoId: string,
+    apiKey: string,
+    frameIndex: number,
+    newHtml: string
+): Promise<void> {
+    const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/frame/update`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Institute-Key': apiKey,
+        },
+        body: JSON.stringify({
+            video_id: videoId,
+            frame_index: frameIndex,
+            new_html: newHtml,
+        }),
+    });
+
+    if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText);
+        throw new Error(`Failed to update frame: ${text}`);
+    }
 }
 
 // ---------------------------------------------------------------------------

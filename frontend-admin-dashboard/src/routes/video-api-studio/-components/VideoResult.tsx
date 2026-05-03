@@ -101,10 +101,16 @@ function GenerationDetails({
     const [errorsOpen, setErrorsOpen] = useState(false);
 
     // Prefer the richer cumulative_tokens from generation_progress if available
-    const totalPrompt = genProgress?.cumulative_tokens?.prompt_tokens ?? tokenUsage?.prompt_tokens ?? 0;
-    const totalCompletion = genProgress?.cumulative_tokens?.completion_tokens ?? tokenUsage?.completion_tokens ?? 0;
-    const totalTokens = genProgress?.cumulative_tokens?.total_tokens ?? tokenUsage?.total_tokens ?? 0;
-    const estCost = genProgress?.cumulative_tokens?.estimated_cost_usd ?? tokenUsage?.estimated_cost_usd ?? null;
+    const totalPrompt =
+        genProgress?.cumulative_tokens?.prompt_tokens ?? tokenUsage?.prompt_tokens ?? 0;
+    const totalCompletion =
+        genProgress?.cumulative_tokens?.completion_tokens ?? tokenUsage?.completion_tokens ?? 0;
+    const totalTokens =
+        genProgress?.cumulative_tokens?.total_tokens ?? tokenUsage?.total_tokens ?? 0;
+    const estCost =
+        genProgress?.cumulative_tokens?.estimated_cost_usd ??
+        tokenUsage?.estimated_cost_usd ??
+        null;
 
     // Sort shots by index for stable display (backend stores reverse-chronological)
     const shotsHistory = (genProgress?.shots_history ?? [])
@@ -123,14 +129,17 @@ function GenerationDetails({
                     {tokenUsage?.model && (
                         <>
                             <dt className="text-muted-foreground">Model</dt>
-                            <dd className="truncate font-mono">{tokenUsage.model.split('/').pop()}</dd>
+                            <dd className="truncate font-mono">
+                                {tokenUsage.model.split('/').pop()}
+                            </dd>
                         </>
                     )}
                     <dt className="text-muted-foreground">LLM tokens</dt>
                     <dd>
                         {totalTokens.toLocaleString()}
                         <span className="ml-1 text-muted-foreground/70">
-                            ({totalPrompt.toLocaleString()} in / {totalCompletion.toLocaleString()} out)
+                            ({totalPrompt.toLocaleString()} in / {totalCompletion.toLocaleString()}{' '}
+                            out)
                         </span>
                     </dd>
                     {(tokenUsage?.image_count ?? 0) > 0 && (
@@ -177,25 +186,45 @@ function GenerationDetails({
                                     <thead className="sticky top-0 bg-muted/60 text-muted-foreground">
                                         <tr>
                                             <th className="px-2 py-1 text-left font-medium">#</th>
-                                            <th className="px-2 py-1 text-left font-medium">Type</th>
-                                            <th className="px-2 py-1 text-right font-medium">Dur</th>
-                                            <th className="px-2 py-1 text-right font-medium">Tokens</th>
+                                            <th className="px-2 py-1 text-left font-medium">
+                                                Type
+                                            </th>
+                                            <th className="px-2 py-1 text-right font-medium">
+                                                Dur
+                                            </th>
+                                            <th className="px-2 py-1 text-right font-medium">
+                                                Tokens
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {shotsHistory.map((s) => {
                                             const td = s.token_delta;
-                                            const tTotal = (td?.prompt_tokens ?? 0) + (td?.completion_tokens ?? 0);
+                                            const tTotal =
+                                                (td?.prompt_tokens ?? 0) +
+                                                (td?.completion_tokens ?? 0);
                                             return (
-                                                <tr key={s.shot_index} className="border-t border-border/50">
-                                                    <td className="px-2 py-1 font-mono">{s.shot_index + 1}</td>
-                                                    <td className="px-2 py-1">{s.shot_type.replace(/_/g, ' ')}</td>
-                                                    <td className="px-2 py-1 text-right tabular-nums">{s.duration_s.toFixed(1)}s</td>
+                                                <tr
+                                                    key={s.shot_index}
+                                                    className="border-t border-border/50"
+                                                >
+                                                    <td className="px-2 py-1 font-mono">
+                                                        {s.shot_index + 1}
+                                                    </td>
+                                                    <td className="px-2 py-1">
+                                                        {s.shot_type.replace(/_/g, ' ')}
+                                                    </td>
+                                                    <td className="px-2 py-1 text-right tabular-nums">
+                                                        {s.duration_s.toFixed(1)}s
+                                                    </td>
                                                     <td className="px-2 py-1 text-right tabular-nums">
                                                         {tTotal.toLocaleString()}
                                                         {td && (
                                                             <span className="ml-1 text-muted-foreground/60">
-                                                                ({td.prompt_tokens.toLocaleString()}/{td.completion_tokens.toLocaleString()})
+                                                                ({td.prompt_tokens.toLocaleString()}
+                                                                /
+                                                                {td.completion_tokens.toLocaleString()}
+                                                                )
                                                             </span>
                                                         )}
                                                     </td>
@@ -228,10 +257,14 @@ function GenerationDetails({
                                     >
                                         <span className="font-medium">Shot {e.shot_index + 1}</span>
                                         {e.shot_type && (
-                                            <span className="ml-1 text-amber-600">({e.shot_type})</span>
+                                            <span className="ml-1 text-amber-600">
+                                                ({e.shot_type})
+                                            </span>
                                         )}
                                         {e.retrying && (
-                                            <span className="ml-1 text-blue-600">· retry {e.attempt ?? '?'}</span>
+                                            <span className="ml-1 text-blue-600">
+                                                · retry {e.attempt ?? '?'}
+                                            </span>
                                         )}
                                         <div className="mt-0.5 font-mono text-[10px] text-amber-700">
                                             {e.error.slice(0, 240)}
@@ -544,6 +577,8 @@ export function VideoResult({
                 avatarUrl: '',
                 apiKey: apiKey ?? '',
                 orientation: orientation ?? 'landscape',
+                // No specific shot to focus on — opens at the first scene.
+                focusTime: undefined,
             },
         });
     }, [navigate, videoId, htmlUrl, audioUrl, wordsUrl, apiKey, orientation]);

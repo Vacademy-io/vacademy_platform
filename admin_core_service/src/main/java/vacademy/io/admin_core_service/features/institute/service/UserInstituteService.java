@@ -172,6 +172,9 @@ public class UserInstituteService {
         institute.setAffiliationNumber(instituteInfo.getAffiliationNumber());
         institute.setStaffStrength(instituteInfo.getStaffStrength());
         institute.setSchoolStrength(instituteInfo.getSchoolStrength());
+        institute.setAccountType(instituteInfo.getAccountType());
+        institute.setProduct(instituteInfo.getProduct());
+        institute.setCompanySize(instituteInfo.getCompanySize());
         return institute;
     }
 
@@ -248,6 +251,9 @@ public class UserInstituteService {
         updateIfNotNull(instituteInfoDTO.getAffiliationNumber(), institute::setAffiliationNumber);
         updateIfNotNull(instituteInfoDTO.getStaffStrength(), institute::setStaffStrength);
         updateIfNotNull(instituteInfoDTO.getSchoolStrength(), institute::setSchoolStrength);
+        updateIfNotNull(instituteInfoDTO.getAccountType(), institute::setAccountType);
+        updateIfNotNull(instituteInfoDTO.getProduct(), institute::setProduct);
+        updateIfNotNull(instituteInfoDTO.getCompanySize(), institute::setCompanySize);
 
         // Debug logging for values after update (before save)
         log.info("[ADMIN-CORE-SERVICE] updateInstituteDetails - Values after update (before save):");

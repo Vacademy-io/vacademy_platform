@@ -63,11 +63,20 @@ const publicRoutes = [
     '/landing',
     '/pricing',
     '/content',
+    '/vim/onboarding',
+    '/vim/login',
 ];
+
+const isVimotionHost = () =>
+    typeof window !== 'undefined' &&
+    window.location.hostname.toLowerCase().includes('vimotion');
 
 // Helper functions to break down the complex beforeLoad logic
 const handleRootPathRedirect = (location: any) => {
     if (location.pathname === '/') {
+        if (isVimotionHost()) {
+            throw redirect({ to: '/vim' });
+        }
         const subdomain =
             typeof window !== 'undefined' ? window.location.hostname.split('.')[0] : '';
         const isVoltSubdomain = subdomain === 'volt';

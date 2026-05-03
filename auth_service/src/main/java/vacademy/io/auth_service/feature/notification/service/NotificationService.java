@@ -104,6 +104,24 @@ public class NotificationService {
         return response.getBody();
     }
 
+    /**
+     * Send a WhatsApp OTP using the platform-default Meta credentials configured
+     * on notification_service. Used for pre-signup flows that have no institute
+     * scope yet (e.g. Vimotion onboarding).
+     */
+    public String sendPlatformDefaultWhatsAppOtp(String phoneNumber) {
+        WhatsAppOTPRequest body = WhatsAppOTPRequest.builder()
+                .phoneNumber(phoneNumber)
+                .build();
+        ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
+                clientName,
+                HttpMethod.POST.name(),
+                notificationServerBaseUrl,
+                NotificationConstant.SEND_PLATFORM_DEFAULT_WHATSAPP_OTP,
+                body);
+        return response.getBody();
+    }
+
     public Boolean verifyWhatsAppOTP(WhatsAppOTPVerifyRequest request) {
         ResponseEntity<String> response = internalClientUtils.makeHmacRequest(
                 clientName,

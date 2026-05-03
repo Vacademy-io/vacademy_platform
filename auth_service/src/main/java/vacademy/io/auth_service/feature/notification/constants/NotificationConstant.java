@@ -4,6 +4,7 @@ public class NotificationConstant {
     public static final String SEND_EMAIL_OTP = "/notification-service/internal/v1/send-email-otp";
     public static final String VERIFY_EMAIL_OTP = "/notification-service/internal/v1/verify-email-otp";
     public static final String SEND_WHATSAPP_OTP = "/notification-service/internal/v1/send-whatsapp-otp";
+    public static final String SEND_PLATFORM_DEFAULT_WHATSAPP_OTP = "/notification-service/internal/v1/send-platform-default-whatsapp-otp";
     public static final String VERIFY_WHATSAPP_OTP = "/notification-service/internal/v1/verify-whatsapp-otp";
     public static final String UNIFIED_SEND = "/notification-service/internal/v1/send";
 }

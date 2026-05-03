@@ -7,7 +7,7 @@ export const Route = createLazyFileRoute('/video-api-studio/edit/$videoId/')({
 
 function VideoEditorRoute() {
     const { videoId } = useParams({ from: '/video-api-studio/edit/$videoId/' });
-    const { htmlUrl, audioUrl, wordsUrl, avatarUrl, apiKey, orientation } = useSearch({
+    const { htmlUrl, audioUrl, wordsUrl, avatarUrl, apiKey, orientation, focusTime } = useSearch({
         from: '/video-api-studio/edit/$videoId/',
     });
 
@@ -20,6 +20,7 @@ function VideoEditorRoute() {
             avatarUrl={avatarUrl}
             apiKey={apiKey}
             orientation={orientation}
+            focusTime={focusTime}
         />
     );
 }

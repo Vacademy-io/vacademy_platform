@@ -2184,6 +2184,79 @@ class VideoGenerationService:
         return video_record.to_dict()
 
 
+    # ──────────────────────────────────────────────────────────────────────
+    # Preloaded runtime catalog — what every regenerated shot can rely on
+    # already being on the page.
+    #
+    # The render harness (`generate_video.py`) injects a fixed set of CDN
+    # libraries + helper functions + base CSS into every shot's host
+    # document. Without telling the LLM about this surface, regen routinely:
+    #   • re-imports GSAP / D3 / etc. via <script src=…> (clobbers globals)
+    #   • invents libraries that aren't loaded (chart.js, three.js, jQuery)
+    #   • re-authors typography classes that already exist
+    #   • uses setTimeout / window.addEventListener('load', …), neither of
+    #     which work in the renderer's shadow-DOM-backed seek model
+    #
+    # This block is appended to BOTH the rich-context and legacy regen
+    # prompts so the constraint applies regardless of timeline vintage.
+    # Source of truth for what's actually preloaded:
+    #   ai-video-gen-main/generate_video.py (search for "<!-- GSAP -->")
+    # ──────────────────────────────────────────────────────────────────────
+    _PRELOADED_RUNTIME_BLOCK = """
+## PRELOADED RUNTIME (already loaded — DO NOT include script/style tags for these)
+
+Globally available JS libraries — use without imports / script tags:
+- GSAP 3.12.5 + MotionPathPlugin (named eases only — power3.out, expo.out, back.out, etc.)
+- MorphSVGPlugin: STUB ONLY (premium plugin not on public CDN). Won't morph — pick a different effect.
+- Mermaid 10 — wrap diagrams in `<div class="mermaid">…</div>`
+- KaTeX 0.16.9 — call `window.renderMath(selector?)` after inserting LaTeX (`$x^2$` / `$$\\\\frac{a}{b}$$`)
+- Prism 1.29.0 + autoloader — call `window.highlightCode()` after inserting `<pre><code class="language-js">`
+- D3 v7 (window.d3) — for custom SVG charts / scales
+- Howler 2.2.4 (window.Howl) — audio (rarely needed; pipeline handles narration)
+- Vivus 0.4.6 — call `window.animateSVG(idOrElement, duration, callback?)` for SVG draw-on
+- Rough Notation (window.RoughNotation) — annotate.show() handwritten highlights
+- Anime.js 3.2.1 — IMPORTANT: register seekable timelines, never autoplay:
+    `window._animeR({ instance: anime({ autoplay: false, ... }), startMs: 500 });`
+  Anime instances that don't go through `_animeR` will play in real time and desync from the rendered video.
+- Iconify — use the web component: `<iconify-icon icon="mdi:rocket"></iconify-icon>` (275k+ icons)
+
+Helper functions on `window`:
+- `window.renderMath(selector?)` — KaTeX wrapper, defaults to body
+- `window.highlightCode()` — Prism wrapper, scans the whole doc
+- `window.animateSVG(idOrEl, duration, callback?)` — Vivus draw-on
+
+Loaded fonts (Google Fonts, ready to use): Montserrat, Inter, Fira Code, Noto Sans
+
+Built-in CSS classes (reuse — don't re-author equivalents):
+- Typography:  .text-display (64px display), .text-h2 (48px h2), .text-body (28px body), .text-label (18px uppercase mono)
+- Layouts:     .full-screen-center, .layout-split (1fr 1fr), .image-split-layout
+- Hero shots:  .image-hero (with `.image-hero > img` getting Ken Burns), .image-text-overlay (with .gradient-bottom / .gradient-full / .gradient-center modifiers)
+- Video bg:    .video-hero (full-screen stock video)
+- Lower third: .lower-third + .lt-accent-bar / .lt-content / .lt-label / .lt-text
+- Process viz: .process-flow + .process-node, .equation-build-row + .eq-term / .eq-sep
+- Patterns:    .key-takeaway, .wrong-right-container + .wrong-box / .right-box
+- Inline:      .highlight (yellow marker), .emphasis (primary-colored bold)
+- Mermaid:     .mermaid (auto-centered)
+- Ken Burns motion (apply to `.image-hero > img`): .kb-zoom-in, .kb-zoom-out, .kb-pan-left, .kb-pan-right, .kb-pan-up, .kb-zoom-pan-tl
+- Entrance:    .shot-enter (CSS fade-in)
+
+Built-in CSS variables (always defined):
+- --primary-color, --accent-color, --text-color, --text-secondary, --background-color
+- --kb-duration (controls Ken Burns animation length)
+
+Prefer these tokens / classes over hardcoded values. They're how the rest of the run stays visually consistent.
+
+## RUNTIME GUARDRAILS (your shot fails or desyncs if you violate these)
+
+DO NOT include `<script src="…">` for any library above — they're already loaded once at the document level. A second copy will redefine `window.gsap` / `window.d3` etc. mid-render and break sibling shots.
+DO NOT use libraries that aren't in the list — chart.js, three.js, fabric.js, pdf.js, jQuery, lodash, react, vue are NOT loaded.
+DO NOT use `setTimeout` for animation timing — the render server steps through `gsap.globalTimeline` (and `_animeSeek`) frame-by-frame. setTimeout-driven motion will fire at real-world wall time, not video time, so it'll appear at the wrong frame in the rendered MP4.
+DO NOT wrap inline scripts in `window.addEventListener('load', …)` or `DOMContentLoaded` — the host document already fired those events before your shot was mounted into its shadow root.
+DO NOT touch `document.head`, `document.body`, `#camera-wrapper`, `#world-layer`, or `#ui-layer` — those are owned by the render harness.
+DO NOT inject `<style>` rules that override the built-in classes globally (e.g. redefining `.text-display`). Scope custom CSS to inner classes inside `#shot-root`.
+DO NOT hardcode fonts other than the four loaded above — anything else triggers a flash-of-unstyled-text in the rendered video.
+"""
+
     def _build_regen_context(
         self,
         timeline_data: Any,
@@ -2280,7 +2353,8 @@ class VideoGenerationService:
                 "2. PRESERVE all existing image tags <img src='...'> exactly. "
                 "Do not change image sources.\n"
                 "3. Apply requested text or CSS changes.\n"
-                "4. Return ONLY the new HTML code. No markdown, no explanations."
+                "4. Return ONLY the new HTML code. No markdown, no explanations.\n"
+                + self._PRELOADED_RUNTIME_BLOCK
             )
             user = (
                 f"ORIGINAL HTML:\n{original_html}\n\n"
@@ -2405,6 +2479,12 @@ class VideoGenerationService:
             "8. Never wrap inline scripts in `window.addEventListener('load', …)` — won't fire in the render server's shadow DOM.\n"
             "9. Return ONLY the new HTML code. No markdown fences, no commentary."
         )
+
+        # Append the preloaded-runtime catalog so the LLM knows what's
+        # already global (and what isn't). Keeps regen results from adding
+        # `<script src=…>` for libraries the render harness already loaded
+        # OR pulling in libraries that aren't loaded at all.
+        sections.append(self._PRELOADED_RUNTIME_BLOCK)
 
         system = "\n".join(sections)
         user = (

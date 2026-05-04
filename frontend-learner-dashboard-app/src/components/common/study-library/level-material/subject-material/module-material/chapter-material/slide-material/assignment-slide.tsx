@@ -789,6 +789,132 @@ const AssignmentSlide = ({
         </CardContent>
       </Card>
 
+      {/* Graded Results Banner — shown prominently at top when graded */}
+      {gradedMarks != null && (
+        <Card className="mb-4 sm:mb-6 overflow-hidden border-2 border-emerald-200 bg-white shadow-md">
+          {/* Hero strip */}
+          <div className="bg-gradient-to-r from-emerald-50 to-white px-4 sm:px-6 py-4 border-b border-emerald-100">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">
+                  Reviewed by Teacher
+                </p>
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900">
+                  Your Assignment Has Been Graded
+                </h2>
+              </div>
+            </div>
+          </div>
+
+          <CardContent className="space-y-4 px-4 sm:px-6 py-5">
+            {/* Score row */}
+            <div className="flex flex-wrap items-end gap-4">
+              <div className="flex flex-col">
+                <span className="text-xs font-medium text-gray-500">Your Score</span>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-3xl sm:text-4xl font-bold text-gray-900">
+                    {gradedMarks}
+                  </span>
+                  {totalMarks != null && (
+                    <span className="text-lg text-gray-400">/ {totalMarks}</span>
+                  )}
+                </div>
+              </div>
+              {isPassed != null && (
+                <span
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold ${
+                    isPassed
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-red-100 text-red-700'
+                  }`}
+                >
+                  {isPassed ? (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                      Passed
+                    </>
+                  ) : (
+                    <>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                      Not Passed
+                    </>
+                  )}
+                </span>
+              )}
+            </div>
+
+            {/* Feedback */}
+            {gradedFeedback && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <div className="mb-2 flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                  </svg>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Teacher's Feedback
+                  </span>
+                </div>
+                <p className="whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
+                  {gradedFeedback}
+                </p>
+              </div>
+            )}
+
+            {/* Checked Answer Copy */}
+            {checkedFileId && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  Checked Answer Copy
+                </p>
+                <button
+                  onClick={async () => {
+                    try {
+                      const url = await getPublicUrl(checkedFileId);
+                      if (url) window.open(url, '_blank');
+                    } catch (err) {
+                      console.error('Failed to get checked copy URL:', err);
+                    }
+                  }}
+                  className="group flex w-full items-center justify-between rounded-lg border-2 border-emerald-200 bg-emerald-50 px-4 py-3 transition-all hover:border-emerald-300 hover:bg-emerald-100 sm:w-auto sm:min-w-[360px]"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-white shadow-sm">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <path d="M10 12l-2 4h4l-2 4" />
+                      </svg>
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-emerald-900">
+                        View Your Checked Copy
+                      </p>
+                      <p className="text-xs text-emerald-700">
+                        Marked PDF from your teacher
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors group-hover:bg-emerald-700">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Download
+                  </div>
+                </button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Attached Documents Section */}
       {assignmentData.comma_separated_media_ids && assignmentData.comma_separated_media_ids.trim() !== '' && (
         <Card className="mb-4 sm:mb-6 bg-white shadow-sm">
@@ -943,55 +1069,6 @@ const AssignmentSlide = ({
         </>
       )}
 
-      {/* Grading Results */}
-      {gradedMarks != null && (
-        <Card className="mt-4 sm:mt-6 bg-white shadow-sm">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-lg sm:text-xl font-medium text-gray-900">
-              Results
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl font-bold text-gray-900">
-                  {gradedMarks}{totalMarks != null ? ` / ${totalMarks}` : ''}
-                </span>
-                {isPassed != null && (
-                  <span className={`rounded-full px-3 py-1 text-sm font-medium ${
-                    isPassed
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-red-100 text-red-700'
-                  }`}>
-                    {isPassed ? 'Passed' : 'Not Passed'}
-                  </span>
-                )}
-              </div>
-              {gradedFeedback && (
-                <div className="rounded-md bg-gray-50 p-3 border border-gray-200">
-                  <p className="text-xs font-medium text-gray-500 mb-1">Feedback</p>
-                  <p className="text-sm text-gray-700">{gradedFeedback}</p>
-                </div>
-              )}
-              {checkedFileId && (
-                <button
-                  onClick={async () => {
-                    try {
-                      const url = await getPublicUrl(checkedFileId);
-                      if (url) window.open(url, '_blank');
-                    } catch (err) {
-                      console.error('Failed to get checked copy URL:', err);
-                    }
-                  }}
-                  className="flex items-center gap-2 w-fit rounded-md border border-gray-200 bg-gray-50 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors"
-                >
-                  Download Checked Answer Copy
-                </button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };

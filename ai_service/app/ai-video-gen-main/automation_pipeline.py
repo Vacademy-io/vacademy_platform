@@ -6022,7 +6022,6 @@ class VideoGenerationPipeline:
           * Per-shot split / upload fails → that shot's AvatarShotResult is marked .error;
             other shots succeed.
         """
-        from pathlib import Path as _Path
         import subprocess as _sp_local
         import asyncio as _asyncio_local
         import urllib.request as _urlreq

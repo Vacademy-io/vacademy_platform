@@ -93,15 +93,17 @@ def _build_payload(
         raise ValueError(f"Unsupported custom-avatar model: {model!r}")
 
     if provider == "argil":
-        # Argil's audio_to_video catalog. Identity is locked to the enum;
-        # `audio_url` is an object ({url: ...}) per their OpenAPI schema.
+        # Argil's audio_to_video catalog. Identity is locked to the enum.
+        # `audio_url` is a plain string at the live endpoint — the llms.txt
+        # example shows an `{url: …}` object, but fal's actual validator
+        # rejects that with `"type": "string_type"`. Same shape as VEED.
         # `remove_background` defaults false (50% surcharge if true; we don't
         # surface that toggle in v1).
         if not external_avatar_id:
             raise ValueError("provider=argil requires external_avatar_id (catalog enum).")
         return {
             "avatar": external_avatar_id,
-            "audio_url": {"url": audio_url},
+            "audio_url": audio_url,
             "remove_background": False,
         }
 

@@ -3290,7 +3290,7 @@ export const CourseStructureDetails = ({
                             s assigned to this batch.
                         </p>
                     </div>
-                    <AddTeachers packageSessionId={batchPackageSessionId ?? ''} />
+                    <AddTeachers packageSessionId={batchPackageSessionId ?? ''} courseId={courseId} />
                 </div>
                 <TeachersList packageSessionId={batchPackageSessionId ?? ''} />
             </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useFormContext } from 'react-hook-form';
 import type * as z from 'zod';
-import { Loader } from 'lucide-react';
+import { Loader, Search, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -20,7 +20,7 @@ import type { PackageSessionDTO } from '@/routes/admin-package-management/-types
 import { fetchCourseStudyLibraryDetails } from '@/routes/study-library/courses/-services/getStudyLibraryDetails';
 import { MultiSelect } from '@/components/design-system/multi-select';
 import type { inviteUsersSchema } from './InviteUsersComponent';
-import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 const PAGE_SIZE = 10;
@@ -32,10 +32,25 @@ interface SubjectOption {
 
 interface BatchSubjectFormProps {
     initialBatchId?: string;
+    courseId?: string;
 }
 
-export default function BatchSubjectForm({ initialBatchId }: BatchSubjectFormProps) {
+export default function BatchSubjectForm({ initialBatchId, courseId }: BatchSubjectFormProps) {
     const form = useFormContext<z.infer<typeof inviteUsersSchema>>();
+
+    const [batchSearch, setBatchSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+
+    // Debounce search input by 300ms before firing the API
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(batchSearch), 300);
+        return () => clearTimeout(timer);
+    }, [batchSearch]);
+
+    // When inside a course, pre-filter by packageId so only that course's batches
+    // load by default. Once the user types a search, drop the filter so they can
+    // pick any batch across the institute.
+    const activePackageId = debouncedSearch ? undefined : courseId;
 
     const {
         data,
@@ -44,7 +59,7 @@ export default function BatchSubjectForm({ initialBatchId }: BatchSubjectFormPro
         hasNextPage,
         isFetchingNextPage,
     } = useInfiniteQuery({
-        queryKey: ['paginatedBatchesForTeacher'],
+        queryKey: ['paginatedBatchesForTeacher', debouncedSearch, activePackageId],
         queryFn: ({ pageParam = 0 }) =>
             fetchPaginatedBatches({
                 page: pageParam,
@@ -52,10 +67,13 @@ export default function BatchSubjectForm({ initialBatchId }: BatchSubjectFormPro
                 sortBy: 'created_at',
                 sortDirection: 'DESC',
                 statuses: ['ACTIVE'],
+                search: debouncedSearch || undefined,
+                packageId: activePackageId,
             }),
         getNextPageParam: (lastPage) =>
             lastPage.has_next ? lastPage.page_number + 1 : undefined,
         initialPageParam: 0,
+        staleTime: 5 * 60 * 1000, // batch list doesn't change frequently; skip background refetches
     });
 
     // Flatten all pages into a stable list (only changes when data changes)
@@ -106,6 +124,14 @@ export default function BatchSubjectForm({ initialBatchId }: BatchSubjectFormPro
         [allBatchItems]
     );
 
+    // Keep the initial batch at the top of the list
+    const sortedBatches = useMemo(() => {
+        if (!initialBatchId || debouncedSearch) return batches;
+        const initialIdx = batches.findIndex((b) => b.id === initialBatchId);
+        if (initialIdx <= 0) return batches;
+        return [batches[initialIdx]!, ...batches.slice(0, initialIdx), ...batches.slice(initialIdx + 1)];
+    }, [batches, initialBatchId, debouncedSearch]);
+
     // Fetch subjects for a batch's course when selected
     const fetchSubjectsForBatch = useCallback(
         async (batch: PackageSessionDTO) => {
@@ -148,13 +174,17 @@ export default function BatchSubjectForm({ initialBatchId }: BatchSubjectFormPro
         [] // no reactive deps — uses ref for dedup
     );
 
-    // Get subjects for a specific batch from cache
-    const getSubjectsByBatchId = (batchId: string): SubjectOption[] => {
-        const batch = allBatchItems.find((b) => b.id === batchId);
-        if (!batch) return [];
-        const key = `${batch.package_dto.id}_${batch.session.id}_${batch.level.id}`;
-        return subjectsCache[key] || [];
-    };
+    // Pre-compute subject options for all selected batches — avoids find() on every render
+    const subjectsByBatchId = useMemo(() => {
+        const map: Record<string, SubjectOption[]> = {};
+        for (const batchId of selectedBatches) {
+            const batch = allBatchItems.find((b) => b.id === batchId);
+            if (!batch) continue;
+            const key = `${batch.package_dto.id}_${batch.session.id}_${batch.level.id}`;
+            map[batchId] = subjectsCache[key] || [];
+        }
+        return map;
+    }, [selectedBatches, allBatchItems, subjectsCache]);
 
     // Fetch subjects when a batch is selected
     useEffect(() => {
@@ -210,8 +240,29 @@ export default function BatchSubjectForm({ initialBatchId }: BatchSubjectFormPro
                 </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 p-2">
+                {/* Batch search */}
+                <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
+                    <input
+                        type="text"
+                        placeholder="Search batches..."
+                        value={batchSearch}
+                        onChange={(e) => setBatchSearch(e.target.value)}
+                        className="w-full rounded-md border border-neutral-200 py-2 pl-8 pr-8 text-sm outline-none transition-colors focus:border-primary-400"
+                    />
+                    {batchSearch && (
+                        <button
+                            type="button"
+                            onClick={() => setBatchSearch('')}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600"
+                        >
+                            <X className="size-3.5" />
+                        </button>
+                    )}
+                </div>
+
                 <div className="space-y-4">
-                    {batches.map((batch) => (
+                    {sortedBatches.map((batch) => (
                         <div key={batch.id} className="space-y-2">
                             <div className="flex items-center space-x-2">
                                 <Checkbox
@@ -245,7 +296,7 @@ export default function BatchSubjectForm({ initialBatchId }: BatchSubjectFormPro
                                                     <FormControl>
                                                         <MultiSelect
                                                             selected={subjectSelections[batch.id] || []}
-                                                            options={getSubjectsByBatchId(batch.id)}
+                                                            options={subjectsByBatchId[batch.id] || []}
                                                             onChange={(selected) =>
                                                                 handleSubjectChange(batch.id, selected)
                                                             }
@@ -280,9 +331,9 @@ export default function BatchSubjectForm({ initialBatchId }: BatchSubjectFormPro
                     </div>
                 )}
 
-                {batches.length === 0 && !isLoading && (
+                {sortedBatches.length === 0 && !isLoading && (
                     <div className="py-4 text-center text-muted-foreground">
-                        No batches available
+                        {debouncedSearch ? 'No matching batches' : 'No batches available'}
                     </div>
                 )}
             </CardContent>

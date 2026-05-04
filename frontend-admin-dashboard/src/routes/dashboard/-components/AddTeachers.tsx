@@ -10,7 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { handleInviteTeachers } from '../-services/dashboard-services';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { INVITE_TEACHERS_URL, GET_INSTITUTE_USERS } from '@/constants/urls';
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense, useMemo } from 'react';
 import { Loader2, Search, UserPlus, Users } from 'lucide-react';
 
 const LazyBatchSubjectForm = lazy(() =>
@@ -42,15 +42,19 @@ interface TeamMember {
     mobile_number: string | null;
 }
 
-const AddTeachers = ({ packageSessionId }: { packageSessionId: string }) => {
+const AddTeachers = ({
+    packageSessionId,
+    courseId,
+}: {
+    packageSessionId: string;
+    courseId?: string;
+}) => {
     const [open, setOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'existing' | 'invite'>('existing');
     const instituteId = getInstituteId();
     const queryClient = useQueryClient();
 
-    // Existing team member state
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
-    const [filteredMembers, setFilteredMembers] = useState<TeamMember[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
     const [loadingMembers, setLoadingMembers] = useState(false);
@@ -64,56 +68,56 @@ const AddTeachers = ({ packageSessionId }: { packageSessionId: string }) => {
         },
         mode: 'onChange',
     });
-    const { getValues } = form;
-    const isValid = !!getValues('name') && !!getValues('email');
 
-    // Fetch all institute team members when dialog opens
+    // Reactive watched values — these subscribe to changes and drive button state
+    const watchedName = form.watch('name');
+    const watchedEmail = form.watch('email');
+    const batchMappings = form.watch('batch_subject_mappings');
+
+    const isValid = !!watchedName && !!watchedEmail;
+
+    const isTeacherValid = useMemo(() => {
+        if (!batchMappings || batchMappings.length === 0) return false;
+        return batchMappings.every((b) => b.subjectIds && b.subjectIds.length > 0);
+    }, [batchMappings]);
+
+    // Derive filtered list directly — no state + effect double-render
+    const filteredMembers = useMemo(() => {
+        if (!searchQuery.trim()) return teamMembers;
+        const q = searchQuery.toLowerCase();
+        return teamMembers.filter(
+            (m) =>
+                m.full_name?.toLowerCase().includes(q) ||
+                m.email?.toLowerCase().includes(q)
+        );
+    }, [teamMembers, searchQuery]);
+
+    // Fetch institute team members once when dialog opens
     useEffect(() => {
-        if (open && instituteId) {
-            setLoadingMembers(true);
-            authenticatedAxiosInstance({
-                method: 'POST',
-                url: GET_INSTITUTE_USERS,
-                params: { instituteId, pageNumber: 0, pageSize: 100 },
-                data: { roles: ['TEACHER', 'ADMIN'], status: ['ACTIVE'] },
-            })
-                .then((res) => {
-                    const data = res.data;
-                    // API returns either a plain array or { content: [...] }
-                    const rawList = Array.isArray(data) ? data : data?.content || [];
-                    const members: TeamMember[] = rawList.map((u: Record<string, unknown>) => ({
+        if (!open || !instituteId) return;
+        setLoadingMembers(true);
+        authenticatedAxiosInstance({
+            method: 'POST',
+            url: GET_INSTITUTE_USERS,
+            params: { instituteId, pageNumber: 0, pageSize: 100 },
+            data: { roles: ['TEACHER', 'ADMIN'], status: ['ACTIVE'] },
+        })
+            .then((res) => {
+                const data = res.data;
+                const rawList = Array.isArray(data) ? data : data?.content || [];
+                setTeamMembers(
+                    rawList.map((u: Record<string, unknown>) => ({
                         id: u.id as string,
                         full_name: u.full_name as string,
                         email: (u.email as string) || null,
                         username: (u.username as string) || null,
                         mobile_number: (u.mobile_number as string) || null,
-                    }));
-                    setTeamMembers(members);
-                    setFilteredMembers(members);
-                })
-                .catch(() => {
-                    setTeamMembers([]);
-                    setFilteredMembers([]);
-                })
-                .finally(() => setLoadingMembers(false));
-        }
+                    }))
+                );
+            })
+            .catch(() => setTeamMembers([]))
+            .finally(() => setLoadingMembers(false));
     }, [open, instituteId]);
-
-    // Filter members by search
-    useEffect(() => {
-        if (!searchQuery.trim()) {
-            setFilteredMembers(teamMembers);
-        } else {
-            const q = searchQuery.toLowerCase();
-            setFilteredMembers(
-                teamMembers.filter(
-                    (m) =>
-                        m.full_name?.toLowerCase().includes(q) ||
-                        m.email?.toLowerCase().includes(q)
-                )
-            );
-        }
-    }, [searchQuery, teamMembers]);
 
     const handleInviteUsersMutation = useMutation({
         mutationFn: ({
@@ -128,12 +132,9 @@ const AddTeachers = ({ packageSessionId }: { packageSessionId: string }) => {
             queryClient.invalidateQueries({ queryKey: ['facultyList'] });
             setOpen(false);
         },
-        onError: () => {
-            // error is handled by react-query; no need to re-throw
-        },
+        onError: () => {},
     });
 
-    // Mutation for assigning existing member
     const assignExistingMutation = useMutation({
         mutationFn: ({
             instituteId,
@@ -171,28 +172,13 @@ const AddTeachers = ({ packageSessionId }: { packageSessionId: string }) => {
         },
     });
 
-    const checkIsTeacherValid = () => {
-        const batch = form.watch('batch_subject_mappings');
-        if (!batch || batch.length === 0) {
-            return false;
-        }
-        // Require at least one subject selected per batch
-        return batch.every((b) => b.subjectIds && b.subjectIds.length > 0);
-    };
-
     function onSubmit(values: inviteUsersFormValues) {
-        handleInviteUsersMutation.mutate({
-            instituteId,
-            data: values,
-        });
+        handleInviteUsersMutation.mutate({ instituteId, data: values });
     }
 
     function onAssignExisting() {
         if (!selectedMember) return;
-        assignExistingMutation.mutate({
-            instituteId,
-            member: selectedMember,
-        });
+        assignExistingMutation.mutate({ instituteId, member: selectedMember });
     }
 
     const handleOpenChange = (isOpen: boolean) => {
@@ -282,11 +268,13 @@ const AddTeachers = ({ packageSessionId }: { packageSessionId: string }) => {
                                             }`}
                                             onClick={() => setSelectedMember(member)}
                                         >
-                                            <div className={`flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-medium ${
-                                                selectedMember?.id === member.id
-                                                    ? 'bg-primary-500 text-white'
-                                                    : 'bg-neutral-100 text-neutral-600'
-                                            }`}>
+                                            <div
+                                                className={`flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-medium ${
+                                                    selectedMember?.id === member.id
+                                                        ? 'bg-primary-500 text-white'
+                                                        : 'bg-neutral-100 text-neutral-600'
+                                                }`}
+                                            >
                                                 {member.full_name?.charAt(0)?.toUpperCase() || '?'}
                                             </div>
                                             <div className="min-w-0 flex-1">
@@ -318,22 +306,11 @@ const AddTeachers = ({ packageSessionId }: { packageSessionId: string }) => {
                                                 </div>
                                             }
                                         >
-                                            <LazyBatchSubjectForm initialBatchId={packageSessionId} />
+                                            <LazyBatchSubjectForm
+                                                initialBatchId={packageSessionId}
+                                                courseId={courseId}
+                                            />
                                         </Suspense>
-                                        <MyButton
-                                            type="button"
-                                            scale="large"
-                                            buttonType="primary"
-                                            layoutVariant="default"
-                                            disable={!checkIsTeacherValid() || assignExistingMutation.isPending}
-                                            onClick={onAssignExisting}
-                                        >
-                                            {assignExistingMutation.isPending ? (
-                                                <Loader2 className="size-4 animate-spin" />
-                                            ) : (
-                                                `Assign ${selectedMember.full_name}`
-                                            )}
-                                        </MyButton>
                                     </form>
                                 </FormProvider>
                             )}
@@ -392,25 +369,52 @@ const AddTeachers = ({ packageSessionId }: { packageSessionId: string }) => {
                                         </div>
                                     }
                                 >
-                                    <LazyBatchSubjectForm initialBatchId={packageSessionId} />
+                                    <LazyBatchSubjectForm
+                                        initialBatchId={packageSessionId}
+                                        courseId={courseId}
+                                    />
                                 </Suspense>
-                                <div className="flex w-full items-center justify-center text-center">
-                                    <MyButton
-                                        type="button"
-                                        scale="large"
-                                        buttonType="primary"
-                                        layoutVariant="default"
-                                        className="mb-4"
-                                        disable={!isValid || !checkIsTeacherValid()}
-                                        onClick={form.handleSubmit(onSubmit)}
-                                    >
-                                        Invite User
-                                    </MyButton>
-                                </div>
                             </form>
                         </FormProvider>
                     )}
                 </div>
+
+                {/* Always-visible footer with action button */}
+                {activeTab === 'existing' && selectedMember && (
+                    <div className="border-t border-neutral-200 p-4">
+                        <MyButton
+                            type="button"
+                            scale="large"
+                            buttonType="primary"
+                            layoutVariant="default"
+                            className="w-full"
+                            disable={!isTeacherValid || assignExistingMutation.isPending}
+                            onClick={onAssignExisting}
+                        >
+                            {assignExistingMutation.isPending ? (
+                                <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                                `Assign ${selectedMember.full_name}`
+                            )}
+                        </MyButton>
+                    </div>
+                )}
+                {activeTab === 'invite' && (
+                    <div className="border-t border-neutral-200 p-4">
+                        <div className="flex w-full items-center justify-center">
+                            <MyButton
+                                type="button"
+                                scale="large"
+                                buttonType="primary"
+                                layoutVariant="default"
+                                disable={!isValid || !isTeacherValid}
+                                onClick={form.handleSubmit(onSubmit)}
+                            >
+                                Invite User
+                            </MyButton>
+                        </div>
+                    </div>
+                )}
             </DialogContent>
         </Dialog>
     );

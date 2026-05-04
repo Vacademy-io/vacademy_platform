@@ -97,25 +97,20 @@ const ScormSlidePreview = ({ activeItem, isLearnerView = false }: ScormSlidePrev
             switch (action) {
                 case 'LMSInitialize':
                 case 'Initialize':
-                    console.log(`[SCORM Bridge] ${action}`);
                     break;
                 case 'LMSSetValue':
                 case 'SetValue':
-                    console.log(`[SCORM Bridge] ${action}("${key}", "${value}")`);
                     cmiDataRef.current[key] = value;
                     break;
                 case 'LMSGetValue':
                 case 'GetValue':
-                    console.log(`[SCORM Bridge] ${action}("${key}") = "${value}"`);
                     break;
                 case 'LMSCommit':
                 case 'Commit':
-                    console.log('[SCORM Bridge] Commit');
                     commitScormData();
                     break;
                 case 'LMSFinish':
                 case 'Terminate':
-                    console.log(`[SCORM Bridge] ${action}`);
                     commitScormData();
                     break;
             }

@@ -70,8 +70,6 @@ const loadPyodideInstance = async (): Promise<any> => {
                 // Use a fixed version for now - you can make this dynamic later
                 const pyodideVersion = '0.28.0';
 
-                console.log(`Loading Pyodide version: ${pyodideVersion}`);
-
                 // Dynamic import to avoid build issues
                 const { loadPyodide } = await import('pyodide');
 
@@ -82,7 +80,6 @@ const loadPyodideInstance = async (): Promise<any> => {
                     checkAPIVersion: true,
                 });
 
-                console.log('Pyodide loaded successfully');
                 clearTimeout(timeoutId);
 
                 if (pyodide) {

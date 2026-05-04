@@ -68,11 +68,6 @@ export function createQuizSlidePayload(
     const title =
         titleOverride?.trim() || generateUniqueQuizSlideTitle(allSlides) || 'Untitled Quiz';
 
-    console.log('[Quiz Payload] Creating quiz slide payload:', {
-        title,
-        slideId,
-    });
-
     const slideStatus = getSlideStatusForUser();
 
     return {

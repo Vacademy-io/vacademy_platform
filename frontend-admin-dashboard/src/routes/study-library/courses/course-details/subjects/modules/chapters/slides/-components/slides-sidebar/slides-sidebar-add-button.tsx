@@ -446,7 +446,7 @@ export const ChapterSidebarAddButton = () => {
             }
 
             case 'presentation': {
-                console.log('presentation payload text');
+
                 try {
                     // Create a new presentation slide payload
                     const slideTypeObj = {
@@ -456,7 +456,7 @@ export const ChapterSidebarAddButton = () => {
                     };
                     const payload = createPresentationSlidePayload(slideTypeObj, items || []);
                     payload.slide_order = 0; // Always insert at top
-                    console.log('payload', payload);
+
                     const response = await addUpdateDocumentSlide(payload);
 
                     if (response) {

@@ -109,7 +109,7 @@ export const AddVideoFileDialog = ({ openState }: { openState?: (open: boolean) 
             const fileId = await UploadFileInS3(
                 data.videoFile,
                 (progress) => {
-                    console.log(`Upload progress: ${progress}%`);
+
                 },
                 'your-user-id',
                 INSTITUTE_ID,

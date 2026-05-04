@@ -422,22 +422,8 @@ export const converDataToVideoFormat = ({
 };
 
 export const convertToAssignmentSlideBackendFormat = (assignmentSlide: AssignmentFormType) => {
-    console.log('[Assignment Backend Format] Converting assignment slide:', {
-        originalStartDate: assignmentSlide.startDate,
-        originalEndDate: assignmentSlide.endDate,
-        startDateType: typeof assignmentSlide.startDate,
-        endDateType: typeof assignmentSlide.endDate,
-    });
-
     const convertedStartDate = assignmentSlide.hasDateRange ? convertToUTC(assignmentSlide.startDate || '') : '';
     const convertedEndDate = assignmentSlide.hasDateRange ? convertToUTC(assignmentSlide.endDate || '') : '';
-
-    console.log('[Assignment Backend Format] Converted dates:', {
-        convertedStartDate,
-        convertedEndDate,
-        startDateValidISO: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(convertedStartDate),
-        endDateValidISO: /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(convertedEndDate),
-    });
 
     return {
         id: assignmentSlide.id,

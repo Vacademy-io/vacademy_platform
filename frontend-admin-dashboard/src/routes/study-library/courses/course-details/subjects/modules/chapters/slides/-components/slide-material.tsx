@@ -239,6 +239,7 @@ export const SlideMaterial = ({
             typeof msg === 'string' &&
             (msg.includes('Cannot resolve a DOM node from Slate node') ||
                 msg.includes('Cannot resolve a DOM point from Slate point'));
+        const controller = new AbortController();
         const handler = (event: ErrorEvent): void => {
             if (isStaleSlateDomError(event.error?.message)) {
                 event.preventDefault();
@@ -250,8 +251,8 @@ export const SlideMaterial = ({
                 console.warn('[Yoopta] Suppressed vendor DOM resolve error during paste/transform');
             }
         };
-        window.addEventListener('error', handler);
-        return () => window.removeEventListener('error', handler);
+        window.addEventListener('error', handler, { signal: controller.signal });
+        return () => controller.abort();
     }, [editor]);
 
     const selectionRef = useRef<HTMLDivElement | null>(null);
@@ -348,6 +349,12 @@ export const SlideMaterial = ({
     const EditorWithPlaceholder = ({ initialIsEmpty }: { initialIsEmpty: boolean }) => {
         const [showPlaceholder, setShowPlaceholder] = useState(initialIsEmpty);
         const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+        useEffect(() => {
+            return () => {
+                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+            };
+        }, []);
 
         useEffect(() => {
             setShowPlaceholder(initialIsEmpty);
@@ -1049,7 +1056,7 @@ export const SlideMaterial = ({
                 // For non-admin users with hidePublishButtons=true, auto-publish presentations
                 if (hidePublishButtons) {
                     newStatus = 'PUBLISHED';
-                    console.log('🎨 Auto-publishing presentation for non-admin user');
+
                     // Show toast notification for auto-publish and trigger approval button
                     if (activeItem.status !== 'PUBLISHED') {
                         import('sonner').then(({ toast }) => {
@@ -1152,9 +1159,9 @@ export const SlideMaterial = ({
             // Process images in HTML content before saving
             let processedHtmlString = htmlString;
             if (containsBase64Images(htmlString)) {
-                console.log('Processing base64 images in DOC content...');
+
                 const imageSize = getBase64ImagesSize(htmlString);
-                console.log(`Base64 images size: ${Math.round(imageSize / 1024)}KB`);
+
 
                 const { processedHtml, uploadedImages, failedUploads } =
                     await processHtmlImages(htmlString);
@@ -1164,7 +1171,7 @@ export const SlideMaterial = ({
                     toast.error(`Warning: ${failedUploads} images failed to upload`);
                 }
                 if (uploadedImages > 0) {
-                    console.log(`Successfully processed ${uploadedImages} images`);
+
                 }
             }
 
@@ -2142,7 +2149,7 @@ export const SlideMaterial = ({
                 try {
                     // For non-admin users, use custom save function if available
                     if (customSaveFunction && slide) {
-                        console.log('🎨 Using custom save function for presentation');
+
                         await customSaveFunction(slide);
                         return;
                     }
@@ -2278,9 +2285,9 @@ export const SlideMaterial = ({
             let processedHtmlString = currentHtml;
             let uploadedImagesCount = 0;
             if (containsBase64Images(currentHtml)) {
-                console.log('Processing base64 images in DOC content...');
+
                 const imageSize = getBase64ImagesSize(currentHtml);
-                console.log(`Base64 images size: ${Math.round(imageSize / 1024)}KB`);
+
 
                 const { processedHtml, uploadedImages, failedUploads } =
                     await processHtmlImages(currentHtml);
@@ -2291,7 +2298,7 @@ export const SlideMaterial = ({
                     toast.error(`Warning: ${failedUploads} images failed to upload`);
                 }
                 if (uploadedImages > 0) {
-                    console.log(`Successfully processed ${uploadedImages} images`);
+
                     toast.success(`Slide saved with ${uploadedImages} images uploaded!`);
                 }
             }
@@ -2484,7 +2491,7 @@ export const SlideMaterial = ({
 
             // Use custom save function if provided (for non-admin users)
             if (customSaveFunction && activeItem) {
-                console.log('🔄 Using custom save function for non-admin');
+
                 await customSaveFunction(activeItem);
                 return; // Don't show additional toast as custom function handles it
             }

@@ -134,7 +134,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
                 newTitle = `Quiz ${counter}`;
             }
 
-            console.log('[AddQuizDialog] Duplicate title detected, using:', newTitle);
+
             finalTitle = newTitle;
         }
 
@@ -524,7 +524,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
             return null;
         }
 
-        console.log('[AddQuizDialog] Creating slide with questions:', questions);
+
         const slideId = await createSlide(questions);
 
         if (!slideId) {
@@ -532,7 +532,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
             return null;
         }
 
-        console.log('[AddQuizDialog] Slide created with ID:', slideId);
+
 
         // Immediately update the store with the new quiz data
         try {
@@ -666,22 +666,16 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
             // Set the new slide as active immediately
             setActiveItem(tempSlide);
 
-            console.log('[AddQuizDialog] ✅ Store updated immediately with new quiz data');
-
             openState?.(false);
             toast.success('Quiz created successfully!');
 
             // Refetch data in the background to get the complete backend data
             setTimeout(async () => {
-                console.log('[AddQuizDialog] Refetching data in background...');
                 const refreshed = await refetch();
 
                 if (refreshed.data) {
                     const refreshedSlide = refreshed.data.find((s) => s.id === slideId);
                     if (refreshedSlide) {
-                        console.log(
-                            '[AddQuizDialog] ✅ Background refresh completed, updating with backend data'
-                        );
                         setItems(refreshed.data as Slide[]);
                         setActiveItem(refreshedSlide as Slide);
                     }

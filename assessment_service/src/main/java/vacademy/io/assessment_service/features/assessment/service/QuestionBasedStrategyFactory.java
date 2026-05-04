@@ -27,6 +27,7 @@ public class QuestionBasedStrategyFactory {
         strategies.put(QuestionTypes.LONG_ANSWER.name(), new LongAnswerQuestionTypeBasedStrategy());
         strategies.put(QuestionTypes.NUMERIC.name(), new NUMERICQuestionTypeBasedStrategy());
         strategies.put(QuestionTypes.TRUE_FALSE.name(), new MCQSQuestionTypeBasedStrategy());
+        strategies.put(QuestionTypes.CODING.name(), new CodingQuestionTypeBasedStrategy());
         // Add more strategies here
     }
 

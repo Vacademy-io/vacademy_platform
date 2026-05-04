@@ -14,6 +14,7 @@ import { NumericInputWithKeypad } from "./otherQuestionTypes/numeric";
 import { ExpandableParagraph } from "./otherQuestionTypes/paragraph";
 import { OneWordInput } from "./otherQuestionTypes/OneWordInput";
 import { LongAnswerInput } from "./otherQuestionTypes/LongAnswerInput";
+import { CodingQuestionDisplay } from "./otherQuestionTypes/CodingQuestionDisplay";
 import { QuestionHtmlContent } from "./question-html-content";
 
 export function QuestionDisplay() {
@@ -245,6 +246,31 @@ export function QuestionDisplay() {
             return !isManualTest && <OneWordInput />;
           case QUESTION_TYPES.LONG_ANSWER:
             return !isManualTest && <LongAnswerInput />;
+          case QUESTION_TYPES.CODING: {
+            let codingConfig: import(
+              "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/coding-question/types"
+            ).CodingQuestionConfig | null = null;
+            try {
+              const parsed = JSON.parse(currentQuestion.evaluation_json || "{}");
+              codingConfig = parsed?.data ?? null;
+            } catch {
+              codingConfig = null;
+            }
+            if (!codingConfig) {
+              return (
+                <div className="text-sm text-muted-foreground">
+                  Coding question is missing configuration.
+                </div>
+              );
+            }
+            return (
+              <CodingQuestionDisplay
+                questionId={currentQuestion.question_id}
+                attemptId={assessment?.attempt_id}
+                config={codingConfig}
+              />
+            );
+          }
           case QUESTION_TYPES.MCQM:
           case QUESTION_TYPES.MCQS:
           case QUESTION_TYPES.TRUE_FALSE:

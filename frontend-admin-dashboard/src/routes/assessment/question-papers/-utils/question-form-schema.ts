@@ -65,4 +65,31 @@ export const questionsFormSchema = z.object({
     validAnswers: z.union([z.array(z.number()), z.null()]).optional(),
     questionResponseType: z.union([z.string(), z.null()]).optional(),
     subjectiveAnswerText: z.string().optional(),
+    codingConfig: z
+        .object({
+            problemHtml: z.string().default(''),
+            allowedLanguages: z.array(z.string()).default([]),
+            starterCode: z.record(z.string(), z.string()).default({}),
+            testCases: z
+                .array(
+                    z.object({
+                        id: z.string(),
+                        label: z.string().optional(),
+                        stdin: z.string().default(''),
+                        expectedStdout: z.string().default(''),
+                        visible: z.boolean().default(true),
+                    })
+                )
+                .default([]),
+            perRunLimits: z
+                .object({
+                    cpuSeconds: z.number().default(2),
+                    memoryKb: z.number().default(262144),
+                })
+                .default({ cpuSeconds: 2, memoryKb: 262144 }),
+            maxPoints: z.number().default(10),
+            sessionTimeMinutes: z.union([z.number(), z.null()]).optional(),
+            evaluationMode: z.enum(['AUTO', 'MANUAL']).default('AUTO'),
+        })
+        .optional(),
 });

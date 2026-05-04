@@ -205,6 +205,11 @@ public class AddQuestionPaperFromImportManager {
             case LONG_ANSWER:
                 handleLongAnswerQuestion(question, questionRequest);
                 break;
+            case CODING:
+                // CODING stores the full config inside autoEvaluationJson which
+                // initializeQuestion already copied over. No options to build,
+                // no validAnswers to parse — nothing else to do here.
+                break;
             default:
                 throw new IllegalArgumentException("Unsupported question type: " + questionRequest.getQuestionType());
         }
@@ -351,6 +356,9 @@ public class AddQuestionPaperFromImportManager {
                 question.setQuestionResponseType(QuestionResponseTypes.ONE_WORD.name());
             case "LONG_ANSWER":
                 question.setQuestionResponseType(QuestionResponseTypes.LONG_ANSWER.name());
+            case "CODING":
+                question.setQuestionResponseType(QuestionResponseTypes.CODE.name());
+                break;
             default:
                 break;
         }

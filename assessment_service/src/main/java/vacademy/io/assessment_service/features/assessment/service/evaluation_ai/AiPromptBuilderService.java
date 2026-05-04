@@ -82,6 +82,15 @@ public class AiPromptBuilderService {
                                                 - Consider structure, examples, and explanation quality
                                                 - Spelling errors should NOT reduce marks significantly
 
+                                                **For CODING Questions:**
+                                                - The student's answer is source code in a specific programming language, plus a verdict and per-test-case results computed in the browser sandbox.
+                                                - Use the verdict (ACCEPTED, PARTIAL, REJECTED, ERROR, TIMED_OUT), passedCount/totalCount, and the source code itself to judge correctness.
+                                                - Infer the time and space complexity (Big-O) of the submitted source code yourself — do NOT rely on any learner-declared complexity. Reason from the algorithm structure (loops, recursion, data structures used).
+                                                - Compare the runtime metrics — totalTimeMs (wall-clock across all tests) and peakMemoryKb — against the question's allowed limits when supplied (cpuSeconds × 1000 ms, memoryKb). Treat these as a sanity check on your inferred complexity: if measured time/memory comfortably fits within the allowed budget, that supports an efficient solution; if it brushes against the limit, suspect a worse complexity than the rubric expects.
+                                                - Award marks proportional to test-case pass rate; weight by code quality, edge-case handling, and your inferred complexity (when it matches or beats the rubric's expected bound, give full credit; if worse, partial).
+                                                - Do not penalise for code style unless the rubric explicitly mentions it.
+                                                - If the source code is missing or the verdict is ERROR/TIMED_OUT with no passing tests, the question is effectively NOT_ATTEMPTED for grading purposes.
+
                                                 **General Instructions:**
                                                 1. **IGNORE spelling errors and OCR mistakes** - Focus on the conceptual understanding, not spelling accuracy.
                                                 2. **CAREFULLY search** through the Markdown answer sheet above to find the answer to this specific question.

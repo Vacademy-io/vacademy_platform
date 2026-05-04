@@ -60,6 +60,7 @@ export function Navbar({
     resetAssessment,
     setPdfFile,
     pdfFile,
+    currentQuestion,
   } = useAssessmentStore();
 
   const navigate = useNavigate();
@@ -141,25 +142,51 @@ export function Navbar({
               state.questionStates[question.question_id]?.isVisited || false,
           };
 
-          if (evaluationType !== "MANUAL") {
-            return {
-              ...baseQuestionData,
-              responseData: {
+          // Submit the response payload whenever the assessment is AUTO, OR
+          // it's MANUAL but no PDF was uploaded (e.g. CODING-only assessment).
+          const codingAnswer = state.codingAnswers?.[question.question_id];
+          const includeResponse =
+            evaluationType !== "MANUAL" || !pdfFile;
+          if (includeResponse) {
+            let responseData: Record<string, unknown>;
+            if (question.question_type === "CODING") {
+              responseData = {
+                type: "CODING",
+                language: codingAnswer?.language || "",
+                sourceCode: codingAnswer?.sourceCode || "",
+                verdict: codingAnswer?.verdict || "",
+                passedCount: codingAnswer?.passedCount ?? 0,
+                totalCount: codingAnswer?.totalCount ?? 0,
+                score: codingAnswer?.score ?? 0,
+                totalTimeMs: codingAnswer?.totalTimeMs ?? 0,
+                peakMemoryKb: codingAnswer?.peakMemoryKb ?? 0,
+                testCaseResults: codingAnswer?.testCaseResults ?? [],
+                pasteAttemptCount: codingAnswer?.pasteAttemptCount ?? 0,
+              };
+            } else if (question.question_type === "NUMERIC") {
+              responseData = {
+                type: "NUMERIC",
+                validAnswer:
+                  normalizedAnswer !== undefined &&
+                  normalizedAnswer !== null &&
+                  !isNaN(parseFloat(normalizedAnswer))
+                    ? parseFloat(normalizedAnswer)
+                    : null,
+              };
+            } else if (
+              ["ONE_WORD", "LONG_ANSWER"].includes(question.question_type)
+            ) {
+              responseData = {
                 type: question.question_type,
-                ...(question.question_type === "NUMERIC"
-                  ? {
-                      validAnswer:
-                        normalizedAnswer !== undefined &&
-                        normalizedAnswer !== null &&
-                        !isNaN(parseFloat(normalizedAnswer))
-                          ? parseFloat(normalizedAnswer)
-                          : null,
-                    }
-                  : ["ONE_WORD", "LONG_ANSWER"].includes(question.question_type)
-                    ? { answer: normalizedAnswer || "" }
-                    : { optionIds: rawAnswer || [] }),
-              },
-            };
+                answer: normalizedAnswer || "",
+              };
+            } else {
+              responseData = {
+                type: question.question_type,
+                optionIds: rawAnswer || [],
+              };
+            }
+            return { ...baseQuestionData, responseData };
           } else {
             return baseQuestionData;
           }
@@ -254,7 +281,14 @@ export function Navbar({
       }
 
       return response?.data;
-    } else if (evaluationType === "AUTO") {
+    } else if (
+      evaluationType === "AUTO" ||
+      (evaluationType === "MANUAL" && !pdfFile)
+    ) {
+      // Fallback: MANUAL assessments without a PDF (e.g. CODING-only or any
+      // live-answer-only assessment) submit through the AUTO endpoint. The
+      // per-question evaluationType still controls whether each question is
+      // auto-scored or sits PENDING for evaluator override.
       const response = await authenticatedAxiosInstance.post(
         `${ASSESSMENT_SUBMIT}`,
         { json_content: JSON.stringify(formattedData) },
@@ -569,7 +603,8 @@ export function Navbar({
         </div>
 
         <div className="flex items-center gap-4">
-          {evaluationType === "MANUAL" ? (
+          {evaluationType === "MANUAL" &&
+          currentQuestion?.question_type !== "CODING" ? (
             <>
               <input
                 type="file"

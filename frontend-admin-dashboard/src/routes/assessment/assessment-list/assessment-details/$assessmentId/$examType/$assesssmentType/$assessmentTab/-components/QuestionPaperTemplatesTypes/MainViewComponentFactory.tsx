@@ -10,6 +10,7 @@ import { ComprehensiveNumericQuestionPaperTemplateMainView } from './Comprehensi
 import { OneWordQuestionPaperTemplateMainView } from './OneWordType/OneWordQuestionPaperTemplateMainView';
 import { LongAnswerQuestionPaperTemplateMainView } from './LongAnswerType/LongAnswerQuestionPaperTemplateMainView';
 import { TrueFalseQuestionPaperTemplateMainView } from './TrueFalse/TrueFalseQuestionPaperTemplateMainView';
+import { CodingQuestionPaperTemplateMainView } from './Coding/CodingQuestionPaperTemplateMainView';
 
 type MainViewComponentType = QuestionType;
 
@@ -25,6 +26,7 @@ const MainViewComponentsMap: Record<MainViewComponentType, MainViewComponent> = 
     ONE_WORD: OneWordQuestionPaperTemplateMainView,
     LONG_ANSWER: LongAnswerQuestionPaperTemplateMainView,
     TRUE_FALSE: TrueFalseQuestionPaperTemplateMainView,
+    CODING: CodingQuestionPaperTemplateMainView,
 };
 
 export const MainViewComponentFactory = (params: {

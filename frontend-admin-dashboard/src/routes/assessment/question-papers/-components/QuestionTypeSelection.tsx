@@ -18,7 +18,7 @@ import {
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { QuestionPaperUpload } from './QuestionPaperUpload';
-import { X } from '@phosphor-icons/react';
+import { Code, X } from '@phosphor-icons/react';
 import useDialogStore from '../-global-states/question-paper-dialogue-close';
 import { useState } from 'react';
 import { QuestionType as QuestionTypeList } from '@/constants/dummy-data';
@@ -36,6 +36,11 @@ export function QuestionTypeSelection({
     const { setIsManualQuestionPaperDialogOpen } = useDialogStore();
     const [questionType, setQuestionType] = useState<QuestionTypeList>(QuestionTypeList.MCQS);
     console.log(questionType);
+    const CodingIcon = (
+        <div className="flex size-10 items-center justify-center rounded-md bg-orange-100">
+            <Code size={22} className="text-orange-500" weight="bold" />
+        </div>
+    );
     const QuestionType: React.FC<QuestionTypeProps> = ({
         icon,
         text,
@@ -92,6 +97,20 @@ export function QuestionTypeSelection({
                         type={QuestionTypeList.TRUE_FALSE}
                         icon={<TrueFalse />}
                         text="True False"
+                    ></QuestionType>
+                    <QuestionType
+                        type={QuestionTypeList.CODING}
+                        icon={CodingIcon}
+                        text="Coding Question"
+                    ></QuestionType>
+                </div>
+                <div className="border"></div>
+                <div className="flex flex-col gap-4">
+                    <div className="text-subtitle font-semibold">Programming</div>
+                    <QuestionType
+                        type={QuestionTypeList.CODING}
+                        icon={CodingIcon}
+                        text="Coding Question"
                     ></QuestionType>
                 </div>
                 <div className="border"></div>

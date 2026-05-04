@@ -8,10 +8,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.ExtractedAnswerDto;
 import vacademy.io.assessment_service.features.learner_assessment.entity.QuestionWiseMarks;
+import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Service for extracting student answers from PDF/HTML content using AI
@@ -75,10 +77,17 @@ public class AiAnswerExtractionService {
 
                 Map<String, ExtractedAnswerDto> results = new HashMap<>();
 
-                if (studentPdfContent == null || studentPdfContent.isEmpty() || marksList.isEmpty()) {
+                // CODING answers come from the live browser editor, not from PDF/HTML answer sheets.
+                List<QuestionWiseMarks> filtered = marksList.stream()
+                        .filter(m -> m.getQuestion() == null
+                                || !QuestionTypes.CODING.name().equals(m.getQuestion().getQuestionType()))
+                        .collect(Collectors.toList());
+
+                if (studentPdfContent == null || studentPdfContent.isEmpty() || filtered.isEmpty()) {
                         log.warn("Cannot batch extract: empty content or no questions");
                         return results;
                 }
+                marksList = filtered;
 
                 try {
                         // Create batch extraction prompt

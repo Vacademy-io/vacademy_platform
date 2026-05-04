@@ -7,8 +7,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.SectionDto;
+import vacademy.io.assessment_service.features.question_core.enums.QuestionTypes;
 import vacademy.io.assessment_service.features.assessment.entity.*;
 import vacademy.io.assessment_service.features.assessment.enums.UserRegistrationSources;
 import vacademy.io.assessment_service.features.assessment.repository.AssessmentRepository;
@@ -177,9 +181,31 @@ public class LearnerAssessmentAttemptStartManager {
             String sectionId = mapping.getSection().getId();
             AssessmentQuestionPreviewDto question = new AssessmentQuestionPreviewDto(mapping.getQuestion(), mapping);
             question.fillOptionsOfQuestion(mapping.getQuestion());
+            redactHiddenTestExpectedStdout(question);
             questions.add(question);
         }
         return questions;
+    }
+
+    // Strip expectedStdout from hidden test cases so the answer key never reaches the learner.
+    private void redactHiddenTestExpectedStdout(AssessmentQuestionPreviewDto preview) {
+        if (preview == null || !QuestionTypes.CODING.name().equals(preview.getQuestionType())) return;
+        String evaluationJson = preview.getEvaluationJson();
+        if (evaluationJson == null || evaluationJson.isEmpty()) return;
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(evaluationJson);
+            JsonNode testCases = root.path("data").path("testCases");
+            if (!testCases.isArray()) return;
+            for (JsonNode tc : testCases) {
+                if (tc instanceof ObjectNode && !tc.path("visible").asBoolean(true)) {
+                    ((ObjectNode) tc).remove("expectedStdout");
+                }
+            }
+            preview.setEvaluationJson(mapper.writeValueAsString(root));
+        } catch (Exception ignored) {
+            // If parsing fails, fall through and leave the original JSON; the client must still tolerate it.
+        }
     }
 
     public ResponseEntity<LearnerAssessmentStartAssessmentResponse> startAssessment(CustomUserDetails user, StartAssessmentRequest startAssessmentRequest) {

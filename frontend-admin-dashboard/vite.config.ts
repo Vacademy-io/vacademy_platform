@@ -273,7 +273,7 @@ export default defineConfig({
                             return 'monaco-vendor';
 
                         // Heavy Libraries - Charts
-                        if (id.includes('/recharts/') || id.includes('/d3/') || id.includes('/victory/'))
+                        if (id.includes('/recharts/') || id.includes('/d3/') || id.includes('/d3-') || id.includes('/victory/'))
                             return 'chart-vendor';
 
                         // Heavy Libraries - Canvas/Fabric
@@ -329,9 +329,6 @@ export default defineConfig({
                 },
             },
             onwarn: (warning, warn) => {
-                // Suppress specific warnings that might cause issues
-                if (warning.code === 'CIRCULAR_DEPENDENCY') return;
-                if (warning.code === 'INVALID_ANNOTATION') return;
                 warn(warning);
             },
             maxParallelFileOps: 2, // Reduce parallel operations to save memory
@@ -428,6 +425,9 @@ export default defineConfig({
             'easy-email-editor',
             'react-final-form',
             'mjml-browser',
+            // recharts has internal circular deps that only break in minified prod builds;
+            // pre-bundling with esbuild resolves the TDZ "Cannot access before initialization" crash
+            'recharts',
         ],
         esbuildOptions: {
             target: 'esnext',

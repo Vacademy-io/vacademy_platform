@@ -56,6 +56,26 @@ export interface MyQuestion {
     explanationTextId?: string;
     explanationTextDataId?: string;
     questionText?: string;
+    codingConfig?: MyCodingConfig;
+}
+
+export interface MyCodingTestCase {
+    id: string;
+    label?: string;
+    stdin: string;
+    expectedStdout: string;
+    visible: boolean;
+}
+
+export interface MyCodingConfig {
+    problemHtml: string;
+    allowedLanguages: string[];
+    starterCode: Record<string, string>;
+    testCases: MyCodingTestCase[];
+    perRunLimits: { cpuSeconds: number; memoryKb: number };
+    maxPoints: number;
+    sessionTimeMinutes?: number | null;
+    evaluationMode: 'AUTO' | 'MANUAL';
 }
 
 export interface MySingleChoiceOption {

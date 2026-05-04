@@ -82,6 +82,9 @@ import {
     updateVideoBranding,
     updateVideoStyle,
 } from '../../-services/video-style-branding';
+import { VimBrandKitSelect } from '@/features/vimotion/composer/VimBrandKitSelect';
+import { VimSavedAvatarSelect } from '@/features/vimotion/composer/VimSavedAvatarSelect';
+import type { StudioAvatar } from '@/features/vimotion/api/dashboardTypes';
 
 interface AiModel {
     model_id: string;
@@ -107,6 +110,15 @@ interface SettingsPopoverProps {
     videoTemplates: VideoTemplate[];
     /** AI model list (filtered by quality_tier). */
     models: AiModel[];
+    /**
+     * Vim-only mode: swaps the Branding tab's free-form Style/Branding
+     * accordions for a saved-Brand-Kit picker (request.brand_kit_id), and
+     * the Host tab's face-upload UI for a saved-Avatar picker
+     * (host.avatar.saved_avatar_id). Built-in providers (argil/veed) hide
+     * the Avatar model + details prompt fields since their endpoints are
+     * fixed by provider.
+     */
+    vimMode?: boolean;
 }
 
 /**
@@ -163,6 +175,7 @@ function SettingsBody({
     onVideoBrandingChange,
     videoTemplates,
     models,
+    vimMode = false,
 }: SettingsPopoverProps) {
     const update = <K extends keyof GenerateVideoRequest>(
         key: K,
@@ -574,276 +587,309 @@ function SettingsBody({
                     />
                 </div>
 
-                {/* Style — editable inline */}
-                <details
-                    open
-                    className="group rounded-md border bg-muted/30 [&_summary::-webkit-details-marker]:hidden"
-                >
-                    <summary className="flex cursor-pointer list-none items-center justify-between px-2.5 py-2 text-xs font-medium">
-                        <span className="flex items-center gap-1.5">
+                {vimMode && (
+                    <div className="space-y-1.5">
+                        <Label className="flex items-center gap-1.5 text-xs">
                             <Palette className="size-3.5 text-muted-foreground" />
-                            Style
-                        </span>
-                        <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
-                    </summary>
-                    <div className="space-y-2.5 border-t p-2.5">
-                        {/* Background type */}
-                        <div className="space-y-1">
-                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                Background
-                            </Label>
-                            <div className="grid grid-cols-2 gap-1">
-                                {(['white', 'black'] as const).map((v) => (
-                                    <button
-                                        key={v}
-                                        type="button"
-                                        onClick={() =>
-                                            onVideoStyleChange((s) => ({
-                                                ...s,
-                                                background_type: v,
-                                            }))
-                                        }
-                                        className={`rounded-md border px-2 py-1 text-xs capitalize transition-colors ${
-                                            videoStyle.background_type === v
-                                                ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
-                                                : 'hover:bg-muted'
-                                        }`}
-                                    >
-                                        {v === 'white' ? 'Light' : 'Dark'}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Layout theme — visual gallery */}
-                        <div className="space-y-1">
-                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                Layout theme
-                            </Label>
-                            <div className="grid grid-cols-2 gap-2">
-                                <ThemeCard
-                                    label="Default"
-                                    description="No template — minimal styling"
-                                    selected={!videoStyle.layout_theme}
-                                    onSelect={() =>
-                                        onVideoStyleChange((s) => ({ ...s, layout_theme: '' }))
-                                    }
-                                />
-                                {videoTemplates.map((t) => (
-                                    <ThemeCard
-                                        key={t.id}
-                                        label={t.name}
-                                        description={t.description}
-                                        previewHtml={t.preview_html}
-                                        primaryColor={videoStyle.primary_color}
-                                        selected={videoStyle.layout_theme === t.id}
-                                        onSelect={() =>
-                                            onVideoStyleChange((s) => ({
-                                                ...s,
-                                                layout_theme: t.id,
-                                                background_type: t.background_type,
-                                            }))
-                                        }
-                                    />
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Primary color */}
-                        <div className="space-y-1">
-                            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                                Primary color
-                            </Label>
-                            <div className="flex items-center gap-2">
-                                <ColorPicker
-                                    value={videoStyle.primary_color}
-                                    onChange={(color) =>
-                                        onVideoStyleChange((s) => ({ ...s, primary_color: color }))
-                                    }
-                                />
-                                <span className="font-mono text-xs text-muted-foreground">
-                                    {videoStyle.primary_color}
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Fonts */}
-                        <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                                <Label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                                    <TypeIcon className="size-3" />
-                                    Heading
-                                </Label>
-                                <Select
-                                    value={videoStyle.heading_font}
-                                    onValueChange={(v) =>
-                                        onVideoStyleChange((s) => ({ ...s, heading_font: v }))
-                                    }
-                                >
-                                    <SelectTrigger
-                                        className="h-9 text-sm"
-                                        style={{ fontFamily: videoStyle.heading_font }}
-                                    >
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {FONT_OPTIONS.map((f) => (
-                                            <SelectItem
-                                                key={f}
-                                                value={f}
-                                                className="text-sm"
-                                                style={{ fontFamily: f }}
-                                            >
-                                                {f}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <div className="space-y-1">
-                                <Label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-                                    <TypeIcon className="size-3" />
-                                    Body
-                                </Label>
-                                <Select
-                                    value={videoStyle.body_font}
-                                    onValueChange={(v) =>
-                                        onVideoStyleChange((s) => ({ ...s, body_font: v }))
-                                    }
-                                >
-                                    <SelectTrigger
-                                        className="h-9 text-sm"
-                                        style={{ fontFamily: videoStyle.body_font }}
-                                    >
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {FONT_OPTIONS.map((f) => (
-                                            <SelectItem
-                                                key={f}
-                                                value={f}
-                                                className="text-sm"
-                                                style={{ fontFamily: f }}
-                                            >
-                                                {f}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        </div>
-
-                        <div className="flex justify-end pt-1">
-                            <Button
-                                size="sm"
-                                onClick={handleSaveStyle}
-                                disabled={isSavingStyle}
-                                className="h-7 gap-1 text-xs"
-                            >
-                                {isSavingStyle ? (
-                                    <Loader2 className="size-3 animate-spin" />
-                                ) : (
-                                    <Save className="size-3" />
-                                )}
-                                Save style
-                            </Button>
-                        </div>
+                            Brand kit
+                        </Label>
+                        <VimBrandKitSelect
+                            value={options.brand_kit_id}
+                            onChange={(kitId) =>
+                                onOptionsChange({ ...options, brand_kit_id: kitId })
+                            }
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                            Replaces palette, fonts, layout, intro / outro, and watermark for this
+                            generation.
+                        </p>
                     </div>
-                </details>
+                )}
 
-                {/* Branding — Intro / Outro / Watermark */}
-                <details className="group rounded-md border bg-muted/30 [&_summary::-webkit-details-marker]:hidden">
-                    <summary className="flex cursor-pointer list-none items-center justify-between px-2.5 py-2 text-xs font-medium">
-                        <span className="flex items-center gap-1.5">
-                            <Film className="size-3.5 text-muted-foreground" />
-                            Intro · Outro · Watermark
-                        </span>
-                        <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
-                    </summary>
-                    <div className="space-y-3 border-t p-2.5">
-                        {/* Intro */}
-                        <IntroOutroEditor
-                            label="Intro"
-                            value={videoBranding.intro}
-                            onChange={(next) =>
-                                onVideoBrandingChange((b) => ({ ...b, intro: next }))
-                            }
-                        />
-                        {/* Outro */}
-                        <IntroOutroEditor
-                            label="Outro"
-                            value={videoBranding.outro}
-                            onChange={(next) =>
-                                onVideoBrandingChange((b) => ({ ...b, outro: next }))
-                            }
-                        />
-                        {/* Watermark */}
-                        <div className="space-y-1.5">
-                            <div className="flex items-center justify-between">
-                                <Label className="text-xs font-medium">Watermark</Label>
-                                <Switch
-                                    checked={videoBranding.watermark.enabled}
-                                    onCheckedChange={(v) =>
-                                        onVideoBrandingChange((b) => ({
-                                            ...b,
-                                            watermark: { ...b.watermark, enabled: v },
-                                        }))
-                                    }
-                                />
-                            </div>
-                            {videoBranding.watermark.enabled && (
-                                <div className="grid grid-cols-2 gap-1 pl-1">
-                                    {WATERMARK_POSITIONS.map((p) => (
-                                        <button
-                                            key={p.value}
-                                            type="button"
-                                            onClick={() =>
-                                                onVideoBrandingChange((b) => ({
-                                                    ...b,
-                                                    watermark: {
-                                                        ...b.watermark,
-                                                        position: p.value as WatermarkPosition,
-                                                    },
+                {!vimMode && (
+                    <>
+                        {/* Style — editable inline */}
+                        <details
+                            open
+                            className="group rounded-md border bg-muted/30 [&_summary::-webkit-details-marker]:hidden"
+                        >
+                            <summary className="flex cursor-pointer list-none items-center justify-between px-2.5 py-2 text-xs font-medium">
+                                <span className="flex items-center gap-1.5">
+                                    <Palette className="size-3.5 text-muted-foreground" />
+                                    Style
+                                </span>
+                                <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+                            </summary>
+                            <div className="space-y-2.5 border-t p-2.5">
+                                {/* Background type */}
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                        Background
+                                    </Label>
+                                    <div className="grid grid-cols-2 gap-1">
+                                        {(['white', 'black'] as const).map((v) => (
+                                            <button
+                                                key={v}
+                                                type="button"
+                                                onClick={() =>
+                                                    onVideoStyleChange((s) => ({
+                                                        ...s,
+                                                        background_type: v,
+                                                    }))
+                                                }
+                                                className={`rounded-md border px-2 py-1 text-xs capitalize transition-colors ${
+                                                    videoStyle.background_type === v
+                                                        ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+                                                        : 'hover:bg-muted'
+                                                }`}
+                                            >
+                                                {v === 'white' ? 'Light' : 'Dark'}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Layout theme — visual gallery */}
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                        Layout theme
+                                    </Label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <ThemeCard
+                                            label="Default"
+                                            description="No template — minimal styling"
+                                            selected={!videoStyle.layout_theme}
+                                            onSelect={() =>
+                                                onVideoStyleChange((s) => ({
+                                                    ...s,
+                                                    layout_theme: '',
                                                 }))
                                             }
-                                            className={`rounded-md border px-2 py-1 text-[11px] transition-colors ${
-                                                videoBranding.watermark.position === p.value
-                                                    ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
-                                                    : 'hover:bg-muted'
-                                            }`}
-                                        >
-                                            {p.label}
-                                        </button>
-                                    ))}
+                                        />
+                                        {videoTemplates.map((t) => (
+                                            <ThemeCard
+                                                key={t.id}
+                                                label={t.name}
+                                                description={t.description}
+                                                previewHtml={t.preview_html}
+                                                primaryColor={videoStyle.primary_color}
+                                                selected={videoStyle.layout_theme === t.id}
+                                                onSelect={() =>
+                                                    onVideoStyleChange((s) => ({
+                                                        ...s,
+                                                        layout_theme: t.id,
+                                                        background_type: t.background_type,
+                                                    }))
+                                                }
+                                            />
+                                        ))}
+                                    </div>
                                 </div>
-                            )}
-                        </div>
 
-                        <div className="flex items-center justify-between gap-2 pt-1">
-                            <Link
-                                to="/settings"
-                                search={{ selectedTab: 'aiSettings' }}
-                                className="flex items-center gap-1 text-[10px] text-violet-600 hover:underline"
-                            >
-                                <ExternalLink className="size-2.5" />
-                                Edit intro / outro / watermark content
-                            </Link>
-                            <Button
-                                size="sm"
-                                onClick={handleSaveBranding}
-                                disabled={isSavingBranding}
-                                className="h-7 gap-1 text-xs"
-                            >
-                                {isSavingBranding ? (
-                                    <Loader2 className="size-3 animate-spin" />
-                                ) : (
-                                    <Save className="size-3" />
-                                )}
-                                Save branding
-                            </Button>
-                        </div>
-                    </div>
-                </details>
+                                {/* Primary color */}
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                        Primary color
+                                    </Label>
+                                    <div className="flex items-center gap-2">
+                                        <ColorPicker
+                                            value={videoStyle.primary_color}
+                                            onChange={(color) =>
+                                                onVideoStyleChange((s) => ({
+                                                    ...s,
+                                                    primary_color: color,
+                                                }))
+                                            }
+                                        />
+                                        <span className="font-mono text-xs text-muted-foreground">
+                                            {videoStyle.primary_color}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Fonts */}
+                                <div className="grid grid-cols-2 gap-2">
+                                    <div className="space-y-1">
+                                        <Label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                            <TypeIcon className="size-3" />
+                                            Heading
+                                        </Label>
+                                        <Select
+                                            value={videoStyle.heading_font}
+                                            onValueChange={(v) =>
+                                                onVideoStyleChange((s) => ({
+                                                    ...s,
+                                                    heading_font: v,
+                                                }))
+                                            }
+                                        >
+                                            <SelectTrigger
+                                                className="h-9 text-sm"
+                                                style={{ fontFamily: videoStyle.heading_font }}
+                                            >
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {FONT_OPTIONS.map((f) => (
+                                                    <SelectItem
+                                                        key={f}
+                                                        value={f}
+                                                        className="text-sm"
+                                                        style={{ fontFamily: f }}
+                                                    >
+                                                        {f}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                                            <TypeIcon className="size-3" />
+                                            Body
+                                        </Label>
+                                        <Select
+                                            value={videoStyle.body_font}
+                                            onValueChange={(v) =>
+                                                onVideoStyleChange((s) => ({ ...s, body_font: v }))
+                                            }
+                                        >
+                                            <SelectTrigger
+                                                className="h-9 text-sm"
+                                                style={{ fontFamily: videoStyle.body_font }}
+                                            >
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {FONT_OPTIONS.map((f) => (
+                                                    <SelectItem
+                                                        key={f}
+                                                        value={f}
+                                                        className="text-sm"
+                                                        style={{ fontFamily: f }}
+                                                    >
+                                                        {f}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-end pt-1">
+                                    <Button
+                                        size="sm"
+                                        onClick={handleSaveStyle}
+                                        disabled={isSavingStyle}
+                                        className="h-7 gap-1 text-xs"
+                                    >
+                                        {isSavingStyle ? (
+                                            <Loader2 className="size-3 animate-spin" />
+                                        ) : (
+                                            <Save className="size-3" />
+                                        )}
+                                        Save style
+                                    </Button>
+                                </div>
+                            </div>
+                        </details>
+
+                        {/* Branding — Intro / Outro / Watermark */}
+                        <details className="group rounded-md border bg-muted/30 [&_summary::-webkit-details-marker]:hidden">
+                            <summary className="flex cursor-pointer list-none items-center justify-between px-2.5 py-2 text-xs font-medium">
+                                <span className="flex items-center gap-1.5">
+                                    <Film className="size-3.5 text-muted-foreground" />
+                                    Intro · Outro · Watermark
+                                </span>
+                                <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-open:rotate-180" />
+                            </summary>
+                            <div className="space-y-3 border-t p-2.5">
+                                {/* Intro */}
+                                <IntroOutroEditor
+                                    label="Intro"
+                                    value={videoBranding.intro}
+                                    onChange={(next) =>
+                                        onVideoBrandingChange((b) => ({ ...b, intro: next }))
+                                    }
+                                />
+                                {/* Outro */}
+                                <IntroOutroEditor
+                                    label="Outro"
+                                    value={videoBranding.outro}
+                                    onChange={(next) =>
+                                        onVideoBrandingChange((b) => ({ ...b, outro: next }))
+                                    }
+                                />
+                                {/* Watermark */}
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-xs font-medium">Watermark</Label>
+                                        <Switch
+                                            checked={videoBranding.watermark.enabled}
+                                            onCheckedChange={(v) =>
+                                                onVideoBrandingChange((b) => ({
+                                                    ...b,
+                                                    watermark: { ...b.watermark, enabled: v },
+                                                }))
+                                            }
+                                        />
+                                    </div>
+                                    {videoBranding.watermark.enabled && (
+                                        <div className="grid grid-cols-2 gap-1 pl-1">
+                                            {WATERMARK_POSITIONS.map((p) => (
+                                                <button
+                                                    key={p.value}
+                                                    type="button"
+                                                    onClick={() =>
+                                                        onVideoBrandingChange((b) => ({
+                                                            ...b,
+                                                            watermark: {
+                                                                ...b.watermark,
+                                                                position:
+                                                                    p.value as WatermarkPosition,
+                                                            },
+                                                        }))
+                                                    }
+                                                    className={`rounded-md border px-2 py-1 text-[11px] transition-colors ${
+                                                        videoBranding.watermark.position === p.value
+                                                            ? 'border-violet-500 bg-violet-50 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+                                                            : 'hover:bg-muted'
+                                                    }`}
+                                                >
+                                                    {p.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center justify-between gap-2 pt-1">
+                                    <Link
+                                        to="/settings"
+                                        search={{ selectedTab: 'aiSettings' }}
+                                        className="flex items-center gap-1 text-[10px] text-violet-600 hover:underline"
+                                    >
+                                        <ExternalLink className="size-2.5" />
+                                        Edit intro / outro / watermark content
+                                    </Link>
+                                    <Button
+                                        size="sm"
+                                        onClick={handleSaveBranding}
+                                        disabled={isSavingBranding}
+                                        className="h-7 gap-1 text-xs"
+                                    >
+                                        {isSavingBranding ? (
+                                            <Loader2 className="size-3 animate-spin" />
+                                        ) : (
+                                            <Save className="size-3" />
+                                        )}
+                                        Save branding
+                                    </Button>
+                                </div>
+                            </div>
+                        </details>
+                    </>
+                )}
             </TabsContent>
 
             {/* ============================================================ */}
@@ -853,7 +899,11 @@ function SettingsBody({
             {/* HOST — On-screen narrator (avatar / raw)                     */}
             {/* ============================================================ */}
             <TabsContent value="host" className="mt-3 space-y-3">
-                <HostTabBody options={options} onOptionsChange={onOptionsChange} />
+                <HostTabBody
+                    options={options}
+                    onOptionsChange={onOptionsChange}
+                    vimMode={vimMode}
+                />
             </TabsContent>
 
             <TabsContent value="advanced" className="mt-3 space-y-3">
@@ -935,9 +985,11 @@ function Field({
 function HostTabBody({
     options,
     onOptionsChange,
+    vimMode = false,
 }: {
     options: Omit<GenerateVideoRequest, 'prompt'>;
     onOptionsChange: (options: Omit<GenerateVideoRequest, 'prompt'>) => void;
+    vimMode?: boolean;
 }) {
     const tier = options.quality_tier || 'ultra';
     const tierAllowed = tier === 'ultra' || tier === 'super_ultra';
@@ -946,6 +998,10 @@ function HostTabBody({
 
     const { uploadFile, getPublicUrl, isUploading } = useFileUpload();
     const [uploadError, setUploadError] = useState<string | null>(null);
+    // Snapshot of the resolved provider for the picked saved avatar — drives
+    // which fields render (custom shows details/model; argil/veed hide both
+    // because their endpoint + identity are fixed by the catalog enum).
+    const [pickedAvatar, setPickedAvatar] = useState<StudioAvatar | null>(null);
 
     /** Replace the entire `host` block on options. */
     const setHost = (next: HostConfig | undefined) => {
@@ -957,7 +1013,7 @@ function HostTabBody({
         if (!host || host.type !== 'avatar') return;
         setHost({
             ...host,
-            avatar: { ...(host.avatar || { face_image_url: '' }), ...patch },
+            avatar: { ...(host.avatar || {}), ...patch },
         });
     };
 
@@ -1035,9 +1091,8 @@ function HostTabBody({
                             Saved host config will be ignored
                         </div>
                         <p className="mb-2 text-muted-foreground">
-                            You have a host configuration saved from a higher tier. It will
-                            cause this generation to fail unless you switch back to Ultra or
-                            clear it now.
+                            You have a host configuration saved from a higher tier. It will cause
+                            this generation to fail unless you switch back to Ultra or clear it now.
                         </p>
                         <Button
                             type="button"
@@ -1145,121 +1200,252 @@ function HostTabBody({
 
                     {host.type === 'avatar' && (
                         <>
-                            {/* Face image dropzone with preview */}
-                            <Field
-                                icon={<UploadIcon className="size-3.5" />}
-                                label="Host face image"
-                                helper="Clear, front-facing portrait. Used as the per-shot identity reference."
-                            >
-                                {host.avatar?.face_image_url ? (
-                                    <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-2">
-                                        <img
-                                            src={host.avatar.face_image_url}
-                                            alt="Host face"
-                                            className="size-16 shrink-0 rounded-md object-cover"
-                                        />
-                                        <div className="flex-1 space-y-1">
-                                            <div className="break-all text-[10px] text-muted-foreground">
-                                                {host.avatar.face_image_url
-                                                    .split('/')
-                                                    .pop()
-                                                    ?.slice(0, 40)}
-                                            </div>
-                                            <Button
-                                                type="button"
-                                                variant="ghost"
-                                                size="sm"
-                                                className="h-6 px-2 text-[10px]"
-                                                onClick={() => patchAvatar({ face_image_url: '' })}
-                                            >
-                                                <XIcon className="size-3" />
-                                                Replace
-                                            </Button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <label
-                                        htmlFor="host-face-upload"
-                                        className="flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed bg-muted/30 px-3 py-4 text-xs text-muted-foreground hover:bg-muted/50"
+                            {vimMode ? (
+                                <>
+                                    {/* Saved-avatar picker (vim only). The picked id flows into
+                                       host.avatar.saved_avatar_id; BE resolves provider + face +
+                                       voice from the saved row. We snapshot the avatar locally so
+                                       we can hide details_prompt + avatar_model when the resolved
+                                       provider is built-in (their endpoint is fixed). */}
+                                    <Field
+                                        icon={<UserIcon className="size-3.5" />}
+                                        label="Host avatar"
+                                        helper="Pick from your saved hosts. Built-in catalog avatars (Argil / VEED) lock the model to their endpoint."
                                     >
-                                        {isUploading ? (
-                                            <>
-                                                <Loader2 className="size-4 animate-spin" />
-                                                <span>Uploading…</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <UploadIcon className="size-4" />
-                                                <span>
-                                                    Click or drop a face photo (PNG / JPG, ≤10 MB)
-                                                </span>
-                                            </>
-                                        )}
-                                        <input
-                                            id="host-face-upload"
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            onChange={(e) =>
-                                                handleFileSelect(e.target.files?.[0] ?? null)
-                                            }
+                                        <VimSavedAvatarSelect
+                                            value={host.avatar?.saved_avatar_id}
+                                            onChange={(avatarId, avatar) => {
+                                                setPickedAvatar(avatar ?? null);
+                                                // Clear free-form fields when picking a saved
+                                                // avatar — BE resolution overrides them anyway,
+                                                // but a stale face_image_url in the dump is
+                                                // confusing in logs / pipeline traces.
+                                                patchAvatar({
+                                                    saved_avatar_id: avatarId,
+                                                    face_image_url: undefined,
+                                                });
+                                            }}
                                         />
-                                    </label>
-                                )}
-                                {uploadError && (
-                                    <p className="text-[10px] text-destructive">{uploadError}</p>
-                                )}
-                            </Field>
+                                    </Field>
 
-                            {/* Details prompt */}
-                            <Field
-                                icon={<TypeIcon className="size-3.5" />}
-                                label="Host details (clothing, persona)"
-                                helper="Free-form. Threaded into every per-shot avatar image prompt for consistency."
-                            >
-                                <Textarea
-                                    value={host.avatar?.details_prompt || ''}
-                                    onChange={(e) =>
-                                        patchAvatar({ details_prompt: e.target.value })
-                                    }
-                                    placeholder="e.g. navy blazer, neutral office background, professional demeanour"
-                                    rows={2}
-                                    className="resize-none text-xs"
-                                />
-                            </Field>
+                                    {/* Voice override toggle (vim only). When the saved avatar
+                                       carries voice metadata, this is the opt-out switch — off
+                                       keeps the request's voice fields, on (default) lets BE
+                                       apply the avatar's saved voice. Hidden when no avatar
+                                       picked (the toggle is meaningless without an avatar). */}
+                                    {host.avatar?.saved_avatar_id && (
+                                        <div className="space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <Label className="flex items-center gap-1.5 text-xs">
+                                                    <Mic className="size-3.5 text-muted-foreground" />
+                                                    Use avatar&rsquo;s saved voice
+                                                </Label>
+                                                <Switch
+                                                    checked={host.avatar.use_avatar_voice ?? true}
+                                                    onCheckedChange={(v) =>
+                                                        patchAvatar({ use_avatar_voice: v })
+                                                    }
+                                                />
+                                            </div>
+                                            <p className="pl-5 text-[10px] text-muted-foreground">
+                                                On: voice / language / gender from the saved avatar
+                                                override the Voice tab. Off: keep the Voice
+                                                tab&rsquo;s settings.
+                                            </p>
+                                        </div>
+                                    )}
 
-                            {/* Model picker */}
-                            <Field icon={<Film className="size-3.5" />} label="Avatar model">
-                                <Select
-                                    value={
-                                        host.avatar?.avatar_model ||
-                                        'fal-ai/kling-video/ai-avatar/v2/standard'
-                                    }
-                                    onValueChange={(v) =>
-                                        patchAvatar({ avatar_model: v as AvatarModel })
-                                    }
-                                >
-                                    <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {AVATAR_MODELS.map((m) => (
-                                            <SelectItem
-                                                key={m.value}
-                                                value={m.value}
-                                                className="text-xs"
+                                    {/* Custom-only fields. For Argil / VEED catalog avatars the
+                                       persona is locked by the enum, so details_prompt + the
+                                       avatar_model dropdown don't apply. */}
+                                    {pickedAvatar?.provider === 'custom' && (
+                                        <>
+                                            <Field
+                                                icon={<TypeIcon className="size-3.5" />}
+                                                label="Host details (clothing, persona)"
+                                                helper="Free-form. Threaded into every per-shot avatar image prompt for consistency."
                                             >
-                                                <div className="flex flex-col">
-                                                    <span>{m.label}</span>
-                                                    <span className="text-[10px] text-muted-foreground">
-                                                        ${m.perSecondUsd.toFixed(4)}/sec
-                                                    </span>
+                                                <Textarea
+                                                    value={host.avatar?.details_prompt || ''}
+                                                    onChange={(e) =>
+                                                        patchAvatar({
+                                                            details_prompt: e.target.value,
+                                                        })
+                                                    }
+                                                    placeholder="e.g. navy blazer, neutral office background, professional demeanour"
+                                                    rows={2}
+                                                    className="resize-none text-xs"
+                                                />
+                                            </Field>
+                                            <Field
+                                                icon={<Film className="size-3.5" />}
+                                                label="Avatar model"
+                                            >
+                                                <Select
+                                                    value={
+                                                        host.avatar?.avatar_model ||
+                                                        'fal-ai/kling-video/ai-avatar/v2/standard'
+                                                    }
+                                                    onValueChange={(v) =>
+                                                        patchAvatar({
+                                                            avatar_model: v as AvatarModel,
+                                                        })
+                                                    }
+                                                >
+                                                    <SelectTrigger className="h-8 text-xs">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {AVATAR_MODELS.map((m) => (
+                                                            <SelectItem
+                                                                key={m.value}
+                                                                value={m.value}
+                                                                className="text-xs"
+                                                            >
+                                                                <div className="flex flex-col">
+                                                                    <span>{m.label}</span>
+                                                                    <span className="text-[10px] text-muted-foreground">
+                                                                        ${m.perSecondUsd.toFixed(4)}
+                                                                        /sec
+                                                                    </span>
+                                                                </div>
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </Field>
+                                        </>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    {/* Face image dropzone with preview */}
+                                    <Field
+                                        icon={<UploadIcon className="size-3.5" />}
+                                        label="Host face image"
+                                        helper="Clear, front-facing portrait. Used as the per-shot identity reference."
+                                    >
+                                        {host.avatar?.face_image_url ? (
+                                            <div className="flex items-start gap-3 rounded-lg border bg-muted/30 p-2">
+                                                <img
+                                                    src={host.avatar.face_image_url}
+                                                    alt="Host face"
+                                                    className="size-16 shrink-0 rounded-md object-cover"
+                                                />
+                                                <div className="flex-1 space-y-1">
+                                                    <div className="break-all text-[10px] text-muted-foreground">
+                                                        {host.avatar.face_image_url
+                                                            .split('/')
+                                                            .pop()
+                                                            ?.slice(0, 40)}
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 px-2 text-[10px]"
+                                                        onClick={() =>
+                                                            patchAvatar({ face_image_url: '' })
+                                                        }
+                                                    >
+                                                        <XIcon className="size-3" />
+                                                        Replace
+                                                    </Button>
                                                 </div>
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </Field>
+                                            </div>
+                                        ) : (
+                                            <label
+                                                htmlFor="host-face-upload"
+                                                className="flex cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed bg-muted/30 px-3 py-4 text-xs text-muted-foreground hover:bg-muted/50"
+                                            >
+                                                {isUploading ? (
+                                                    <>
+                                                        <Loader2 className="size-4 animate-spin" />
+                                                        <span>Uploading…</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <UploadIcon className="size-4" />
+                                                        <span>
+                                                            Click or drop a face photo (PNG / JPG,
+                                                            ≤10 MB)
+                                                        </span>
+                                                    </>
+                                                )}
+                                                <input
+                                                    id="host-face-upload"
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    onChange={(e) =>
+                                                        handleFileSelect(
+                                                            e.target.files?.[0] ?? null
+                                                        )
+                                                    }
+                                                />
+                                            </label>
+                                        )}
+                                        {uploadError && (
+                                            <p className="text-[10px] text-destructive">
+                                                {uploadError}
+                                            </p>
+                                        )}
+                                    </Field>
+
+                                    {/* Details prompt */}
+                                    <Field
+                                        icon={<TypeIcon className="size-3.5" />}
+                                        label="Host details (clothing, persona)"
+                                        helper="Free-form. Threaded into every per-shot avatar image prompt for consistency."
+                                    >
+                                        <Textarea
+                                            value={host.avatar?.details_prompt || ''}
+                                            onChange={(e) =>
+                                                patchAvatar({ details_prompt: e.target.value })
+                                            }
+                                            placeholder="e.g. navy blazer, neutral office background, professional demeanour"
+                                            rows={2}
+                                            className="resize-none text-xs"
+                                        />
+                                    </Field>
+
+                                    {/* Model picker */}
+                                    <Field
+                                        icon={<Film className="size-3.5" />}
+                                        label="Avatar model"
+                                    >
+                                        <Select
+                                            value={
+                                                host.avatar?.avatar_model ||
+                                                'fal-ai/kling-video/ai-avatar/v2/standard'
+                                            }
+                                            onValueChange={(v) =>
+                                                patchAvatar({ avatar_model: v as AvatarModel })
+                                            }
+                                        >
+                                            <SelectTrigger className="h-8 text-xs">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {AVATAR_MODELS.map((m) => (
+                                                    <SelectItem
+                                                        key={m.value}
+                                                        value={m.value}
+                                                        className="text-xs"
+                                                    >
+                                                        <div className="flex flex-col">
+                                                            <span>{m.label}</span>
+                                                            <span className="text-[10px] text-muted-foreground">
+                                                                ${m.perSecondUsd.toFixed(4)}/sec
+                                                            </span>
+                                                        </div>
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </Field>
+                                </>
+                            )}
 
                             {/* Quality picker */}
                             <Field
@@ -1306,8 +1492,8 @@ function HostTabBody({
                                     }
                                 />
                                 <p className="text-[10px] text-muted-foreground">
-                                    Tip: Below ~25% the host barely appears — disable Host
-                                    instead to save on avatar synthesis costs.
+                                    Tip: Below ~25% the host barely appears — disable Host instead
+                                    to save on avatar synthesis costs.
                                 </p>
                             </Field>
                         </>

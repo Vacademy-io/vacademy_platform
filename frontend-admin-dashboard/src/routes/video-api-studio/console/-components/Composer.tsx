@@ -76,6 +76,13 @@ interface ComposerProps {
     onIgnoredUrlsChange: React.Dispatch<React.SetStateAction<Set<string>>>;
     routingOverrides: RoutingOverrides;
     onRoutingOverridesChange: React.Dispatch<React.SetStateAction<RoutingOverrides>>;
+    /**
+     * When true, the SettingsPopover swaps its free-form Style/Branding and
+     * face-upload UI for vim-only saved-Brand-Kit and saved-Avatar pickers.
+     * The submit guard also blocks generation when host is enabled without a
+     * saved_avatar_id and links the user to the Avatars tab.
+     */
+    vimMode?: boolean;
 }
 
 export function Composer({
@@ -102,6 +109,7 @@ export function Composer({
     onIgnoredUrlsChange,
     routingOverrides,
     onRoutingOverridesChange,
+    vimMode = false,
 }: ComposerProps) {
     const isDocked = variant === 'docked';
     const [showPreview, setShowPreview] = useState(false);
@@ -470,6 +478,20 @@ export function Composer({
 
     const handleSubmit = () => {
         if (!prompt.trim() || isGenerating || disabled) return;
+        // Vim contract: when host is enabled, the user must pick a saved
+        // avatar. Vim has no free-form face-upload escape hatch — that's
+        // admin-only. Block here so the BE doesn't reject with a less-clear
+        // 400 after the credit pre-check has already locked credits.
+        if (vimMode && options.host?.type === 'avatar') {
+            const savedId = options.host.avatar?.saved_avatar_id;
+            if (!savedId) {
+                toast.error('Pick a host first', {
+                    description:
+                        'Open the ⚙ Settings → Host tab and pick a saved avatar, or save one in the Avatars tab.',
+                });
+                return;
+            }
+        }
         setPendingRequest(buildRequest());
         setConfirmModalOpen(true);
     };
@@ -853,6 +875,7 @@ export function Composer({
                             onVideoBrandingChange={setVideoBranding}
                             videoTemplates={videoTemplates}
                             models={models}
+                            vimMode={vimMode}
                         />
 
                         {/* Send */}

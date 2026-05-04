@@ -35,3 +35,8 @@ export interface JwtResponseDto {
     accessToken: string;
     refreshToken: string;
 }
+
+export interface VimotionLoginPayload {
+    email: string;
+    password: string;
+}

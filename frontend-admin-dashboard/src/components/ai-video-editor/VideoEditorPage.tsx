@@ -48,6 +48,13 @@ interface VideoEditorPageProps extends InitParams {
      * shot they wanted to tweak. Applied exactly once per mount.
      */
     focusTime?: number;
+    /**
+     * Override for the toolbar's "Back" navigation. Defaults to the admin
+     * studio at `/video-api-studio`; vim passes a handler that returns to
+     * `/vim/dashboard?videoId=…` (the production view) so the user stays in
+     * the vim shell.
+     */
+    onBack?: () => void;
 }
 
 // ── Render job localStorage helpers ────────────────────────────────────────
@@ -311,8 +318,12 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
             const ok = window.confirm('You have unsaved changes. Leave without saving?');
             if (!ok) return;
         }
+        if (props.onBack) {
+            props.onBack();
+            return;
+        }
         navigate({ to: '/video-api-studio' });
-    }, [navigate, isDirty]);
+    }, [navigate, isDirty, props]);
 
     const handleSave = useCallback(async () => {
         try {

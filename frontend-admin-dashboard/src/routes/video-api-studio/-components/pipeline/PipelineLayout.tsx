@@ -17,6 +17,18 @@ interface PipelineLayoutProps {
      * retry handler. Surfaced when the run state is `halted`.
      */
     onRetry?: () => void;
+    /**
+     * Override the default "Edit" navigation in the right panel. Defaults to
+     * the admin route; vim supplies a handler that navigates to `/vim/edit/$videoId`.
+     */
+    onEdit?: (params: {
+        videoId: string;
+        htmlUrl: string;
+        audioUrl: string;
+        wordsUrl: string;
+        apiKey: string;
+        orientation: string;
+    }) => void;
 }
 
 /**
@@ -26,7 +38,7 @@ interface PipelineLayoutProps {
  * Left 2/3 = React Flow production diagram. Right 1/3 = stages list,
  * production budget, asset URLs, actions.
  */
-export function PipelineLayout({ state, apiKey, onAbort, onRetry }: PipelineLayoutProps) {
+export function PipelineLayout({ state, apiKey, onAbort, onRetry, onEdit }: PipelineLayoutProps) {
     return (
         <div className="flex size-full min-h-[600px] flex-col gap-4 xl:flex-row">
             {/* Left: flow diagram (2/3 on desktop) */}
@@ -48,7 +60,13 @@ export function PipelineLayout({ state, apiKey, onAbort, onRetry }: PipelineLayo
 
             {/* Right: stages + URLs + actions (1/3 on desktop) */}
             <div className="flex shrink-0 flex-col rounded-xl border bg-card shadow-sm xl:basis-1/3">
-                <PipelinePanel state={state} apiKey={apiKey} onAbort={onAbort} onRetry={onRetry} />
+                <PipelinePanel
+                    state={state}
+                    apiKey={apiKey}
+                    onAbort={onAbort}
+                    onRetry={onRetry}
+                    onEdit={onEdit}
+                />
             </div>
         </div>
     );

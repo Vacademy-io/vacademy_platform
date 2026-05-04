@@ -68,9 +68,22 @@ interface PipelinePanelProps {
     onAbort?: () => void;
     /** Retry a halted production. Hides when omitted. */
     onRetry?: () => void;
+    /**
+     * Override the default "Edit" navigation. Defaults to the admin route
+     * (`/video-api-studio/edit/$videoId`); vim passes its own handler so the
+     * user stays inside the vim shell at `/vim/edit/$videoId`.
+     */
+    onEdit?: (params: {
+        videoId: string;
+        htmlUrl: string;
+        audioUrl: string;
+        wordsUrl: string;
+        apiKey: string;
+        orientation: string;
+    }) => void;
 }
 
-export function PipelinePanel({ state, apiKey, onAbort, onRetry }: PipelinePanelProps) {
+export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: PipelinePanelProps) {
     const { videoId, status, contentType, orientation, artifactUrls, stats } = state;
     const isPortrait = orientation === 'portrait';
     const showDownload =
@@ -266,21 +279,42 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry }: PipelinePanel
     const navigate = useNavigate();
     const handleEditClick = useCallback(() => {
         if (!timeline) return;
+        const editParams = {
+            videoId,
+            htmlUrl: timeline,
+            audioUrl: artifactUrls.audio ?? '',
+            wordsUrl: artifactUrls.words ?? '',
+            apiKey: apiKey ?? '',
+            orientation: orientation ?? 'landscape',
+        };
+        if (onEdit) {
+            onEdit(editParams);
+            return;
+        }
         navigate({
             to: '/video-api-studio/edit/$videoId',
             params: { videoId },
             search: {
-                htmlUrl: timeline,
-                audioUrl: artifactUrls.audio ?? '',
-                wordsUrl: artifactUrls.words ?? '',
+                htmlUrl: editParams.htmlUrl,
+                audioUrl: editParams.audioUrl,
+                wordsUrl: editParams.wordsUrl,
                 avatarUrl: '',
-                apiKey: apiKey ?? '',
-                orientation: orientation ?? 'landscape',
+                apiKey: editParams.apiKey,
+                orientation: editParams.orientation,
                 // No specific shot to focus on — opens at the first scene.
                 focusTime: undefined,
             },
         });
-    }, [navigate, videoId, timeline, artifactUrls.audio, artifactUrls.words, apiKey, orientation]);
+    }, [
+        navigate,
+        videoId,
+        timeline,
+        artifactUrls.audio,
+        artifactUrls.words,
+        apiKey,
+        orientation,
+        onEdit,
+    ]);
 
     return (
         <div className="flex h-full flex-col gap-3 overflow-y-auto p-3">

@@ -5992,6 +5992,253 @@ class VideoGenerationPipeline:
             print(f"[AvatarBatch] Host set picker failed ({e}); using domain={sd} fallback: {scene[:120]}…")
             return scene
 
+    def _run_builtin_concat_render(
+        self,
+        *,
+        per_shot_inputs: List[Dict[str, Any]],
+        per_shot_artifacts: List[Dict[str, Any]],
+        host_assets_dir: "Path",
+        s3_service: Any,
+        fal_key: str,
+        host_model: str,
+        host_quality: str,
+        details_prompt: str,
+        host_provider: str,
+        external_avatar_id: Optional[str],
+        FalAvatarClient: Any,
+    ) -> List[Any]:
+        """Built-in catalog providers: one fal request → one master MP4 → split per shot.
+
+        Concatenates the per-shot audio slices already on disk (`host_audio_{idx}.mp3`)
+        into a single mp3, submits ONE fal request to the catalog endpoint, then
+        ffmpeg-splits the result MP4 at the recorded shot offsets and uploads each
+        per-shot file. Returns a `List[AvatarShotResult]` shaped exactly like
+        `render_batch()` so the caller's post-processing loop is unchanged.
+
+        Failure modes:
+          * Concat / S3 upload of audio raises → caller falls back to per-shot dispatch.
+          * fal call fails → returns N AvatarShotResult entries each marked .error so
+            the existing post-processing loop disables host_present per shot.
+          * Per-shot split / upload fails → that shot's AvatarShotResult is marked .error;
+            other shots succeed.
+        """
+        from pathlib import Path as _Path
+        import subprocess as _sp_local
+        import asyncio as _asyncio_local
+        import urllib.request as _urlreq
+
+        # Pull AvatarShotResult dataclass via the same import path used at line 6532+
+        try:
+            from app.services.fal_avatar_client import AvatarShotResult
+        except Exception:
+            import importlib as _imp
+            AvatarShotResult = _imp.import_module("app.services.fal_avatar_client").AvatarShotResult
+
+        if not per_shot_inputs:
+            return []
+
+        # ── Build concat list + per-shot offsets ──────────────────────────
+        # The audio slices were written by the pre-render loop at known
+        # paths; reconstruct them here. Duration comes from the artifact
+        # we recorded at the same time so we don't have to ffprobe.
+        concat_list_path = host_assets_dir / "host_audio_concat_list.txt"
+        concat_audio_path = host_assets_dir / "host_audio_concat.mp3"
+        shot_offsets: List[Dict[str, Any]] = []  # {"idx": int, "start_s": float, "dur_s": float}
+        cum_offset = 0.0
+        concat_lines: List[str] = []
+        for inp in per_shot_inputs:
+            idx = int(inp["shot_index"])
+            local_aud = host_assets_dir / f"host_audio_{idx:03d}.mp3"
+            dur = next(
+                (
+                    float(a.get("duration_s") or 0)
+                    for a in per_shot_artifacts
+                    if a.get("shot_index") == idx
+                ),
+                0.0,
+            )
+            if not local_aud.exists() or dur <= 0:
+                # Pre-render produced no audio for this shot — skip it. Caller's
+                # artifact already records the failure.
+                continue
+            concat_lines.append(f"file '{local_aud.absolute()}'")
+            shot_offsets.append({"idx": idx, "start_s": cum_offset, "dur_s": dur})
+            cum_offset += dur
+
+        if not shot_offsets:
+            print("[AvatarBatch] concat: no usable per-shot audio — bailing")
+            return []
+
+        concat_list_path.write_text("\n".join(concat_lines), encoding="utf-8")
+        concat_cmd = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_list_path),
+            # Stream-copy is safe — every slice was written by the same encoder
+            # in the pre-render loop (libmp3lame q=4, 44100 Hz stereo).
+            "-c", "copy",
+            str(concat_audio_path),
+        ]
+        _r = _sp_local.run(concat_cmd, capture_output=True, text=True)
+        if _r.returncode != 0 or not concat_audio_path.exists():
+            raise RuntimeError(
+                f"ffmpeg concat failed: {_r.stderr.strip() if _r.stderr else 'no stderr'}"
+            )
+
+        # Upload concat audio to S3 (fal needs a public URL).
+        concat_s3_key = (
+            f"ai-videos/host-assets/{getattr(self, '_run_name', 'run')}/host_audio_concat.mp3"
+        )
+        concat_s3_url = s3_service.upload_file(
+            concat_audio_path, s3_key=concat_s3_key, content_type="audio/mpeg"
+        )
+        if not concat_s3_url:
+            raise RuntimeError("S3 upload failed for concat audio")
+
+        print(
+            f"[AvatarBatch] concat: {len(shot_offsets)} shot(s), "
+            f"{cum_offset:.1f}s total → {concat_s3_url}"
+        )
+
+        # ── Single fal call. 20-min deadline matches built-in catalog
+        # latency under load; Argil in particular tail-latencies the
+        # default 10-min ceiling. ─────────────────────────────────────────
+        concat_client = FalAvatarClient(
+            api_key=fal_key,
+            concurrency=1,
+            render_deadline_s=1200.0,
+        )
+        try:
+            concat_result = _asyncio_local.run(
+                concat_client.render_shot(
+                    shot_index=-1,  # synthetic index — we never plug this back
+                    model=host_model,
+                    image_url="",
+                    audio_url=concat_s3_url,
+                    quality=host_quality,
+                    details_prompt=details_prompt,
+                    provider=host_provider,
+                    external_avatar_id=external_avatar_id,
+                )
+            )
+        except Exception as e:
+            print(f"[AvatarBatch] concat fal call raised: {e}")
+            return [
+                AvatarShotResult(
+                    shot_index=int(off["idx"]),
+                    model=host_model,
+                    quality=host_quality,
+                    error=str(e),
+                    error_stage="fal_concat",
+                )
+                for off in shot_offsets
+            ]
+
+        if concat_result.error or not concat_result.video_url:
+            err_msg = concat_result.error or "concat returned no video"
+            print(f"[AvatarBatch] concat fal returned error: {err_msg}")
+            return [
+                AvatarShotResult(
+                    shot_index=int(off["idx"]),
+                    model=host_model,
+                    quality=host_quality,
+                    error=err_msg,
+                    error_stage=concat_result.error_stage or "fal_concat",
+                    fal_request_id=concat_result.fal_request_id,
+                )
+                for off in shot_offsets
+            ]
+
+        # ── Download master output once, split per shot, upload each ──────
+        master_local = host_assets_dir / "host_video_concat.mp4"
+        try:
+            _urlreq.urlretrieve(concat_result.video_url, str(master_local))
+        except Exception as e:
+            print(f"[AvatarBatch] concat: failed to download master video: {e}")
+            return [
+                AvatarShotResult(
+                    shot_index=int(off["idx"]),
+                    model=host_model,
+                    quality=host_quality,
+                    error=f"master download failed: {e}",
+                    error_stage="fetch",
+                    fal_request_id=concat_result.fal_request_id,
+                )
+                for off in shot_offsets
+            ]
+
+        results: List[Any] = []
+        for off in shot_offsets:
+            idx = int(off["idx"])
+            start_s = float(off["start_s"])
+            dur_s = float(off["dur_s"])
+            split_local = host_assets_dir / f"host_video_split_{idx:03d}.mp4"
+            split_cmd = [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-i", str(master_local),
+                # `-ss` AFTER `-i` is the output-side seek — frame-accurate at
+                # the cost of decoding from start. The master is short
+                # (≤ minutes) so re-decoding is cheap and gives clean cuts at
+                # arbitrary timestamps regardless of keyframe placement.
+                "-ss", f"{start_s:.3f}",
+                "-t", f"{dur_s:.3f}",
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-pix_fmt", "yuv420p",
+                "-an",
+                "-movflags", "+faststart",
+                str(split_local),
+            ]
+            _rs = _sp_local.run(split_cmd, capture_output=True, text=True)
+            if _rs.returncode != 0 or not split_local.exists():
+                results.append(
+                    AvatarShotResult(
+                        shot_index=idx,
+                        model=host_model,
+                        quality=host_quality,
+                        error=f"split failed: {_rs.stderr.strip() if _rs.stderr else 'no stderr'}",
+                        error_stage="split",
+                        fal_request_id=concat_result.fal_request_id,
+                    )
+                )
+                continue
+            split_s3_key = (
+                f"ai-videos/host-assets/{getattr(self, '_run_name', 'run')}/"
+                f"host_video_split_{idx:03d}.mp4"
+            )
+            split_s3_url = s3_service.upload_file(
+                split_local, s3_key=split_s3_key, content_type="video/mp4"
+            )
+            if not split_s3_url:
+                results.append(
+                    AvatarShotResult(
+                        shot_index=idx,
+                        model=host_model,
+                        quality=host_quality,
+                        error="S3 upload failed for split video",
+                        error_stage="upload",
+                        fal_request_id=concat_result.fal_request_id,
+                    )
+                )
+                continue
+            results.append(
+                AvatarShotResult(
+                    shot_index=idx,
+                    model=host_model,
+                    quality=host_quality,
+                    video_url=split_s3_url,
+                    duration_s=dur_s,
+                    fal_request_id=concat_result.fal_request_id,
+                )
+            )
+        ok = sum(1 for r in results if not r.error)
+        print(f"[AvatarBatch] concat: split done — {ok}/{len(results)} shot(s) OK")
+        # Discard the temporary split files; the post-processing pass will
+        # download from the per-shot S3 URL we just created and overwrite
+        # `host_video_{idx:03d}.mp4` (without the `_split_` suffix) via the
+        # existing trim+strip+upload step. The split files we made here use
+        # `_split_` in the name precisely to avoid colliding.
+        return results
+
     def _run_avatar_batch_sync(
         self,
         director_plan: Dict[str, Any],
@@ -6537,35 +6784,83 @@ class VideoGenerationPipeline:
             import importlib
             FalAvatarClient = importlib.import_module("app.services.fal_avatar_client").FalAvatarClient
 
-        client = FalAvatarClient(api_key=fal_key, concurrency=4)
-        try:
-            fal_results = _asyncio.run(
-                client.render_batch(
-                    per_shot_inputs,
-                    model=host_model,
-                    quality=host_quality,
+        # ── Built-in catalog providers: collapse N parallel requests into ONE
+        # concatenated request. Two reasons:
+        #   1. Cost. fal's VEED Avatars (and others) charges a per-request
+        #      minimum of 1 minute. 12 separate ~3-second shots = 12 × 1 min
+        #      = $3.60. Concatenated to one ~36s request = 1 × 1 min minimum
+        #      = $0.30 (12× cheaper).
+        #   2. Tail latency. 4 parallel Argil requests racing the 10-min
+        #      per-shot deadline previously timed out under load. One long
+        #      request with a 20-min deadline reliably finishes.
+        # Built-in providers always render the SAME identity in the SAME
+        # pose/setting across shots, so the concatenated video is visually
+        # equivalent to N separate renders — we just split the result back
+        # at recorded shot offsets and the existing post-processing trims
+        # each per-shot file as before.
+        fal_results: List[Any] = []
+        used_concat_path = False
+        if is_builtin_provider and len(per_shot_inputs) > 1:
+            try:
+                fal_results = self._run_builtin_concat_render(
+                    per_shot_inputs=per_shot_inputs,
+                    per_shot_artifacts=per_shot_artifacts,
+                    host_assets_dir=host_assets_dir,
+                    s3_service=s3_service,
+                    fal_key=fal_key,
+                    host_model=host_model,
+                    host_quality=host_quality,
                     details_prompt=details_prompt,
-                    provider=host_provider,
+                    host_provider=host_provider,
                     external_avatar_id=external_avatar_id,
+                    FalAvatarClient=FalAvatarClient,
                 )
-            )
-        except Exception as e:
-            print(f"[AvatarBatch] ❌ fal.ai batch failed catastrophically: {e}")
-            for inp in per_shot_inputs:
-                idx = inp["shot_index"]
-                shots[idx]["host_present"] = False
-            for art in per_shot_artifacts:
-                if art.get("status") == "pending":
-                    art["status"] = "failed"
-                    art["error"] = str(e)
-                    art["error_stage"] = "fal_batch"
-            errors.append({"stage": "fal_batch", "error": str(e)})
-            return {
-                "host_shot_count": 0,
-                "shot_artifacts": per_shot_artifacts,
-                "errors": errors,
-                "total_host_seconds": 0.0,
-            }
+                used_concat_path = True
+            except Exception as concat_err:
+                # Concat path failed before fal was called (concat or upload);
+                # fall back to per-shot dispatch so the user still gets a
+                # result. fal-side failures inside the helper are surfaced as
+                # AvatarShotResult.error entries, not raised — those don't
+                # land here.
+                print(
+                    f"[AvatarBatch] ⚠️  concat path failed pre-fal "
+                    f"({concat_err}) — falling back to per-shot dispatch."
+                )
+
+        if used_concat_path:
+            # Concat path produced fal_results directly; skip the parallel
+            # render_batch dispatch.
+            pass
+        else:
+            client = FalAvatarClient(api_key=fal_key, concurrency=4)
+            try:
+                fal_results = _asyncio.run(
+                    client.render_batch(
+                        per_shot_inputs,
+                        model=host_model,
+                        quality=host_quality,
+                        details_prompt=details_prompt,
+                        provider=host_provider,
+                        external_avatar_id=external_avatar_id,
+                    )
+                )
+            except Exception as e:
+                print(f"[AvatarBatch] ❌ fal.ai batch failed catastrophically: {e}")
+                for inp in per_shot_inputs:
+                    idx = inp["shot_index"]
+                    shots[idx]["host_present"] = False
+                for art in per_shot_artifacts:
+                    if art.get("status") == "pending":
+                        art["status"] = "failed"
+                        art["error"] = str(e)
+                        art["error_stage"] = "fal_batch"
+                errors.append({"stage": "fal_batch", "error": str(e)})
+                return {
+                    "host_shot_count": 0,
+                    "shot_artifacts": per_shot_artifacts,
+                    "errors": errors,
+                    "total_host_seconds": 0.0,
+                }
 
         # --- 3. Apply fal results to shots + artifacts ---
         # Seed with resumed-and-already-completed shots so the run summary

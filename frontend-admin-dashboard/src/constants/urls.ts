@@ -50,6 +50,19 @@ export const LOGIN_OTP = `${BASE_URL}/auth-service/v1/login-otp`;
 export const VIMOTION_REQUEST_SIGNUP_OTP = `${BASE_URL}/auth-service/v1/vimotion/request-signup-otp`;
 export const VIMOTION_VERIFY_SIGNUP_OTP = `${BASE_URL}/auth-service/v1/vimotion/verify-signup-otp`;
 export const VIMOTION_SIGNUP = `${BASE_URL}/auth-service/v1/vimotion/signup`;
+export const VIMOTION_LOGIN = `${BASE_URL}/auth-service/v1/vimotion/login`;
+
+// Vimotion brand kits + studio avatars (admin_core_service, JWT-auth)
+export const VIMOTION_BRAND_KITS = `${BASE_URL}/admin-core-service/vimotion/v1/brand-kits`;
+export const VIMOTION_BRAND_KIT_BY_ID = (id: string) =>
+    `${BASE_URL}/admin-core-service/vimotion/v1/brand-kits/${id}`;
+export const VIMOTION_BRAND_KIT_DEFAULT = `${BASE_URL}/admin-core-service/vimotion/v1/brand-kits/default`;
+export const VIMOTION_BRAND_KIT_SET_DEFAULT = (id: string) =>
+    `${BASE_URL}/admin-core-service/vimotion/v1/brand-kits/${id}/set-default`;
+
+export const VIMOTION_AVATARS = `${BASE_URL}/admin-core-service/vimotion/v1/avatars`;
+export const VIMOTION_AVATAR_BY_ID = (id: string) =>
+    `${BASE_URL}/admin-core-service/vimotion/v1/avatars/${id}`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
 export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/certificate/update-setting`;
 // Add this with your other constants

@@ -163,14 +163,32 @@ export type AvatarQuality = '480p' | '720p';
 export type HostType = 'avatar' | 'raw';
 
 export interface HostAvatarConfig {
-    /** Public S3 URL of a clear, front-facing face photo. Used as the per-shot Seedream image-to-image reference. */
-    face_image_url: string;
+    /**
+     * Public S3 URL of a clear, front-facing face photo. Used as the per-shot
+     * Seedream image-to-image reference for custom avatars. Optional when
+     * `saved_avatar_id` is set — server resolves the saved row's face_image_url
+     * (custom provider) or skips the field entirely (argil/veed providers).
+     */
+    face_image_url?: string;
     /** Free-form description: clothing, demeanour, background hints. Threaded into per-shot avatar image prompts. */
     details_prompt?: string;
-    /** fal.ai model. Default Kling v2 ($0.0562/sec). */
+    /** fal.ai model. Default Kling v2 ($0.0562/sec). Ignored for argil/veed providers (their endpoints are fixed). */
     avatar_model?: AvatarModel;
     /** Avatar video resolution. Same per-second price for both. */
     quality?: AvatarQuality;
+    /**
+     * Vimotion studio_avatar.id — when set, server resolves the saved row and
+     * overrides face_image_url / provider / voice metadata. Vim's host picker
+     * sends only this; admin's free-form face-upload path leaves it undefined.
+     */
+    saved_avatar_id?: string;
+    /**
+     * When the saved avatar carries voice metadata (voice_id / provider /
+     * language / gender), apply it on top of the request's voice_* fields.
+     * Default true. Set false to keep the request's voice and ignore the
+     * avatar's saved voice. Only meaningful with `saved_avatar_id`.
+     */
+    use_avatar_voice?: boolean;
 }
 
 export interface HostRawConfig {
@@ -231,6 +249,12 @@ export interface GenerateVideoRequest {
     routing_overrides?: RoutingOverrides;
     /** Optional on-screen host (narrator). Available on ultra / super_ultra only; rejected at the API edge on lower tiers. */
     host?: HostConfig;
+    /**
+     * Vimotion brand_kit.id — when set, the kit's palette/fonts/layout/intro/outro/watermark
+     * REPLACE the institute-wide style/branding for this run (no merge). Server resolves
+     * scoped by institute_id; an unresolved id falls back to institute defaults.
+     */
+    brand_kit_id?: string;
 }
 
 // ── Intent Router types ─────────────────────────────────────────────────

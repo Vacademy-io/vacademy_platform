@@ -82,7 +82,17 @@ export const ActivityStatsSidebar = () => {
     const colorForName = (name: string) =>
         avatarColors[(name.charCodeAt(0) || 0) % avatarColors.length];
 
-    const students = useMemo(() => {
+    type StudentRow = {
+        id: string;
+        user_id: string;
+        full_name: string;
+        time_spent_seconds: number;
+        time_spent: string;
+        last_active: string;
+        last_active_raw: string;
+    };
+
+    const students: StudentRow[] = useMemo(() => {
         if (!activityStats?.content) return [];
         return activityStats.content.map((item: UserActivity) => ({
             id: item.userId,
@@ -95,15 +105,18 @@ export const ActivityStatsSidebar = () => {
         }));
     }, [activityStats]);
 
-    const filteredStudents = useMemo(() => {
+    const filteredStudents: StudentRow[] = useMemo(() => {
         const q = searchInput.trim().toLowerCase();
         if (!q) return students;
-        return students.filter((s) => s.full_name.toLowerCase().includes(q));
+        return students.filter((s: StudentRow) => s.full_name.toLowerCase().includes(q));
     }, [students, searchInput]);
 
     const totalParticipants = activityStats?.totalElements ?? 0;
     const avgTimeSeconds = students.length
-        ? Math.round(students.reduce((acc, s) => acc + s.time_spent_seconds, 0) / students.length)
+        ? Math.round(
+              students.reduce((acc: number, s: StudentRow) => acc + s.time_spent_seconds, 0) /
+                  students.length
+          )
         : 0;
     const totalPages = activityStats?.totalPages ?? 0;
 
@@ -222,7 +235,7 @@ export const ActivityStatsSidebar = () => {
                             </div>
                         ) : (
                             <div className="space-y-2">
-                                {filteredStudents.map((student) => (
+                                {filteredStudents.map((student: StudentRow) => (
                                     <button
                                         key={student.id}
                                         onClick={() =>

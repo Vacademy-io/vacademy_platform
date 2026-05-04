@@ -190,6 +190,11 @@ export default defineConfig({
                 handler(level, log);
             },
             output: {
+                // Prevent Rollup from hoisting cross-chunk imports, which can
+                // create circular dependencies between vendor chunks (e.g.
+                // react-vendor importing back from chart-vendor) and cause
+                // TDZ "Cannot access 'X' before initialization" at runtime.
+                hoistTransitiveImports: false,
                 manualChunks(id) {
                     if (id.includes('node_modules')) {
                         // Core React
@@ -288,7 +293,21 @@ export default defineConfig({
                             return 'd3-vendor';
 
                         // Heavy Libraries - Charts
-                        if (id.includes('/recharts/') || id.includes('/victory/'))
+                        // Include ALL recharts transitive deps so Rollup can't
+                        // accidentally hoist them into react-vendor and create a
+                        // circular chunk dependency (the source of the
+                        // "Cannot access 'w' before initialization" TDZ where
+                        // 'w' was React imported from react-vendor).
+                        if (
+                            id.includes('/recharts/') ||
+                            id.includes('/recharts-scale/') ||
+                            id.includes('/react-smooth/') ||
+                            id.includes('/react-transition-group/') ||
+                            id.includes('/fast-equals/') ||
+                            id.includes('/eventemitter3/') ||
+                            id.includes('/tiny-invariant/') ||
+                            id.includes('/victory/')
+                        )
                             return 'chart-vendor';
 
                         // Heavy Libraries - Canvas/Fabric

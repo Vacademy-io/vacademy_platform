@@ -1607,7 +1607,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
 
             // Three cases:
             //   1. batchId has 1 or more comma-separated IDs → fetch for exactly those
-            //   2. batchId empty + instituteId present → fetch all active batches (capped at 10)
+            //   2. batchId empty + instituteId present → fetch all active batches (capped at 500, see below)
             //   3. neither → error
             List<String> batchIds = new ArrayList<>();
             if (batchId != null && !batchId.isEmpty()) {
@@ -1617,22 +1617,35 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     .distinct()
                     .collect(Collectors.toList());
             } else if (instituteId != null) {
-                // Fetch all active package session IDs for this institute via SSIGM
-                batchIds = ssigmRepo.findAll().stream()
-                    .filter(m -> m.getInstitute() != null
-                        && instituteId.equals(m.getInstitute().getId())
-                        && "ACTIVE".equalsIgnoreCase(m.getStatus())
-                        && m.getPackageSession() != null)
-                    .map(m -> m.getPackageSession().getId())
-                    .distinct()
-                    .collect(Collectors.toList());
-                log.info("No batchId provided. Found {} active batches for institute {}", batchIds.size(), instituteId);
-                // Safety limit — prevent processing too many batches (would timeout).
-                // Only applied to the "all batches" fallback; if the user explicitly
-                // selected N batches we honor their choice in the branch above.
-                if (batchIds.size() > 10) {
-                    log.warn("Too many batches ({}). Limiting to first 10 to prevent timeout.", batchIds.size());
-                    batchIds = batchIds.subList(0, 10);
+                // Fetch active package session IDs for this institute via a DB-side
+                // distinct + limit. The previous implementation called ssigmRepo.findAll()
+                // and filtered in JVM memory, which loaded every student-session mapping
+                // across all institutes and N+1-loaded each Institute/PackageSession,
+                // causing scheduled "all batches" runs to time out (or silently fail
+                // and skip the email send) on any non-trivial institute.
+                //
+                // Cap at 500 batches: high enough to cover real-world institutes (the
+                // production case that motivated this fix has 115 batches × ~20 students
+                // = ~2.3K emails, well within scale), low enough to avoid pathological
+                // memory blowup on a misconfigured query. The per-batch loop below
+                // already has its own try/catch so one bad batch doesn't poison the run,
+                // and SEND_EMAIL handles the actual fan-out via its chunking + throttle.
+                final int maxBatches = 500;
+                final int warnThreshold = 200;
+                batchIds = ssigmRepo.findDistinctPackageSessionIdsByInstituteAndStatus(
+                        instituteId, List.of("ACTIVE"), maxBatches);
+                log.info("No batchId provided. Found {} active batches for institute {} (cap={})",
+                        batchIds.size(), instituteId, maxBatches);
+                if (batchIds.size() >= warnThreshold) {
+                    log.warn("Large batch fan-out: institute {} has {} active batches in this run — "
+                            + "verify SEND_EMAIL chunk/throttle settings handle the resulting student volume "
+                            + "and consider letting the user pick specific batches in the workflow config.",
+                            instituteId, batchIds.size());
+                }
+                if (batchIds.size() >= maxBatches) {
+                    log.warn("Hit the {}-batch cap for institute {} — some active batches were skipped. "
+                            + "Raise maxBatches in fetchBatchAttendanceReport if this is intentional.",
+                            maxBatches, instituteId);
                 }
             } else {
                 return Map.of("error", "Either batchId or instituteId is required");

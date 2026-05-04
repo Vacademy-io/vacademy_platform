@@ -177,6 +177,7 @@ class VideoGenerationService:
         sub_shots_enabled: bool = False,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
+        brand_kit_id: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -213,6 +214,81 @@ class VideoGenerationService:
             }
             return
 
+        # ── Vimotion saved-avatar + brand-kit resolution ───────────────
+        # When the request carries `host.avatar.saved_avatar_id` or
+        # `brand_kit_id`, hydrate from admin-core Postgres before any
+        # tier-gate / pipeline work. The resolver scopes by institute_id,
+        # so a request can never read another tenant's avatar/kit.
+        # Voice override (use_avatar_voice=true) mutates the *local*
+        # voice_id/voice_gender/tts_provider/language so every downstream
+        # caller (including TTS) sees the avatar's voice.
+        #
+        # ── Resume safety contract ─────────────────────────────────────
+        # The override is NOT persisted into host_plan.json — only into
+        # function locals, then forwarded to _run_pipeline_stages and
+        # AutomationPipeline kwargs. This is intentional and safe because:
+        #   1. Resume requests carry the same payload (saved_avatar_id) so
+        #      this block re-runs on every resume and re-derives the same
+        #      override values (idempotent unless the avatar row was edited
+        #      between original submit and resume — see #3).
+        #   2. TTS is atomic from the pipeline's POV — narration.mp3 either
+        #      exists (resume past TTS, voice_id no longer consulted) or it
+        #      doesn't (resume runs TTS fresh with the re-resolved voice).
+        #      There is no half-baked partial-narration state where stale
+        #      voice_id could leak in.
+        #   3. If the avatar row IS edited between submit and pre-TTS
+        #      resume, the resumed run picks up the new voice. This is
+        #      arguably correct behaviour (user changed their mind), but
+        #      worth knowing if you go to wire saved-avatar voice into a
+        #      cached plan for stricter resume determinism.
+        # If you change any of the above (e.g. switch TTS to a multi-call
+        # streaming flow, or move resolution behind a cache that survives
+        # resume), persist applied_voice_* onto HostAvatarPlan and prefer
+        # the cached values on resume.
+        resolved_saved_avatar: Optional[Dict[str, Any]] = None
+        try:
+            host_avatar = getattr(host, "avatar", None) if host is not None else None
+            saved_avatar_id = getattr(host_avatar, "saved_avatar_id", None) if host_avatar else None
+            use_avatar_voice = bool(getattr(host_avatar, "use_avatar_voice", True)) if host_avatar else True
+            if saved_avatar_id and institute_id:
+                from .vimotion_resolver import resolve_studio_avatar
+                resolved_saved_avatar = resolve_studio_avatar(saved_avatar_id, institute_id)
+                if resolved_saved_avatar is None:
+                    logger.warning(
+                        f"[VideoGenService] saved_avatar_id={saved_avatar_id!r} did not resolve "
+                        f"for institute_id={institute_id!r} — falling back to request fields."
+                    )
+                elif use_avatar_voice:
+                    # Map saved-avatar voice fields onto the request locals.
+                    # Avatar.voice_provider is concrete ('edge'|'sarvam'|'google');
+                    # tts_provider in the request schema is the user-facing tier
+                    # ('standard'|'premium'). edge → standard; sarvam/google → premium.
+                    av_voice_id = resolved_saved_avatar.get("voice_id") or None
+                    av_provider = (resolved_saved_avatar.get("voice_provider") or "").lower() or None
+                    av_language = resolved_saved_avatar.get("voice_language") or None
+                    av_gender = resolved_saved_avatar.get("voice_gender") or None
+                    if av_voice_id:
+                        voice_id = av_voice_id
+                    if av_provider == "edge":
+                        tts_provider = "standard"
+                    elif av_provider in ("sarvam", "google"):
+                        tts_provider = "premium"
+                    if av_language:
+                        language = av_language
+                    if av_gender:
+                        voice_gender = av_gender
+                    logger.info(
+                        f"[VideoGenService] Applied avatar voice override "
+                        f"(voice_id={av_voice_id!r}, provider={av_provider!r}, "
+                        f"language={av_language!r}, gender={av_gender!r})."
+                    )
+        except Exception as _vr_err:
+            # Don't fail the whole request on a resolution glitch — log and
+            # continue with whatever the caller sent in the request body.
+            logger.warning(
+                f"[VideoGenService] Vimotion saved-avatar resolution failed (non-fatal): {_vr_err}"
+            )
+
         # Tier-gate the Host feature BEFORE creating any DB record / charging
         # credits. Mirrors the early-fail UX of stage validation above.
         if host is not None and not resume:
@@ -224,6 +300,7 @@ class VideoGenerationService:
                     host,
                     quality_tier=quality_tier,
                     fal_api_key=getattr(_settings, "fal_api_key", None) or "",
+                    resolved_saved_avatar=resolved_saved_avatar,
                 )
                 # New host pipeline supersedes the legacy single-PiP avatar.
                 # If both `host.type=avatar` and `generate_avatar=true` are set,
@@ -368,6 +445,8 @@ class VideoGenerationService:
                     sub_shots_enabled=sub_shots_enabled,
                     routing_overrides=routing_overrides,
                     host=host,
+                    brand_kit_id=brand_kit_id,
+                    resolved_saved_avatar=resolved_saved_avatar,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -456,6 +535,8 @@ class VideoGenerationService:
         sub_shots_enabled: bool = False,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
+        brand_kit_id: Optional[str] = None,
+        resolved_saved_avatar: Optional[Dict[str, Any]] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -524,10 +605,59 @@ class VideoGenerationService:
 
         pipeline = VideoGenerationPipeline(**pipeline_args)
         
-        # Fetch branding and style configuration from institute settings
+        # Fetch branding and style configuration. Two paths:
+        #
+        # 1. brand_kit_id set → REPLACE per-institute defaults entirely with the
+        #    kit's palette/fonts/layout/intro/outro/watermark. No merge — kits are
+        #    self-contained, so an unset kit field falls back to pipeline defaults
+        #    rather than to the institute setting (mirrors vimotion's "swap kits"
+        #    UX where each kit is a fully-baked look).
+        #
+        # 2. No brand_kit_id → legacy path: read VIDEO_BRANDING + VIDEO_STYLE from
+        #    institute setting_json.
         branding_config = None
         style_config = None
-        if institute_id and db_session:
+        if institute_id and brand_kit_id:
+            try:
+                from .vimotion_resolver import resolve_brand_kit
+                kit = resolve_brand_kit(brand_kit_id, institute_id)
+                if kit is None:
+                    logger.warning(
+                        f"[VideoGenService] brand_kit_id={brand_kit_id!r} did not resolve "
+                        f"for institute_id={institute_id!r} — falling back to institute defaults."
+                    )
+                else:
+                    # Map brand_kit columns onto VideoStyleConfig + VideoBrandingConfig.
+                    # The FE-shared shape uses palette_json/intro_json/etc. as JSONB;
+                    # here we just unwrap and rename to the pipeline's expected keys.
+                    palette = kit.get("palette_json") or {}
+                    if not isinstance(palette, dict):
+                        palette = {}
+                    style_config = {
+                        "background_type": kit.get("background_type") or "white",
+                        "primary_color": palette.get("primary"),
+                        "secondary_color": palette.get("secondary"),
+                        "accent_color": palette.get("accent"),
+                        "background_color": palette.get("background"),
+                        "heading_font": kit.get("heading_font"),
+                        "body_font": kit.get("body_font"),
+                        "layout_theme": kit.get("layout_theme"),
+                        "logo_file_id": kit.get("logo_file_id"),
+                    }
+                    branding_config = {
+                        "intro": kit.get("intro_json") or {},
+                        "outro": kit.get("outro_json") or {},
+                        "watermark": kit.get("watermark_json") or {},
+                    }
+                    logger.info(
+                        f"[VideoGenService] Using brand_kit name={kit.get('name')!r} "
+                        f"id={kit.get('id')!r} (replaces institute-wide style/branding)"
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"[VideoGenService] brand_kit fetch failed: {e} — falling back to institute defaults."
+                )
+        if branding_config is None and style_config is None and institute_id and db_session:
             try:
                 from .institute_settings_service import InstituteSettingsService
                 settings_service = InstituteSettingsService(db_session)
@@ -801,6 +931,7 @@ class VideoGenerationService:
                             host,
                             quality_tier=quality_tier,
                             fal_api_key=getattr(_get_settings_inner(), "fal_api_key", None) or "",
+                            resolved_saved_avatar=resolved_saved_avatar,
                         )
                         (run_dir / "host_plan.json").write_text(
                             host_plan.model_dump_json(indent=2), encoding="utf-8"

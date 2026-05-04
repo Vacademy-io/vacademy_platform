@@ -322,6 +322,7 @@ async def generate_video_external(
                         sub_shots_enabled=p.sub_shots_enabled,
                         routing_overrides=p.routing_overrides,
                         host=p.host,
+                        brand_kit_id=getattr(p, "brand_kit_id", None),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:

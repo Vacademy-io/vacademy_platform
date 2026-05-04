@@ -69,22 +69,43 @@ AvatarModelLiteral = Literal[
 
 
 class HostAvatarConfig(BaseModel):
-    """Avatar-host inputs. Required when host.type='avatar'."""
-    face_image_url: str = Field(
-        ...,
-        description="Public S3 URL of a clear, front-facing face photo. Used as the Seedream image-to-image reference for every host shot.",
+    """Avatar-host inputs. Required when host.type='avatar'.
+
+    Two valid shapes:
+
+    1. **Custom (legacy)** — caller supplies `face_image_url` (+ optional
+       `details_prompt`, `avatar_model`, `quality`). Pipeline runs the full
+       Seedream image-to-image → Kling/Fabric talking-head path.
+
+    2. **Saved (vim)** — caller supplies `saved_avatar_id`. Server resolves
+       the studio_avatar row, fills `face_image_url`/`details_prompt`/voice
+       overrides from it, and (for non-custom providers) routes per-shot
+       generation to the matching fal.ai built-in catalog endpoint
+       (Argil / VEED Avatars), skipping Seedream entirely.
+    """
+    face_image_url: Optional[str] = Field(
+        default=None,
+        description="Public S3 URL of a clear, front-facing face photo. Required for custom avatars; ignored for built-ins (Argil/VEED) since identity is locked to the catalog enum.",
     )
     details_prompt: str = Field(
         default="",
-        description="User-supplied description of the host: clothing, demeanour, background hints. Threaded into per-shot avatar image prompts.",
+        description="User-supplied description of the host: clothing, demeanour, background hints. Threaded into per-shot Seedream prompts (custom only).",
     )
     avatar_model: AvatarModelLiteral = Field(
         default="fal-ai/kling-video/ai-avatar/v2/standard",
-        description="fal.ai model used for the talking-head video. Default Kling v2 Standard ($0.0562/sec).",
+        description="fal.ai model used for custom-avatar talking-head video. Ignored when the resolved provider is argil or veed (their endpoints are fixed).",
     )
     quality: Literal["480p", "720p"] = Field(
         default="480p",
         description="Avatar video resolution. Same per-second price for both qualities.",
+    )
+    saved_avatar_id: Optional[str] = Field(
+        default=None,
+        description="Vimotion studio_avatar.id — when set, server-resolves provider/face_image_url/voice from the row and overrides the matching fields in this config.",
+    )
+    use_avatar_voice: bool = Field(
+        default=True,
+        description="When a saved avatar carries voice metadata (voice_id/provider/language/gender), apply it on top of the request's voice fields. Set false to keep the request's voice and ignore the avatar's saved voice.",
     )
 
 
@@ -122,6 +143,17 @@ class HostConfig(BaseModel):
             raise ValueError("host.avatar is required when host.type == 'avatar'")
         if self.type == "raw" and not self.raw:
             raise ValueError("host.raw is required when host.type == 'raw'")
+        # Avatar identity must come from somewhere: either a face image URL
+        # (custom path) or a saved_avatar_id the server can resolve to one.
+        # Resolution happens server-side at request entry, before the
+        # pipeline runs — so validation here just enforces that *some*
+        # identity hook is present.
+        if self.type == "avatar" and self.avatar is not None:
+            if not self.avatar.face_image_url and not self.avatar.saved_avatar_id:
+                raise ValueError(
+                    "host.avatar requires either face_image_url (custom upload) "
+                    "or saved_avatar_id (resolved server-side)."
+                )
         return self
 
 
@@ -179,6 +211,14 @@ class VideoGenerationRequest(BaseModel):
     quality_tier: str = Field(
         default="ultra",
         description="Quality tier: 'free', 'standard', 'premium', 'ultra', 'super_ultra'. Controls two-pass script review, HTML validation, image prompt enhancement, crossfade transitions, kinetic text shots, and other quality features."
+    )
+    brand_kit_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Vimotion brand_kit.id — when set, the kit's palette/fonts/layout/intro/outro/watermark "
+            "REPLACE the institute-wide VIDEO_STYLE + VIDEO_BRANDING for this run (no merge). Server "
+            "resolves the row scoped by institute_id; an unresolved id falls back to institute defaults."
+        )
     )
     voice_gender: str = Field(
         default="female",

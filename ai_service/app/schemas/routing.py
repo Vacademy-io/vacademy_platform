@@ -106,13 +106,29 @@ class VideoTypePlan(BaseModel):
 # run_dir/host_plan.json + extra_metadata.host (inputs block).
 
 class HostAvatarPlan(BaseModel):
-    face_image_url: str
+    """Resolved avatar config the pipeline consumes.
+
+    `provider` decides the per-shot generation path:
+      • 'custom'  → Seedream image-to-image conditioned on `face_image_url`,
+                    then `avatar_model` (Kling v2 / VEED Fabric) for talking-head.
+      • 'argil'   → fal.ai `argil/avatars/audio-to-video` keyed by
+                    `external_avatar_id`. No Seedream, no face image. Locked
+                    identity + scene per the catalog enum.
+      • 'veed'    → fal.ai `veed/avatars/audio-to-video` keyed by
+                    `external_avatar_id`. Same shape as Argil.
+
+    For built-in providers, `face_image_url` is empty and `avatar_model` is
+    irrelevant — the provider's endpoint is fixed.
+    """
+    provider: Literal["custom", "argil", "veed"] = "custom"
+    external_avatar_id: Optional[str] = None
+    face_image_url: str = ""
     details_prompt: str = ""
     avatar_model: Literal[
         "fal-ai/kling-video/ai-avatar/v2/standard",
         "veed/fabric-1.0",
-    ]
-    quality: Literal["480p", "720p"]
+    ] = "fal-ai/kling-video/ai-avatar/v2/standard"
+    quality: Literal["480p", "720p"] = "480p"
 
 
 class HostRawPlan(BaseModel):

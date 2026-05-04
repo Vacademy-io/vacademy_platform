@@ -6019,13 +6019,27 @@ class VideoGenerationPipeline:
         host_quality = avatar_cfg.get("quality") or "480p"
         face_image_url = avatar_cfg.get("face_image_url") or ""
         details_prompt = avatar_cfg.get("details_prompt") or ""
+        # Provider routing — drives whether we run Seedream (custom) or skip
+        # straight to the catalog audio-to-video endpoint (argil / veed).
+        host_provider = (avatar_cfg.get("provider") or "custom").lower()
+        external_avatar_id = avatar_cfg.get("external_avatar_id") or None
+        is_builtin_provider = host_provider in ("argil", "veed")
 
-        if not face_image_url:
-            print("[AvatarBatch] ⚠️  No face_image_url — disabling host for this run")
+        if host_provider == "custom" and not face_image_url:
+            print("[AvatarBatch] ⚠️  No face_image_url for custom provider — disabling host for this run")
             for s in director_plan.get("shots", []):
                 if s.get("host_present"):
                     s["host_present"] = False
             return {"skipped": True, "reason": "missing face_image_url"}
+        if is_builtin_provider and not external_avatar_id:
+            print(
+                f"[AvatarBatch] ⚠️  provider={host_provider} but no external_avatar_id — "
+                "disabling host for this run"
+            )
+            for s in director_plan.get("shots", []):
+                if s.get("host_present"):
+                    s["host_present"] = False
+            return {"skipped": True, "reason": "missing external_avatar_id"}
 
         shots = director_plan.get("shots") or []
 
@@ -6218,9 +6232,62 @@ class VideoGenerationPipeline:
                 "shot_index": shot_idx,
                 "model": host_model,
                 "quality": host_quality,
+                "provider": host_provider,
+                "external_avatar_id": external_avatar_id,
                 "status": "pending",
             }
             try:
+                # ── Built-in catalog providers (Argil / VEED Avatars) ──
+                # Identity is locked to the catalog enum, so we skip Seedream
+                # and the per-shot host image upload entirely. We still need
+                # the audio slice — fal.ai catalog endpoints take audio +
+                # avatar enum and produce the talking-head video directly.
+                if is_builtin_provider:
+                    start_time = float(shot.get("start_time", 0))
+                    end_time = float(shot.get("end_time", start_time + 6))
+                    duration_s = max(0.5, end_time - start_time)
+                    local_audio = host_assets_dir / f"host_audio_{shot_idx:03d}.mp3"
+                    _ff_cmd = [
+                        "ffmpeg", "-y", "-loglevel", "error",
+                        "-ss", f"{start_time:.3f}",
+                        "-i", str(master_audio),
+                        "-t", f"{duration_s:.3f}",
+                        "-vn",
+                        "-acodec", "libmp3lame", "-q:a", "4",
+                        "-ac", "2", "-ar", "44100",
+                        str(local_audio),
+                    ]
+                    _r = _sp.run(_ff_cmd, capture_output=True, text=True)
+                    if _r.returncode != 0 or not local_audio.exists():
+                        raise RuntimeError(f"ffmpeg slice failed: {_r.stderr or '<no stderr>'}")
+                    _aud_s3_key = f"ai-videos/host-assets/{getattr(self, '_run_name', 'run')}/host_audio_{shot_idx:03d}.mp3"
+                    aud_s3_url = s3_service.upload_file(
+                        local_audio, s3_key=_aud_s3_key, content_type="audio/mpeg"
+                    )
+                    if not aud_s3_url:
+                        raise RuntimeError("S3 upload failed for host audio slice")
+                    shot["audio_slice_url"] = aud_s3_url
+                    artifact["audio_slice_url"] = aud_s3_url
+                    artifact["duration_s"] = duration_s
+                    # No image_url for built-ins — render_batch will pass empty.
+                    per_shot_inputs.append({
+                        "shot_index": shot_idx,
+                        "image_url": "",
+                        "audio_url": aud_s3_url,
+                    })
+                    self._emit_progress({
+                        "type": "sub_stage",
+                        "sub_stage": "avatar_image_audio_ready",
+                        "stage": "html",
+                        "message": (
+                            f"Host shot {len(per_shot_inputs)}/{len(host_shots)} prepared "
+                            f"(audio slice ready — {host_provider} catalog avatar)"
+                        ),
+                        "shot_index": shot_idx,
+                        "host_shot_completed": len(per_shot_inputs),
+                        "host_shot_count": len(host_shots),
+                    })
+                    continue
                 # 1a. Image gen
                 # Compose the Seedream prompt from three sources, in order of
                 # precedence:
@@ -6478,6 +6545,8 @@ class VideoGenerationPipeline:
                     model=host_model,
                     quality=host_quality,
                     details_prompt=details_prompt,
+                    provider=host_provider,
+                    external_avatar_id=external_avatar_id,
                 )
             )
         except Exception as e:

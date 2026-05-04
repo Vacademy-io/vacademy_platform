@@ -2,16 +2,23 @@
 fal.ai client for per-shot host-avatar talking-head video generation.
 
 Used by `automation_pipeline._run_avatar_batch` during the HTML stage when
-`request.host.type == "avatar"`. Two supported models:
-  • fal-ai/kling-video/ai-avatar/v2/standard  ($0.0562 / sec, default)
-  • veed/fabric-1.0                            ($0.0800 / sec)
+`request.host.type == "avatar"`. Four supported endpoints, dispatched by
+`provider`:
+
+  Custom (image + audio → video — needs Seedream-generated host image upstream):
+    • fal-ai/kling-video/ai-avatar/v2/standard  ($0.0562 / sec, default)
+    • veed/fabric-1.0                            ($0.0800 / sec)
+
+  Built-in catalog (enum + audio → video — no Seedream, no face image):
+    • argil/avatars/audio-to-video               ($0.02  / input-sec)
+    • veed/avatars/audio-to-video                ($0.005 / sec)
 
 This is the *async + bounded-concurrency* path purpose-built for batch
 per-shot generation. The legacy sync `FalAvatarProvider` in avatar_service.py
 remains for the older single-PiP avatar flow.
 
 Per-shot lifecycle:
-  1. submit(image_url, audio_url, model, quality)
+  1. submit(provider, model, image_url|external_avatar_id, audio_url, quality)
        → POST https://queue.fal.run/{model}      → {request_id, status_url}
   2. wait_for_result(submission)                 → poll status_url until DONE
   3. result.video_url                            → final S3 / fal CDN URL
@@ -50,31 +57,79 @@ _DEFAULT_CONCURRENCY = 4
 # translate to the model's actual field names.
 
 def _build_payload(
+    provider: str,
     model: str,
     image_url: str,
     audio_url: str,
     quality: str,
     details_prompt: str = "",
+    external_avatar_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Map canonical inputs → model-specific fal.ai payload."""
-    if model == "fal-ai/kling-video/ai-avatar/v2/standard":
-        # Kling v2 standard: image_url + audio_url + optional prompt + resolution.
+    """Map canonical inputs → model-specific fal.ai payload.
+
+    `provider` selects the dispatch family:
+      'custom' → image-conditioned (Kling / Fabric)
+      'argil'  → catalog enum (`avatar` field) + `audio_url: {url}` object
+      'veed'   → catalog enum (`avatar_id` field) + `audio_url` plain string
+    """
+    if provider == "custom":
+        if model == "fal-ai/kling-video/ai-avatar/v2/standard":
+            # Kling v2 standard: image_url + audio_url + optional prompt + resolution.
+            return {
+                "image_url": image_url,
+                "audio_url": audio_url,
+                "prompt": (details_prompt or
+                           "A person speaking naturally with subtle head movements."),
+                "resolution": "720p" if quality == "720p" else "480p",
+            }
+        if model == "veed/fabric-1.0":
+            # VEED Fabric 1.0: image-to-video talking avatar. Schema uses
+            # `resolution` (same key as Kling), not `video_size`. No `prompt` field.
+            return {
+                "image_url": image_url,
+                "audio_url": audio_url,
+                "resolution": "720p" if quality == "720p" else "480p",
+            }
+        raise ValueError(f"Unsupported custom-avatar model: {model!r}")
+
+    if provider == "argil":
+        # Argil's audio_to_video catalog. Identity is locked to the enum;
+        # `audio_url` is an object ({url: ...}) per their OpenAPI schema.
+        # `remove_background` defaults false (50% surcharge if true; we don't
+        # surface that toggle in v1).
+        if not external_avatar_id:
+            raise ValueError("provider=argil requires external_avatar_id (catalog enum).")
         return {
-            "image_url": image_url,
-            "audio_url": audio_url,
-            "prompt": (details_prompt or
-                       "A person speaking naturally with subtle head movements."),
-            "resolution": "720p" if quality == "720p" else "480p",
+            "avatar": external_avatar_id,
+            "audio_url": {"url": audio_url},
+            "remove_background": False,
         }
-    if model == "veed/fabric-1.0":
-        # VEED Fabric 1.0: image-to-video talking avatar. Schema uses
-        # `resolution` (same key as Kling), not `video_size`. No `prompt` field.
+
+    if provider == "veed":
+        # VEED Avatars audio_to_video catalog. `avatar_id` field name (vs Argil's
+        # `avatar`); audio_url is a plain string here.
+        if not external_avatar_id:
+            raise ValueError("provider=veed requires external_avatar_id (catalog enum).")
         return {
-            "image_url": image_url,
+            "avatar_id": external_avatar_id,
             "audio_url": audio_url,
-            "resolution": "720p" if quality == "720p" else "480p",
         }
-    raise ValueError(f"Unsupported fal.ai avatar model: {model!r}")
+
+    raise ValueError(f"Unsupported avatar provider: {provider!r}")
+
+
+def _resolve_endpoint_model(provider: str, model: str) -> str:
+    """The fal.ai queue path slug for a given provider.
+
+    For built-in catalog providers the endpoint is fixed; the caller-supplied
+    `model` is informational only and not used in URL construction.
+    """
+    if provider == "argil":
+        return "argil/avatars/audio-to-video"
+    if provider == "veed":
+        return "veed/avatars/audio-to-video"
+    # provider == "custom": URL is the model id itself
+    return model
 
 
 def _extract_video_url(result_json: Dict[str, Any]) -> Optional[str]:
@@ -190,10 +245,25 @@ class FalAvatarClient:
         audio_url: str,
         quality: str,
         details_prompt: str = "",
+        provider: str = "custom",
+        external_avatar_id: Optional[str] = None,
     ) -> FalSubmission:
-        """POST /queue.fal.run/{model} → {request_id, status_url}."""
-        payload = _build_payload(model, image_url, audio_url, quality, details_prompt)
-        url = f"{_FAL_QUEUE_BASE}/{model}"
+        """POST /queue.fal.run/{endpoint} → {request_id, status_url}.
+
+        For provider in {'argil','veed'}, the endpoint is the catalog audio-to-video
+        path and `image_url` is ignored (identity comes from external_avatar_id).
+        """
+        payload = _build_payload(
+            provider=provider,
+            model=model,
+            image_url=image_url,
+            audio_url=audio_url,
+            quality=quality,
+            details_prompt=details_prompt,
+            external_avatar_id=external_avatar_id,
+        )
+        endpoint = _resolve_endpoint_model(provider, model)
+        url = f"{_FAL_QUEUE_BASE}/{endpoint}"
         async with httpx.AsyncClient(timeout=_DEFAULT_SUBMIT_TIMEOUT_S) as client:
             resp = await client.post(url, headers=self._headers, json=payload)
             resp.raise_for_status()
@@ -257,6 +327,8 @@ class FalAvatarClient:
         audio_url: str,
         quality: str,
         details_prompt: str = "",
+        provider: str = "custom",
+        external_avatar_id: Optional[str] = None,
     ) -> AvatarShotResult:
         """Submit + poll a single shot under the bounded concurrency semaphore.
 
@@ -273,6 +345,8 @@ class FalAvatarClient:
                     audio_url=audio_url,
                     quality=quality,
                     details_prompt=details_prompt,
+                    provider=provider,
+                    external_avatar_id=external_avatar_id,
                 )
                 result.fal_request_id = submission.request_id
             except Exception as e:
@@ -323,20 +397,27 @@ class FalAvatarClient:
         model: str,
         quality: str,
         details_prompt: str = "",
+        provider: str = "custom",
+        external_avatar_id: Optional[str] = None,
     ) -> List[AvatarShotResult]:
         """Render N shots concurrently (bounded by the semaphore).
 
         `shots` is a list of dicts with keys:
-            shot_index, image_url, audio_url
+            shot_index, image_url (custom only — empty string for built-ins), audio_url
+
+        `provider` and `external_avatar_id` apply to the whole batch — the run's
+        host config picks one identity that's used across every host shot.
         """
         coros = [
             self.render_shot(
                 shot_index=int(s["shot_index"]),
                 model=model,
-                image_url=str(s["image_url"]),
+                image_url=str(s.get("image_url") or ""),
                 audio_url=str(s["audio_url"]),
                 quality=quality,
                 details_prompt=details_prompt,
+                provider=provider,
+                external_avatar_id=external_avatar_id,
             )
             for s in shots
         ]

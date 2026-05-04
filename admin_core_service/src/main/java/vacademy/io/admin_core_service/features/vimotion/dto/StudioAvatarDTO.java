@@ -17,7 +17,10 @@ import lombok.NoArgsConstructor;
 public class StudioAvatarDTO {
     private String id;
     private String name;
-    private String faceImageUrl;
+    private String provider;            // 'custom' | 'argil' | 'veed'
+    private String externalAvatarId;    // fal.ai enum value when provider != 'custom'
+    private String faceImageUrl;        // required when provider='custom'
+    private String previewImageUrl;     // FE thumbnail; null for built-ins until catalog is self-hosted
     private String description;
     private String voiceId;
     private String voiceProvider;

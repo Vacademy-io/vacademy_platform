@@ -86,7 +86,8 @@ public class ApplicationSecurityConfig {
             // Vimotion onboarding (sister product) — public signup flow
             "/auth-service/v1/vimotion/request-signup-otp",
             "/auth-service/v1/vimotion/verify-signup-otp",
-            "/auth-service/v1/vimotion/signup"
+            "/auth-service/v1/vimotion/signup",
+            "/auth-service/v1/vimotion/login"
     };
 
     @Autowired

@@ -31,8 +31,23 @@ public class StudioAvatar {
     @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "face_image_url", nullable = false)
+    // 'custom' (user-uploaded face) | 'argil' | 'veed' — determines whether
+    // face_image_url or external_avatar_id is the source of truth at video-gen time.
+    @Column(name = "provider", nullable = false)
+    private String provider;
+
+    // fal.ai catalog enum value when provider != 'custom'.
+    @Column(name = "external_avatar_id")
+    private String externalAvatarId;
+
+    // Required only when provider='custom'.
+    @Column(name = "face_image_url")
     private String faceImageUrl;
+
+    // For 'custom': mirrors face_image_url. For built-ins: self-hosted thumbnail
+    // URL (null in v1; FE shows initials in that case).
+    @Column(name = "preview_image_url")
+    private String previewImageUrl;
 
     @Column(name = "description")
     private String description;

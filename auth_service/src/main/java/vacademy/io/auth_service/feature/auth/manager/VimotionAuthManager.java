@@ -17,6 +17,7 @@ import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
 import vacademy.io.auth_service.feature.auth.dto.VimotionSignupRequest;
 import vacademy.io.auth_service.feature.auth.dto.VimotionVerifyOtpRequest;
 import vacademy.io.auth_service.feature.auth.dto.VimotionVerifyOtpResponse;
+import vacademy.io.auth_service.feature.auth.dto.VimotionLoginRequest;
 import vacademy.io.auth_service.feature.auth.dto.WhatsAppOTPVerifyRequest;
 import vacademy.io.auth_service.feature.auth.service.AuthService;
 import vacademy.io.auth_service.feature.auth.service.VimotionSignupTokenService;
@@ -72,6 +73,40 @@ public class VimotionAuthManager {
 
     @Value("${spring.application.name}")
     private String applicationName;
+
+    public JwtResponseDto login(VimotionLoginRequest request) {
+        if (request == null
+                || !StringUtils.hasText(request.getEmail())
+                || !StringUtils.hasText(request.getPassword())) {
+            throw new VacademyException("Email and password are required");
+        }
+
+        String normalizedEmail = request.getEmail().trim().toLowerCase();
+        User user = userRepository.findFirstByEmailOrderByCreatedAtDesc(normalizedEmail)
+                .orElseThrow(() -> new VacademyException(HttpStatus.UNAUTHORIZED, "Invalid email or password"));
+
+        // App-wide PasswordEncoder is NoOp (see ApplicationSecurityConfig); plain
+        // string compare matches the AuthenticationManager behavior used by
+        // /login-root. If the encoder ever switches to bcrypt this will need to
+        // route through PasswordEncoder.matches.
+        if (user.getPassword() == null || !user.getPassword().equals(request.getPassword())) {
+            throw new VacademyException(HttpStatus.UNAUTHORIZED, "Invalid email or password");
+        }
+
+        java.util.List<UserRole> userRoles = user.getRoles() == null
+                ? java.util.Collections.emptyList()
+                : user.getRoles().stream().toList();
+        if (userRoles.isEmpty()) {
+            throw new VacademyException(HttpStatus.UNAUTHORIZED,
+                    "This account has no studio attached");
+        }
+
+        refreshTokenService.deleteAllRefreshToken(user);
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(
+                user.getUsername(), "VIMOTION-WEB");
+
+        return authService.generateJwtTokenForUser(user, refreshToken, userRoles);
+    }
 
     public String requestSignupOtp(String phoneNumber) {
         if (!StringUtils.hasText(phoneNumber)) {

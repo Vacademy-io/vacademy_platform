@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.auth_service.feature.auth.dto.JwtResponseDto;
+import vacademy.io.auth_service.feature.auth.dto.VimotionLoginRequest;
 import vacademy.io.auth_service.feature.auth.dto.VimotionRequestOtpRequest;
 import vacademy.io.auth_service.feature.auth.dto.VimotionSignupRequest;
 import vacademy.io.auth_service.feature.auth.dto.VimotionVerifyOtpRequest;
@@ -32,5 +33,10 @@ public class VimotionAuthController {
     @PostMapping("/signup")
     public JwtResponseDto signup(@RequestBody VimotionSignupRequest request) {
         return vimotionAuthManager.signup(request);
+    }
+
+    @PostMapping("/login")
+    public JwtResponseDto login(@RequestBody VimotionLoginRequest request) {
+        return vimotionAuthManager.login(request);
     }
 }

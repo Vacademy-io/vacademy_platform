@@ -1,0 +1,12 @@
+apiVersion: eks.amazonaws.com/v1
+kind: NodeClass
+metadata:
+  name: custom
+spec:
+  role: REPLACE_WITH_NODE_IAM_ROLE_NAME
+  subnetSelectorTerms:
+    - id: subnet-REPLACE_AZ_A
+    - id: subnet-REPLACE_AZ_B
+    - id: subnet-REPLACE_AZ_C
+  securityGroupSelectorTerms:
+    - id: sg-REPLACE_CLUSTER_SG

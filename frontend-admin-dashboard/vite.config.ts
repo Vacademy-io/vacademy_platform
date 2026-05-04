@@ -275,9 +275,12 @@ export default defineConfig({
                         // d3 must be in its own chunk so recharts can import it as a
                         // fully-initialized module; bundling them together causes TDZ crashes
                         // ("Cannot access 'X' before initialization") in minified prod builds.
+                        // NOTE: recharts imports d3 from `victory-vendor/d3-*`, NOT directly,
+                        // so victory-vendor MUST be matched here too.
                         if (
                             id.includes('/d3-') ||
                             id.includes('/d3/') ||
+                            id.includes('/victory-vendor/') ||
                             id.includes('/internmap/') ||
                             id.includes('/delaunator/') ||
                             id.includes('/robust-predicates/')
@@ -359,6 +362,10 @@ export default defineConfig({
     resolve: {
         alias: [
             { find: '@', replacement: path.resolve(__dirname, './src') },
+            // Force recharts to its CJS build so Rollup wraps it in lazy __commonJS()
+            // helpers — this is the definitive fix for the "Cannot access 'X' before
+            // initialization" TDZ crash in minified production chunks.
+            { find: /^recharts$/, replacement: path.resolve(__dirname, './node_modules/recharts/lib/index.js') },
             {
                 find: /^@excalidraw\/excalidraw$/,
                 replacement: path.resolve(__dirname, './src/components/common/excalidraw/packages/excalidraw/index.tsx'),

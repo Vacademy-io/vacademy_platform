@@ -62,7 +62,7 @@ export default defineConfig({
         //     },
         // }),
         svgr({ include: '**/*.svg' }),
-        flowbiteReact(),
+        // flowbiteReact(),
         // Replace CORS-blocked easy-email default images with local SVG placeholders.
         // Each preset thumbnail (IMAGE_08–IMAGE_71) maps to a unique wireframe SVG.
         {
@@ -272,8 +272,23 @@ export default defineConfig({
                         if (id.includes('/@monaco-editor/') || id.includes('/monaco-editor/'))
                             return 'monaco-vendor';
 
+                        // d3 must be in its own chunk so recharts can import it as a
+                        // fully-initialized module; bundling them together causes TDZ crashes
+                        // ("Cannot access 'X' before initialization") in minified prod builds.
+                        // NOTE: recharts imports d3 from `victory-vendor/d3-*`, NOT directly,
+                        // so victory-vendor MUST be matched here too.
+                        if (
+                            id.includes('/d3-') ||
+                            id.includes('/d3/') ||
+                            id.includes('/victory-vendor/') ||
+                            id.includes('/internmap/') ||
+                            id.includes('/delaunator/') ||
+                            id.includes('/robust-predicates/')
+                        )
+                            return 'd3-vendor';
+
                         // Heavy Libraries - Charts
-                        if (id.includes('/recharts/') || id.includes('/d3/') || id.includes('/d3-') || id.includes('/victory/'))
+                        if (id.includes('/recharts/') || id.includes('/victory/'))
                             return 'chart-vendor';
 
                         // Heavy Libraries - Canvas/Fabric

@@ -362,10 +362,6 @@ export default defineConfig({
     resolve: {
         alias: [
             { find: '@', replacement: path.resolve(__dirname, './src') },
-            // Force recharts to its CJS build so Rollup wraps it in lazy __commonJS()
-            // helpers — this is the definitive fix for the "Cannot access 'X' before
-            // initialization" TDZ crash in minified production chunks.
-            { find: /^recharts$/, replacement: path.resolve(__dirname, './node_modules/recharts/lib/index.js') },
             {
                 find: /^@excalidraw\/excalidraw$/,
                 replacement: path.resolve(__dirname, './src/components/common/excalidraw/packages/excalidraw/index.tsx'),

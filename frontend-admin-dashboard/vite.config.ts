@@ -190,11 +190,14 @@ export default defineConfig({
                 handler(level, log);
             },
             output: {
-                // Prevent Rollup from hoisting cross-chunk imports, which can
-                // create circular dependencies between vendor chunks (e.g.
-                // react-vendor importing back from chart-vendor) and cause
-                // TDZ "Cannot access 'X' before initialization" at runtime.
-                hoistTransitiveImports: false,
+                // Inline the CJS interop helper into every chunk that needs it
+                // instead of sharing one helper across chunks. Sharing was the
+                // root cause of "Cannot access 'w' before initialization":
+                // Rollup put `getDefaultExportFromCjs` in chart-vendor and made
+                // react-vendor import it back, creating chart-vendor ↔
+                // react-vendor circular chunk dep, leaving React (`w`) in TDZ
+                // when chart-vendor evaluated first.
+                interop: 'esModule',
                 manualChunks(id) {
                     if (id.includes('node_modules')) {
                         // Core React
@@ -292,23 +295,12 @@ export default defineConfig({
                         )
                             return 'd3-vendor';
 
-                        // Heavy Libraries - Charts
-                        // Include ALL recharts transitive deps so Rollup can't
-                        // accidentally hoist them into react-vendor and create a
-                        // circular chunk dependency (the source of the
-                        // "Cannot access 'w' before initialization" TDZ where
-                        // 'w' was React imported from react-vendor).
-                        if (
-                            id.includes('/recharts/') ||
-                            id.includes('/recharts-scale/') ||
-                            id.includes('/react-smooth/') ||
-                            id.includes('/react-transition-group/') ||
-                            id.includes('/fast-equals/') ||
-                            id.includes('/eventemitter3/') ||
-                            id.includes('/tiny-invariant/') ||
-                            id.includes('/victory/')
-                        )
-                            return 'chart-vendor';
+                        // NOTE: recharts is intentionally NOT manually chunked.
+                        // Manually chunking recharts caused circular chunk deps
+                        // (chart-vendor ↔ react-vendor) that triggered TDZ
+                        // "Cannot access 'w' before initialization" where 'w'
+                        // was React. Letting Rollup auto-chunk recharts avoids
+                        // this entirely.
 
                         // Heavy Libraries - Canvas/Fabric
                         if (id.includes('/fabric/'))

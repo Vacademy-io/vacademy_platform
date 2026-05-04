@@ -15,26 +15,6 @@ const QuestionDisplay: React.FC<QuestionDisplayProps> = ({
     onEdit,
     onDelete,
 }) => {
-    // Debug logging for explanations
-    console.log('[QuestionDisplay] Rendering question:', {
-        questionIndex: questionIndex + 1,
-        questionType: question.questionType,
-        questionName: question.questionName,
-        explanation: question.explanation,
-        explanationLength: question.explanation?.length || 0,
-        hasExplanation: !!question.explanation,
-        explanationContent: question.explanation,
-    });
-
-    // Debug logging for subjective questions
-    if (question.questionType === 'LONG_ANSWER' || question.questionType === 'ONE_WORD') {
-        console.log('[QuestionDisplay] Subjective question data:', {
-            questionType: question.questionType,
-            subjectiveAnswerText: question.subjectiveAnswerText,
-            validAnswers: question.validAnswers,
-            questionName: question.questionName,
-        });
-    }
     const renderOptions = (options: Array<{ id: string; name: string; isSelected: boolean }>) => {
         return (
             <div className="mt-3 space-y-2">

@@ -43,9 +43,6 @@ export function getSlideStatusForUser(): 'DRAFT' | 'PUBLISHED' {
 
         // Log when non-admin users create published slides
         if (status === 'PUBLISHED') {
-            console.log(
-                '📝 Non-admin user creating slide as PUBLISHED - approval button should show'
-            );
             // Set a flag that can be picked up by the useNonAdminSlides hook
             localStorage.setItem('triggerApprovalButton', Date.now().toString());
             // Show a notification to let user know the slide is auto-published
@@ -78,19 +75,8 @@ export function useNonAdminSlides(chapterId: string) {
     const saveSlideAsPublished = useCallback(
         async (slide: Slide, isManualSave = false, currentEditorContent?: string) => {
             try {
-                console.log(
-                    '🔄 Saving slide as published for non-admin:',
-                    slide.title,
-                    slide.source_type,
-                    'Manual save:',
-                    isManualSave,
-                    'Has editor content:',
-                    !!currentEditorContent
-                );
-
                 // Only skip auto-publish for new slides during automatic saves (not manual saves)
                 if (slide.new_slide && !isManualSave) {
-                    console.log('⚠️ Skipping auto-publish for new slide to prevent duplication');
                     return false;
                 }
 
@@ -184,7 +170,6 @@ export function useNonAdminSlides(chapterId: string) {
                         // For presentations, data is a file ID, not HTML content
                         currentData = slide.document_slide?.data || '';
                         totalPages = slide.document_slide?.total_pages || 1;
-                        console.log('🎨 Processing presentation slide with fileId:', currentData);
                     } else if (
                         docType === 'CODE' ||
                         docType === 'JUPYTER' ||
@@ -260,8 +245,6 @@ export function useNonAdminSlides(chapterId: string) {
                 hasAnyChanges.current = true;
                 setShowApprovalButton(true);
 
-                console.log('✅ Slide saved as published, showing approval button');
-
                 // Clear unsaved changes
                 setUnsavedChanges({
                     hasChanges: false,
@@ -299,7 +282,6 @@ export function useNonAdminSlides(chapterId: string) {
 
     // Manually trigger the approval button (for when new slides are created)
     const triggerApprovalButton = useCallback(() => {
-        console.log('📝 Manually triggering approval button for new slide');
         hasAnyChanges.current = true;
         setShowApprovalButton(true);
     }, []);
@@ -309,7 +291,6 @@ export function useNonAdminSlides(chapterId: string) {
         const checkForNewSlides = () => {
             const trigger = localStorage.getItem('triggerApprovalButton');
             if (trigger) {
-                console.log('🎯 Detected new slide creation, showing approval button');
                 hasAnyChanges.current = true;
                 setShowApprovalButton(true);
                 localStorage.removeItem('triggerApprovalButton'); // Clear the flag

@@ -188,15 +188,6 @@ const createQuestionStructure = (
     explanationTextDataId =
         question.explanation_text_data?.id || question.explanationTextDataId || crypto.randomUUID();
 
-    console.log('[API Helpers] Creating question structure:', {
-        questionId: question.id,
-        questionName: question.questionName,
-        explanation: explanationContent,
-        explanationLength: explanationContent.length,
-        questionType: question.questionType,
-        index: index,
-    });
-
     const questionStructure = {
         id: question.id || crypto.randomUUID(),
         parent_rich_text: {
@@ -241,14 +232,6 @@ const createQuestionStructure = (
             : (question.questionPenalty ? parseFloat(question.questionPenalty) : null),
         options: options,
     };
-
-    console.log('[API Helpers] Created question structure:', {
-        questionId: questionStructure.id,
-        explanation_text: questionStructure.explanation_text,
-        explanation_text_data: questionStructure.explanation_text_data,
-        hasExplanation: !!explanationContent,
-        explanationContent: explanationContent,
-    });
 
     return questionStructure;
 };
@@ -296,24 +279,6 @@ export const createQuizSlidePayload = (
 ): QuizSlidePayload => {
     const transformedQuestions = transformFormQuestionsToBackend(questions);
 
-    console.log('[API Helpers] Creating quiz slide payload:', {
-        activeItemId: activeItem.id,
-        activeItemTitle: activeItem.title,
-        questionsCount: questions.length,
-        transformedQuestionsCount: transformedQuestions.length,
-        questionsWithExplanations: transformedQuestions.filter(
-            (q) => q.explanation_text.content || q.explanation_text_data.content
-        ).length,
-        allExplanations: transformedQuestions.map((q) => ({
-            questionId: q.id,
-            explanation_text: q.explanation_text,
-            explanation_text_data: q.explanation_text_data,
-            hasExplanation: !!(q.explanation_text.content || q.explanation_text_data.content),
-            explanationContent: q.explanation_text.content,
-            explanationDataContent: q.explanation_text_data.content,
-        })),
-    });
-
     const payload = {
         id: activeItem.id,
         source_id: activeItem.source_id || '',
@@ -360,19 +325,6 @@ export const createQuizSlidePayload = (
         is_loaded: true,
         new_slide: false,
     };
-
-    console.log('[API Helpers] Final payload created:', {
-        payloadId: payload.id,
-        quizSlideId: payload.quiz_slide.id,
-        questionsInPayload: payload.quiz_slide.questions.length,
-        explanationsInPayload: payload.quiz_slide.questions.map((q) => ({
-            questionId: q.id,
-            explanation_text: q.explanation_text,
-            explanation_text_data: q.explanation_text_data,
-            explanationContent: q.explanation_text.content,
-            explanationDataContent: q.explanation_text_data.content,
-        })),
-    });
 
     return payload;
 };

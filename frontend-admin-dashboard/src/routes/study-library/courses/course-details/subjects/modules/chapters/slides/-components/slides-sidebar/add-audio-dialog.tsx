@@ -151,7 +151,7 @@ export const AddAudioDialog = ({ openState }: { openState?: (open: boolean) => v
             const audioFileId = await UploadFileInS3(
                 data.audioFile,
                 (progress) => {
-                    console.log(`Audio upload progress: ${progress}%`);
+
                 },
                 'your-user-id',
                 INSTITUTE_ID,
@@ -165,7 +165,7 @@ export const AddAudioDialog = ({ openState }: { openState?: (open: boolean) => v
                 const uploadResult = await UploadFileInS3(
                     data.thumbnailFile,
                     (progress) => {
-                        console.log(`Thumbnail upload progress: ${progress}%`);
+
                     },
                     'your-user-id',
                     INSTITUTE_ID,

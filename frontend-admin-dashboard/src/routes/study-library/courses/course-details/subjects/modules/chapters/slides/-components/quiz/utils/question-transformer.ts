@@ -52,12 +52,6 @@ const extractSubjectiveAnswer = (question: BackendQuestion, questionType: string
 
     try {
         const evaluationData = JSON.parse(question.auto_evaluation_json);
-        console.log(
-            '[QuestionTransformer] Parsed auto_evaluation_json for',
-            questionType,
-            ':',
-            evaluationData
-        );
 
         let subjectiveAnswerText = '';
         if (questionType === 'ONE_WORD') {
@@ -70,7 +64,6 @@ const extractSubjectiveAnswer = (question: BackendQuestion, questionType: string
                 '';
         }
 
-        console.log('[QuestionTransformer] Extracted subjectiveAnswerText:', subjectiveAnswerText);
         return subjectiveAnswerText;
     } catch (error) {
         console.warn('[QuizPreview] Failed to parse auto_evaluation_json:', error);
@@ -116,20 +109,6 @@ const createBaseTransformedQuestion = (
         finalQuestionName = question.text?.content || question.questionName || '';
     }
 
-    console.log('[QuestionTransformer] Creating base transformed question:', {
-        questionId: question.id,
-        questionText: finalQuestionName,
-        questionType: questionType,
-        explanation: explanation,
-        explanationLength: explanation.length,
-        explanation_text: question.explanation_text,
-        explanation_text_data: question.explanation_text_data,
-        hasExplanation: !!explanation,
-        backendExplanation: question.explanation,
-        backendExplanationText: question.explanation_text,
-        backendExplanationTextData: question.explanation_text_data,
-    });
-
     return {
         questionName: finalQuestionName,
         questionType,
@@ -168,16 +147,9 @@ const handleSubjectiveQuestion = (
     validAnswers: (number | string)[],
     subjectiveAnswerText: string
 ): void => {
-    console.log('[QuestionTransformer] Processing subjective question:', {
-        questionType,
-        validAnswers,
-        subjectiveAnswerText,
-    });
-
     // Remove default validAnswers for subjective questions
     if (validAnswers.length === 0 || (validAnswers.length === 1 && validAnswers[0] === 0)) {
         transformed.validAnswers = undefined;
-        console.log('[QuestionTransformer] Removed default validAnswers for subjective question');
     }
 
     // Set subjective answer text
@@ -189,11 +161,6 @@ const handleSubjectiveQuestion = (
         // Check for answerText field from form
         transformed.subjectiveAnswerText = question.answerText;
     }
-
-    console.log(`[QuestionTransformer] ${questionType} question processed:`, {
-        subjectiveAnswerText: transformed.subjectiveAnswerText,
-        questionData: question,
-    });
 };
 
 // Helper function to handle numeric questions
@@ -208,77 +175,36 @@ const handleQuestionOptions = (
     questionType: string,
     validAnswers: (number | string)[]
 ): void => {
-    console.log('[QuestionTransformer] handleQuestionOptions called:', {
-        questionType,
-        hasSingleChoiceOptions: !!question.singleChoiceOptions?.length,
-        hasMultipleChoiceOptions: !!question.multipleChoiceOptions?.length,
-        hasTrueFalseOptions: !!question.trueFalseOptions?.length,
-        hasCSingleChoiceOptions: !!question.csingleChoiceOptions?.length,
-        hasCMultipleChoiceOptions: !!question.cmultipleChoiceOptions?.length,
-        hasOptions: !!question.options?.length,
-        optionsLength: question.options?.length || 0,
-        validAnswers,
-    });
-
     // First check if it's form data (has the options arrays)
     if (question.singleChoiceOptions && question.singleChoiceOptions.length > 0) {
         transformed.singleChoiceOptions = question.singleChoiceOptions;
-        console.log('[QuestionTransformer] Using singleChoiceOptions from form data');
     } else if (question.multipleChoiceOptions && question.multipleChoiceOptions.length > 0) {
         transformed.multipleChoiceOptions = question.multipleChoiceOptions;
-        console.log('[QuestionTransformer] Using multipleChoiceOptions from form data');
     } else if (question.trueFalseOptions && question.trueFalseOptions.length > 0) {
         transformed.trueFalseOptions = question.trueFalseOptions;
-        console.log('[QuestionTransformer] Using trueFalseOptions from form data');
     } else if (question.csingleChoiceOptions && question.csingleChoiceOptions.length > 0) {
         // Handle comprehensive single choice options
         transformed.singleChoiceOptions = question.csingleChoiceOptions;
-        console.log('[QuestionTransformer] Using csingleChoiceOptions from form data');
     } else if (question.cmultipleChoiceOptions && question.cmultipleChoiceOptions.length > 0) {
         // Handle comprehensive multiple choice options
         transformed.multipleChoiceOptions = question.cmultipleChoiceOptions;
-        console.log('[QuestionTransformer] Using cmultipleChoiceOptions from form data');
     }
     // Then check if it's backend data (has the options field)
     else if (question.options && question.options.length > 0) {
         const options = transformOptions(question.options, validAnswers);
-        console.log('[QuestionTransformer] Using options from backend data:', options);
 
         if (questionType === 'MCQS' || questionType === 'CMCQS') {
             transformed.singleChoiceOptions = options;
-            console.log('[QuestionTransformer] Set singleChoiceOptions for', questionType);
         } else if (questionType === 'MCQM' || questionType === 'CMCQM') {
             transformed.multipleChoiceOptions = options;
-            console.log('[QuestionTransformer] Set multipleChoiceOptions for', questionType);
         } else if (questionType === 'TRUE_FALSE') {
             transformed.trueFalseOptions = options;
-            console.log('[QuestionTransformer] Set trueFalseOptions for', questionType);
         }
-    } else {
-        console.log('[QuestionTransformer] No options found for question type:', questionType);
     }
 };
 
 // Main function to transform a single question
 export const transformQuestion = (question: BackendQuestion | any): TransformedQuestion => {
-    console.log('[QuestionTransformer] Starting transformation for question:', {
-        id: question.id,
-        questionType:
-            question.question_type || question.question_response_type || question.questionType,
-        hasOptions: !!question.options,
-        optionsLength: question.options?.length || 0,
-        hasAutoEvaluationJson: !!question.auto_evaluation_json,
-        autoEvaluationJson: question.auto_evaluation_json,
-        explanation: question.explanation,
-        explanation_text: question.explanation_text,
-        explanation_text_data: question.explanation_text_data,
-        hasExplanation: !!(
-            question.explanation ||
-            question.explanation_text?.content ||
-            question.explanation_text_data?.content
-        ),
-    });
-
     const validAnswers = parseValidAnswers(question);
     const questionText = getQuestionText(question);
     const questionType =
@@ -313,18 +239,6 @@ export const transformQuestion = (question: BackendQuestion | any): TransformedQ
 
     // Handle options for all question types
     handleQuestionOptions(transformed, question, questionType, validAnswers);
-
-    console.log('[QuestionTransformer] Final transformed question:', {
-        questionType: transformed.questionType,
-        hasSingleChoiceOptions: !!transformed.singleChoiceOptions?.length,
-        hasMultipleChoiceOptions: !!transformed.multipleChoiceOptions?.length,
-        hasTrueFalseOptions: !!transformed.trueFalseOptions?.length,
-        validAnswers: transformed.validAnswers,
-        subjectiveAnswerText: transformed.subjectiveAnswerText,
-        explanation: transformed.explanation,
-        explanationLength: transformed.explanation?.length || 0,
-        hasExplanation: !!transformed.explanation,
-    });
 
     return transformed;
 };

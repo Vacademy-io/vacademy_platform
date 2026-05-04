@@ -27,6 +27,16 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isUrlExpired, setIsUrlExpired] = useState(false);
+    const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const isMountedRef = useRef(true);
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+            if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+        };
+    }, []);
 
     // HTML_VIDEO state
     const [htmlVideoData, setHtmlVideoData] = useState<{
@@ -57,21 +67,15 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                 return;
             }
 
-            console.log('[VideoSlidePreview] Fetching HTML video URLs for ai_gen_video_id:', htmlVideoSlide.ai_gen_video_id);
+
             setIsLoadingHtmlVideo(true);
             setError(null);
 
             try {
                 const videoUrlsEndpoint = GET_VIDEO_URLS(htmlVideoSlide.ai_gen_video_id);
-                console.log('[VideoSlidePreview] Calling GET_VIDEO_URLS:', videoUrlsEndpoint);
+
 
                 const response = await authenticatedAxiosInstance.get(videoUrlsEndpoint);
-
-                console.log('[VideoSlidePreview] Video URLs response:', {
-                    html_url: response.data.html_url,
-                    audio_url: response.data.audio_url,
-                    status: response.data.status,
-                });
 
                 if (response.data.status === 'IN_PROGRESS') {
                     setError('work in progress');
@@ -96,7 +100,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                 });
                 if (err.response?.status === 404) {
                     // Video might still be generating - don't set error, show "generating" message instead
-                    console.log('[VideoSlidePreview] Video not found (404) - may still be generating');
+
                     setError(null);
                 } else {
                     setError('Failed to load video URLs');
@@ -113,13 +117,15 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
         try {
             setIsLoading(true);
             const url = await getPublicUrl(fileId!);
-            setVideoUrl(url);
-            setIsUrlExpired(false);
+            if (isMountedRef.current) {
+                setVideoUrl(url);
+                setIsUrlExpired(false);
+            }
         } catch (err) {
             console.error('Error refreshing video URL:', err);
-            setError('Failed to refresh video URL');
+            if (isMountedRef.current) setError('Failed to refresh video URL');
         } finally {
-            setIsLoading(false);
+            if (isMountedRef.current) setIsLoading(false);
         }
     };
 
@@ -161,31 +167,31 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
     useEffect(() => {
         const fetchVideoUrl = async () => {
             try {
-                console.log('Fetching video URL for file ID:', fileId);
+
                 if (videoSourceType === 'FILE_ID') {
                     const url = await getPublicUrl(fileId!);
+                    if (!isMountedRef.current) return;
                     setVideoUrl(url);
 
                     if (url.includes('X-Amz-Expires=')) {
                         const expiresParam = url.match(/X-Amz-Expires=(\d+)/)?.[1];
                         if (expiresParam) {
                             const expiresInSeconds = Number.parseInt(expiresParam, 10);
-                            const refreshTimer = setTimeout(
+                            if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+                            refreshTimerRef.current = setTimeout(
                                 () => {
-                                    setIsUrlExpired(true);
+                                    if (isMountedRef.current) setIsUrlExpired(true);
                                 },
                                 (expiresInSeconds - 30) * 1000
                             );
-
-                            return () => clearTimeout(refreshTimer);
                         }
                     }
                 }
             } catch (err) {
                 console.error('Error fetching video URL:', err);
-                setError('Failed to load video');
+                if (isMountedRef.current) setError('Failed to load video');
             } finally {
-                setIsLoading(false);
+                if (isMountedRef.current) setIsLoading(false);
             }
             return undefined; // Ensure all code paths return a value
         };
@@ -283,7 +289,7 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                         isEditable={true}
                         currentSlideId={activeItem.id}
                         onDataChange={(updatedSplitData) => {
-                            console.log('Code editor data changed:', updatedSplitData);
+
                         }}
                     />
                 </div>

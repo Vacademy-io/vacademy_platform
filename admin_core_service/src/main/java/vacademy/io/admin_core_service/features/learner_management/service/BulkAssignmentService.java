@@ -27,6 +27,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanS
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
+import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
@@ -67,6 +68,7 @@ public class BulkAssignmentService {
     private final vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
     private final PaymentLogRepository paymentLogRepository;
     private final InvoiceService invoiceService;
+    private final InstituteSettingService instituteSettingService;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -149,6 +151,10 @@ public class BulkAssignmentService {
         List<BulkAssignResultItemDTO> results = new ArrayList<>(newUserFailures);
         List<InstituteStudentDTO> enrolledStudentsForNotification = new ArrayList<>();
 
+        // Read INVOICE_SETTING.generateInvoiceOnManualEnroll once for the whole bulk op.
+        // Defaults to false: institutes opt-in to receiving invoices for manual/bulk enrollments.
+        boolean generateInvoiceOnManualEnroll = resolveGenerateInvoiceOnManualEnroll(request.getInstituteId());
+
         for (AssignmentItemDTO assignment : request.getAssignments()) {
             // Pre-resolve config for this package session (shared across all users)
             DefaultInviteResolver.ResolvedConfig config;
@@ -169,7 +175,8 @@ public class BulkAssignmentService {
             for (String userId : allUserIds) {
                 BulkAssignResultItemDTO result = processAssignment(
                         userId, userMap, newUserDataMap, assignment, config,
-                        request.getInstituteId(), duplicateHandling, dryRun, adminUserId, options);
+                        request.getInstituteId(), duplicateHandling, dryRun, adminUserId, options,
+                        generateInvoiceOnManualEnroll);
                 results.add(result);
 
                 // Collect successful enrollments for notification
@@ -205,6 +212,26 @@ public class BulkAssignmentService {
     }
 
     // ========================= PRIVATE METHODS =========================
+
+    /**
+     * Reads INVOICE_SETTING.generateInvoiceOnManualEnroll for the institute.
+     * Defaults to false when the setting, the institute, or the flag is missing.
+     */
+    @SuppressWarnings("unchecked")
+    private boolean resolveGenerateInvoiceOnManualEnroll(String instituteId) {
+        try {
+            Object settingData = instituteSettingService.getSettingByInstituteIdAndKey(
+                    instituteId, "INVOICE_SETTING");
+            if (settingData instanceof Map) {
+                Object flag = ((Map<String, Object>) settingData).get("generateInvoiceOnManualEnroll");
+                return Boolean.TRUE.equals(flag);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to read INVOICE_SETTING.generateInvoiceOnManualEnroll for institute {}: {}",
+                    instituteId, e.getMessage());
+        }
+        return false;
+    }
 
     private void validateRequest(BulkAssignRequestDTO request) {
         if (!StringUtils.hasText(request.getInstituteId())) {
@@ -323,7 +350,8 @@ public class BulkAssignmentService {
             String duplicateHandling,
             boolean dryRun,
             String adminUserId,
-            BulkAssignOptionsDTO options) {
+            BulkAssignOptionsDTO options,
+            boolean generateInvoiceOnManualEnroll) {
 
         String packageSessionId = assignment.getPackageSessionId();
         UserDTO userDTO = userMap.get(userId);
@@ -381,7 +409,8 @@ public class BulkAssignmentService {
 
             // Case C: No existing mapping → create new
             NewUserDTO newUserData = newUserDataMap.get(userId);
-            return handleNewEnrollment(userId, userEmail, config, instituteId, dryRun, userDTO, extraDetails, adminUserId, options, newUserData);
+            return handleNewEnrollment(userId, userEmail, config, instituteId, dryRun, userDTO, extraDetails,
+                    adminUserId, options, newUserData, generateInvoiceOnManualEnroll);
 
         } catch (Exception e) {
             log.error("Error processing assignment userId={}, packageSessionId={}: {}",
@@ -406,7 +435,8 @@ public class BulkAssignmentService {
             String instituteId, boolean dryRun,
             UserDTO userDTO, StudentExtraDetails extraDetails,
             String adminUserId, BulkAssignOptionsDTO options,
-            NewUserDTO newUserData) {
+            NewUserDTO newUserData,
+            boolean generateInvoiceOnManualEnroll) {
 
         if (dryRun) {
             return BulkAssignResultItemDTO.builder()
@@ -528,11 +558,13 @@ public class BulkAssignmentService {
                         vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
                         vacademy.io.admin_core_service.features.common.util.JsonUtil.toJson(paymentSpecificData));
 
-                // Generate invoice for non-FREE payments (e.g. ReadOnRent buy). FREE paths
-                // (e.g. rent/membership, school enrollment) skip invoice generation entirely.
+                // Generate invoice only when the institute opted in via
+                // INVOICE_SETTING.generateInvoiceOnManualEnroll AND the payment is not FREE.
+                // FREE paths (rent/membership, school enrollment) never generate an invoice.
                 // INVOICE_SETTING.sendInvoiceEmail is honored inside generateInvoice for the email step.
                 String paymentType = config.getPaymentOption() != null ? config.getPaymentOption().getType() : null;
-                if (StringUtils.hasText(paymentType)
+                if (generateInvoiceOnManualEnroll
+                        && StringUtils.hasText(paymentType)
                         && !PaymentOptionType.FREE.name().equalsIgnoreCase(paymentType)) {
                     try {
                         PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)

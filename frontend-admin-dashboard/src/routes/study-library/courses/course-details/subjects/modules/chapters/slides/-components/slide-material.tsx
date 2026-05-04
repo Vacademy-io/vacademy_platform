@@ -150,6 +150,7 @@ function estimatePageCount(htmlString: string): number {
     }
 }
 import ScormSlidePreview from './scorm-slide-preview';
+import AssessmentSlidePreview from './assessment-slide-preview';
 
 export const SlideMaterial = ({
     setGetCurrentEditorHTMLContent,
@@ -299,17 +300,22 @@ export const SlideMaterial = ({
             setSidebarOpen(true);
         }
     }, [openDoubt, setSidebarOpen]);
-    const { addUpdateDocumentSlide, addUpdateQuizSlide, addUpdateAudioSlide, addUpdateScormSlide } =
-        useSlidesMutations(
-            chapterId || '',
-            moduleId || '',
-            subjectId || '',
-            getPackageSessionId({
-                courseId: courseId || '',
-                levelId: levelId || '',
-                sessionId: sessionId || '',
-            }) || ''
-        );
+    const {
+        addUpdateDocumentSlide,
+        addUpdateQuizSlide,
+        addUpdateAudioSlide,
+        addUpdateScormSlide,
+        addUpdateAssessmentSlide,
+    } = useSlidesMutations(
+        chapterId || '',
+        moduleId || '',
+        subjectId || '',
+        getPackageSessionId({
+            courseId: courseId || '',
+            levelId: levelId || '',
+            sessionId: sessionId || '',
+        }) || ''
+    );
     const { addUpdateVideoSlide } = useSlidesMutations(
         chapterId || '',
         moduleId || '',
@@ -1925,6 +1931,18 @@ export const SlideMaterial = ({
             return;
         }
 
+        // Handle ASSESSMENT slides
+        if (activeItem.source_type?.toUpperCase() === 'ASSESSMENT') {
+            setContent(
+                <AssessmentSlidePreview
+                    key={activeItem.id}
+                    activeItem={activeItem}
+                    isLearnerView={isLearnerView}
+                />
+            );
+            return;
+        }
+
         // Fallback
         setContent(
             <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
@@ -2777,7 +2795,8 @@ export const SlideMaterial = ({
                                                 addUpdateAudioSlide,
                                                 addUpdateScormSlide,
                                                 SaveDraft,
-                                                playerRef
+                                                playerRef,
+                                                addUpdateAssessmentSlide
                                             )
                                         }
                                     />
@@ -2829,7 +2848,8 @@ export const SlideMaterial = ({
                                                     addUpdateAudioSlide,
                                                     addUpdateScormSlide,
                                                     SaveDraft,
-                                                    playerRef
+                                                    playerRef,
+                                                    addUpdateAssessmentSlide
                                                 );
                                             }
                                         }}

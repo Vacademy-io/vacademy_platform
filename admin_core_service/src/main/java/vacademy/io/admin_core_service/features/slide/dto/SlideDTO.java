@@ -25,6 +25,7 @@ public class SlideDTO {
     private HtmlVideoSlideDTO htmlVideoSlide;
     private AudioSlideDTO audioSlide;
     private ScormSlideDTO scormSlide;
+    private AssessmentSlideDTO assessmentSlide;
     private Boolean isLoaded = false;
     private String parentId;
     private String dripConditionJson;

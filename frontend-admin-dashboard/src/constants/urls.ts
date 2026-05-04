@@ -270,6 +270,7 @@ export const UPDATE_QUESTION_ORDER = `${BASE_URL}/admin-core-service/slide/quest
 export const UPDATE_ASSIGNMENT_ORDER = `${BASE_URL}/admin-core-service/slide/assignment-slide/add-or-update`;
 export const ADD_UPDATE_QUIZ_SLIDE = `${BASE_URL}/admin-core-service/slide/quiz-slide/add-or-update`;
 export const ADD_UPDATE_ASSIGNMENT_SLIDE = `${BASE_URL}/admin-core-service/slide/assignment-slide/add-or-update`;
+export const ADD_UPDATE_ASSESSMENT_SLIDE = `${BASE_URL}/admin-core-service/slide/assessment-slide/add-or-update`;
 export const ADD_UPDATE_AUDIO_SLIDE = `${BASE_URL}/admin-core-service/slide/audio-slide/add-update-audio-slide`;
 export const SCORM_UPLOAD = `${BASE_URL}/admin-core-service/scorm/v1/upload`;
 export const SCORM_ADD_OR_UPDATE = `${BASE_URL}/admin-core-service/scorm/v1/add-or-update`;

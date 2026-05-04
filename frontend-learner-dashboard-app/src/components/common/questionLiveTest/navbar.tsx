@@ -24,6 +24,12 @@ import { HelpCircle, Upload, FileText } from "lucide-react";
 import { MyButton } from "@/components/design-system/button";
 import { TimesUpModal } from "@/components/modals/times-up-modal";
 import { ASSESSMENT_SUBMIT, ASSESSMENT_SUBMIT_MANUAL } from "@/constants/urls";
+import {
+  readSlideReturnContext,
+  clearSlideReturnContext,
+  markAssessmentSlideComplete,
+  buildSlideReturnUrl,
+} from "../study-library/level-material/subject-material/module-material/chapter-material/slide-material/assessment-slide-return";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { Preferences } from "@capacitor/preferences";
 import { toast } from "sonner";
@@ -453,10 +459,25 @@ export function Navbar({
           await document.exitFullscreen().catch(() => {});
         }
 
-        navigate({
-          to: "/assessment/examination",
-          replace: true,
-        });
+        // If this assessment was launched from a study-library slide, return
+        // the learner to that slide instead of the assessment list, and mark
+        // the slide complete so the chapter tree shows progress.
+        const returnContext = await readSlideReturnContext();
+        if (returnContext?.returnSlideId) {
+          await markAssessmentSlideComplete(returnContext.returnSlideId, attemptId);
+          await clearSlideReturnContext();
+          // Use a raw URL string here — the captured pathname + search lives
+          // outside TanStack's typed route table, so we don't try to
+          // type-check it via navigate(). `window.location.assign` performs a
+          // hard navigation which is exactly what we want after exiting the
+          // fullscreen proctoring shell.
+          window.location.assign(buildSlideReturnUrl(returnContext));
+        } else {
+          navigate({
+            to: "/assessment/examination",
+            replace: true,
+          });
+        }
 
         return;
       } catch (err) {

@@ -9,6 +9,7 @@ import {
     ADD_UPDATE_QUIZ_SLIDE,
     ADD_UPDATE_ASSIGNMENT_SLIDE,
     ADD_UPDATE_AUDIO_SLIDE,
+    ADD_UPDATE_ASSESSMENT_SLIDE,
     SCORM_ADD_OR_UPDATE,
     UPDATE_SLIDE_STATUS,
     UPDATE_SLIDE_ORDER,
@@ -174,6 +175,14 @@ export interface ScormSlide {
     scorm_version?: string;
 }
 
+// Assessment slide interface — slide that links to an existing assessment
+export interface AssessmentSlide {
+    id: string;
+    assessment_id: string;
+    allow_reattempt?: boolean;
+    show_result?: boolean;
+}
+
 // Main slide interface
 export interface Slide {
     id: string;
@@ -191,6 +200,7 @@ export interface Slide {
     quiz_slide?: QuizSlide | null;
     audio_slide?: AudioSlide | null;
     scorm_slide?: ScormSlide | null;
+    assessment_slide?: AssessmentSlide | null;
     is_loaded: boolean;
     new_slide: boolean;
     // Split-screen mode properties (frontend only)
@@ -401,6 +411,25 @@ export interface ScormSlidePayload {
     notify?: boolean;
     scorm_slide: {
         id: string; // The ScormSlide id returned from upload
+    };
+}
+
+export interface AssessmentSlidePayload {
+    id?: string | null;
+    source_id?: string | null;
+    source_type?: 'ASSESSMENT';
+    title: string;
+    description?: string | null;
+    image_file_id?: string | null;
+    status: 'DRAFT' | 'PUBLISHED';
+    slide_order?: number | null;
+    new_slide: boolean;
+    notify?: boolean;
+    assessment_slide: {
+        id: string;
+        assessment_id: string;
+        allow_reattempt?: boolean;
+        show_result?: boolean;
     };
 }
 
@@ -703,6 +732,31 @@ export const useSlidesMutations = (
         },
     });
 
+    const addUpdateAssessmentSlideMutation = useMutation({
+        mutationFn: async (payload: AssessmentSlidePayload) => {
+            const response = await authenticatedAxiosInstance.post(
+                `${ADD_UPDATE_ASSESSMENT_SLIDE}?chapterId=${chapterId}&moduleId=${moduleId}&subjectId=${subjectId}&packageSessionId=${packageSessionId}&instituteId=${INSTITUTE_ID}`,
+                payload
+            );
+            return { data: response.data, isNewSlide: payload.new_slide };
+        },
+        onSuccess: async (result) => {
+            await queryClient.invalidateQueries({ queryKey: ['slides'] });
+            queryClient.invalidateQueries({ queryKey: ['GET_MODULES_WITH_CHAPTERS'] });
+            queryClient.invalidateQueries({ queryKey: ['GET_STUDENT_SUBJECTS_PROGRESS'] });
+            queryClient.invalidateQueries({ queryKey: ['GET_STUDENT_SLIDES_PROGRESS'] });
+
+            if (result.isNewSlide) {
+                setTimeout(() => {
+                    const { setActiveItem, items } = useContentStore.getState();
+                    if (items && items.length > 0) {
+                        setActiveItem(items[0] as Slide);
+                    }
+                }, 1000);
+            }
+        },
+    });
+
     const updateSlideStatus = useMutation({
         mutationFn: async ({ chapterId, slideId, status, instituteId }: UpdateStatusParams) => {
             return await authenticatedAxiosInstance.put(
@@ -803,6 +857,8 @@ export const useSlidesMutations = (
             addUpdateAudioSlideMutation.mutateAsync(payload).then((result) => result.data),
         addUpdateScormSlide: (payload: ScormSlidePayload) =>
             addUpdateScormSlideMutation.mutateAsync(payload).then((result) => result.data),
+        addUpdateAssessmentSlide: (payload: AssessmentSlidePayload) =>
+            addUpdateAssessmentSlideMutation.mutateAsync(payload).then((result) => result.data),
         updateSlideStatus: updateSlideStatus.mutateAsync,
         updateSlideOrder: updateSlideOrderMutation.mutateAsync,
         updateQuestionOrder: (payload: SlideQuestionsDataInterface) =>
@@ -817,6 +873,7 @@ export const useSlidesMutations = (
             addUpdateAssignmentSlideMutation.isPending ||
             addUpdateAudioSlideMutation.isPending ||
             addUpdateScormSlideMutation.isPending ||
+            addUpdateAssessmentSlideMutation.isPending ||
             updateSlideOrderMutation.isPending ||
             updateQuestionSlideMutation.isPending ||
             updateAssignmentSlideMutation.isPending,

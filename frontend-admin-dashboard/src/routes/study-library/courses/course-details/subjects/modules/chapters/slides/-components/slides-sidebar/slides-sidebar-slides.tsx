@@ -144,13 +144,26 @@ const SlideItem = ({
     index,
     isActive,
     onClick,
+    assessmentOrdinal,
 }: {
     slide: Slide;
     index: number;
     isActive: boolean;
     onClick: () => void;
+    /**
+     * 1-indexed position of this slide among ASSESSMENT slides in the
+     * sidebar, used as a default name when the slide.title is empty.
+     * undefined for non-ASSESSMENT slides.
+     */
+    assessmentOrdinal?: number;
 }) => {
     const getSlideTitle = () => {
+        // ASSESSMENT slides without a title fall back to "Assessment N" so
+        // pre-existing rows that were saved before titles were enforced still
+        // get a sensible label.
+        if (slide.source_type === 'ASSESSMENT') {
+            return slide?.title || `Assessment ${assessmentOrdinal ?? ''}`.trim();
+        }
         return (
             (slide.source_type === 'DOCUMENT' && slide.document_slide?.title) ||
             (slide.source_type === 'VIDEO' && slide.video_slide?.title) ||
@@ -465,15 +478,29 @@ export const ChapterSidebarSlides = ({
         <div className="duration-500 animate-in fade-in slide-in-from-bottom-2">
             <Sortable value={items} onMove={handleMove} fast={false}>
                 <div className="flex w-full flex-col gap-1.5 px-1 text-neutral-600">
-                    {items.map((slide, index) => (
-                        <SlideItem
-                            key={slide.id}
-                            slide={slide}
-                            index={index}
-                            isActive={slide.id === activeItem?.id}
-                            onClick={() => handleSlideClick(slide)}
-                        />
-                    ))}
+                    {(() => {
+                        // Build a stable 1-indexed ordinal per ASSESSMENT slide
+                        // in iteration order so the fallback names ("Assessment
+                        // 1", "Assessment 2", ...) line up with the visible row
+                        // order in the sidebar.
+                        let nextAssessmentOrdinal = 0;
+                        return items.map((slide, index) => {
+                            const assessmentOrdinal =
+                                slide.source_type === 'ASSESSMENT'
+                                    ? ++nextAssessmentOrdinal
+                                    : undefined;
+                            return (
+                                <SlideItem
+                                    key={slide.id}
+                                    slide={slide}
+                                    index={index}
+                                    isActive={slide.id === activeItem?.id}
+                                    onClick={() => handleSlideClick(slide)}
+                                    assessmentOrdinal={assessmentOrdinal}
+                                />
+                            );
+                        });
+                    })()}
                 </div>
             </Sortable>
         </div>

@@ -9,5 +9,6 @@ public enum SlideTypeEnum {
     QUIZ,
     HTML_VIDEO,
     SCORM,
-    AUDIO
+    AUDIO,
+    ASSESSMENT
 }

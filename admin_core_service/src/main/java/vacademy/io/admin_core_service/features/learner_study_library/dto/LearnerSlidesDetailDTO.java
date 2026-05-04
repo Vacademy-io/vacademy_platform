@@ -24,6 +24,7 @@ public class LearnerSlidesDetailDTO {
     private HtmlVideoSlideDTO htmlVideoSlide;
     private AudioSlideDTO audioSlide;
     private ScormSlideDTO scormSlide;
+    private AssessmentSlideDTO assessmentSlide;
     private Double percentageCompleted;
     private Long progressMarker;
     private Object dripCondition;

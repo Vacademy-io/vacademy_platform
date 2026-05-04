@@ -13,6 +13,7 @@ interface DialogState {
     isPptDialogOpen: boolean;
     isScormDialogOpen: boolean;
     isVimeoDialogOpen: boolean;
+    isAssessmentDialogOpen: boolean;
 
     // Dialog actions
     openPdfDialog: () => void;
@@ -59,6 +60,10 @@ interface DialogState {
     closeVimeoDialog: () => void;
     toggleVimeoDialog: () => void;
 
+    openAssessmentDialog: () => void;
+    closeAssessmentDialog: () => void;
+    toggleAssessmentDialog: () => void;
+
     resetDialogs: () => void;
 }
 
@@ -74,6 +79,7 @@ export const useDialogStore = create<DialogState>((set) => ({
     isPptDialogOpen: false,
     isScormDialogOpen: false,
     isVimeoDialogOpen: false,
+    isAssessmentDialogOpen: false,
 
     // PDF Dialog actions
     openPdfDialog: () => set({ isPdfDialogOpen: true }),
@@ -134,6 +140,12 @@ export const useDialogStore = create<DialogState>((set) => ({
     closeVimeoDialog: () => set({ isVimeoDialogOpen: false }),
     toggleVimeoDialog: () => set((state) => ({ isVimeoDialogOpen: !state.isVimeoDialogOpen })),
 
+    // Assessment Dialog actions
+    openAssessmentDialog: () => set({ isAssessmentDialogOpen: true }),
+    closeAssessmentDialog: () => set({ isAssessmentDialogOpen: false }),
+    toggleAssessmentDialog: () =>
+        set((state) => ({ isAssessmentDialogOpen: !state.isAssessmentDialogOpen })),
+
     // Reset all dialogs
     resetDialogs: () =>
         set({
@@ -148,5 +160,6 @@ export const useDialogStore = create<DialogState>((set) => ({
             isPptDialogOpen: false,
             isScormDialogOpen: false,
             isVimeoDialogOpen: false,
+            isAssessmentDialogOpen: false,
         }),
 }));

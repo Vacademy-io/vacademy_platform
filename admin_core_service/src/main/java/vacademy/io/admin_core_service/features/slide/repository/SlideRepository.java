@@ -702,6 +702,38 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
+
+                        UNION ALL
+
+                        -- ASSESSMENT SLIDES
+                        SELECT
+                            s.created_at,
+                            cs.slide_order,
+                            json_build_object(
+                                'id', s.id,
+                                'title', s.title,
+                                'status', s.status,
+                                'is_loaded', true,
+                                'new_slide', true,
+                                'source_id', s.source_id,
+                                'description', s.description,
+                                'slide_order', cs.slide_order,
+                                'source_type', s.source_type,
+                                'drip_condition', s.drip_condition_json,
+                                'assessment_slide', json_build_object(
+                                    'id', asl.id,
+                                    'assessment_id', asl.assessment_id,
+                                    'allow_reattempt', asl.allow_reattempt,
+                                    'show_result', asl.show_result
+                                )
+                            ) AS slide_data
+                        FROM slide s
+                        JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                        JOIN chapter c ON c.id = cs.chapter_id
+                        JOIN assessment_slide asl ON asl.id = s.source_id
+                        WHERE s.source_type = 'ASSESSMENT' AND c.id = :chapterId
+                        AND s.status IN (:slideStatus)
+                        AND cs.status IN (:chapterToSlidesStatus)
                     ) AS all_slides
             """, nativeQuery = true)
     String getSlidesByChapterId(
@@ -1175,6 +1207,44 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 LEFT JOIN learner_operation lo_audio_marker ON lo_audio_marker.source = 'SLIDE' AND lo_audio_marker.source_id = s.id AND lo_audio_marker.user_id = :userId AND lo_audio_marker.operation = 'AUDIO_LAST_TIMESTAMP'
                 LEFT JOIN learner_operation lo_audio_percent ON lo_audio_percent.source = 'SLIDE' AND lo_audio_percent.source_id = s.id AND lo_audio_percent.user_id = :userId AND lo_audio_percent.operation = 'PERCENTAGE_AUDIO_LISTENED'
                 WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
+                AND s.status IN (:slideStatus)
+                AND cs.status IN (:chapterToSlidesStatus)
+
+                UNION ALL
+
+                -- ASSESSMENT SLIDES
+                SELECT DISTINCT ON (s.id)
+                    s.created_at,
+                    cs.slide_order,
+                    json_build_object(
+                        'id', s.id,
+                        'title', s.title,
+                        'status', s.status,
+                        'is_loaded', true,
+                        'new_slide', true,
+                        'source_id', s.source_id,
+                        'description', s.description,
+                        'slide_order', cs.slide_order,
+                        'source_type', s.source_type,
+                        'drip_condition', s.drip_condition_json,
+                        'progress_marker', NULL,
+                        'percentage_completed', CASE
+                            WHEN lo_assessment_percent.value IS NULL OR lo_assessment_percent.value = 'null' THEN NULL
+                            ELSE CAST(lo_assessment_percent.value AS double precision)
+                        END,
+                        'assessment_slide', json_build_object(
+                            'id', asl.id,
+                            'assessment_id', asl.assessment_id,
+                            'allow_reattempt', asl.allow_reattempt,
+                            'show_result', asl.show_result
+                        )
+                    ) AS slide_data
+                FROM slide s
+                JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                JOIN chapter c ON c.id = cs.chapter_id
+                JOIN assessment_slide asl ON asl.id = s.source_id
+                LEFT JOIN learner_operation lo_assessment_percent ON lo_assessment_percent.source = 'SLIDE' AND lo_assessment_percent.source_id = s.id AND lo_assessment_percent.user_id = :userId AND lo_assessment_percent.operation = 'PERCENTAGE_ASSESSMENT_DONE'
+                WHERE s.source_type = 'ASSESSMENT' AND c.id = :chapterId
                 AND s.status IN (:slideStatus)
                 AND cs.status IN (:chapterToSlidesStatus)
             ) AS slide_data
@@ -1851,6 +1921,40 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     JOIN chapter c ON c.id = cs.chapter_id
                     JOIN audio_slide a ON a.id = s.source_id
                     WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
+                    AND s.status IN (:slideStatus)
+                    AND cs.status IN (:chapterToSlidesStatus)
+
+                    UNION ALL
+
+                    -- ASSESSMENT SLIDES
+                    SELECT DISTINCT ON (s.id)
+                        s.created_at,
+                        cs.slide_order,
+                        json_build_object(
+                            'id', s.id,
+                            'title', s.title,
+                            'status', s.status,
+                            'is_loaded', true,
+                            'new_slide', true,
+                            'source_id', s.source_id,
+                            'description', s.description,
+                            'slide_order', cs.slide_order,
+                            'source_type', s.source_type,
+                            'drip_condition', s.drip_condition_json,
+                            'progress_marker', NULL,
+                            'percentage_completed', NULL,
+                            'assessment_slide', json_build_object(
+                                'id', asl.id,
+                                'assessment_id', asl.assessment_id,
+                                'allow_reattempt', asl.allow_reattempt,
+                                'show_result', asl.show_result
+                            )
+                        ) AS slide_data
+                    FROM slide s
+                    JOIN chapter_to_slides cs ON cs.slide_id = s.id
+                    JOIN chapter c ON c.id = cs.chapter_id
+                    JOIN assessment_slide asl ON asl.id = s.source_id
+                    WHERE s.source_type = 'ASSESSMENT' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
                     AND cs.status IN (:chapterToSlidesStatus)
                 ) AS slide_data

@@ -24,7 +24,7 @@ public class SlideMetaDataService {
     private static final List<String> ACTIVE_MODULES = List.of(ModuleStatusEnum.ACTIVE.name());
     private static final List<String> ACTIVE_CHAPTERS = List.of(ChapterStatus.ACTIVE.name());
     private static final List<String> VALID_SLIDE_STATUSES = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name());
-    private static final List<String> SLIDE_TYPES = List.of(SlideTypeEnum.VIDEO.name(), SlideTypeEnum.DOCUMENT.name(),SlideTypeEnum.ASSIGNMENT.name(),SlideTypeEnum.QUESTION.name());
+    private static final List<String> SLIDE_TYPES = List.of(SlideTypeEnum.VIDEO.name(), SlideTypeEnum.DOCUMENT.name(),SlideTypeEnum.ASSIGNMENT.name(),SlideTypeEnum.QUESTION.name(),SlideTypeEnum.ASSESSMENT.name());
     private static final List<String> VALID_SLIDE_STATUSES_FOR_ADMIN = List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(),SlideStatus.DRAFT.name());
 
     public Optional<SlideMetadataProjection> getSlideMetadataForLearner(String slideId) {

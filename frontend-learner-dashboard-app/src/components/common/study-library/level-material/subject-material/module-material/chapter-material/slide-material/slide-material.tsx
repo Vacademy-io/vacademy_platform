@@ -32,6 +32,7 @@ import { fetchHtmlVideoUrls } from "@/utils/htmlVideoService";
 import AudioPlayer from "./audio-player";
 import ScormSlideComponent from "./scorm-slide";
 import { SplitScreenHtmlVideoSlide } from "./split-screen-html-video-slide";
+import AssessmentSlideViewer from "./assessment-slide-viewer";
 
 export const SlideMaterial = () => {
   const { activeItem, items, setActiveItem, slideEvaluations } =
@@ -907,6 +908,18 @@ export const SlideMaterial = () => {
               <ScormSlideComponent
                 slide={activeItem}
               />
+            </div>
+          );
+          break;
+        }
+
+        case "ASSESSMENT": {
+          setContent(
+            <div
+              key={`assessment-${activeItem.id}`}
+              className="w-full animate-in fade-in slide-in-from-bottom-4 duration-700"
+            >
+              <AssessmentSlideViewer activeItem={activeItem} />
             </div>
           );
           break;

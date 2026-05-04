@@ -27,6 +27,33 @@ interface PdfFile {
   fileUrl: string;
 }
 
+export interface CodingTestCaseResult {
+  id: string;
+  label?: string;
+  visible: boolean;
+  passed: boolean;
+  stdout?: string;
+  expected?: string;
+  stderr?: string;
+  timeMs?: number;
+  memoryKb?: number;
+  error?: string | null;
+}
+
+export interface CodingAnswerData {
+  language: string;
+  sourceCode: string;
+  // ACCEPTED | PARTIAL | REJECTED | ERROR | TIMED_OUT
+  verdict: string;
+  passedCount: number;
+  totalCount: number;
+  score: number;
+  totalTimeMs: number;
+  peakMemoryKb: number;
+  testCaseResults: CodingTestCaseResult[];
+  pasteAttemptCount: number;
+}
+
 interface SectionTimer {
   timeLeft: number;
   isRunning: boolean;
@@ -41,6 +68,7 @@ interface AssessmentStore {
   currentQuestionIndex: number | null;
   questionStates: Record<string, QuestionState>;
   answers: Record<string, string[]>;
+  codingAnswers: Record<string, CodingAnswerData>;
   sectionTimers: Record<number, SectionTimer>;
   questionTimers: Record<string, number>;
   setAssessment: (assessment: AssessmentPreviewData) => void;
@@ -48,6 +76,8 @@ interface AssessmentStore {
   setCurrentQuestion: (question: QuestionDto) => void;
   setQuestionState: (questionId: string, state: Partial<QuestionState>) => void;
   setAnswer: (questionId: string, answerId: string[]) => void;
+  setCodingAnswer: (questionId: string, data: CodingAnswerData) => void;
+  incrementCodingPasteAttempt: (questionId: string) => void;
   markForReview: (questionId: string) => void;
   clearResponse: (questionId: string) => void;
   updateSectionTimer: (sectionIndex: number, timeLeft: number) => void;
@@ -88,6 +118,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
   currentQuestionIndex: 0,
   questionStates: {},
   answers: {},
+  codingAnswers: {},
   sectionTimers: {},
   questionTimers: {},
   questionStartTime: {},
@@ -102,6 +133,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       currentQuestionIndex: 0,
       questionStates: {},
       answers: {},
+      codingAnswers: {},
       sectionTimers: {},
       questionTimers: {},
       questionStartTime: {},
@@ -231,6 +263,52 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
         },
       },
     })),
+
+  setCodingAnswer: (questionId, data) =>
+    set((state) => ({
+      codingAnswers: { ...state.codingAnswers, [questionId]: data },
+      questionStates: {
+        ...state.questionStates,
+        [questionId]: {
+          ...state.questionStates[questionId],
+          isAnswered: !!data.sourceCode && data.sourceCode.length > 0,
+        },
+      },
+    })),
+
+  incrementCodingPasteAttempt: (questionId) =>
+    set((state) => {
+      const existing = state.codingAnswers[questionId];
+      if (existing) {
+        return {
+          codingAnswers: {
+            ...state.codingAnswers,
+            [questionId]: {
+              ...existing,
+              pasteAttemptCount: (existing.pasteAttemptCount || 0) + 1,
+            },
+          },
+        };
+      }
+      // Counter even if learner hasn't run/submitted yet
+      return {
+        codingAnswers: {
+          ...state.codingAnswers,
+          [questionId]: {
+            language: "",
+            sourceCode: "",
+            verdict: "",
+            passedCount: 0,
+            totalCount: 0,
+            score: 0,
+            totalTimeMs: 0,
+            peakMemoryKb: 0,
+            testCaseResults: [],
+            pasteAttemptCount: 1,
+          },
+        },
+      };
+    }),
 
   markForReview: (questionId) =>
     set((state) => ({
@@ -492,6 +570,7 @@ export const useAssessmentStore = create<AssessmentStore>((set, get) => ({
       currentQuestion: state.currentQuestion,
       questionStates: state.questionStates,
       answers: state.answers,
+      codingAnswers: state.codingAnswers,
       sectionTimers: state.sectionTimers,
       questionTimers: state.questionTimers,
       entireTestTimer: state.entireTestTimer,

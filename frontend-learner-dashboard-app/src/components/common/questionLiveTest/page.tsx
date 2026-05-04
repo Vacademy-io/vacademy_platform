@@ -94,6 +94,48 @@ export const formatDataFromStore = async (
         const normalizedAnswer = Array.isArray(rawAnswer)
           ? rawAnswer[0]
           : rawAnswer;
+        const codingAnswer = state.codingAnswers?.[question.question_id];
+
+        let responseData: Record<string, unknown> = {
+          type: question.question_type,
+        };
+        if (question.question_type === "CODING") {
+          responseData = {
+            type: "CODING",
+            language: codingAnswer?.language || "",
+            sourceCode: codingAnswer?.sourceCode || "",
+            verdict: codingAnswer?.verdict || "",
+            passedCount: codingAnswer?.passedCount ?? 0,
+            totalCount: codingAnswer?.totalCount ?? 0,
+            score: codingAnswer?.score ?? 0,
+            totalTimeMs: codingAnswer?.totalTimeMs ?? 0,
+            peakMemoryKb: codingAnswer?.peakMemoryKb ?? 0,
+            testCaseResults: codingAnswer?.testCaseResults ?? [],
+            pasteAttemptCount: codingAnswer?.pasteAttemptCount ?? 0,
+          };
+        } else if (question.question_type === "NUMERIC") {
+          responseData = {
+            type: "NUMERIC",
+            validAnswer:
+              normalizedAnswer !== undefined &&
+              normalizedAnswer !== null &&
+              !isNaN(parseFloat(normalizedAnswer))
+                ? parseFloat(normalizedAnswer)
+                : null,
+          };
+        } else if (
+          ["ONE_WORD", "LONG_ANSWER"].includes(question.question_type)
+        ) {
+          responseData = {
+            type: question.question_type,
+            answer: normalizedAnswer || "",
+          };
+        } else {
+          responseData = {
+            type: question.question_type,
+            optionIds: rawAnswer || [],
+          };
+        }
 
         return {
           questionId: question.question_id,
@@ -106,21 +148,7 @@ export const formatDataFromStore = async (
             false,
           isVisited:
             state.questionStates[question.question_id]?.isVisited || false,
-          responseData: {
-            type: question.question_type,
-            ...(question.question_type === "NUMERIC"
-              ? {
-                  validAnswer:
-                    normalizedAnswer !== undefined &&
-                    normalizedAnswer !== null &&
-                    !isNaN(parseFloat(normalizedAnswer))
-                      ? parseFloat(normalizedAnswer)
-                      : null,
-                }
-              : ["ONE_WORD", "LONG_ANSWER"].includes(question.question_type)
-                ? { answer: normalizedAnswer || "" }
-                : { optionIds: rawAnswer || [] }),
-          },
+          responseData,
         };
       }),
       };

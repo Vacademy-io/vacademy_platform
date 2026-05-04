@@ -102,6 +102,7 @@ export enum QUESTION_TYPES {
   MCQM = "MCQM",
   FILL_IN_THE_BLANK = "FILL_IN_THE_BLANK",
   NUMERIC = "NUMERIC",
+  CODING = "CODING",
 };
 
 export interface RichText {

@@ -635,6 +635,14 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
                 subjectiveAnswerText = JSON.parse(item.auto_evaluation_json)?.data?.answer?.content;
             }
         }
+        let codingConfig;
+        if (item.question_type === 'CODING' && item.auto_evaluation_json) {
+            try {
+                codingConfig = JSON.parse(item.auto_evaluation_json)?.data;
+            } catch {
+                codingConfig = undefined;
+            }
+        }
         const baseQuestion: MyQuestion = {
             id: item.id || '',
             questionId: item.id || item.preview_id || undefined,
@@ -684,6 +692,7 @@ export const transformResponseDataToMyQuestionsSchema = (data: QuestionResponse[
             subjectiveAnswerText,
             status: item.status,
             canSkip: item.can_skip,
+            codingConfig,
         };
 
         if (item.question_type === 'MCQS') {
@@ -744,6 +753,14 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
             subjectiveAnswerText = JSON.parse(item.auto_evaluation_json)?.data?.answer?.content;
         }
     }
+    let codingConfig;
+    if (item.question_type === 'CODING' && item.auto_evaluation_json) {
+        try {
+            codingConfig = JSON.parse(item.auto_evaluation_json)?.data;
+        } catch {
+            codingConfig = undefined;
+        }
+    }
     const baseQuestion: MyQuestion = {
         id: item.id || '',
         questionId: item.id || item.preview_id || undefined,
@@ -790,6 +807,7 @@ export const transformResponseDataToMyQuestionsSchemaSingleQuestion = (item: Que
         numericType,
         parentRichTextContent: item.parent_rich_text?.content || null,
         subjectiveAnswerText,
+        codingConfig,
     };
 
     if (item.question_type === 'MCQS') {
@@ -964,6 +982,11 @@ export function getEvaluationJSON(
                         content: subjectiveAnswerText?.replace(/<\/?p>/g, ''),
                     },
                 },
+            });
+        case 'CODING':
+            return JSON.stringify({
+                type: 'CODING',
+                data: question.codingConfig ?? {},
             });
         default:
             return '';

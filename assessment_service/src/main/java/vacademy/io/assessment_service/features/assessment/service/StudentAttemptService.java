@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Async;
@@ -82,15 +83,18 @@ public class StudentAttemptService {
 
 
     @Async
+    @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptWithTotalAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
         return CompletableFuture.completedFuture(updateStudentAttemptWithTotalAfterMarksCalculation(studentAttemptOptional));
     }
 
     @Async
+    @CacheEvict(value = "comparisonData", allEntries = true)
     public CompletableFuture<StudentAttempt> updateStudentAttemptResultAfterMarksCalculationAsync(Optional<StudentAttempt> studentAttemptOptional) {
         return CompletableFuture.completedFuture(updateStudentAttemptWithResultAfterMarksCalculation(studentAttemptOptional));
     }
 
+    @CacheEvict(value = "comparisonData", allEntries = true)
     public StudentAttempt updateStudentAttemptWithResultAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional) {
         if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
 
@@ -117,6 +121,7 @@ public class StudentAttemptService {
     }
 
 
+    @CacheEvict(value = "comparisonData", allEntries = true)
     public StudentAttempt updateStudentAttemptWithTotalAfterMarksCalculation(Optional<StudentAttempt> studentAttemptOptional) {
         if (studentAttemptOptional.isEmpty()) throw new VacademyException("Student Attempt Not Found");
 

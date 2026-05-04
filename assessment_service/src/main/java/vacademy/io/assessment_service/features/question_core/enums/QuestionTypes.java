@@ -9,4 +9,5 @@ public enum QuestionTypes {
     MCQM,
     FILL_IN_THE_BLANK,
     NUMERIC,
+    CODING,
 }

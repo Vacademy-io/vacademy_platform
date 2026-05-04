@@ -8,6 +8,7 @@ export const QUESTION_TYPES = [
     { code: 'ONE_WORD', display: 'One Word Answer' },
     { code: 'LONG_ANSWER', display: 'Long Answer Type Question' },
     { code: 'TRUE_FALSE', display: 'True of false type Question' },
+    { code: 'CODING', display: 'Coding Question' },
 ];
 
 export enum QuestionType {
@@ -20,6 +21,7 @@ export enum QuestionType {
     ONE_WORD = 'ONE_WORD',
     LONG_ANSWER = 'LONG_ANSWER',
     TRUE_FALSE = 'TRUE_FALSE',
+    CODING = 'CODING',
 }
 
 export const NUMERIC_TYPES = [

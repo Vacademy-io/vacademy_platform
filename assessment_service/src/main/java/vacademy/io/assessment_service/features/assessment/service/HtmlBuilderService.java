@@ -373,7 +373,11 @@ public class HtmlBuilderService {
                             .append(review.getQuestionName())
                             .append("</b></div>");
 
-                    if (!Objects.isNull(review.getStudentResponseOptions())) {
+                    if (!Objects.isNull(review.getStudentResponseOptions())
+                            && "CODING".equals(review.getQuestionType())) {
+                        appendCodingAnswerBlock(html, review.getStudentResponseOptions(),
+                                review.getCorrectOptions(), review.getAnswerStatus());
+                    } else if (!Objects.isNull(review.getStudentResponseOptions())) {
                         List<String> content = extractResponseContent(review.getStudentResponseOptions());
                         content.forEach(option -> {
                             html.append("<div style=\"margin-top: 5px;\"><b>Student Answer:</b> ").append(option)
@@ -1049,7 +1053,11 @@ public class HtmlBuilderService {
                             .append(stripHtmlTags(review.getQuestionName())).append("</p>");
 
                     // Student answer
-                    if (review.getStudentResponseOptions() != null) {
+                    if (review.getStudentResponseOptions() != null
+                            && "CODING".equals(review.getQuestionType())) {
+                        appendCodingAnswerBlock(html, review.getStudentResponseOptions(),
+                                review.getCorrectOptions(), status);
+                    } else if (review.getStudentResponseOptions() != null) {
                         List<String> responses = extractResponseContent(review.getStudentResponseOptions());
                         String answerColor = "CORRECT".equals(status) ? "#2E7D32" : ("INCORRECT".equals(status) ? "#C62828" : "#333");
                         html.append("<table style=\"font-size: 12px; margin-bottom: 4px;\"><tr>");
@@ -1469,6 +1477,7 @@ public class HtmlBuilderService {
             case "NUMERIC": return "Numeric";
             case "ONE_WORD": return "One Word";
             case "LONG_ANSWER": return "Long Answer";
+            case "CODING": return "Coding";
             default: return type;
         }
     }
@@ -1577,6 +1586,19 @@ public class HtmlBuilderService {
                     } else
                         return new ArrayList<>();
 
+                case "CODING":
+                    // No single "correct answer" — the rubric is the test-case set. Surface a summary.
+                    JsonNode tcs = root.path("data").path("testCases");
+                    int total = tcs.isArray() ? tcs.size() : 0;
+                    int hidden = 0;
+                    if (tcs.isArray()) {
+                        for (JsonNode tc : tcs) {
+                            if (!tc.path("visible").asBoolean(true)) hidden++;
+                        }
+                    }
+                    int visible = total - hidden;
+                    return List.of(visible + " visible + " + hidden + " hidden test case(s)");
+
                 default:
                     throw new VacademyException("Unsupported Type");
             }
@@ -1616,12 +1638,119 @@ public class HtmlBuilderService {
                 case "NUMERIC":
                     return List.of(stripHtmlTags(responseData.path("validAnswer").asText()));
 
+                case "CODING": {
+                    String language = responseData.path("language").asText("");
+                    String verdict = responseData.path("verdict").asText("");
+                    int passed = responseData.path("passedCount").asInt(0);
+                    int totalCount = responseData.path("totalCount").asInt(0);
+                    double score = responseData.path("score").asDouble(0.0);
+                    String summary = (language.isEmpty() ? "" : language + " | ")
+                            + (verdict.isEmpty() ? "" : verdict + " | ")
+                            + passed + "/" + totalCount + " tests"
+                            + " | score " + String.format(java.util.Locale.US, "%.2f", score);
+                    String source = responseData.path("sourceCode").asText("");
+                    if (source.isEmpty()) return List.of(summary);
+                    String truncated = source.length() > 500 ? source.substring(0, 500) + "..." : source;
+                    return List.of(summary, truncated);
+                }
+
                 default:
                     throw new VacademyException("Invalid Question Type");
             }
 
         } catch (Exception e) {
             return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Render a CODING question's "Your Answer" block: a one-line summary
+     * (language / verdict / tests / score) followed by the submitted source
+     * code in a gray monospace pre block. Falls back gracefully if the JSON
+     * is missing fields.
+     */
+    private void appendCodingAnswerBlock(StringBuilder html, String responseJson, String correctOptionsJson, String status) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(responseJson);
+            JsonNode responseData = root.path("responseData");
+
+            String language = responseData.path("language").asText("");
+            String verdict = responseData.path("verdict").asText("");
+            int passed = responseData.path("passedCount").asInt(0);
+            int totalCount = responseData.path("totalCount").asInt(0);
+            double score = responseData.path("score").asDouble(0.0);
+            String source = responseData.path("sourceCode").asText("");
+            long totalTimeMs = responseData.path("totalTimeMs").asLong(0);
+            long peakMemoryKb = responseData.path("peakMemoryKb").asLong(0);
+
+            // Pull allowed limits from correct_options.data.perRunLimits so we
+            // can render measured-vs-allowed alongside the runtime metrics.
+            Long allowedTimeMs = null;
+            Long allowedMemoryKb = null;
+            if (correctOptionsJson != null && !correctOptionsJson.isEmpty()) {
+                try {
+                    JsonNode correct = mapper.readTree(correctOptionsJson);
+                    JsonNode limits = correct.path("data").path("perRunLimits");
+                    if (limits.has("cpuSeconds") && !limits.path("cpuSeconds").isNull()) {
+                        allowedTimeMs = limits.path("cpuSeconds").asLong() * 1000L;
+                    }
+                    if (limits.has("memoryKb") && !limits.path("memoryKb").isNull()) {
+                        allowedMemoryKb = limits.path("memoryKb").asLong();
+                    }
+                } catch (Exception ignored) {
+                    // Limits unavailable — render measured values only.
+                }
+            }
+
+            String summaryColor = "CORRECT".equals(status) ? "#2E7D32"
+                    : ("INCORRECT".equals(status) ? "#C62828" : "#333");
+
+            // Header row
+            html.append("<table style=\"font-size: 12px; margin-bottom: 4px;\"><tr>");
+            html.append("<td style=\"font-weight: 600; color: #555; width: 120px; vertical-align: top;\">Your Answer:</td>");
+            html.append("<td style=\"color: ").append(summaryColor).append(";\">");
+            if (!language.isEmpty()) html.append(escapeHtml(language)).append(" | ");
+            if (!verdict.isEmpty()) html.append(escapeHtml(verdict)).append(" | ");
+            html.append(passed).append("/").append(totalCount).append(" tests | score ")
+                    .append(String.format(java.util.Locale.US, "%.2f", score));
+            html.append("</td></tr></table>");
+
+            // Measured-vs-allowed runtime metrics row.
+            boolean hasMeasured = totalTimeMs > 0 || peakMemoryKb > 0;
+            boolean hasAllowed = allowedTimeMs != null || allowedMemoryKb != null;
+            if (hasMeasured || hasAllowed) {
+                html.append("<table style=\"font-size: 11px; margin-bottom: 4px; color: #555;\"><tr>");
+                html.append("<td style=\"width: 120px;\"></td><td>");
+                html.append("<b>Time taken:</b> ").append(totalTimeMs).append(" ms");
+                if (allowedTimeMs != null) {
+                    html.append(" / ").append(allowedTimeMs).append(" ms allowed");
+                }
+                html.append(" &nbsp; ");
+                html.append("<b>Memory:</b> ").append(peakMemoryKb).append(" KB");
+                if (allowedMemoryKb != null) {
+                    html.append(" / ").append(allowedMemoryKb).append(" KB allowed");
+                }
+                html.append("</td></tr></table>");
+            }
+
+            // Source code block (gray rounded box, monospace)
+            if (!source.isEmpty()) {
+                String truncated = source.length() > 4000 ? source.substring(0, 4000) + "\n... (truncated)" : source;
+                html.append("<div style=\"background-color: #f3f4f6; border: 1px solid #e5e7eb; ")
+                        .append("border-radius: 6px; padding: 10px 12px; margin-top: 6px; ")
+                        .append("font-family: 'Courier New', Courier, monospace; font-size: 11px; ")
+                        .append("color: #1f2937; white-space: pre-wrap; word-break: break-word;\">")
+                        .append("<pre style=\"margin: 0; padding: 0; font-family: inherit; font-size: inherit; white-space: pre-wrap;\">")
+                        .append(escapeHtml(truncated))
+                        .append("</pre></div>");
+            }
+        } catch (Exception e) {
+            // Fall back to a simple "Could not render" line so the PDF doesn't blank out.
+            html.append("<table style=\"font-size: 12px; margin-bottom: 4px;\"><tr>");
+            html.append("<td style=\"font-weight: 600; color: #555; width: 120px;\">Your Answer:</td>");
+            html.append("<td style=\"color: #999;\">Could not render coding response</td>");
+            html.append("</tr></table>");
         }
     }
 

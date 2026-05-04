@@ -5,6 +5,8 @@ import com.itextpdf.html2pdf.ConverterProperties;
 import com.itextpdf.html2pdf.HtmlConverter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -117,6 +119,9 @@ public class AssessmentParticipantsManager {
 
     @Autowired
     private vacademy.io.assessment_service.features.client.AdminCoreServiceClient adminCoreServiceClient;
+
+    @Autowired
+    private CacheManager cacheManager;
 
     @Transactional
     public ResponseEntity<AssessmentSaveResponseDto> saveParticipantsToAssessment(CustomUserDetails user,
@@ -1085,6 +1090,14 @@ public class AssessmentParticipantsManager {
         attempt.setReportReleaseStatus(ReleaseResultStatusEnum.RELEASED.name());
         attempt.setReportLastReleaseDate(DateUtil.getCurrentUtcTime());
         studentAttemptRepository.save(attempt);
+        // Bust the per-attempt comparison cache so freshly-released results
+        // don't get masked by a stale studentMarks=0 entry from before scoring.
+        try {
+            Cache cache = cacheManager.getCache("comparisonData");
+            if (cache != null) cache.clear();
+        } catch (Exception e) {
+            log.warn("Failed to evict comparisonData cache after release: {}", e.getMessage());
+        }
     }
 
     /**

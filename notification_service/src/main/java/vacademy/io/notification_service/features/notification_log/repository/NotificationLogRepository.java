@@ -166,8 +166,8 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
                     ON anchor.channel_id = reaction.channel_id
                 WHERE 
                     -- 1. Match the Anchor (Outgoing Message)
-                    anchor.notification_type = :anchorType 
-                    AND anchor.body = :anchorBody
+                    anchor.notification_type = :anchorType
+                    AND anchor.body LIKE CONCAT('%', :anchorBody, '%')
             
                     -- 2. Match the Reaction (Delivered/Incoming)
                     AND reaction.notification_type = :reactionType
@@ -176,13 +176,15 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
                     -- 3. Logic: Reaction must be AFTER Anchor
                     AND reaction.created_at > anchor.created_at
             
-                    -- 4. CRITICAL: Strict Adjacency Check
-                    -- Ensure NO other 'Anchor' message exists between this Anchor and the Reaction
+                    -- 4. Adjacency Check: ensure no DUPLICATE anchor template was sent between
+                    -- this anchor and the reaction (so we always pick the latest anchor-reaction pair).
+                    -- Intermediate chatbot text messages or unrelated outgoing messages do NOT break adjacency.
                     AND NOT EXISTS (
-                        SELECT 1 
+                        SELECT 1
                         FROM notification_log intermediate
                         WHERE intermediate.channel_id = anchor.channel_id
                           AND intermediate.notification_type = :anchorType
+                          AND intermediate.body LIKE CONCAT('%', :anchorBody, '%')
                           AND intermediate.created_at > anchor.created_at
                           AND intermediate.created_at < reaction.created_at
                     )

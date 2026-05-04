@@ -272,8 +272,12 @@ export default defineConfig({
                         if (id.includes('/@monaco-editor/') || id.includes('/monaco-editor/'))
                             return 'monaco-vendor';
 
+                        // d3 must be in its own chunk so recharts can depend on it without circular init issues
+                        if (id.includes('/d3-') || id.includes('/d3/') || id.includes('/internmap/') || id.includes('/delaunator/') || id.includes('/robust-predicates/'))
+                            return 'd3-vendor';
+
                         // Heavy Libraries - Charts
-                        if (id.includes('/recharts/') || id.includes('/d3/') || id.includes('/victory/'))
+                        if (id.includes('/recharts/') || id.includes('/victory/'))
                             return 'chart-vendor';
 
                         // Heavy Libraries - Canvas/Fabric

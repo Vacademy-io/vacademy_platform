@@ -78,44 +78,11 @@ export function StudioDetailsStep() {
                     name="studioName"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Studio name</FormLabel>
+                            <FormLabel className="text-sm font-medium text-neutral-700">
+                                Studio name
+                            </FormLabel>
                             <FormControl>
-                                <Input placeholder="Acme Studio" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-
-                <FormField
-                    control={form.control}
-                    name="logoFileId"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormControl>
-                                <ImageUploadField
-                                    label="Logo (optional)"
-                                    value={field.value ?? ''}
-                                    onChange={(fileId) => field.onChange(fileId)}
-                                    placeholder="Upload your studio logo"
-                                />
-                            </FormControl>
-                            <FormMessage />
-                        </FormItem>
-                    )}
-                />
-
-                <FormField
-                    control={form.control}
-                    name="brandColor"
-                    render={({ field }) => (
-                        <FormItem>
-                            <FormControl>
-                                <ColorPickerField
-                                    label="Brand color"
-                                    value={field.value}
-                                    onChange={(color) => field.onChange(color)}
-                                />
+                                <Input placeholder="Acme Studio" className="h-11" {...field} />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -127,10 +94,12 @@ export function StudioDetailsStep() {
                     name="companySize"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>How many people are in your company?</FormLabel>
+                            <FormLabel className="text-sm font-medium text-neutral-700">
+                                Team size
+                            </FormLabel>
                             <Select onValueChange={field.onChange} value={field.value}>
                                 <FormControl>
-                                    <SelectTrigger>
+                                    <SelectTrigger className="h-11">
                                         <SelectValue placeholder="Select team size" />
                                     </SelectTrigger>
                                 </FormControl>
@@ -147,16 +116,62 @@ export function StudioDetailsStep() {
                     )}
                 />
 
+                <div className="rounded-xl border border-neutral-200 bg-neutral-50/50 p-4">
+                    <p className="mb-3 text-sm font-medium text-neutral-700">
+                        Brand <span className="text-neutral-400">(optional)</span>
+                    </p>
+                    <div className="space-y-4">
+                        <FormField
+                            control={form.control}
+                            name="logoFileId"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormControl>
+                                        <ImageUploadField
+                                            label="Logo"
+                                            value={field.value ?? ''}
+                                            onChange={(url) => field.onChange(url)}
+                                            placeholder="Upload your studio logo"
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <FormField
+                            control={form.control}
+                            name="brandColor"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormControl>
+                                        <ColorPickerField
+                                            label="Brand color"
+                                            value={field.value}
+                                            onChange={(color) => field.onChange(color)}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    </div>
+                </div>
+
                 <div className="flex flex-col gap-2">
-                    <Button type="submit" className="w-full" disabled={signup.isPending}>
-                        {signup.isPending ? 'Creating account…' : 'Create account'}
+                    <Button
+                        type="submit"
+                        disabled={signup.isPending}
+                        className="h-11 w-full bg-neutral-900 text-white shadow-sm hover:bg-neutral-800"
+                    >
+                        {signup.isPending ? 'Creating account…' : 'Create studio'}
                     </Button>
                     <button
                         type="button"
-                        className="text-sm text-muted-foreground hover:underline"
+                        className="text-sm text-neutral-500 hover:text-neutral-700"
                         onClick={() => setStep('account-type')}
                     >
-                        Back
+                        ← Back
                     </button>
                 </div>
             </form>

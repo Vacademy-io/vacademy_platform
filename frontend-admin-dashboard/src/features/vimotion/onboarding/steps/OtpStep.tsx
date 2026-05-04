@@ -4,14 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormMessage } from '@/components/ui/form';
 import { useVimotionOnboardingStore } from '../store';
 import { otpSchema, type OtpValues } from '../schema';
 import { requestSignupOtp, verifySignupOtp } from '../../api/signup';
@@ -56,23 +49,23 @@ export function OtpStep() {
     return (
         <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-                <p className="text-sm text-muted-foreground">
-                    We sent a 6-digit code on WhatsApp to{' '}
-                    <span className="font-medium">{contact.phoneNumber}</span>
-                </p>
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3 text-sm text-neutral-600">
+                    Code sent on WhatsApp to{' '}
+                    <span className="font-medium text-neutral-900">{contact.phoneNumber}</span>
+                </div>
 
                 <FormField
                     control={form.control}
                     name="otp"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Verification code</FormLabel>
                             <FormControl>
                                 <Input
                                     inputMode="numeric"
                                     maxLength={6}
-                                    placeholder="123456"
+                                    placeholder="6-digit code"
                                     autoComplete="one-time-code"
+                                    className="h-12 text-center text-lg tracking-[0.5em]"
                                     {...field}
                                 />
                             </FormControl>
@@ -81,27 +74,30 @@ export function OtpStep() {
                     )}
                 />
 
-                <div className="flex flex-col gap-2">
-                    <Button type="submit" className="w-full" disabled={verify.isPending}>
-                        {verify.isPending ? 'Verifying…' : 'Verify & continue'}
-                    </Button>
-                    <div className="flex items-center justify-between text-sm">
-                        <button
-                            type="button"
-                            className="text-muted-foreground hover:underline"
-                            onClick={() => setStep('contact')}
-                        >
-                            Edit number
-                        </button>
-                        <button
-                            type="button"
-                            className="text-primary-500 hover:underline disabled:opacity-50"
-                            disabled={resend.isPending}
-                            onClick={() => resend.mutate()}
-                        >
-                            {resend.isPending ? 'Resending…' : 'Resend OTP'}
-                        </button>
-                    </div>
+                <Button
+                    type="submit"
+                    disabled={verify.isPending}
+                    className="h-11 w-full bg-neutral-900 text-white shadow-sm hover:bg-neutral-800"
+                >
+                    {verify.isPending ? 'Verifying…' : 'Verify & continue'}
+                </Button>
+
+                <div className="flex items-center justify-between text-sm">
+                    <button
+                        type="button"
+                        className="text-neutral-500 hover:text-neutral-700"
+                        onClick={() => setStep('contact')}
+                    >
+                        ← Edit number
+                    </button>
+                    <button
+                        type="button"
+                        className="font-medium text-neutral-900 hover:text-neutral-700 disabled:opacity-50"
+                        disabled={resend.isPending}
+                        onClick={() => resend.mutate()}
+                    >
+                        {resend.isPending ? 'Resending…' : 'Resend OTP'}
+                    </button>
                 </div>
             </form>
         </Form>

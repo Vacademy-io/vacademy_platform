@@ -2,6 +2,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -49,9 +50,16 @@ export function ContactStep() {
                     name="fullName"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Full name</FormLabel>
+                            <FormLabel className="text-sm font-medium text-neutral-700">
+                                Full name
+                            </FormLabel>
                             <FormControl>
-                                <Input placeholder="Jane Doe" autoComplete="name" {...field} />
+                                <Input
+                                    placeholder="Jane Doe"
+                                    autoComplete="name"
+                                    className="h-11"
+                                    {...field}
+                                />
                             </FormControl>
                             <FormMessage />
                         </FormItem>
@@ -63,12 +71,15 @@ export function ContactStep() {
                     name="email"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Email</FormLabel>
+                            <FormLabel className="text-sm font-medium text-neutral-700">
+                                Work email
+                            </FormLabel>
                             <FormControl>
                                 <Input
                                     type="email"
                                     placeholder="you@example.com"
                                     autoComplete="email"
+                                    className="h-11"
                                     {...field}
                                 />
                             </FormControl>
@@ -82,22 +93,33 @@ export function ContactStep() {
                     name="phoneNumber"
                     render={({ field }) => (
                         <FormItem>
-                            <FormLabel>Phone number</FormLabel>
+                            <FormLabel className="text-sm font-medium text-neutral-700">
+                                WhatsApp number
+                            </FormLabel>
                             <FormControl>
                                 <Input
                                     type="tel"
                                     placeholder="+91 98xxxxxxxx"
                                     autoComplete="tel"
+                                    className="h-11"
                                     {...field}
                                 />
                             </FormControl>
+                            <p className="text-xs text-neutral-500">
+                                We&rsquo;ll send a 6-digit code to verify it&rsquo;s really you.
+                            </p>
                             <FormMessage />
                         </FormItem>
                     )}
                 />
 
-                <Button type="submit" className="w-full" disabled={requestOtp.isPending}>
+                <Button
+                    type="submit"
+                    disabled={requestOtp.isPending}
+                    className="h-11 w-full gap-2 bg-neutral-900 text-white shadow-sm hover:bg-neutral-800"
+                >
                     {requestOtp.isPending ? 'Sending OTP…' : 'Continue'}
+                    {!requestOtp.isPending && <ArrowRight className="size-4" />}
                 </Button>
             </form>
         </Form>

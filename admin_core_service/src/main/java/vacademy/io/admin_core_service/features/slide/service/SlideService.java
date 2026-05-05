@@ -48,6 +48,7 @@ public class SlideService {
     private final HtmlVideoSlideRepository htmlVideoSlideRepository;
     private final ScormSlideRepository scormSlideRepository;
     private final QuizSlideQuestionRepository quizSlideQuestionRepository;
+    private final AssessmentSlideRepository assessmentSlideRepository;
     private final SlideNotificationService slideNotificationService;
     private final ObjectMapper objectMapper;
     private final LearnerTrackingAsyncService learnerTrackingAsyncService;
@@ -373,6 +374,9 @@ public class SlideService {
         } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.SCORM.name())) {
             String newSourceId = copyScormSlideSource(slide.getSourceId());
             return createNewSlide(slide, newSourceId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.ASSESSMENT.name())) {
+            String newSourceId = copyAssessmentSlideSource(slide.getSourceId());
+            return createNewSlide(slide, newSourceId);
         } else {
             throw new VacademyException("Unsupported slide type for copying: " + sourceType);
         }
@@ -435,6 +439,13 @@ public class SlideService {
                     oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
             learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
                     SlideTypeEnum.SCORM.name(),
+                    newChapterId, newModuleId, newSubjectId, newPackageSessionId);
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.ASSESSMENT.name())) {
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
+                    SlideTypeEnum.ASSESSMENT.name(),
+                    oldChapterId, oldModuleId, oldSubjectId, oldPackageSessionId);
+            learnerTrackingAsyncService.updateLearnerOperationsForBatch("SLIDE", slideId,
+                    SlideTypeEnum.ASSESSMENT.name(),
                     newChapterId, newModuleId, newSubjectId, newPackageSessionId);
         }
     }
@@ -648,6 +659,8 @@ public class SlideService {
             return copyHtmlVideoSlideSource(oldSlide.getSourceId());
         } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.SCORM.name())) {
             return copyScormSlideSource(oldSlide.getSourceId());
+        } else if (sourceType.equalsIgnoreCase(SlideTypeEnum.ASSESSMENT.name())) {
+            return copyAssessmentSlideSource(oldSlide.getSourceId());
         } else {
             log.warn("Unknown slide type: {}, copying source ID as-is", sourceType);
             return oldSlide.getSourceId();
@@ -906,6 +919,20 @@ public class SlideService {
             newSlide.setLaunchUrl(scormSlide.getLaunchUrl());
             newSlide.setScormVersion(scormSlide.getScormVersion());
             newSlide = scormSlideRepository.save(newSlide);
+            return newSlide.getId();
+        }
+        return sourceId;
+    }
+
+    private String copyAssessmentSlideSource(String sourceId) {
+        AssessmentSlide existing = assessmentSlideRepository.findById(sourceId).orElse(null);
+        if (existing != null) {
+            AssessmentSlide newSlide = new AssessmentSlide();
+            newSlide.setId(UUID.randomUUID().toString());
+            newSlide.setAssessmentId(existing.getAssessmentId());
+            newSlide.setAllowReattempt(existing.getAllowReattempt());
+            newSlide.setShowResult(existing.getShowResult());
+            newSlide = assessmentSlideRepository.save(newSlide);
             return newSlide.getId();
         }
         return sourceId;

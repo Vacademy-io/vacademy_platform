@@ -28,6 +28,8 @@ import { AddPdfDialog } from './add-pdf-dialog';
 import { AddPptDialog } from './add-ppt-dialog';
 import { AddAudioDialog } from './add-audio-dialog';
 import { AddScormDialog } from './add-scorm-dialog';
+import { AddAssessmentSlideDialog } from './add-assessment-slide-dialog';
+import { ListChecks } from '@phosphor-icons/react';
 import { useRouter } from '@tanstack/react-router';
 import {
     useSlidesMutations,
@@ -116,6 +118,7 @@ export const ChapterSidebarAddButton = () => {
         isAudioDialogOpen,
         isPptDialogOpen,
         isScormDialogOpen,
+        isAssessmentDialogOpen,
 
         openPdfDialog,
         closePdfDialog,
@@ -133,6 +136,8 @@ export const ChapterSidebarAddButton = () => {
         closePptDialog,
         openScormDialog,
         closeScormDialog,
+        openAssessmentDialog,
+        closeAssessmentDialog,
         isVimeoDialogOpen,
         openVimeoDialog,
         closeVimeoDialog,
@@ -284,6 +289,12 @@ export const ChapterSidebarAddButton = () => {
                 icon: <Package className="size-4 text-teal-500" />,
                 description: 'Import SCORM 1.2/2004 modules',
             },
+            {
+                label: 'Assessment',
+                value: 'assessment',
+                icon: <ListChecks className="size-4 text-rose-500" />,
+                description: 'Link an existing assessment',
+            },
         ],
         []
     );
@@ -321,6 +332,8 @@ export const ChapterSidebarAddButton = () => {
                     return true; // Audio slides are enabled by default
                 case 'scorm':
                     return true; // SCORM slides are enabled by default
+                case 'assessment':
+                    return true; // Assessment slides are enabled by default
                 // presentation treated as a document-type control
                 case 'presentation':
                     return ct.document !== false;
@@ -678,6 +691,10 @@ export const ChapterSidebarAddButton = () => {
             case 'scorm':
                 openScormDialog();
                 break;
+
+            case 'assessment':
+                openAssessmentDialog();
+                break;
         }
     };
 
@@ -851,6 +868,20 @@ export const ChapterSidebarAddButton = () => {
             >
                 <div className="duration-300 animate-in fade-in slide-in-from-bottom-4">
                     <AddScormDialog openState={(open) => !open && closeScormDialog()} />
+                </div>
+            </MyDialog>
+
+            <MyDialog
+                trigger={<></>}
+                heading="Link an Assessment"
+                dialogWidth="min-w-[520px] w-auto"
+                open={isAssessmentDialogOpen}
+                onOpenChange={closeAssessmentDialog}
+            >
+                <div className="duration-300 animate-in fade-in slide-in-from-bottom-4">
+                    <AddAssessmentSlideDialog
+                        openState={(open) => !open && closeAssessmentDialog()}
+                    />
                 </div>
             </MyDialog>
 

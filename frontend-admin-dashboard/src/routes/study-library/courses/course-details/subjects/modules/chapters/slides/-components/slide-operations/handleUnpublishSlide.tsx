@@ -7,6 +7,7 @@ import {
     QuizSlidePayload,
     AudioSlidePayload,
     ScormSlidePayload,
+    AssessmentSlidePayload,
 } from '../../-hooks/use-slides';
 import { UseMutateAsyncFunction } from '@tanstack/react-query';
 import { SlideQuestionsDataInterface } from '@/types/study-library/study-library-slides-type';
@@ -53,7 +54,13 @@ export const handleUnpublishSlide = async (
     addUpdateAudioSlide: UseMutateAsyncFunction<SlideResponse, Error, AudioSlidePayload, unknown>,
     addUpdateScormSlide: UseMutateAsyncFunction<SlideResponse, Error, ScormSlidePayload, unknown>,
     SaveDraft: (activeItem: Slide) => Promise<void>,
-    playerRef?: RefObject<YTPlayer> // Optional: in case needed for recalculating duration
+    playerRef?: RefObject<YTPlayer>, // Optional: in case needed for recalculating duration
+    addUpdateAssessmentSlide?: UseMutateAsyncFunction<
+        SlideResponse,
+        Error,
+        AssessmentSlidePayload,
+        unknown
+    >
 ) => {
     const status = 'DRAFT';
 
@@ -262,6 +269,37 @@ export const handleUnpublishSlide = async (
             setIsOpen(false);
         } catch {
             toast.error('Error in unpublishing the SCORM slide');
+        }
+    }
+
+    if (activeItem?.source_type === 'ASSESSMENT') {
+        if (!activeItem.assessment_slide || !addUpdateAssessmentSlide) {
+            toast.error('Assessment slide data is missing.');
+            return;
+        }
+        try {
+            await addUpdateAssessmentSlide({
+                id: activeItem.id,
+                source_id: activeItem.assessment_slide.id,
+                source_type: 'ASSESSMENT',
+                title: activeItem.title,
+                description: activeItem.description || '',
+                image_file_id: activeItem.image_file_id || '',
+                status: 'DRAFT',
+                slide_order: activeItem.slide_order,
+                notify,
+                new_slide: false,
+                assessment_slide: {
+                    id: activeItem.assessment_slide.id,
+                    assessment_id: activeItem.assessment_slide.assessment_id,
+                    allow_reattempt: activeItem.assessment_slide.allow_reattempt ?? true,
+                    show_result: activeItem.assessment_slide.show_result ?? true,
+                },
+            });
+            toast.success('Assessment slide unpublished successfully!');
+            setIsOpen(false);
+        } catch {
+            toast.error('Error in unpublishing the assessment slide');
         }
     }
 };

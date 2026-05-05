@@ -62,7 +62,7 @@ export default defineConfig({
         //     },
         // }),
         svgr({ include: '**/*.svg' }),
-        flowbiteReact(),
+        // flowbiteReact(),
         // Replace CORS-blocked easy-email default images with local SVG placeholders.
         // Each preset thumbnail (IMAGE_08–IMAGE_71) maps to a unique wireframe SVG.
         {
@@ -190,6 +190,14 @@ export default defineConfig({
                 handler(level, log);
             },
             output: {
+                // Inline the CJS interop helper into every chunk that needs it
+                // instead of sharing one helper across chunks. Sharing was the
+                // root cause of "Cannot access 'w' before initialization":
+                // Rollup put `getDefaultExportFromCjs` in chart-vendor and made
+                // react-vendor import it back, creating chart-vendor ↔
+                // react-vendor circular chunk dep, leaving React (`w`) in TDZ
+                // when chart-vendor evaluated first.
+                interop: 'esModule',
                 manualChunks(id) {
                     if (id.includes('node_modules')) {
                         // Core React
@@ -272,9 +280,27 @@ export default defineConfig({
                         if (id.includes('/@monaco-editor/') || id.includes('/monaco-editor/'))
                             return 'monaco-vendor';
 
-                        // Heavy Libraries - Charts
-                        if (id.includes('/recharts/') || id.includes('/d3/') || id.includes('/d3-') || id.includes('/victory/'))
-                            return 'chart-vendor';
+                        // d3 must be in its own chunk so recharts can import it as a
+                        // fully-initialized module; bundling them together causes TDZ crashes
+                        // ("Cannot access 'X' before initialization") in minified prod builds.
+                        // NOTE: recharts imports d3 from `victory-vendor/d3-*`, NOT directly,
+                        // so victory-vendor MUST be matched here too.
+                        if (
+                            id.includes('/d3-') ||
+                            id.includes('/d3/') ||
+                            id.includes('/victory-vendor/') ||
+                            id.includes('/internmap/') ||
+                            id.includes('/delaunator/') ||
+                            id.includes('/robust-predicates/')
+                        )
+                            return 'd3-vendor';
+
+                        // NOTE: recharts is intentionally NOT manually chunked.
+                        // Manually chunking recharts caused circular chunk deps
+                        // (chart-vendor ↔ react-vendor) that triggered TDZ
+                        // "Cannot access 'w' before initialization" where 'w'
+                        // was React. Letting Rollup auto-chunk recharts avoids
+                        // this entirely.
 
                         // Heavy Libraries - Canvas/Fabric
                         if (id.includes('/fabric/'))

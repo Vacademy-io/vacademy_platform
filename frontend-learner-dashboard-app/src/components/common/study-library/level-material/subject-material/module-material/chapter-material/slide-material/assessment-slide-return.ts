@@ -1,0 +1,112 @@
+import { Storage } from "@capacitor/storage";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+
+const SLIDE_RETURN_KEY = "SLIDE_RETURN_CONTEXT";
+
+// Local admin-core-service override for the assessment-slide complete-marker
+// call. Scoped to this helper so existing quiz-slide activity-log writers
+// (which share the same endpoint) keep hitting normal BASE_URL. Flip back to
+// `${BASE_URL}/admin-core-service/...` once the server changes ride deploys.
+const LOCAL_ADMIN_CORE_BASE = "http://localhost:8072";
+const SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG_LOCAL = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/learner-tracking/activity-log/quiz-slide/add-or-update-quiz-slide-activity-log`;
+
+// Stale-context guard. Anything older than 24h is almost certainly a leftover
+// from an unrelated tab and should be discarded so we don't stomp the normal
+// post-submit redirect.
+const MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+export interface SlideReturnContext {
+  returnSlideId: string;
+  returnPathname: string;
+  returnSearch: string;
+  startedAt: number;
+}
+
+export const readSlideReturnContext = async (): Promise<SlideReturnContext | null> => {
+  let raw: string | null = null;
+  try {
+    raw = sessionStorage.getItem(SLIDE_RETURN_KEY);
+  } catch {
+    // ignore
+  }
+  if (!raw) {
+    try {
+      const fallback = await Storage.get({ key: SLIDE_RETURN_KEY });
+      raw = fallback.value ?? null;
+    } catch {
+      raw = null;
+    }
+  }
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as SlideReturnContext;
+    if (
+      !parsed?.returnSlideId ||
+      !parsed?.returnPathname ||
+      typeof parsed.startedAt !== "number"
+    ) {
+      return null;
+    }
+    if (Date.now() - parsed.startedAt > MAX_AGE_MS) {
+      await clearSlideReturnContext();
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+export const clearSlideReturnContext = async () => {
+  try {
+    sessionStorage.removeItem(SLIDE_RETURN_KEY);
+  } catch {
+    // ignore
+  }
+  try {
+    await Storage.remove({ key: SLIDE_RETURN_KEY });
+  } catch {
+    // ignore
+  }
+};
+
+/**
+ * Mark the originating assessment-slide as 100% complete. Mirrors what the
+ * quiz slide does on submission. Failures are non-fatal — re-visiting the
+ * slide will re-fetch live status from assessment_service so progress will
+ * reconcile on next view either way.
+ */
+export const markAssessmentSlideComplete = async (
+  slideId: string,
+  attemptId: string
+) => {
+  try {
+    const params = new URLSearchParams({ slideId });
+    await authenticatedAxiosInstance.post(
+      `${SUBMIT_QUIZ_SLIDE_ACTIVITY_LOG_LOCAL}?${params.toString()}`,
+      {
+        slide_id: slideId,
+        source_type: "ASSESSMENT",
+        attempt_id: attemptId,
+        percentage_completed: 100,
+        status: "COMPLETED",
+      }
+    );
+  } catch (err) {
+    console.warn("Failed to mark assessment slide complete:", err);
+  }
+};
+
+/**
+ * Build a TanStack Router-compatible URL string for navigating back to the
+ * slide. We round-trip the captured pathname + search params verbatim, then
+ * append `slideId` (overwriting anything stale) and a one-shot
+ * `justSubmittedAssessment` flag.
+ */
+export const buildSlideReturnUrl = (ctx: SlideReturnContext): string => {
+  const search = new URLSearchParams(ctx.returnSearch);
+  search.set("slideId", ctx.returnSlideId);
+  search.set("justSubmittedAssessment", "1");
+  const qs = search.toString();
+  return qs ? `${ctx.returnPathname}?${qs}` : ctx.returnPathname;
+};

@@ -128,6 +128,14 @@ export interface ScormSlide {
   scorm_version?: string;
 }
 
+// Assessment slide interface — slide that links to an existing assessment
+export interface AssessmentSlide {
+  id: string;
+  assessment_id: string;
+  allow_reattempt?: boolean;
+  show_result?: boolean;
+}
+
 // AI Video Data interface
 export interface AIVideoData {
   status: 'COMPLETED' | 'GENERATING' | 'FAILED';
@@ -155,6 +163,7 @@ export interface Slide {
   audioSlide?: AudioSlide;
   html_video_slide?: HtmlVideoSlide; // For HTML_VIDEO source_type slides
   scorm_slide?: ScormSlide | null; // For SCORM source_type slides
+  assessment_slide?: AssessmentSlide | null; // For ASSESSMENT source_type slides
   aiVideoData?: AIVideoData;
   is_loaded: boolean;
   new_slide: boolean;

@@ -8,6 +8,10 @@ import vacademy.io.admin_core_service.features.enroll_invite.dto.AssignCpoToPack
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
+import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
+import vacademy.io.admin_core_service.features.fee_management.repository.ComplexPaymentOptionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.Collections;
@@ -19,6 +23,12 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
 
     @Autowired
     private PackageSessionLearnerInvitationToPaymentOptionRepository repository;
+
+    @Autowired
+    private ComplexPaymentOptionRepository complexPaymentOptionRepository;
+
+    @Autowired
+    private PaymentOptionService paymentOptionService;
 
     /**
      * ADD THIS METHOD BACK
@@ -120,6 +130,12 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
                 List.of(StatusEnum.ACTIVE.name()));
     }
 
+    /**
+     * Attaches a CPO to a package-session bridge by resolving the CPO's mirror
+     * PaymentOption (auto-created via FeeManagementService) and setting it on the
+     * bridge's payment_option_id. After V224, this is the only place CPOs are
+     * stamped on the bridge — the previous bridge.cpo_id column is gone.
+     */
     @Transactional
     public void assignCpoToPackageSession(String enrollInviteId, AssignCpoToPackageSessionDTO request) {
         PackageSessionLearnerInvitationToPaymentOption bridge = repository
@@ -128,7 +144,14 @@ public class PackageSessionEnrollInviteToPaymentOptionService {
                         "No active mapping found for enrollInviteId=" + enrollInviteId
                                 + " and packageSessionId=" + request.getPackageSessionId()));
 
-        bridge.setCpoId(request.getCpoId());
+        ComplexPaymentOption cpo = complexPaymentOptionRepository.findById(request.getCpoId())
+                .orElseThrow(() -> new VacademyException("CPO not found: " + request.getCpoId()));
+
+        // Resolve (or self-heal) the mirror PaymentOption for this CPO.
+        PaymentOption mirror = paymentOptionService.findByComplexPaymentOptionId(cpo.getId())
+                .orElseGet(() -> paymentOptionService.findOrCreateMirrorForCpo(cpo));
+
+        bridge.setPaymentOption(mirror);
         repository.save(bridge);
     }
 }

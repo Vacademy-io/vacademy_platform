@@ -87,21 +87,23 @@ public interface PackageSessionLearnerInvitationToPaymentOptionRepository
                         "GROUP BY psl.enrollInvite.id")
         List<Object[]> countActiveByEnrollInviteIds(@Param("enrollInviteIds") List<String> enrollInviteIds);
 
-        @Query("SELECT DISTINCT psl.cpoId FROM PackageSessionLearnerInvitationToPaymentOption psl " +
+        @Query("SELECT DISTINCT psl.paymentOption.complexPaymentOptionId FROM PackageSessionLearnerInvitationToPaymentOption psl " +
                         "WHERE psl.packageSession.id = :packageSessionId " +
-                        "AND psl.cpoId IS NOT NULL " +
+                        "AND psl.paymentOption.complexPaymentOptionId IS NOT NULL " +
                         "AND psl.status = 'ACTIVE'")
         List<String> findDistinctCpoIdsByPackageSessionId(@Param("packageSessionId") String packageSessionId);
+
         @Query(value = "SELECT DISTINCT sfp.user_plan_id, p.package_session_id " +
                         "FROM student_fee_payment sfp " +
+                        "JOIN payment_option po ON po.complex_payment_option_id = sfp.cpo_id " +
                         "JOIN package_session_learner_invitation_to_payment_option p " +
-                        "ON p.cpo_id = sfp.cpo_id " +
+                        "ON p.payment_option_id = po.id " +
                         "WHERE sfp.user_plan_id IN (:userPlanIds) " +
                         "AND p.status != 'DELETED'", nativeQuery = true)
         List<Object[]> findPackageSessionIdsByUserPlanIds(@Param("userPlanIds") List<String> userPlanIds);
 
         @Query("SELECT psl FROM PackageSessionLearnerInvitationToPaymentOption psl " +
-                        "WHERE psl.cpoId = :cpoId AND psl.status != 'DELETED'")
+                        "WHERE psl.paymentOption.complexPaymentOptionId = :cpoId AND psl.status != 'DELETED'")
         List<PackageSessionLearnerInvitationToPaymentOption> findByCpoId(@Param("cpoId") String cpoId);
 
         @Query(value = "SELECT DISTINCT psl.package_session_id FROM package_session_learner_invitation_to_payment_option psl " +

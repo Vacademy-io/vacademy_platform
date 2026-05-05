@@ -698,9 +698,22 @@ public class LearnerEnrollRequestService {
             PaymentPlan paymentPlan,
             String source,
             String subOrgId) {
-        String userPlanStatus = null;
-        if (paymentOption.getType().equals(PaymentOptionType.SUBSCRIPTION.name())
-                || paymentOption.getType().equals(PaymentOptionType.ONE_TIME.name())) {
+        // For CPO, fall back to the mirror's synthetic ACTIVE plan when the caller did
+        // not pass an explicit one. Keeps userPlan.paymentPlan non-null for downstream
+        // readers (analytics, multi-package summer, renewal checks).
+        if (paymentPlan == null
+                && PaymentOptionType.CPO.name().equals(paymentOption.getType())
+                && paymentOption.getPaymentPlans() != null
+                && !paymentOption.getPaymentPlans().isEmpty()) {
+            paymentPlan = paymentOption.getPaymentPlans().get(0);
+        }
+
+        String type = paymentOption.getType();
+        boolean requiresPayment = enrollDTO.getPaymentInitiationRequest() != null;
+        String userPlanStatus;
+        if (type.equals(PaymentOptionType.SUBSCRIPTION.name())
+                || type.equals(PaymentOptionType.ONE_TIME.name())
+                || (type.equals(PaymentOptionType.CPO.name()) && requiresPayment)) {
             userPlanStatus = UserPlanStatusEnum.PENDING_FOR_PAYMENT.name();
         } else {
             userPlanStatus = UserPlanStatusEnum.ACTIVE.name();

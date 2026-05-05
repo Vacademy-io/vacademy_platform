@@ -20,6 +20,8 @@ public class PaymentOptionDTO {
     private String type;
     private boolean requireApproval;
     private String unit;
+    /** Set when type='CPO'. Points at the underlying ComplexPaymentOption row. */
+    private String complexPaymentOptionId;
     private List<PaymentPlanDTO> paymentPlans;
     private String paymentOptionMetadataJson;
 }

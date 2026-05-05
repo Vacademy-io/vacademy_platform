@@ -23,6 +23,7 @@ import vacademy.io.admin_core_service.features.fee_management.repository.AftInst
 import vacademy.io.admin_core_service.features.fee_management.repository.AssignedFeeValueRepository;
 import vacademy.io.admin_core_service.features.fee_management.repository.ComplexPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.fee_management.repository.FeeTypeRepository;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
@@ -56,6 +57,9 @@ public class FeeManagementService {
 
     @Autowired
     private EnrollInviteRepository enrollInviteRepository;
+
+    @Autowired
+    private PaymentOptionService paymentOptionService;
 
     /**
      * Roles that are considered trusted and can create CPOs without approval.
@@ -139,6 +143,12 @@ public class FeeManagementService {
                 }
             }
         }
+
+        // Mirror this CPO into the unified PaymentOption table (type='CPO') so the
+        // strategy pattern, multi-package summing, and learner-side flows can treat
+        // it like any other payment option. Also creates a synthetic PaymentPlan
+        // whose actualPrice = sum of installments (full contract value).
+        paymentOptionService.findOrCreateMirrorForCpo(savedCpo);
 
         ComplexPaymentOptionDTO result = getFullCpo(savedCpo.getId());
 
@@ -375,6 +385,8 @@ public class FeeManagementService {
         cpo.setApprovedBy(userDetails != null ? userDetails.getUserId() : null);
         cpoRepository.save(cpo);
 
+        paymentOptionService.syncMirrorForCpo(cpo);
+
         return getFullCpo(cpoId);
     }
 
@@ -393,6 +405,7 @@ public class FeeManagementService {
             cpo.setStatus(request.getStatus());
 
         cpoRepository.save(cpo);
+        paymentOptionService.syncMirrorForCpo(cpo);
         return getFullCpo(cpoId);
     }
 
@@ -439,6 +452,8 @@ public class FeeManagementService {
                 }
             }
         }
+
+        paymentOptionService.syncMirrorForCpo(cpo);
 
         return getFullCpo(cpoId);
     }
@@ -523,6 +538,11 @@ public class FeeManagementService {
                 }
             }
         }
+
+        // Re-sync the mirror PaymentOption + synthetic plan because the fee structure
+        // (and therefore the total contract value / validity) may have changed.
+        cpoRepository.findById(feeType.getCpoId())
+                .ifPresent(paymentOptionService::syncMirrorForCpo);
 
         return request;
     }

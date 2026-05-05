@@ -4,7 +4,13 @@ public enum PaymentOptionType {
     SUBSCRIPTION,
     ONE_TIME,
     FREE,
-    DONATION;
+    DONATION,
+    /**
+     * Mirror PaymentOption that represents a ComplexPaymentOption (multi-installment fee structure).
+     * The actual CPO is reachable via PaymentOption.complexPaymentOptionId. Hidden by default
+     * from the generic /payment-options listing (managed via /fee-management/cpo/* instead).
+     */
+    CPO;
 
     /**
      * Parses the given string to a PaymentOptionType.

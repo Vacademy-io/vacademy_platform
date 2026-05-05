@@ -10,6 +10,14 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public class PaymentOptionFilterDTO {
     private List<String>types;
+    /**
+     * Types to exclude from the result. When null/empty, the service layer applies a
+     * default exclusion of ['CPO'] so that CPO-mirror PaymentOptions stay out of the
+     * generic admin "Payment Options" listing. Pass an empty list ([]) to disable
+     * the default exclusion entirely (useful when the caller explicitly wants to see
+     * CPO mirrors mixed with regular options).
+     */
+    private List<String> excludeTypes;
     private String source;
     private String sourceId;
     private boolean requireApproval;

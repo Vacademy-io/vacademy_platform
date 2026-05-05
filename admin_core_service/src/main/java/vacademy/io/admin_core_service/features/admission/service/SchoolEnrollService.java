@@ -13,13 +13,13 @@ import vacademy.io.admin_core_service.features.admission.dto.SchoolPaymentDTO;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
-import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.EnrollInviteService;
 import vacademy.io.admin_core_service.features.fee_management.repository.ComplexPaymentOptionRepository;
-import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
+import vacademy.io.admin_core_service.features.fee_management.service.CpoValidationService;
 import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
 import vacademy.io.admin_core_service.features.fee_management.service.SchoolFeeReceiptService;
 import vacademy.io.admin_core_service.features.fee_management.service.StudentFeePaymentGenerationService;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.institute_learner.dto.InstituteStudentDetails;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.service.LearnerBatchEnrollService;
@@ -94,10 +94,10 @@ public class SchoolEnrollService {
         private PaymentService paymentService;
 
         @Autowired
-        private PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationRepository;
+        private ComplexPaymentOptionRepository complexPaymentOptionRepository;
 
         @Autowired
-        private ComplexPaymentOptionRepository complexPaymentOptionRepository;
+        private CpoValidationService cpoValidationService;
 
         @PersistenceContext
         private EntityManager entityManager;
@@ -119,17 +119,35 @@ public class SchoolEnrollService {
                                 false);
                 log.info("User created/retrieved: {}", createdUser.getId());
 
-                // Step 3: Validate EnrollInvite and PaymentOption
+                // Step 3: Validate EnrollInvite. Resolve the PaymentOption: if a cpoId is
+                // present, prefer the CPO's mirror PaymentOption (post-V224 unification) so
+                // the UserPlan carries paymentOption.type='CPO' + the synthetic PaymentPlan
+                // with the full contract value. Falls back to the request's paymentOptionId
+                // for backward compatibility with callers that don't pass a cpoId.
                 EnrollInvite enrollInvite = enrollInviteService.findById(request.getEnrollInviteId());
-                PaymentOption paymentOption = paymentOptionService.findById(request.getPaymentOptionId());
+                PaymentOption paymentOption;
+                PaymentPlan paymentPlan = null;
+                if (StringUtils.hasText(request.getCpoId())) {
+                        paymentOption = paymentOptionService.findByComplexPaymentOptionId(request.getCpoId())
+                                        .orElseGet(() -> paymentOptionService.findOrCreateMirrorForCpo(
+                                                        complexPaymentOptionRepository.findById(request.getCpoId())
+                                                                        .orElseThrow(() -> new VacademyException(
+                                                                                        "CPO not found: " + request.getCpoId()))));
+                        // The mirror always has exactly one synthetic ACTIVE PaymentPlan.
+                        if (paymentOption.getPaymentPlans() != null && !paymentOption.getPaymentPlans().isEmpty()) {
+                                paymentPlan = paymentOption.getPaymentPlans().get(0);
+                        }
+                } else {
+                        paymentOption = paymentOptionService.findById(request.getPaymentOptionId());
+                }
 
                 // Step 4: Extract startDate (default to today)
                 Date enrollmentStartDate = request.getStartDate() != null ? request.getStartDate() : new Date();
 
-                // Step 5: Create UserPlan (plan_id = null for school)
+                // Step 5: Create UserPlan
                 // For online payment, start as PAYMENT_PENDING — becomes ACTIVE after webhook
-                // confirms payment.
-                // For offline, start as ACTIVE immediately since admin has cash in hand.
+                // confirms payment. For offline, start as ACTIVE immediately since admin has
+                // cash in hand.
                 boolean isOnline = request.getSchoolPayment() != null
                                 && "ONLINE".equalsIgnoreCase(request.getSchoolPayment().getPaymentMode());
                 String userPlanStatus = isOnline ? UserPlanStatusEnum.PENDING_FOR_PAYMENT.name()
@@ -138,7 +156,7 @@ public class SchoolEnrollService {
 
                 UserPlan userPlan = userPlanService.createUserPlan(
                                 createdUser.getId(),
-                                null, // paymentPlan = null for school
+                                paymentPlan, // synthetic plan for CPO; null for legacy non-CPO callers
                                 null, // coupon = null
                                 enrollInvite,
                                 paymentOption,
@@ -187,8 +205,9 @@ public class SchoolEnrollService {
                 // Step 7: Generate StudentFeePayment rows from CPO template
                 List<String> studentFeePaymentIds = new ArrayList<>();
                 if (StringUtils.hasText(request.getCpoId())) {
-                        // Validate CPO is valid for this package session
-                        validateCpoForPackageSession(request.getPackageSessionId(), request.getCpoId());
+                        // Shared validation guard — same one used by ComplexPaymentOptionOperation.
+                        cpoValidationService.validateCpoForPackageSession(request.getPackageSessionId(),
+                                        request.getCpoId());
 
                         studentFeePaymentIds = studentFeePaymentGenerationService.generateFeeBills(
                                         userPlan.getId(),
@@ -234,45 +253,6 @@ public class SchoolEnrollService {
                 if (!StringUtils.hasText(request.getPaymentOptionId())) {
                         throw new VacademyException("Payment option ID is required");
                 }
-        }
-
-        /**
-         * Validates that the given CPO is valid for the specified package session
-         * AND that it is in ACTIVE status (not pending approval).
-         *
-         * @param packageSessionId The package session (class) ID
-         * @param cpoId            The ComplexPaymentOption (fee structure) ID
-         * @throws VacademyException if CPO is not valid for this package session or not
-         *                           yet approved
-         */
-        private void validateCpoForPackageSession(String packageSessionId, String cpoId) {
-                List<String> validCpoIds = packageSessionLearnerInvitationRepository
-                                .findDistinctCpoIdsByPackageSessionId(packageSessionId);
-
-                if (!validCpoIds.contains(cpoId)) {
-                        log.error("Invalid CPO validation failed. CPO: {} not found in valid options {} for package session: {}",
-                                        cpoId, validCpoIds, packageSessionId);
-                        throw new VacademyException(
-                                        String.format("Invalid fee structure (CPO: %s) for the selected class. "
-                                                        + "Please select a valid fee structure from the available options.",
-                                                        cpoId));
-                }
-
-                // Guard: CPO must be ACTIVE (not pending approval) before it can be used for
-                // enrollment
-                ComplexPaymentOption cpo = complexPaymentOptionRepository
-                                .findById(cpoId)
-                                .orElseThrow(() -> new VacademyException("Fee structure not found: " + cpoId));
-
-                if ("PENDING_APPROVAL".equalsIgnoreCase(cpo.getStatus())) {
-                        log.error("Enrollment blocked: CPO {} is still pending approval.", cpoId);
-                        throw new VacademyException(
-                                        "This fee structure is pending approval and cannot be used for enrollment. "
-                                                        + "Please ask an admin to approve it first.");
-                }
-
-                log.info("CPO validation successful. CPO: {} is ACTIVE and valid for package session: {}", cpoId,
-                                packageSessionId);
         }
 
         private PaymentResponseDTO handlePayment(SchoolPaymentDTO payment, UserDTO user, UserPlan userPlan,

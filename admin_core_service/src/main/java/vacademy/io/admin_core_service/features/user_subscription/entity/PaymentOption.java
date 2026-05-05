@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.annotations.Where;
+import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 
 import java.util.ArrayList;
@@ -50,6 +51,13 @@ public class PaymentOption {
     @Column(name = "unit")
     private String unit;
 
+    @Column(name = "complex_payment_option_id")
+    private String complexPaymentOptionId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "complex_payment_option_id", insertable = false, updatable = false)
+    private ComplexPaymentOption complexPaymentOption;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 
@@ -73,6 +81,7 @@ public class PaymentOption {
         this.type = paymentOptionDTO.getType();
         this.requireApproval = paymentOptionDTO.isRequireApproval();
         this.unit = paymentOptionDTO.getUnit();
+        this.complexPaymentOptionId = paymentOptionDTO.getComplexPaymentOptionId();
         this.paymentOptionMetadataJson = paymentOptionDTO.getPaymentOptionMetadataJson();
         if (paymentOptionDTO.getPaymentPlans() != null && !paymentOptionDTO.getPaymentPlans().isEmpty()) {
             this.paymentPlans.addAll(paymentOptionDTO.getPaymentPlans()
@@ -95,6 +104,7 @@ public class PaymentOption {
                 .paymentOptionMetadataJson(this.paymentOptionMetadataJson)
                 .requireApproval(this.requireApproval)
                 .unit(this.unit)
+                .complexPaymentOptionId(this.complexPaymentOptionId)
                 .paymentPlans(this.paymentPlans != null
                         ? this.paymentPlans.stream()
                         .map(PaymentPlan::mapToPaymentPlanDTO)
@@ -115,6 +125,7 @@ public class PaymentOption {
             .paymentOptionMetadataJson(this.paymentOptionMetadataJson)
             .requireApproval(this.requireApproval)
             .unit(this.unit)
+            .complexPaymentOptionId(this.complexPaymentOptionId)
             .build();
     }
 

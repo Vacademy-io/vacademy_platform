@@ -56,13 +56,6 @@ spec:
             name: auth-service
             port:
               number: 8071
-      - path: /ai-service
-        pathType: Prefix
-        backend:
-          service:
-            name: ai-service
-            port:
-              number: 8077
       - path: /media-service
         pathType: Prefix
         backend:
@@ -77,17 +70,3 @@ spec:
             name: notification-service
             port:
               number: 8076
-      - path: /assessment-service
-        pathType: Prefix
-        backend:
-          service:
-            name: assessment-service
-            port:
-              number: 8074
-      - path: /community-service
-        pathType: Prefix
-        backend:
-          service:
-            name: community-service
-            port:
-              number: 8073

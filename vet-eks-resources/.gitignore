@@ -1,0 +1,3 @@
+# Contains AWS account-specific identifiers (subnet IDs, SG IDs, IAM role name).
+# Each environment recreates this from nodeclass-custom.yaml.example with their own values.
+nodeclass-custom.yaml

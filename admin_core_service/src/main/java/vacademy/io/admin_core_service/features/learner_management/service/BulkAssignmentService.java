@@ -146,6 +146,38 @@ public class BulkAssignmentService {
                         .build());
             }
         }
+        // Populate the password field on every UserDTO in userMap by reading
+        // back from auth-service. fetchUserDetails uses the bulk endpoint which
+        // strips passwords; we need them on the workflow context for downstream
+        // nodes (e.g. LMS provisioning HTTP_REQUEST that posts the learner to
+        // WordPress / LearnDash with their actual credentials).
+        //
+        // Why per-user instead of generating locally:
+        //   1. Brand-new users — auth-service generated their password during
+        //      createUserFromAuthServiceForLearnerEnrollment(); we read it back here.
+        //   2. EXISTING users (re-enrollments, or "new_users" entry that matched
+        //      an already-registered email) — we MUST NOT overwrite their existing
+        //      password. Reading auth-service's stored value is the only safe way
+        //      to expose the real credentials to the workflow.
+        //
+        // Failures are tolerated per-user: a single fetch error leaves that
+        // userDTO.password = null and the LMS workflow node should branch on it
+        // (skip / fall back to a reset link). The workflow is not aborted.
+        if (!dryRun) {
+            for (Map.Entry<String, UserDTO> entry : userMap.entrySet()) {
+                String uid = entry.getKey();
+                UserDTO u = entry.getValue();
+                if (u == null || uid == null || uid.startsWith("dry-run-")) continue;
+                try {
+                    UserDTO withPwd = authService.getUsersFromAuthServiceWithPasswordByUserId(uid);
+                    if (withPwd != null && StringUtils.hasText(withPwd.getPassword())) {
+                        u.setPassword(withPwd.getPassword());
+                    }
+                } catch (Exception e) {
+                    log.warn("Could not fetch stored password for userId={}: {}", uid, e.getMessage());
+                }
+            }
+        }
 
         // 3. Process each (user × assignment) pair
         List<BulkAssignResultItemDTO> results = new ArrayList<>(newUserFailures);
@@ -276,6 +308,14 @@ public class BulkAssignmentService {
     /**
      * Creates a new user via AuthService and returns the created user's ID.
      * Maps all available profile fields (address, DOB, etc.) to UserDTO.
+     * <p>
+     * IMPORTANT: We deliberately do NOT generate a password here. If the
+     * caller did not supply one, we send null and let auth-service decide
+     * (it will generate one if needed, or short-circuit if the user already
+     * exists by email — in the latter case sending a password would risk
+     * overwriting the existing user's credentials). The actual password
+     * for the workflow context is resolved later in bulkAssign() via a
+     * read-back from auth-service.
      */
     private String createNewUser(NewUserDTO newUser, String instituteId, boolean sendCredentials) {
         UserDTO.UserDTOBuilder builder = UserDTO.builder()

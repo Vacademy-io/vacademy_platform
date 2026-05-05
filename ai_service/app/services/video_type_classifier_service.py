@@ -16,14 +16,13 @@ from typing import List, Optional
 
 import httpx
 
+from ..constants.models import DEFAULT_MODEL as _DEFAULT_MODEL
 from ..schemas.routing import VideoTypePlan
 
 logger = logging.getLogger(__name__)
 
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Same cheap/fast model IntentRouter uses — keeps the pre-script call cost flat.
-_DEFAULT_MODEL = "google/gemini-2.0-flash-lite-001"
 _HTTP_TIMEOUT_S = 20.0
 
 _SYSTEM_PROMPT = """You are a Video Type Classifier for an AI video generation pipeline.

@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
+from ..constants.models import DEFAULT_MODEL as _DEFAULT_MODEL
 from ..schemas.routing import (
     RoutingConfig,
     RoutingPlan,
@@ -25,8 +26,6 @@ from ..schemas.routing import (
 logger = logging.getLogger(__name__)
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-# Match reference_file_service.py model choice for cost + latency parity
-_DEFAULT_MODEL = "google/gemini-2.0-flash-lite-001"
 _HTTP_TIMEOUT_S = 20.0
 
 _SYSTEM_PROMPT = """You are an Intent Router for an AI video generation pipeline.

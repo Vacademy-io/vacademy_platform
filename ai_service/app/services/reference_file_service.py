@@ -15,14 +15,14 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..constants.models import DEFAULT_MODEL as _VISION_MODEL
+
 logger = logging.getLogger(__name__)
 
 # Image extensions we accept as embeddable visuals
 _IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
 _PDF_EXTENSIONS = {".pdf"}
 
-# Gemini Flash Lite via OpenRouter for image description
-_VISION_MODEL = "google/gemini-2.0-flash-lite-001"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 

@@ -1739,6 +1739,12 @@ class VideoGenerationPipeline:
 
         run_dir = self._resolve_run_dir(run_name, resume_run)
         run_dir.mkdir(parents=True, exist_ok=True)
+        # Cache the run identifier so downstream stages (host avatar batch,
+        # post-processing) can namespace their S3 uploads. Without this every
+        # run wrote to `host-assets/run/host_audio_NNN.mp3` and silently
+        # overwrote the previous run's host shots — observed when the same
+        # bucket was reused across consecutive generations.
+        self._run_name: str = run_name or run_dir.name
         
         # Use provided language parameter (fallback to file if not provided)
         if language == "English" and DEFAULT_VIDEO_OPTIONS.exists():
@@ -5946,13 +5952,13 @@ class VideoGenerationPipeline:
             if not api_key:
                 raise RuntimeError("no API key on script_client")
 
-            # Cheap fast model — same one IntentRouter / VideoTypeClassifier use.
+            from app.constants.models import DEFAULT_MODEL as _ROUTER_MODEL
             raw, _usage = self.script_client.chat(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                model="google/gemini-2.0-flash-lite-001",
+                model=_ROUTER_MODEL,
                 temperature=0.4,
                 max_tokens=200,
             )

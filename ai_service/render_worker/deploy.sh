@@ -101,7 +101,7 @@ docker run -d \
     --restart unless-stopped \
     -p 8090:8090 \
     -e AWS_ACCESS_KEY_ID='' \
-    -e AWS_SECRET_ACCESS_KEY='' \
+    -e AWS_SECRET_ACCESS_KEY='+' \
     -e AWS_REGION='ap-south-1' \
     -e AWS_S3_PUBLIC_BUCKET='vacademy-media-storage-public' \
     -e RENDER_KEY='vsahcraedyeamsyh' \

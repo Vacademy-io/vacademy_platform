@@ -1,9 +1,13 @@
 package vacademy.io.admin_core_service.features.live_session.repository;
 
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.QueryHint;
 import jakarta.transaction.Transactional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.live_session.dto.ScheduleDTO;
@@ -20,6 +24,18 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
     List<SessionSchedule> findBySessionId(String sessionId);
 
     List<SessionSchedule> findByProviderMeetingId(String providerMeetingId);
+
+    /**
+     * Pessimistic-write fetch (SELECT ... FOR UPDATE). Used by the BBB
+     * meeting/join flow to serialize concurrent first-join requests for the same
+     * scheduleId so that exactly one BBB meeting is ever created per session.
+     * The 10s lock timeout is well above p99 BBB /create latency and prevents
+     * indefinite waits if the holder is stuck on a slow upstream call.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints({@QueryHint(name = "jakarta.persistence.lock.timeout", value = "10000")})
+    @Query("SELECT s FROM SessionSchedule s WHERE s.id = :id")
+    Optional<SessionSchedule> findByIdForUpdate(@Param("id") String id);
 
     @Transactional
     void deleteBySessionId(String sessionId);

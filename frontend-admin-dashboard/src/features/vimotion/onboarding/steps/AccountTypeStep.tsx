@@ -50,6 +50,7 @@ export function AccountTypeStep() {
                 full_name: contact.fullName,
                 email: contact.email,
                 phone_number: contact.phoneNumber,
+                password: contact.password,
                 account_type: 'individual',
             }),
         onSuccess: (data) => {

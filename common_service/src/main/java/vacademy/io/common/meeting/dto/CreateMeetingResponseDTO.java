@@ -21,4 +21,12 @@ public class CreateMeetingResponseDTO {
     private MeetingProvider provider;
     /** Full raw JSON response from the provider for debugging / future use */
     private Map<String, Object> rawResponse;
+
+    /**
+     * True when this DTO represents a meeting that was created by the current
+     * call (vs. fetched because it already existed). Callers use this to skip
+     * post-create checks like isMeetingRunning that would otherwise spuriously
+     * report "ended" before any participant has joined.
+     */
+    private boolean justCreated;
 }

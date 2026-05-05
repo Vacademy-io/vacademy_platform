@@ -8,6 +8,7 @@ export const contactSchema = z.object({
         .trim()
         .min(10, 'Enter a valid phone number')
         .regex(/^\+?[0-9\s-]+$/, 'Only digits, spaces, +, - allowed'),
+    password: z.string().min(8, 'Use at least 8 characters').max(128, 'Password is too long'),
 });
 
 export const otpSchema = z.object({

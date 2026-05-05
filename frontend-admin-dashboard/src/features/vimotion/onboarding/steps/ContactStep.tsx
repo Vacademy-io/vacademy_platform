@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,6 +20,7 @@ import { requestSignupOtp } from '../../api/signup';
 
 export function ContactStep() {
     const { contact, setContact, setStep } = useVimotionOnboardingStore();
+    const [showPassword, setShowPassword] = useState(false);
 
     const form = useForm<ContactValues>({
         resolver: zodResolver(contactSchema),
@@ -107,6 +109,47 @@ export function ContactStep() {
                             </FormControl>
                             <p className="text-xs text-neutral-500">
                                 We&rsquo;ll send a 6-digit code to verify it&rsquo;s really you.
+                            </p>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                />
+
+                <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                        <FormItem>
+                            <FormLabel className="text-sm font-medium text-neutral-700">
+                                Password
+                            </FormLabel>
+                            <FormControl>
+                                <div className="relative">
+                                    <Input
+                                        type={showPassword ? 'text' : 'password'}
+                                        autoComplete="new-password"
+                                        placeholder="At least 8 characters"
+                                        className="h-11 pr-10"
+                                        {...field}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword((v) => !v)}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-neutral-400 hover:text-neutral-600"
+                                        aria-label={
+                                            showPassword ? 'Hide password' : 'Show password'
+                                        }
+                                    >
+                                        {showPassword ? (
+                                            <EyeOff className="size-4" />
+                                        ) : (
+                                            <Eye className="size-4" />
+                                        )}
+                                    </button>
+                                </div>
+                            </FormControl>
+                            <p className="text-xs text-neutral-500">
+                                You&rsquo;ll use this with your email to sign in to Vimotion later.
                             </p>
                             <FormMessage />
                         </FormItem>

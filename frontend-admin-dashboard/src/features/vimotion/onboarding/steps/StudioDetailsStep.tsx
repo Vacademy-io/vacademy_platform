@@ -46,6 +46,7 @@ export function StudioDetailsStep() {
                 full_name: contact.fullName,
                 email: contact.email,
                 phone_number: contact.phoneNumber,
+                password: contact.password,
                 account_type: accountType ?? 'studio',
                 studio_name: values.studioName,
                 logo_file_id: values.logoFileId,

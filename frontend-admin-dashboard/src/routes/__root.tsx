@@ -91,10 +91,15 @@ const handleAuthenticationChecks = (location: any) => {
     const isPublicRoute = publicRoutes.some((route) => location.pathname.startsWith(route));
 
     // If it's not a public route and user is not authenticated,
-    // redirect to login with the intended destination
+    // redirect to login with the intended destination. Vim shell paths
+    // (/vim, /vim/dashboard, /vim/edit/...) belong to a separate product
+    // surface — sending unauth users to the admin /login would punt them
+    // out of the vim shell entirely, so route them to /vim/login instead.
     if (!isPublicRoute && !isAuthenticated()) {
+        const isVimRoute =
+            location.pathname === '/vim' || location.pathname.startsWith('/vim/');
         throw redirect({
-            to: '/login',
+            to: isVimRoute ? '/vim/login' : '/login',
             search: {
                 redirect: location.pathname,
             },

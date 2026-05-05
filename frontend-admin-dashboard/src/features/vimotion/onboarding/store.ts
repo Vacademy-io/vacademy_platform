@@ -7,6 +7,14 @@ export interface ContactDetails {
     fullName: string;
     email: string;
     phoneNumber: string;
+    /**
+     * Password the user picks at signup. Held client-side until the final
+     * `vimotionSignup` call (verify-OTP and request-OTP don't need it).
+     * Without this, the BE auto-generates a random password the user never
+     * sees, locking them out of the email+password login flow on
+     * `/vim/login` after this session ends.
+     */
+    password: string;
 }
 
 export interface StudioDetails {
@@ -36,6 +44,7 @@ const initialContact: ContactDetails = {
     fullName: '',
     email: '',
     phoneNumber: '',
+    password: '',
 };
 
 const initialStudio: StudioDetails = {

@@ -40,6 +40,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -110,9 +111,120 @@ public class LiveSessionProviderService {
     // -----------------------------------------------------------------------
 
     /**
-     * Creates a provider meeting for a schedule.
-     * Stores providerMeetingId, joinUrl and hostUrl directly on SessionSchedule.
+     * Idempotent, race-free variant of createMeeting for the BBB /meeting/join
+     * endpoint. Acquires a pessimistic row lock on the schedule, then either
+     * returns the existing meeting (race-loser path) or creates a new one
+     * exactly once.
+     *
+     * <p>Why this exists: the original /meeting/join did a check-then-act on
+     * {@code providerMeetingId} without a lock. Two concurrent first-join
+     * requests (e.g. faculty + a learner clicking within the same ~1s window)
+     * could both see {@code providerMeetingId == null}, both call BBB /create,
+     * and end up in two different rooms — symptom: "faculty can't see learners
+     * until they leave and rejoin". This method serializes the create on the
+     * row's pessimistic lock so exactly one BBB /create ever happens per
+     * schedule.
+     *
+     * @param scheduleId       schedule whose meeting we're ensuring
+     * @param requestSupplier  builds the {@link ProviderMeetingCreateRequestDTO}
+     *                         lazily — only invoked if a fresh /create is needed,
+     *                         so the caller doesn't pay the lookup cost on the
+     *                         race-loser path
+     * @param recreate         if true and role=MODERATOR, clear the existing
+     *                         meeting so a fresh one is created. Caller is
+     *                         expected to gate this on the prior MEETING_ENDED
+     *                         response — there is no in-process double-click
+     *                         protection (BBB reports just-created meetings as
+     *                         not-running until first join, so a probe-based
+     *                         check would give false positives).
+     * @param role             "MODERATOR" or "VIEWER"; recreate is moderator-only
      */
+    @Transactional
+    public CreateMeetingResponseDTO ensureMeetingForSchedule(
+            String scheduleId,
+            Supplier<ProviderMeetingCreateRequestDTO> requestSupplier,
+            boolean recreate, String role) {
+
+        SessionSchedule schedule = scheduleRepository.findByIdForUpdate(scheduleId)
+                .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
+
+        // Moderator-only recreate: clear the old IDs so the create branch below
+        // runs. Honored unconditionally because BBB reports just-created
+        // meetings as running=false until first participant joins — any
+        // probe-based "is the existing one really dead?" guard would
+        // false-positive in exactly the double-click window it tries to cover.
+        if (recreate && "MODERATOR".equalsIgnoreCase(role)
+                && schedule.getProviderMeetingId() != null && !schedule.getProviderMeetingId().isBlank()) {
+            log.info("[BBB] Moderator requested recreate for scheduleId={}, clearing old meetingId={}",
+                    scheduleId, schedule.getProviderMeetingId());
+            schedule.setProviderMeetingId(null);
+            schedule.setCustomMeetingLink(null);
+            schedule.setProviderHostUrl(null);
+        }
+
+        // Race-loser path: another concurrent caller created the meeting while
+        // we waited on the lock. Return the persisted IDs without calling BBB.
+        if (schedule.getProviderMeetingId() != null && !schedule.getProviderMeetingId().isBlank()) {
+            return CreateMeetingResponseDTO.builder()
+                    .providerMeetingId(schedule.getProviderMeetingId())
+                    .joinUrl(schedule.getCustomMeetingLink())
+                    .hostUrl(schedule.getProviderHostUrl())
+                    .justCreated(false)
+                    .build();
+        }
+
+        // Race-winner path: we hold the lock and the row has no meeting yet.
+        ProviderMeetingCreateRequestDTO request = requestSupplier.get();
+        String providerName = resolveProviderName(request);
+        LiveSessionProviderStrategy strategy = providerFactory.getStrategy(providerName);
+
+        CreateMeetingRequestDTO meetingRequest = CreateMeetingRequestDTO.builder()
+                .topic(request.getTopic())
+                .agenda(request.getAgenda())
+                .startTime(request.getStartTime())
+                .durationMinutes(request.getDurationMinutes())
+                .timezone(request.getTimezone())
+                .hostEmail(request.getHostEmail())
+                .sessionId(request.getSessionId())
+                .scheduleId(request.getScheduleId())
+                .bbbConfig(request.getBbbConfig())
+                .build();
+
+        // BBB /create call — if this throws, the @Transactional rolls back and
+        // the row's providerMeetingId stays null. No orphan/partial state.
+        CreateMeetingResponseDTO response = strategy.createMeeting(meetingRequest, request.getInstituteId());
+
+        // Persist provider IDs onto the locked entity. Same field-set rules as
+        // the legacy createMeeting() to preserve frontend-friendly linkType
+        // ("bbb") and BBB server pinning for multi-server pools.
+        schedule.setCustomMeetingLink(response.getJoinUrl());
+        if (schedule.getLinkType() == null || schedule.getLinkType().isBlank()) {
+            schedule.setLinkType(providerName);
+        }
+        schedule.setProviderMeetingId(response.getProviderMeetingId());
+        schedule.setProviderHostUrl(response.getHostUrl());
+        if (response.getRawResponse() != null && response.getRawResponse().containsKey("bbbServerId")) {
+            schedule.setBbbServerId((String) response.getRawResponse().get("bbbServerId"));
+        }
+        scheduleRepository.save(schedule);
+
+        if (schedule.getSessionId() != null) {
+            sessionRepository.findById(schedule.getSessionId()).ifPresent(session -> {
+                session.setDefaultMeetLink(response.getJoinUrl());
+                if (session.getLinkType() == null || session.getLinkType().isBlank()) {
+                    session.setLinkType(providerName);
+                }
+                sessionRepository.save(session);
+            });
+        }
+
+        log.info("Schedule {} updated with meetingKey={} for provider={}", scheduleId,
+                response.getProviderMeetingId(), providerName);
+
+        response.setJustCreated(true);
+        return response;
+    }
+
     @Transactional
     public CreateMeetingResponseDTO createMeeting(ProviderMeetingCreateRequestDTO request) {
         String providerName = resolveProviderName(request);

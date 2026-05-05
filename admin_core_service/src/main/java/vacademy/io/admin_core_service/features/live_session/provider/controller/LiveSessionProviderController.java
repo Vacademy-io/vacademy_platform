@@ -246,75 +246,30 @@ public class LiveSessionProviderController {
         SessionSchedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new vacademy.io.common.exceptions.VacademyException("Schedule not found: " + scheduleId));
 
-        String providerMeetingId = schedule.getProviderMeetingId();
-        String instituteId = null;
-
-        // If moderator requested recreate, clear old meeting so a fresh one is created
-        if (recreate && "MODERATOR".equalsIgnoreCase(role)
-                && providerMeetingId != null && !providerMeetingId.isBlank()) {
-            log.info("[BBB] Moderator requested recreate for scheduleId={}, clearing old meetingId={}", scheduleId, providerMeetingId);
-            schedule.setProviderMeetingId(null);
-            schedule.setCustomMeetingLink(null);
-            schedule.setProviderHostUrl(null);
-            scheduleRepository.save(schedule);
-            providerMeetingId = null;
+        // Ensure the BBB meeting exists for this schedule. The service holds a
+        // pessimistic row lock across the read-meetingId → maybe-call-BBB →
+        // persist-meetingId critical section so concurrent first-join requests
+        // can't create two separate BBB rooms (the bug that caused
+        // "faculty can't see learners until they leave and rejoin").
+        CreateMeetingResponseDTO ensured;
+        try {
+            ensured = providerService.ensureMeetingForSchedule(
+                    scheduleId,
+                    () -> buildBbbCreateRequest(scheduleId),
+                    recreate, role);
+        } catch (org.springframework.dao.PessimisticLockingFailureException e) {
+            log.warn("[BBB] Lock timeout waiting for in-flight meeting creation on scheduleId={}: {}",
+                    scheduleId, e.getMessage());
+            return ResponseEntity.status(503).body(Map.of(
+                    "error", "Meeting is being created, please retry"));
         }
+        String providerMeetingId = ensured.getProviderMeetingId();
+        boolean justCreated = ensured.isJustCreated();
 
-        // Auto-create BBB meeting if it doesn't exist yet
-        boolean justCreated = false;
-        if (providerMeetingId == null || providerMeetingId.isBlank()) {
-            String sessionTitle = "Live Class";
-            java.util.Map<String, Object> bbbConfig = null;
-
-            // Load session-level data (title, instituteId, BBB config)
-            if (schedule.getSessionId() != null) {
-                var sessionOpt = liveSessionRepository.findById(schedule.getSessionId());
-                if (sessionOpt.isPresent()) {
-                    var session = sessionOpt.get();
-                    if (session.getTitle() != null && !session.getTitle().isBlank()) {
-                        sessionTitle = session.getTitle();
-                    }
-                    instituteId = session.getInstituteId();
-                    if (session.getBbbConfigJson() != null && !session.getBbbConfigJson().isBlank()) {
-                        try {
-                            bbbConfig = objectMapper.readValue(session.getBbbConfigJson(),
-                                    new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {});
-                        } catch (Exception e) {
-                            log.warn("[BBB] Failed to parse bbbConfigJson: {}", e.getMessage());
-                        }
-                    }
-                }
-            }
-            if ("Live Class".equals(sessionTitle)
-                    && schedule.getDefaultClassName() != null && !schedule.getDefaultClassName().isBlank()) {
-                sessionTitle = schedule.getDefaultClassName();
-            }
-
-            ProviderMeetingCreateRequestDTO createRequest = ProviderMeetingCreateRequestDTO.builder()
-                    .instituteId(instituteId)
-                    .sessionId(schedule.getSessionId())
-                    .scheduleId(scheduleId)
-                    .topic(sessionTitle)
-                    .provider(MeetingProvider.BBB_MEETING.name())
-                    .durationMinutes(120)
-                    .bbbConfig(bbbConfig)
-                    .build();
-
-            CreateMeetingResponseDTO created = providerService.createMeeting(createRequest);
-            providerMeetingId = created.getProviderMeetingId();
-            justCreated = true;
-
-            // Re-fetch schedule to get updated fields
-            schedule = scheduleRepository.findById(scheduleId).orElse(schedule);
-        } else {
-            // Meeting already exists — still need instituteId for per-institute join branding
-            if (schedule.getSessionId() != null) {
-                var sessionOpt = liveSessionRepository.findById(schedule.getSessionId());
-                if (sessionOpt.isPresent()) {
-                    instituteId = sessionOpt.get().getInstituteId();
-                }
-            }
-        }
+        // Re-fetch to pick up any fields the service mutated (linkType,
+        // bbbServerId), then resolve the institute for per-institute branding.
+        schedule = scheduleRepository.findById(scheduleId).orElse(schedule);
+        String instituteId = resolveInstituteId(schedule);
 
         // Check if the meeting is still running (prevents joining ended meetings).
         // Skip this check if we just created the meeting — BBB reports it as "not running"
@@ -827,5 +782,72 @@ public class LiveSessionProviderController {
             log.error("[Feedback] Failed to submit feedback", e);
             return ResponseEntity.internalServerError().body("Failed to submit feedback");
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers for /meeting/join
+    // -----------------------------------------------------------------------
+
+    /**
+     * Builds the BBB create-meeting request for a given schedule, pulling
+     * sessionTitle/instituteId/bbbConfig from the parent live_session row and
+     * falling back to the schedule's defaultClassName for the topic. Invoked
+     * lazily by {@link LiveSessionProviderService#ensureMeetingForSchedule} —
+     * only on the race-winner path where a fresh BBB /create is needed.
+     */
+    private ProviderMeetingCreateRequestDTO buildBbbCreateRequest(String scheduleId) {
+        SessionSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new vacademy.io.common.exceptions.VacademyException("Schedule not found: " + scheduleId));
+
+        String sessionTitle = "Live Class";
+        String instituteId = null;
+        java.util.Map<String, Object> bbbConfig = null;
+
+        if (schedule.getSessionId() != null) {
+            var sessionOpt = liveSessionRepository.findById(schedule.getSessionId());
+            if (sessionOpt.isPresent()) {
+                var session = sessionOpt.get();
+                if (session.getTitle() != null && !session.getTitle().isBlank()) {
+                    sessionTitle = session.getTitle();
+                }
+                instituteId = session.getInstituteId();
+                if (session.getBbbConfigJson() != null && !session.getBbbConfigJson().isBlank()) {
+                    try {
+                        bbbConfig = objectMapper.readValue(session.getBbbConfigJson(),
+                                new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {});
+                    } catch (Exception e) {
+                        log.warn("[BBB] Failed to parse bbbConfigJson: {}", e.getMessage());
+                    }
+                }
+            }
+        }
+        if ("Live Class".equals(sessionTitle)
+                && schedule.getDefaultClassName() != null && !schedule.getDefaultClassName().isBlank()) {
+            sessionTitle = schedule.getDefaultClassName();
+        }
+
+        return ProviderMeetingCreateRequestDTO.builder()
+                .instituteId(instituteId)
+                .sessionId(schedule.getSessionId())
+                .scheduleId(scheduleId)
+                .topic(sessionTitle)
+                .provider(MeetingProvider.BBB_MEETING.name())
+                .durationMinutes(120)
+                .bbbConfig(bbbConfig)
+                .build();
+    }
+
+    /**
+     * Resolves the instituteId for a schedule by walking through its parent
+     * live_session row. Used to apply per-institute branding (theme color, etc.)
+     * to the generated join URL.
+     */
+    private String resolveInstituteId(SessionSchedule schedule) {
+        if (schedule == null || schedule.getSessionId() == null) {
+            return null;
+        }
+        return liveSessionRepository.findById(schedule.getSessionId())
+                .map(s -> s.getInstituteId())
+                .orElse(null);
     }
 }

@@ -83,13 +83,21 @@ const convertExistingCustomFields = (fields?: any[] | string | null) => {
 
     console.log('📋 [convertExistingCustomFields] Converting', normalizedFields.length, 'fields from API');
     
+    // Seeded keys: Full Name / Email / Phone Number must stay locked even in
+    // edit mode. The previous code hardcoded `oldKey: false` which let admins
+    // delete these system fields when editing an existing audience campaign.
+    const SEEDED_KEYS = ['full_name', 'name', 'email', 'phone_number', 'phone', 'mobile_number'];
+    const SEEDED_NAMES = ['full name', 'name', 'email', 'phone number', 'phone', 'mobile number'];
+
     const converted = normalizedFields
         .map((field, index) => {
             const meta = field?.custom_field || {};
             const fieldName = meta.fieldName || field.field_name || `Field ${index + 1}`;
             const fieldKey = meta.fieldKey || generateKeyFromName(fieldName);
             const normalizedKey = fieldKey ? fieldKey.toLowerCase() : '';
-            // const isPermanent = ['full_name', 'email', 'name'].includes(normalizedKey);
+            const normalizedName = (fieldName || '').toLowerCase();
+            const isSeeded =
+                SEEDED_KEYS.includes(normalizedKey) || SEEDED_NAMES.includes(normalizedName);
             const configOptions =
                 typeof meta.config === 'string' && meta.config.length > 0
                     ? meta.config
@@ -107,7 +115,7 @@ const convertExistingCustomFields = (fields?: any[] | string | null) => {
                 field_id: field.field_id || meta.id || field.id,
                 type: mapApiFieldTypeToUi(meta.fieldType || field.type),
                 name: fieldName,
-                oldKey: false,
+                oldKey: isSeeded,
                 isRequired:
                     typeof meta.isMandatory === 'boolean' ? meta.isMandatory : field.isRequired ?? true,
                 key: fieldKey,

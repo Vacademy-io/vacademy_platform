@@ -137,17 +137,39 @@ public class InstituteCustomFiledService {
     /**
      * Find existing custom field or create new one with pessimistic locking to
      * prevent duplicates.
-     * This method uses database-level locking to ensure only one thread can create
-     * a field with the same key.
+     *
+     * Two-step lookup so we never hit the unique-constraint on field_key:
+     *   1. Look up by (field_key, status=ACTIVE) — happy path, reuses the
+     *      live custom_field row across features.
+     *   2. If not found, look up by field_key regardless of status. If a
+     *      DELETED row exists with this key (e.g. the admin previously
+     *      removed the field from Settings), reactivate it instead of
+     *      INSERTing a new row that would collide on field_key UNIQUE.
+     *   3. Only as a last resort do we INSERT a brand-new row.
+     *
+     * Both repository calls return {@code List<CustomFields>} (not Optional)
+     * to tolerate historical duplicates that share field_key — we always
+     * take the first (most recent by created_at DESC).
      */
     private CustomFields findOrCreateCustomFieldWithLock(String fieldKey, CustomFieldDTO cfDto) {
-           // Returns a list (ordered by createdAt DESC) to tolerate historical
-        // duplicates that share (field_key, status); take the most recent row.
-        Optional<CustomFields> existing = customFieldRepository.findByFieldKeyWithLock(fieldKey,
+        List<CustomFields> active = customFieldRepository.findByFieldKeyWithLock(fieldKey,
                 StatusEnum.ACTIVE.name());
-        if (existing.isPresent()) {
-            return existing.get();
+        if (!active.isEmpty()) {
+            return active.get(0);
         }
+
+        // No active row — check for ANY row with the same key (including
+        // DELETED) and reactivate it. This unblocks two scenarios:
+        //   - "I deleted this field, now I'm re-adding it in another feature"
+        //   - Cross-feature reuse where the field was created in feature A
+        //     and is now being added in feature B
+        List<CustomFields> anyStatus = customFieldRepository.findByFieldKeyAnyStatusWithLock(fieldKey);
+        if (!anyStatus.isEmpty()) {
+            CustomFields existing = anyStatus.get(0);
+            existing.setStatus(StatusEnum.ACTIVE.name());
+            return customFieldRepository.save(existing);
+        }
+
         CustomFields newCF = new CustomFields(cfDto);
         newCF.setFieldKey(fieldKey);
         return customFieldRepository.save(newCF);

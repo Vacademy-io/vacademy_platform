@@ -149,20 +149,31 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
    * Find custom fields by field_key with pessimistic lock to prevent race conditions
    * during custom field creation.
    *
-   * Returns a list (not Optional) because the DB can legitimately hold multiple
+   * Returns a list (NOT Optional) because the DB legitimately holds multiple
    * rows sharing (field_key, status) — historical duplicates exist from before
-   * this lock was introduced. An Optional mapping blows up with
-   * "Query did not return a unique result" the moment any institute has two
-   * matching rows. Callers should take the most recent row (list is ordered
-   * by created_at DESC).
+   * the lock was introduced. Mapping to Optional blows up with "Query did not
+   * return a unique result" on any institute that has duplicates. Callers
+   * should take the first (most recent) row from the list.
    *
    * JPQL (not native) because Hibernate rejects {@code @Lock} on native queries
    * with "Illegal attempt to set lock mode for a native query".
    */
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("SELECT cf FROM CustomFields cf WHERE cf.fieldKey = :fieldKey AND cf.status = :status ORDER BY cf.createdAt DESC")
-  Optional<CustomFields> findByFieldKeyWithLock(
+  java.util.List<CustomFields> findByFieldKeyWithLock(
       @Param("fieldKey") String fieldKey,
       @Param("status") String status);
+
+  /**
+   * Find a custom field by field_key regardless of status. Used by
+   * find-or-create logic so a DELETED custom field with the same key can be
+   * reactivated instead of triggering a unique-constraint violation on insert.
+   *
+   * Returns a list for the same reason as {@link #findByFieldKeyWithLock} —
+   * historical duplicates exist; callers must take the first (most recent).
+   */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("SELECT cf FROM CustomFields cf WHERE cf.fieldKey = :fieldKey ORDER BY cf.createdAt DESC")
+  java.util.List<CustomFields> findByFieldKeyAnyStatusWithLock(@Param("fieldKey") String fieldKey);
 
 }

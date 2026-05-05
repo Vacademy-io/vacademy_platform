@@ -717,6 +717,11 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                       <h3 className="text-base font-bold text-gray-800 line-clamp-2 leading-tight group-hover:text-primary-500 transition-colors duration-300">
                         {book.title}
                       </h3>
+                      {render.cardFields.includes("price") && cartMode === 'buy' && (
+                        <div className="text-lg font-extrabold text-gray-900 tracking-tight">
+                          {book.price === 0 ? <span className="text-green-600">Free</span> : `₹${book.price}`}
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 line-clamp-1">
                           {(() => {
@@ -746,9 +751,6 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                 ))}
                               </div>
                             )}
-                            {/* <div className="text-lg font-extrabold text-gray-900 tracking-tight">
-                              {book.price === 0 ? <span className="text-green-600">Free</span> : `₹${book.price}`}
-                            </div> */}
                           </div>
                         )}
                       </div>

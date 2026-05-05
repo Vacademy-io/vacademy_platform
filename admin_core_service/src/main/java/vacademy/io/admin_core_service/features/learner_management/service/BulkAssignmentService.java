@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.learner_management.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -99,12 +100,19 @@ public class BulkAssignmentService {
         // Track userId → NewUserDTO so we can save extra details/custom fields after
         // enrollment
         Map<String, NewUserDTO> newUserDataMap = new HashMap<>();
+        // Track userId → plaintext password for users we just created. Used to
+        // re-attach passwords onto userMap after fetchUserDetails (which strips
+        // them — auth-service won't return passwords). Without this, downstream
+        // workflows (LMS provisioning HTTP_REQUEST nodes) get password=null.
+        Map<String, String> newUserPasswords = new HashMap<>();
         if (!CollectionUtils.isEmpty(request.getNewUsers()) && !dryRun) {
             for (NewUserDTO newUser : request.getNewUsers()) {
                 try {
-                    String createdUserId = createNewUser(newUser, request.getInstituteId(), sendCredentials);
+                    CreatedUser created = createNewUser(newUser, request.getInstituteId(), sendCredentials);
+                    String createdUserId = created.userId();
                     allUserIds.add(createdUserId);
                     newUserDataMap.put(createdUserId, newUser);
+                    newUserPasswords.put(createdUserId, created.password());
                     log.info("Created new user: email={}, userId={}", newUser.getEmail(), createdUserId);
                 } catch (Exception e) {
                     log.error("Failed to create new user email={}: {}", newUser.getEmail(), e.getMessage());
@@ -144,6 +152,16 @@ public class BulkAssignmentService {
                         .build());
             }
         }
+        // Re-attach the plaintext passwords for users we just created, so the
+        // workflow context (built from this map at enrollment-trigger time) has
+        // the password field populated. fetchUserDetails returns user records
+        // without passwords for security; this restores them only for the
+        // brand-new users in this request — existing users still get null,
+        // which is correct (we never knew their password).
+        newUserPasswords.forEach((uid, pwd) -> {
+            UserDTO u = userMap.get(uid);
+            if (u != null) u.setPassword(pwd);
+        });
 
         // 3. Process each (user × assignment) pair
         List<BulkAssignResultItemDTO> results = new ArrayList<>(newUserFailures);
@@ -247,10 +265,32 @@ public class BulkAssignmentService {
     }
 
     /**
-     * Creates a new user via AuthService and returns the created user's ID.
-     * Maps all available profile fields (address, DOB, etc.) to UserDTO.
+     * Holds the result of creating a brand-new user: the auth-service userId
+     * and the plaintext password we used. We track the password here because
+     * downstream workflows (e.g. provisioning the learner in an external LMS
+     * via HTTP_REQUEST nodes) need it on the workflow context, and the
+     * auth-service strips passwords from its response payloads — so this is
+     * the only place we know the value.
      */
-    private String createNewUser(NewUserDTO newUser, String instituteId, boolean sendCredentials) {
+    private record CreatedUser(String userId, String password) {}
+
+    /**
+     * Creates a new user via AuthService and returns the created user's ID
+     * along with the plaintext password we used.
+     * <p>
+     * If the request didn't include a password, we generate one locally and
+     * pass it to auth-service. We do this client-side (instead of letting
+     * auth-service auto-generate) specifically so we still know the value
+     * after the call returns — needed by enrollment workflows that provision
+     * the learner in external systems (LMS, etc.).
+     */
+    private CreatedUser createNewUser(NewUserDTO newUser, String instituteId, boolean sendCredentials) {
+        // Use CSV-supplied password if present, otherwise generate one. Either way
+        // we need to remember the value so the workflow context has it later.
+        String passwordToUse = StringUtils.hasText(newUser.getPassword())
+                ? newUser.getPassword()
+                : RandomStringUtils.randomAlphanumeric(8);
+
         UserDTO.UserDTOBuilder builder = UserDTO.builder()
                 .email(newUser.getEmail())
                 .fullName(newUser.getFullName())
@@ -258,7 +298,7 @@ public class BulkAssignmentService {
                 .username(StringUtils.hasText(newUser.getUsername())
                         ? newUser.getUsername()
                         : newUser.getEmail())
-                .password(newUser.getPassword())
+                .password(passwordToUse)
                 .gender(newUser.getGender())
                 .roles(CollectionUtils.isEmpty(newUser.getRoles())
                         ? List.of("STUDENT")
@@ -295,7 +335,7 @@ public class BulkAssignmentService {
         if (created == null || !StringUtils.hasText(created.getId())) {
             throw new VacademyException("User creation returned empty result for " + newUser.getEmail());
         }
-        return created.getId();
+        return new CreatedUser(created.getId(), passwordToUse);
     }
 
     private Map<String, UserDTO> fetchUserDetails(Set<String> userIds) {

@@ -196,6 +196,24 @@ class RenderWorker:
                         f"Loaded {len(sfx_items)} SFX cues across "
                         f"{sum(1 for v in url_to_path.values() if v is not None)} unique files"
                     )
+                    # Diagnostic: SFX cue distribution. The duckkey (sidechain
+                    # signal) ends at the last cue's tail. If that's before
+                    # narration ends, TTS gets cut by sidechaincompress unless
+                    # `apad` is applied — log both numbers so we can verify.
+                    _sfx_times = sorted(
+                        (float(c.get("absolute_time", 0) or 0), float(c.get("duration", 0) or 0))
+                        for _, c in sfx_items
+                    )
+                    _first_t = _sfx_times[0][0]
+                    _last_t = _sfx_times[-1][0]
+                    _last_end = max(t + d for t, d in _sfx_times)
+                    _max_vol = max((float(c.get("volume", 0) or 0) for _, c in sfx_items), default=0)
+                    logger.info(
+                        f"[SFX-DIAG] cues={len(sfx_items)} first_t={_first_t:.2f}s "
+                        f"last_t={_last_t:.2f}s last_cue_end={_last_end:.2f}s "
+                        f"max_vol={_max_vol:.3f} → duckkey ends ~{_last_end:.2f}s "
+                        f"(apad extends it past narration EOF)"
+                    )
 
             if on_progress:
                 on_progress(15)
@@ -411,17 +429,145 @@ class RenderWorker:
                         _entry["html"] = _cleaned
                         _modified_tl = True
 
+            from moviepy import AudioFileClip as _AFC
+            _audio_dur = _AFC(str(audio_path)).duration
+            logger.info(f"[NARRATION-DIAG] file=narration.mp3 duration={_audio_dur:.2f}s audio_delay={audio_delay:.2f}s narration_end={_audio_dur + audio_delay:.2f}s")
+
+            # Timeline coverage diagnostic: shot-by-shot inTime/exitTime + gap
+            # detection. If a gap > 0.5s exists between consecutive shots, log
+            # it as a warning — that produces visible black frames mid-video.
+            if tl_entries:
+                _sorted_entries = sorted(
+                    [(float(e.get("inTime", 0) or 0), float(e.get("exitTime", 0) or 0), e.get("id", "?"))
+                     for e in tl_entries],
+                    key=lambda x: x[0],
+                )
+                _first_in = _sorted_entries[0][0]
+                _last_out = max(o for _, o, _ in _sorted_entries)
+                _gaps: list[tuple[str, str, float, float]] = []
+                for _i in range(1, len(_sorted_entries)):
+                    _prev_id = _sorted_entries[_i - 1][2]
+                    _prev_out = _sorted_entries[_i - 1][1]
+                    _cur_id = _sorted_entries[_i][2]
+                    _cur_in = _sorted_entries[_i][0]
+                    if _cur_in - _prev_out > 0.5:
+                        _gaps.append((_prev_id, _cur_id, _prev_out, _cur_in))
+                logger.info(
+                    f"[TIMELINE-DIAG] entries={len(tl_entries)} first_in={_first_in:.2f}s "
+                    f"last_out={_last_out:.2f}s coverage={_last_out - _first_in:.2f}s gaps={len(_gaps)}"
+                )
+                if _first_in > 0.5:
+                    logger.warning(
+                        f"[TIMELINE-DIAG] first shot starts at {_first_in:.2f}s — "
+                        f"video will be black for the leading {_first_in:.2f}s"
+                    )
+                for _prev_id, _cur_id, _prev_out, _cur_in in _gaps[:5]:
+                    logger.warning(
+                        f"[TIMELINE-DIAG] gap between '{_prev_id}'→'{_cur_id}': "
+                        f"{_prev_out:.2f}s..{_cur_in:.2f}s ({_cur_in - _prev_out:.2f}s of black)"
+                    )
+
+            tl_max_end = max((float(e.get("exitTime", 0) or 0) for e in tl_entries), default=0.0)
+            # Background music / extra audio tracks: probed for diagnostics
+            # only — they DO NOT extend the video. Whichever is longer of
+            # narration+delay / visuals timeline is the video duration; BG
+            # music is mixed under and truncated by FFmpeg's `-shortest`.
+            _extra_track_ends: list[float] = []
+            for _idx, (_p, _track) in enumerate(extra_audio_items):
+                if not _p.exists():
+                    logger.warning(f"[EXTRA-AUDIO-DIAG] track {_idx} ({_p.name}) missing on disk — skipped")
+                    continue
+                try:
+                    _t_dur = _AFC(str(_p)).duration
+                except Exception as _exc:
+                    logger.warning(f"[EXTRA-AUDIO-DIAG] track {_idx} ({_p.name}) probe failed: {_exc}")
+                    continue
+                _t_delay = float(_track.get("delay", 0) or 0)
+                _t_end = _t_delay + _t_dur
+                _extra_track_ends.append(_t_end)
+                logger.info(
+                    f"[EXTRA-AUDIO-DIAG] track[{_idx}] label='{_track.get('label', '?')}' "
+                    f"file={_p.name} delay={_t_delay:.2f}s duration={_t_dur:.2f}s "
+                    f"vol={float(_track.get('volume', 1.0) or 1.0):.2f} "
+                    f"fadeIn={float(_track.get('fadeIn', 0) or 0):.2f}s "
+                    f"fadeOut={float(_track.get('fadeOut', 0) or 0):.2f}s "
+                    f"→ ends_at={_t_end:.2f}s"
+                )
+            extra_max_end = max(_extra_track_ends, default=0.0)
+            _narration_end = _audio_dur + audio_delay
+            # Video length is bounded by visuals + narration only. If user-
+            # supplied BG music outlasts that, we truncate it (FFmpeg
+            # `-shortest`) — we do NOT extend the video for it.
+            total_duration = max(_narration_end, tl_max_end)
+            total_frames = int(total_duration * FPS) + 1
+
+            # Identify the dominant duration source so a future "video too short"
+            # / "video too long" report can be diagnosed at a glance.
+            if abs(total_duration - _narration_end) < 0.05:
+                _dom = "narration"
+            elif abs(total_duration - tl_max_end) < 0.05:
+                _dom = "timeline_visuals"
+            else:
+                _dom = "unknown"
+            logger.info(
+                f"Duration sources: narration+delay={_narration_end:.2f}s, "
+                f"timeline_end={tl_max_end:.2f}s, extra_audio_end={extra_max_end:.2f}s "
+                f"→ total={total_duration:.2f}s (dominant={_dom}; BG music truncated to total)"
+            )
+
+            # Audio-vs-video alignment warnings — these are the symptoms users
+            # have hit before (TTS cut, black tail). Logging the mismatch
+            # *before* render makes regressions obvious from logs alone.
+            if _narration_end > tl_max_end + 0.5:
+                logger.warning(
+                    f"[AUDIO-VIDEO-DIAG] narration ({_narration_end:.2f}s) outlasts visuals "
+                    f"({tl_max_end:.2f}s) by {_narration_end - tl_max_end:.2f}s — "
+                    f"trailing shots will be extended to avoid black tail"
+                )
+            if extra_max_end > total_duration + 0.5:
+                logger.info(
+                    f"[AUDIO-VIDEO-DIAG] BG music ({extra_max_end:.2f}s) extends past "
+                    f"video end ({total_duration:.2f}s) — will be truncated by FFmpeg -shortest"
+                )
+            # SFX duckkey vs narration check — if SFX end before narration AND
+            # apad got bypassed, narration would be cut. This is the bug we hit
+            # at 40s. Log clearly so any future regression here is obvious.
+            if sfx_items:
+                _sfx_last_end = max(
+                    float(c.get("absolute_time", 0) or 0) + float(c.get("duration", 0) or 0)
+                    for _, c in sfx_items
+                )
+                if _narration_end > _sfx_last_end + 0.5:
+                    logger.info(
+                        f"[AUDIO-VIDEO-DIAG] narration ({_narration_end:.2f}s) outlasts last SFX "
+                        f"({_sfx_last_end:.2f}s) by {_narration_end - _sfx_last_end:.2f}s — "
+                        f"apad on duckkey is required to keep narration uncut"
+                    )
+
+            # When narration outlasts the visual timeline, hold the last shot
+            # on screen for the remainder so the viewer doesn't see a black
+            # gap during the trailing narration. Only triggered for narration
+            # > visuals — BG music never extends visuals.
+            if total_duration > tl_max_end + 0.01 and tl_entries:
+                _eps = 0.01
+                _extended = 0
+                for _entry in tl_entries:
+                    if float(_entry.get("exitTime", 0) or 0) >= tl_max_end - _eps:
+                        _entry["exitTime"] = total_duration
+                        _extended += 1
+                _modified_tl = True
+                logger.info(
+                    f"Extended {_extended} trailing entry/entries from {tl_max_end:.2f}s "
+                    f"to {total_duration:.2f}s to cover trailing narration"
+                )
+
             if _modified_tl:
                 timeline_path.write_text(_json.dumps(
                     tl_data if isinstance(tl_data, dict) else tl_entries,
                     ensure_ascii=False,
                 ))
-                logger.info("Preprocessed timeline: stripped <video>/stage-drift/vx-timescale/gsap CDN; converted vx-shot CSS transitions to GSAP tweens")
-            from moviepy import AudioFileClip as _AFC
-            _audio_dur = _AFC(str(audio_path)).duration
-            tl_max_end = max((e.get("exitTime", 0) for e in tl_entries), default=0)
-            total_duration = max(_audio_dur + audio_delay, tl_max_end)
-            total_frames = int(total_duration * FPS) + 1
+                logger.info("Preprocessed timeline: stripped <video>/stage-drift/vx-timescale/gsap CDN; converted vx-shot CSS transitions to GSAP tweens; extended trailing shots to cover audio tail")
+
             logger.info(
                 f"Render: {render_width}x{render_height} @ {FPS}fps → output {output_width}x{output_height}. "
                 f"Total frames: {total_frames}, splitting across {NUM_WORKERS} workers"
@@ -671,21 +817,52 @@ class RenderWorker:
             )
 
             extra_labels: list[str] = []
-            for rel_idx, (_, track) in enumerate(valid_extra):
+            # Tail-fade duration applied to BG/extra tracks that would
+            # otherwise hard-cut at video end. 0.6s gives a clean musical
+            # tail-out vs. an abrupt cut without dragging out the ending.
+            _BG_TAIL_FADE_S = 0.6
+            for rel_idx, (_p, track) in enumerate(valid_extra):
                 abs_idx = rel_idx + 2  # 0=frames, 1=narration, 2+=extra
-                delay_ms = int(float(track.get("delay", 0)) * 1000)
+                track_delay = float(track.get("delay", 0) or 0)
+                delay_ms = int(track_delay * 1000)
                 volume = float(track.get("volume", 1.0))
                 fade_in = float(track.get("fadeIn", 0))
                 fade_out = float(track.get("fadeOut", 0))
                 label = f"extra{rel_idx}"
+
+                # Probe the source duration so we know if the track will
+                # extend past video end. If so, swap the user's fadeOut for
+                # a fade timed to total_duration so the cut doesn't pop.
+                try:
+                    _src_dur = _AFC(str(_p)).duration
+                except Exception:
+                    _src_dur = None
+                _track_natural_end = (track_delay + _src_dur) if _src_dur is not None else None
+                _will_be_truncated = (
+                    _track_natural_end is not None
+                    and _track_natural_end > total_duration + 0.05
+                )
 
                 chain = f"[{abs_idx}:a]adelay={delay_ms}|{delay_ms}"
                 if volume != 1.0:
                     chain += f",volume={volume:.4f}"
                 if fade_in > 0:
                     chain += f",afade=t=in:st=0:d={fade_in:.3f}"
-                # fade_out: reverse→fade_in→reverse trick avoids needing audio duration
-                if fade_out > 0:
+                if _will_be_truncated:
+                    # Track will be cut by FFmpeg -shortest at total_duration.
+                    # Apply a fade-out ending exactly at total_duration so the
+                    # final amix sees a graceful tail rather than a hard cut.
+                    _fade_dur = max(0.1, min(_BG_TAIL_FADE_S, total_duration - track_delay - 0.05))
+                    _fade_st = max(0.0, total_duration - _fade_dur)
+                    chain += f",afade=t=out:st={_fade_st:.3f}:d={_fade_dur:.3f}"
+                    logger.info(
+                        f"[EXTRA-AUDIO-DIAG] track[{rel_idx}] truncated at video end "
+                        f"({total_duration:.2f}s) — applying tail fade-out "
+                        f"st={_fade_st:.2f}s dur={_fade_dur:.2f}s"
+                    )
+                elif fade_out > 0:
+                    # Track ends naturally before video end → use the user-
+                    # specified fadeOut (reverse→fade-in→reverse trick).
                     chain += f",areverse,afade=t=in:d={fade_out:.3f},areverse"
                 chain += f",{FMT_NORM}[{label}]"
                 filter_parts.append(chain)
@@ -731,16 +908,26 @@ class RenderWorker:
             # match the player-side duck (≈ −4 dB, 250 ms tail).
             final_nar_label = "[nar]"
             if duck_enabled and sfx_key_labels:
+                # `apad` pads the sidechain key with infinite silence after the
+                # last SFX ends. Without this, sidechaincompress's framesync
+                # ends the output as soon as the key EOFs — so when the last
+                # SFX cue finishes (e.g. ~39 s), the ducked narration also
+                # gets truncated, even though narration itself runs longer.
+                # Silence is below threshold, so the pad doesn't duck anything.
                 if len(sfx_key_labels) == 1:
-                    filter_parts.append(f"{sfx_key_labels[0]}anull[duckkey]")
+                    filter_parts.append(f"{sfx_key_labels[0]}apad[duckkey]")
                 else:
                     n_keys = len(sfx_key_labels)
                     filter_parts.append(
-                        f"{''.join(sfx_key_labels)}amix=inputs={n_keys}:normalize=0[duckkey]"
+                        f"{''.join(sfx_key_labels)}amix=inputs={n_keys}:normalize=0,apad[duckkey]"
                     )
+                # Tuned for ~−4 dB ducking on narration (matches player-side preview).
+                # threshold=0.18 ≈ −15 dBFS — sits just below typical SFX cue peaks
+                # so only loud cue moments duck, not their fade tails.
+                # ratio=2 keeps the duck gentle. release=200 ms feels natural.
                 filter_parts.append(
                     "[nar][duckkey]sidechaincompress="
-                    "threshold=0.05:ratio=4:attack=20:release=250:makeup=1[nar_duct]"
+                    "threshold=0.18:ratio=2:attack=15:release=200:makeup=1[nar_duct]"
                 )
                 final_nar_label = "[nar_duct]"
 
@@ -748,8 +935,15 @@ class RenderWorker:
 
             if valid_sfx:
                 logger.info(
-                    f"Mixing {len(valid_sfx)} SFX cues into render audio "
-                    f"(narration ducked via sidechaincompress)"
+                    f"[AUDIO-MIX] {len(valid_sfx)} SFX cues, "
+                    f"{len(valid_extra)} BG/extra tracks, narration "
+                    f"ducked via sidechaincompress (threshold=0.18,ratio=2), "
+                    f"duckkey apad'd to outlast narration"
+                )
+            else:
+                logger.info(
+                    f"[AUDIO-MIX] no SFX cues — narration mixed straight, "
+                    f"{len(valid_extra)} BG/extra tracks"
                 )
 
             if len(audio_labels) == 1:

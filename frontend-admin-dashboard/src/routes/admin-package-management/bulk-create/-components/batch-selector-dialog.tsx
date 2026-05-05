@@ -109,11 +109,8 @@ export function BatchSelectorDialog({
     };
 
     const handleConfirm = () => {
-        const effectiveLevelId = selectedLevel === 'DEFAULT_VALUE' ? '' : selectedLevel;
-        const effectiveSessionId = selectedSession === 'DEFAULT_VALUE' ? '' : selectedSession;
-
-        const levelOption = levels.find((l) => l.id === effectiveLevelId);
-        const sessionOption = sessions.find((s) => s.id === effectiveSessionId);
+        const levelOption = levels.find((l) => l.id === selectedLevel);
+        const sessionOption = sessions.find((s) => s.id === selectedSession);
 
         // Validate price for paid types
         if ((paymentType === 'ONE_TIME' || paymentType === 'SUBSCRIPTION') && !price) {
@@ -122,8 +119,8 @@ export function BatchSelectorDialog({
         }
 
         const batch: BatchConfig = {
-            level_id: effectiveLevelId || null,
-            session_id: effectiveSessionId || null,
+            level_id: selectedLevel || null,
+            session_id: selectedSession || null,
             level_name: levelOption?.name || 'DEFAULT',
             session_name: sessionOption?.name || 'DEFAULT',
             inventory_config: maxSlots
@@ -193,10 +190,9 @@ export function BatchSelectorDialog({
                             <TabsContent value="existing" className="mt-2">
                                 <Select value={selectedLevel} onValueChange={setSelectedLevel}>
                                     <SelectTrigger className="h-9 text-sm">
-                                        <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()} (or leave for DEFAULT)`} />
+                                        <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Level, SystemTerms.Level).toLowerCase()}`} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="DEFAULT_VALUE">DEFAULT</SelectItem>
                                         {levels.map((level) => (
                                             <SelectItem key={level.id} value={level.id}>
                                                 {level.name}
@@ -240,10 +236,9 @@ export function BatchSelectorDialog({
                             <TabsContent value="existing" className="mt-2">
                                 <Select value={selectedSession} onValueChange={setSelectedSession}>
                                     <SelectTrigger className="h-9 text-sm">
-                                        <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()} (or leave for DEFAULT)`} />
+                                        <SelectValue placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session).toLowerCase()}`} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="DEFAULT_VALUE">DEFAULT</SelectItem>
                                         {sessions.map((session) => (
                                             <SelectItem key={session.id} value={session.id}>
                                                 {session.name}

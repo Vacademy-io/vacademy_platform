@@ -1,0 +1,34 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: cheap-general
+spec:
+  template:
+    metadata:
+      labels:
+        workload: general
+    spec:
+      requirements:
+        - key: "eks.amazonaws.com/instance-family"
+          operator: In
+          values: ["t3a"]
+        - key: "eks.amazonaws.com/instance-size"
+          operator: In
+          values: ["medium"]
+        - key: "kubernetes.io/arch"
+          operator: In
+          values: ["amd64"]
+        - key: "karpenter.sh/capacity-type"
+          operator: In
+          values: ["on-demand"]
+      nodeClassRef:
+        group: eks.amazonaws.com
+        kind: NodeClass
+        name: custom
+      expireAfter: 336h
+  limits:
+    cpu: "8"
+    memory: "16Gi"
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 1m

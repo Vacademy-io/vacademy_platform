@@ -1678,9 +1678,21 @@ class VideoGenerationPipeline:
         except (TypeError, ValueError):
             self._host_pct = 0
         if self._host_enabled:
+            _avc = self._host_plan.get("avatar") or {}
+            _provider = (_avc.get("provider") or "custom").lower()
+            # Mirror host_planner_service.effective_avatar_endpoint without
+            # cross-package import from this monolithic pipeline module.
+            _endpoint_map = {
+                "argil": "argil/avatars/audio-to-video",
+                "veed": "veed/avatars/audio-to-video",
+            }
+            _endpoint = _endpoint_map.get(
+                _provider,
+                _avc.get("avatar_model") or "fal-ai/kling-video/ai-avatar/v2/standard",
+            )
             print(
                 f"🎙️ Host enabled: type={self._host_type} pct={self._host_pct}% "
-                f"(avatar_model={(self._host_plan.get('avatar') or {}).get('avatar_model', '?')})"
+                f"(provider={_provider}, endpoint={_endpoint})"
             )
 
         # ── Pacing profile ──
@@ -4812,15 +4824,37 @@ class VideoGenerationPipeline:
         Output format matches the multimodal OpenAI content schema:
         `[{"type": "image_url", "image_url": {"url": "..."}}, ...]`
         Returns [] when no reference context is attached to this run.
+
+        Defensive filter: drops vision-incompatible formats (SVG, etc.) even
+        if they slipped past intake. Without this, a cached `reference_context.json`
+        from before the intake-side fix would still cascade 400s through the
+        retry loop and bork Director / Act Planner. ReferenceFileService
+        already filters at intake (see `_UNSUPPORTED_VISION_EXTENSIONS`); this
+        is the second line of defence.
         """
         ref_ctx = getattr(self, "_reference_context", None)
         if not ref_ctx:
             return []
         ref_images = ref_ctx.get("embeddable_images", []) or []
+        # Lower-cased extensions the vision model rejects with a 400. Mirrored
+        # from reference_file_service._UNSUPPORTED_VISION_EXTENSIONS — kept
+        # inline here to avoid a cross-package import from this monolithic
+        # pipeline module.
+        UNSUPPORTED_EXTS = {".svg", ".bmp", ".tiff", ".tif", ".ico", ".avif"}
         parts: List[Dict[str, Any]] = []
         for ri in ref_images[:6]:  # hard cap — don't flood the context
             url = ri.get("s3_url") or ri.get("url")
             if not url:
+                continue
+            # Strip query string before checking extension (S3 presigned URLs
+            # carry ?X-Amz-… params).
+            path = url.split("?", 1)[0].lower()
+            ext = "." + path.rsplit(".", 1)[1] if "." in path.rsplit("/", 1)[-1] else ""
+            if ext in UNSUPPORTED_EXTS:
+                print(
+                    f"[Director] Skipping reference image {ri.get('source_file', url)!r} — "
+                    f"extension {ext!r} is not supported by the vision model."
+                )
                 continue
             parts.append({"type": "image_url", "image_url": {"url": url}})
         return parts

@@ -1218,11 +1218,28 @@ function HostTabBody({
                                                 setPickedAvatar(avatar ?? null);
                                                 // Clear free-form fields when picking a saved
                                                 // avatar — BE resolution overrides them anyway,
-                                                // but a stale face_image_url in the dump is
-                                                // confusing in logs / pipeline traces.
+                                                // but a stale face_image_url / avatar_model in
+                                                // the request is confusing in curl dumps and
+                                                // BE logs (looks like Kling is being used when
+                                                // a built-in catalog avatar is actually routed).
+                                                //
+                                                // For built-in catalog avatars (argil / veed),
+                                                // also drop avatar_model + details_prompt — they
+                                                // have no effect on those endpoints (provider
+                                                // owns the route, the catalog enum owns identity).
+                                                // For custom saved avatars we keep avatar_model
+                                                // so the user can still pick Kling vs Fabric.
+                                                const isBuiltin =
+                                                    !!avatar && avatar.provider !== 'custom';
                                                 patchAvatar({
                                                     saved_avatar_id: avatarId,
                                                     face_image_url: undefined,
+                                                    ...(isBuiltin
+                                                        ? {
+                                                              avatar_model: undefined,
+                                                              details_prompt: '',
+                                                          }
+                                                        : {}),
                                                 });
                                             }}
                                         />

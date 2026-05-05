@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
     Dialog,
     DialogContent,
@@ -13,7 +14,10 @@ import {
     type GenerateVideoRequest,
     type VideoCostPreviewRequest,
     type VideoCostPreviewResponse,
+    type VideoCostPreviewBreakdownRow,
 } from '../-services/video-generation';
+import { getInstituteId } from '@/constants/helper';
+import type { StudioAvatar } from '@/features/vimotion/api/dashboardTypes';
 
 // Feature flag: render USD cost lines next to credits. Flip to false (or set
 // VITE_SHOW_USD_COST=false) to hide all $ figures without touching layout.
@@ -53,6 +57,50 @@ function buildPreviewPayload(
         // for tiers below ultra (matches the API-edge tier gate).
         host: options.host,
     };
+}
+
+// ---------------------------------------------------------------------------
+// Avatar breakdown rewriter — drop the misleading fal-endpoint string from
+// the BE response and replace it with the picked avatar's display name. The
+// BE may still emit `~81s @ fal-ai/kling-video/...` even when the actual
+// dispatch is Argil/VEED (see video_estimation_service.py — pre-fix backends
+// don't resolve saved_avatar_id at preview time). This FE pass gives users
+// a stable, accurate label regardless of which BE version is responding.
+// ---------------------------------------------------------------------------
+
+const _AVATAR_SYNTH_COMPONENT = 'Avatar video synthesis (host)';
+const _AVATAR_REF_COMPONENT = 'Avatar reference images (host)';
+
+function rewriteAvatarRow(
+    row: VideoCostPreviewBreakdownRow,
+    pickedAvatar: StudioAvatar | undefined
+): VideoCostPreviewBreakdownRow | null {
+    if (row.component === _AVATAR_SYNTH_COMPONENT) {
+        // Always rewrite to drop the technical endpoint string. Use the
+        // picked avatar's name when available; fall back to a bare label
+        // for admin (free-form upload, no studio_avatar row).
+        if (pickedAvatar) {
+            const isBuiltin = pickedAvatar.provider !== 'custom';
+            const label = isBuiltin ? 'Preset avatar' : 'Custom avatar';
+            const name = (pickedAvatar.name || '').trim();
+            return {
+                ...row,
+                detail: name ? `${label} — ${name}` : label,
+            };
+        }
+        return { ...row, detail: 'Custom avatar' };
+    }
+    if (row.component === _AVATAR_REF_COMPONENT) {
+        // Built-in catalog avatars skip Seedream entirely — drop this row
+        // when a built-in is picked. The cost number is harmless either way
+        // (we'd just be over-displaying a charge that won't actually fire).
+        if (pickedAvatar && pickedAvatar.provider !== 'custom') {
+            return null;
+        }
+        // Custom path — keep the row but simplify the detail.
+        return { ...row, detail: 'Per-shot identity images' };
+    }
+    return row;
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +217,7 @@ export function CostPreviewModal({
     loading,
     error,
     onConfirm,
+    savedAvatarId,
 }: {
     open: boolean;
     onOpenChange: (v: boolean) => void;
@@ -176,11 +225,38 @@ export function CostPreviewModal({
     loading: boolean;
     error: string | null;
     onConfirm: () => void;
+    /**
+     * studio_avatar.id of the picked saved avatar, when one is selected.
+     * Used to rewrite the BE-built breakdown rows so the user sees a
+     * friendly label ("Custom avatar — Matteo" / "Preset avatar — Matteo")
+     * instead of the inert fal endpoint slug carried by the BE for
+     * back-compat. Lookup uses the React Query cache populated by
+     * VimSavedAvatarSelect — no extra fetch.
+     */
+    savedAvatarId?: string;
 }) {
     const sel = data?.selections;
     const est = data?.estimate;
     const bal = data?.balance;
     const insufficient = bal != null && !bal.sufficient_for_high;
+
+    // Resolve the picked saved avatar from the React Query cache so we can
+    // render its name + provider in the breakdown. Cache key matches the
+    // one VimSavedAvatarSelect uses; we don't trigger a fetch from here.
+    const queryClient = useQueryClient();
+    const instituteId = getInstituteId();
+    const cachedAvatars =
+        queryClient.getQueryData<StudioAvatar[]>(['vim-saved-avatars', instituteId]) ?? [];
+    const pickedAvatar = savedAvatarId
+        ? cachedAvatars.find((a) => a.id === savedAvatarId)
+        : undefined;
+
+    const visibleBreakdown = useMemo(() => {
+        if (!est) return [];
+        return est.breakdown
+            .map((row) => rewriteAvatarRow(row, pickedAvatar))
+            .filter((row): row is VideoCostPreviewBreakdownRow => row !== null);
+    }, [est, pickedAvatar]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -200,7 +276,9 @@ export function CostPreviewModal({
                     {error && !data && (
                         <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                            <span>Couldn't load estimate: {error}. You can still proceed.</span>
+                            <span>
+                                Couldn&rsquo;t load estimate: {error}. You can still proceed.
+                            </span>
                         </div>
                     )}
 
@@ -277,7 +355,7 @@ export function CostPreviewModal({
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {est.breakdown.map((row) => (
+                                        {visibleBreakdown.map((row) => (
                                             <tr key={row.component}>
                                                 <td>
                                                     <div className="font-medium">

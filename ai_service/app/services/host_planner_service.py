@@ -35,7 +35,24 @@ _ALLOWED_TIERS = {"ultra", "super_ultra"}
 # Literals — for built-ins it's ignored downstream, so we leave the user's
 # choice (or default Kling) untouched rather than stamping a non-Literal
 # value that Pydantic would reject.
-_BUILTIN_PROVIDERS = {"argil", "veed"}
+_PROVIDER_ENDPOINT: Dict[str, str] = {
+    "argil": "argil/avatars/audio-to-video",
+    "veed": "veed/avatars/audio-to-video",
+}
+_BUILTIN_PROVIDERS = set(_PROVIDER_ENDPOINT.keys())
+
+
+def effective_avatar_endpoint(provider: str, avatar_model: str) -> str:
+    """Return the fal.ai endpoint slug actually called for this host config.
+
+    Custom provider → the user's avatar_model literal (Kling / Fabric).
+    Built-in provider → the catalog endpoint, regardless of avatar_model
+    (which stays at its Literal default for type-safety reasons).
+
+    Used by log/print sites so users picking an Argil/VEED catalog avatar
+    don't see a misleading `model=fal-ai/kling-...` line.
+    """
+    return _PROVIDER_ENDPOINT.get(provider, avatar_model)
 
 
 class HostFeatureError(ValueError):
@@ -149,10 +166,11 @@ def make_host_plan(
                 quality=cfg.quality,
             ),
         )
+        endpoint = effective_avatar_endpoint(provider, plan.avatar.avatar_model)
         logger.info(
             f"[HostPlanner] enabled=avatar provider={provider} "
             f"pct={plan.host_in_video_percentage}%% "
-            f"model={plan.avatar.avatar_model} quality={plan.avatar.quality} "
+            f"endpoint={endpoint} quality={plan.avatar.quality} "
             f"external_avatar_id={external_avatar_id!r}"
         )
         return plan

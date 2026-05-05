@@ -300,22 +300,59 @@ def estimate_video_generation(
         host_model = avatar_cfg.get("avatar_model") or "fal-ai/kling-video/ai-avatar/v2/standard"
         host_pct = max(0, min(100, int(host.get("host_in_video_percentage", 100))))
         approx_seconds = _duration_seconds_from_band(duration_band) * (host_pct / 100.0)
+
+        # Resolve saved_avatar_id → provider + name for a friendly preview
+        # label. Cost numbers stay on the Kling rate (we accepted overpayment
+        # up front rather than reshape pricing tables). The detail string
+        # used to expose the fal.ai endpoint slug
+        # (`fal-ai/kling-video/ai-avatar/v2/standard`), which is misleading
+        # for users who picked a built-in catalog avatar — they see Kling
+        # despite Argil being the actual route.
+        saved_avatar_id = avatar_cfg.get("saved_avatar_id")
+        host_provider = "custom"
+        avatar_name: Optional[str] = None
+        if saved_avatar_id and institute_id:
+            try:
+                from .vimotion_resolver import resolve_studio_avatar
+                _resolved = resolve_studio_avatar(saved_avatar_id, institute_id)
+                if _resolved:
+                    host_provider = (_resolved.get("provider") or "custom").lower()
+                    avatar_name = (_resolved.get("name") or "").strip() or None
+            except Exception as _re:
+                logger.warning(
+                    f"[Estimation] saved_avatar_id={saved_avatar_id!r} resolve "
+                    f"failed for display ({_re}); falling back to generic label."
+                )
+
+        # Friendly label: "Custom avatar — Matteo" / "Preset avatar — Matteo".
+        # Falls back to a bare label when the avatar wasn't resolved (e.g.
+        # admin's free-form face upload — no studio_avatar row to read a
+        # name from).
+        if host_provider in ("argil", "veed"):
+            host_detail = (
+                f"Preset avatar — {avatar_name}" if avatar_name else "Preset avatar"
+            )
+        else:
+            host_detail = (
+                f"Custom avatar — {avatar_name}" if avatar_name else "Custom avatar"
+            )
+
         host_per_sec = _get_video_second_price(db, host_model)
         if host_per_sec is not None and approx_seconds > 0:
             host_usd = approx_seconds * host_per_sec
             host_cost_row = {
                 "component": "Avatar video synthesis (host)",
-                "detail": (
-                    f"~{approx_seconds:.0f}s @ {host_model} "
-                    f"({avatar_cfg.get('quality', '480p')}, {host_pct}% of video)"
-                ),
+                "detail": host_detail,
                 "cost_usd": round(host_usd, 4),
                 "credits": float(_credits_from_usd("video", host_usd)),
             }
             # Per-shot avatar reference image gen (Seedream image-to-image).
-            # Rough estimate: 1 image per ~6s of host content.
-            host_extra_image_count = max(1, int(approx_seconds / 6.0))
-            host_extra_image_usd = host_extra_image_count * image_unit
+            # Built-in catalog providers (argil/veed) skip Seedream entirely
+            # — identity is locked to the catalog enum, no per-shot host
+            # image is rendered. Suppress that line item for them.
+            if host_provider == "custom":
+                host_extra_image_count = max(1, int(approx_seconds / 6.0))
+                host_extra_image_usd = host_extra_image_count * image_unit
 
     def _components(
         d_in: int, d_out: int, s_in: int, s_out: int, imgs: int

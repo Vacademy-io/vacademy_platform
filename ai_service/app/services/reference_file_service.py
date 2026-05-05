@@ -19,9 +19,18 @@ from ..constants.models import DEFAULT_MODEL as _VISION_MODEL
 
 logger = logging.getLogger(__name__)
 
-# Image extensions we accept as embeddable visuals
-_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
+# Image extensions we accept as embeddable visuals AND that the OpenRouter
+# vision models (Gemini family) can ingest. SVG was historically here but the
+# vision endpoint returns 400 ("URL did not return an image (received
+# text/error content)") — Gemini only accepts raster formats. Keeping SVGs
+# out of this set means they short-circuit at intake with a clear warning
+# rather than cascading 12+ retried 400s through Act Planner / Director.
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _PDF_EXTENSIONS = {".pdf"}
+# Visual formats we recognise as images but won't send to vision models.
+# Listed here (rather than just absent) so we can produce a precise warning
+# instead of the generic "unknown file type" path.
+_UNSUPPORTED_VISION_EXTENSIONS = {".svg", ".bmp", ".tiff", ".tif", ".ico", ".avif"}
 
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
@@ -95,9 +104,21 @@ class ReferenceFileService:
                 logger.warning(f"[RefFileService] Skipping reference #{idx}: no URL")
                 continue
 
+            # Skip vision-incompatible image formats (SVG, etc.) before we
+            # download — they'd just trigger 400s from the vision model. We
+            # check both the explicit `type` field AND the extension so that
+            # an SVG sent with `type: "image"` still gets dropped.
+            ext = Path(name).suffix.lower() or Path(url.split("?", 1)[0]).suffix.lower()
+            if ext in _UNSUPPORTED_VISION_EXTENSIONS:
+                logger.warning(
+                    f"[RefFileService] Skipping {name!r} — extension {ext!r} is not "
+                    f"supported by the vision model (only {sorted(_IMAGE_EXTENSIONS)} are). "
+                    f"This file will be dropped from the reference context."
+                )
+                continue
+
             # Determine type from explicit field, fallback to extension
             if not file_type:
-                ext = Path(name).suffix.lower()
                 if ext in _IMAGE_EXTENSIONS:
                     file_type = "image"
                 elif ext in _PDF_EXTENSIONS:

@@ -937,15 +937,23 @@ class VideoGenerationService:
                             host_plan.model_dump_json(indent=2), encoding="utf-8"
                         )
                         if host_plan.enabled:
-                            _hp_summary = (
-                                f"avatar model={host_plan.avatar.avatar_model} q={host_plan.avatar.quality}"
-                                if host_plan.is_avatar() and host_plan.avatar
-                                else (
-                                    f"raw input_videos={len(host_plan.raw.input_video_ids) if host_plan.raw else 0}"
-                                    if host_plan.is_raw()
-                                    else "(unknown)"
+                            if host_plan.is_avatar() and host_plan.avatar:
+                                from .host_planner_service import effective_avatar_endpoint
+                                _endpoint = effective_avatar_endpoint(
+                                    host_plan.avatar.provider,
+                                    host_plan.avatar.avatar_model,
                                 )
-                            )
+                                _hp_summary = (
+                                    f"avatar provider={host_plan.avatar.provider} "
+                                    f"endpoint={_endpoint} q={host_plan.avatar.quality}"
+                                )
+                            elif host_plan.is_raw():
+                                _hp_summary = (
+                                    f"raw input_videos="
+                                    f"{len(host_plan.raw.input_video_ids) if host_plan.raw else 0}"
+                                )
+                            else:
+                                _hp_summary = "(unknown)"
                             logger.info(
                                 f"[VideoGenService] Host plan: type={host_plan.type} "
                                 f"pct={host_plan.host_in_video_percentage}% — {_hp_summary}"
@@ -1131,7 +1139,16 @@ class VideoGenerationService:
                     logger.info(f"[VideoGenService] Loaded cached reference context from {run_dir}")
                 else:
                     logger.info(f"[VideoGenService] Processing {len(reference_files)} reference files...")
-                    reference_context = ref_svc.process(reference_files, run_dir)
+                    # Run on a thread so the event loop stays responsive.
+                    # `ref_svc.process()` is sync end-to-end and makes 6-10s
+                    # blocking LLM calls per reference image (Gemini vision via
+                    # urllib.request.urlopen). With 6 images per run × 3 concurrent
+                    # generations, the loop was blocked >150s — past the liveness
+                    # probe's 5×30s threshold — and kubelet was SIGKILLing the pod
+                    # (Exit 137, Reason: Error — not OOM, despite the symptom).
+                    reference_context = await asyncio.to_thread(
+                        ref_svc.process, reference_files, run_dir
+                    )
                     logger.info(
                         f"[VideoGenService] Reference context ready: "
                         f"{len(reference_context.text_context)} chars text, "

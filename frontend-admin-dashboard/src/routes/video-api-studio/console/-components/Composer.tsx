@@ -933,6 +933,7 @@ export function Composer({
                 loading={costPreview.loading}
                 error={costPreview.error}
                 onConfirm={handleConfirmGenerate}
+                savedAvatarId={options.host?.avatar?.saved_avatar_id}
             />
         </div>
     );

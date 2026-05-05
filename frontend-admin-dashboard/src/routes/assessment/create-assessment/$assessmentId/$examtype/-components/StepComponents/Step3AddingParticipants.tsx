@@ -956,7 +956,9 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                                 </MyButton>
                                             }
                                             onAddField={handleAddCustomField}
-                                            existingFieldNames={customFieldsArray.map((f) => f.name)}
+                                            existingFieldNames={customFieldsArray
+                                                .filter((f) => (f as any).status !== 'DELETED')
+                                                .map((f) => f.name)}
                                         />
                                     </div>
                                     <Dialog>

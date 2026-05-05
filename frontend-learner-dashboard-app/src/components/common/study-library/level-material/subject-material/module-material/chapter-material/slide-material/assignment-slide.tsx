@@ -17,8 +17,6 @@ import { getUserId } from "@/constants/getUserId";
 import { MyInput } from "@/components/design-system/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { RoleTerms, SystemTerms } from "@/types/naming-settings";
 import "katex/dist/katex.min.css";
 import katex from "katex";
 import { toast } from "sonner";
@@ -344,15 +342,7 @@ const AssignmentSlide = ({
     ?.split(',').filter(Boolean) || [];
   const totalMarks = assignmentData.total_marks;
   const passingMarks = assignmentData.passing_marks;
-  // The submission has marks=0 by default at submission time. So we only treat
-  // it as "graded" when the teacher has actually written feedback, uploaded a
-  // checked copy, or assigned non-zero marks.
-  const isGraded =
-    (gradedMarks != null && gradedMarks > 0) ||
-    !!gradedFeedback ||
-    !!checkedFileId;
-  const isPassed = isGraded && gradedMarks != null && passingMarks != null ? gradedMarks >= passingMarks : null;
-  const teacherTerm = getTerminology(RoleTerms.Teacher, SystemTerms.Teacher);
+  const isPassed = gradedMarks != null && passingMarks != null ? gradedMarks >= passingMarks : null;
 
   // Constants for numeric input
   const isDecimal = false;
@@ -800,7 +790,7 @@ const AssignmentSlide = ({
       </Card>
 
       {/* Graded Results Banner — shown prominently at top when graded */}
-      {isGraded && (
+      {gradedMarks != null && (
         <Card className="mb-4 sm:mb-6 overflow-hidden border-2 border-emerald-200 bg-white shadow-md">
           {/* Hero strip */}
           <div className="bg-gradient-to-r from-emerald-50 to-white px-4 sm:px-6 py-4 border-b border-emerald-100">
@@ -813,7 +803,7 @@ const AssignmentSlide = ({
               </div>
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">
-                  Reviewed by {teacherTerm}
+                  Reviewed by Teacher
                 </p>
                 <h2 className="text-base sm:text-lg font-semibold text-gray-900">
                   Your Assignment Has Been Graded
@@ -867,7 +857,7 @@ const AssignmentSlide = ({
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                   </svg>
                   <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    {teacherTerm}'s Feedback
+                    Teacher's Feedback
                   </span>
                 </div>
                 <p className="whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
@@ -906,7 +896,7 @@ const AssignmentSlide = ({
                         View Your Checked Copy
                       </p>
                       <p className="text-xs text-emerald-700">
-                        Marked PDF from your {teacherTerm.toLowerCase()}
+                        Marked PDF from your teacher
                       </p>
                     </div>
                   </div>

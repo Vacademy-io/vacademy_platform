@@ -29,6 +29,7 @@ from .routers.knowledge_base import router as knowledge_base_router
 from .routers.voice_agent import router as voice_agent_router
 from .routers.input_video import router as input_video_router
 from .routers.transcription import router as transcription_router
+from .routers.brand_kit_scrape import router as brand_kit_scrape_router
 
 
 
@@ -98,6 +99,7 @@ def create_app() -> FastAPI:
     app.include_router(voice_agent_router, prefix=settings.api_base_path)
     app.include_router(input_video_router, prefix=settings.api_base_path)
     app.include_router(transcription_router, prefix=settings.api_base_path)
+    app.include_router(brand_kit_scrape_router, prefix=settings.api_base_path)
 
     return app
 

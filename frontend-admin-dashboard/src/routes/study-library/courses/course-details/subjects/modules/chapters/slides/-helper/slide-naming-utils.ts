@@ -169,3 +169,29 @@ export function generateUniqueQuizSlideTitle(allSlides: Slide[]): string {
 export function generateUniqueAudioSlideTitle(allSlides: Slide[]): string {
     return generateUniqueSlideTitle(allSlides, SLIDE_TYPE_NAMES.AUDIO);
 }
+
+type SlideOrderInput = Pick<Slide, 'slide_order'> & Partial<Pick<Slide, 'id'>>;
+
+export function getNextSlideOrder(slides: SlideOrderInput[] = []): number {
+    if (!slides || slides.length === 0) return 0;
+    let max = -1;
+    for (const s of slides) {
+        const v = typeof s.slide_order === 'number' ? s.slide_order : -1;
+        if (v > max) max = v;
+    }
+    return max + 1;
+}
+
+export function buildAppendReorderPayload(
+    newSlideId: string,
+    currentSlides: Pick<Slide, 'id' | 'slide_order'>[] = []
+): { slide_id: string; slide_order: number }[] {
+    const others = (currentSlides || [])
+        .filter((s) => s.id !== newSlideId)
+        .slice()
+        .sort((a, b) => (a.slide_order ?? 0) - (b.slide_order ?? 0));
+    return [
+        ...others.map((s, idx) => ({ slide_id: s.id, slide_order: idx })),
+        { slide_id: newSlideId, slide_order: others.length },
+    ];
+}

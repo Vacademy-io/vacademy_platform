@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.payments.repository.WebHookReposi
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class WebHookService {
@@ -22,6 +23,19 @@ public class WebHookService {
         webHook.setOrderId(orderId);
         webHookRepository.save(webHook);
         return webHook.getId();
+    }
+
+    public Optional<WebHook> findById(String webhookId) {
+        return webHookRepository.findById(webhookId);
+    }
+
+    public void resetForReprocess(String webhookId) {
+        webHookRepository.findById(webhookId).ifPresent(wh -> {
+            wh.setStatus(WebHookStatus.RECEIVED);
+            wh.setErrorMessage(null);
+            wh.setProcessedAt(null);
+            webHookRepository.save(wh);
+        });
     }
 
     public void updateWebHookStatus(String id, WebHookStatus status,String errorMessage) {

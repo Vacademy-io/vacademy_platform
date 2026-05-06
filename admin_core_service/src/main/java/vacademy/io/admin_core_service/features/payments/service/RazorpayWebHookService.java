@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.payments.enums.WebHookStatus;
+import vacademy.io.admin_core_service.features.payments.util.WebHookErrorUtils;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
@@ -134,57 +135,11 @@ public class RazorpayWebHookService {
 
             log.info("Webhook signature verified successfully for institute: {}", instituteId);
 
-            // Step 5: Parse webhook payload
-            JsonNode webhookData = objectMapper.readTree(payload);
-            String eventType = webhookData.get("event").asText();
-
-            log.info("Processing Razorpay event: {} for institute: {}", eventType, instituteId);
-
-            // Step 6: Extract payment entity from payload
-            JsonNode paymentEntity = extractPaymentEntity(webhookData);
-            if (paymentEntity == null) {
-                log.info("Event {} does not contain payment entity. Acknowledging and skipping.", eventType);
-                updateWebhookStatus(webhookId, WebHookStatus.PROCESSED,
-                        "Event does not contain payment entity, skipped.");
-                return ResponseEntity.ok("Webhook acknowledged, no action taken.");
-            }
-
-            // Step 7: Extract orderId from payment notes
-            String orderId = extractOrderId(paymentEntity);
-            if (orderId == null) {
-                log.error("Missing 'orderId' in payment notes for payment_id: {}",
-                        paymentEntity.get("id").asText());
-
-                updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Missing orderId in payment notes");
-                return ResponseEntity.status(400).body("Missing orderId in payment notes");
-            }
-
-            // Step 8: Update webhook with order details
-            webHookService.updateWebHook(webhookId, payload, orderId, eventType);
-
-            // Step 9: Check payment type and route accordingly
-            String paymentType = extractPaymentType(paymentEntity);
-
-            if (paymentType != null && PaymentType.RENEWAL.name().equals(paymentType)) {
-                log.info("Processing RENEWAL payment webhook for orderId: {}", orderId);
-                handleRenewalPayment(eventType, orderId, instituteId, paymentEntity);
-            } else if (paymentType != null && PaymentType.SCHOOL.name().equals(paymentType)) {
-                log.info("Processing SCHOOL payment webhook for orderId: {}", orderId);
-                handleSchoolPayment(eventType, orderId, instituteId, paymentEntity);
-            } else if (paymentType != null && PaymentType.APPLICATION_FEE.name().equals(paymentType)) {
-                log.info("Processing APPLICATION_FEE payment webhook for orderId: {}", orderId);
-                handleApplicationFeePayment(eventType, orderId, instituteId, paymentEntity);
-            } else {
-                // Handle initial payment events
-                handleRazorpayEvent(eventType, orderId, instituteId, paymentEntity);
-            }
-
-            // Step 10: Mark webhook as processed
-            updateWebhookStatus(webhookId, WebHookStatus.PROCESSED, null);
-            return ResponseEntity.ok("Webhook processed successfully");
+            return processVerifiedPayload(webhookId, payload, instituteId);
 
         } catch (Exception ex) {
-            log.error("Unhandled error during Razorpay webhook processing", ex);
+            String detailedMessage = WebHookErrorUtils.describeException(ex);
+            log.error("Unhandled error during Razorpay webhook processing: {}", detailedMessage, ex);
             SentryLogger.SentryEventBuilder.error(ex)
                     .withMessage("Razorpay webhook processing failed with unhandled error")
                     .withTag("payment.vendor", "RAZORPAY")
@@ -192,11 +147,125 @@ public class RazorpayWebHookService {
                     .withTag("operation", "processRazorpayWebhook")
                     .send();
             if (webhookId != null) {
-                updateWebhookStatus(webhookId, WebHookStatus.FAILED, ex.getMessage());
+                updateWebhookStatus(webhookId, WebHookStatus.FAILED, detailedMessage);
             }
             return ResponseEntity.status(500).body("Internal server error");
         }
     }
+
+    /**
+     * Manually re-runs a previously persisted Razorpay webhook by id, bypassing
+     * signature verification (it was verified at original receive time). Useful when
+     * a webhook landed in FAILED state due to a transient post-payment error and
+     * needs to be replayed after the fix is in place.
+     *
+     * Resets the WebHook row to RECEIVED before processing so the run is idempotent
+     * with respect to the status field, and uses the same processing pipeline as
+     * the live webhook (steps 5-10) so behavior matches exactly.
+     */
+    public ResponseEntity<String> reprocessWebhook(String webhookId) {
+        log.info("Manual reprocess requested for webhookId={}", webhookId);
+
+        var webhookOpt = webHookService.findById(webhookId);
+        if (webhookOpt.isEmpty()) {
+            return ResponseEntity.status(404).body("WebHook not found: " + webhookId);
+        }
+        var webhook = webhookOpt.get();
+
+        if (!PaymentGateway.RAZORPAY.name().equalsIgnoreCase(webhook.getVendor())) {
+            return ResponseEntity.status(400)
+                    .body("WebHook vendor is " + webhook.getVendor() + ", expected RAZORPAY for this endpoint.");
+        }
+
+        String payload = webhook.getPayload();
+        if (payload == null || payload.isBlank()) {
+            updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Stored payload is empty, cannot reprocess");
+            return ResponseEntity.status(400).body("Stored payload is empty for webhook " + webhookId);
+        }
+
+        String instituteId = extractInstituteId(payload);
+        if (instituteId == null) {
+            updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Missing instituteId in stored payload");
+            return ResponseEntity.status(400).body("Missing instituteId in stored payload");
+        }
+
+        webHookService.resetForReprocess(webhookId);
+
+        try {
+            return processVerifiedPayload(webhookId, payload, instituteId);
+        } catch (Exception ex) {
+            String detailedMessage = WebHookErrorUtils.describeException(ex);
+            log.error("Manual reprocess failed for webhookId={}: {}", webhookId, detailedMessage, ex);
+            SentryLogger.SentryEventBuilder.error(ex)
+                    .withMessage("Razorpay webhook manual reprocess failed")
+                    .withTag("payment.vendor", "RAZORPAY")
+                    .withTag("webhook.id", webhookId)
+                    .withTag("institute.id", instituteId)
+                    .withTag("operation", "reprocessWebhook")
+                    .send();
+            updateWebhookStatus(webhookId, WebHookStatus.FAILED, detailedMessage);
+            return ResponseEntity.status(500).body("Reprocess failed: " + detailedMessage);
+        }
+    }
+
+    /**
+     * Steps 5-10 of the processing pipeline. Shared between live webhook delivery
+     * (after signature verification) and manual reprocess (signature already
+     * verified at original receive time). Any exception bubbles up so the caller
+     * can attach a meaningful error message to the WebHook row.
+     */
+    private ResponseEntity<String> processVerifiedPayload(String webhookId, String payload, String instituteId)
+            throws Exception {
+        // Step 5: Parse webhook payload
+        JsonNode webhookData = objectMapper.readTree(payload);
+        String eventType = webhookData.get("event").asText();
+
+        log.info("Processing Razorpay event: {} for institute: {} (webhookId={})", eventType, instituteId, webhookId);
+
+        // Step 6: Extract payment entity from payload
+        JsonNode paymentEntity = extractPaymentEntity(webhookData);
+        if (paymentEntity == null) {
+            log.info("Event {} does not contain payment entity. Acknowledging and skipping.", eventType);
+            updateWebhookStatus(webhookId, WebHookStatus.PROCESSED,
+                    "Event does not contain payment entity, skipped.");
+            return ResponseEntity.ok("Webhook acknowledged, no action taken.");
+        }
+
+        // Step 7: Extract orderId from payment notes
+        String orderId = extractOrderId(paymentEntity);
+        if (orderId == null) {
+            log.error("Missing 'orderId' in payment notes for payment_id: {}",
+                    paymentEntity.get("id").asText());
+
+            updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Missing orderId in payment notes");
+            return ResponseEntity.status(400).body("Missing orderId in payment notes");
+        }
+
+        // Step 8: Update webhook with order details
+        webHookService.updateWebHook(webhookId, payload, orderId, eventType);
+
+        // Step 9: Check payment type and route accordingly
+        String paymentType = extractPaymentType(paymentEntity);
+
+        if (paymentType != null && PaymentType.RENEWAL.name().equals(paymentType)) {
+            log.info("Processing RENEWAL payment webhook for orderId: {}", orderId);
+            handleRenewalPayment(eventType, orderId, instituteId, paymentEntity);
+        } else if (paymentType != null && PaymentType.SCHOOL.name().equals(paymentType)) {
+            log.info("Processing SCHOOL payment webhook for orderId: {}", orderId);
+            handleSchoolPayment(eventType, orderId, instituteId, paymentEntity);
+        } else if (paymentType != null && PaymentType.APPLICATION_FEE.name().equals(paymentType)) {
+            log.info("Processing APPLICATION_FEE payment webhook for orderId: {}", orderId);
+            handleApplicationFeePayment(eventType, orderId, instituteId, paymentEntity);
+        } else {
+            // Handle initial payment events
+            handleRazorpayEvent(eventType, orderId, instituteId, paymentEntity);
+        }
+
+        // Step 10: Mark webhook as processed
+        updateWebhookStatus(webhookId, WebHookStatus.PROCESSED, null);
+        return ResponseEntity.ok("Webhook processed successfully");
+    }
+
 
     /**
      * Handles different Razorpay event types

@@ -40,6 +40,8 @@ import { StudentSidebar } from '@/routes/manage-students/students-list/-componen
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { StudentTable } from '@/types/student-table-types';
+import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 
 // Helper function to generate key from name
 const generateKeyFromName = (name: string): string =>
@@ -279,6 +281,22 @@ export const CampaignUsersTable = ({
         [campaignId, queryClient]
     );
 
+    // Lead-system gate + per-row score lookup. Audience leads are treated as
+    // enquiries for the visibility flag; leads without a linked user_id render
+    // no badge (the lookup just returns undefined).
+    const leadSettings = useLeadSettings();
+    const showLeadScore =
+        !leadSettings.isLoading && leadSettings.enabled && leadSettings.showScoreInEnquiryTable;
+    const leadUserIds = useMemo(
+        () =>
+            (usersResponse?.content ?? [])
+                .map((lead: any) => lead.user?.id || lead.user_id || '')
+                .filter((id: string): id is string => !!id),
+        [usersResponse]
+    );
+    const { profiles: leadProfiles } = useLeadProfiles(leadUserIds, showLeadScore);
+    const profilesForColumns = showLeadScore ? leadProfiles : undefined;
+
     const buildColumns = useCallback(
         (
             onRowClick?: (row: CampaignUserTable) => void,
@@ -311,7 +329,8 @@ export const CampaignUsersTable = ({
                     defaultFieldsMap,
                     fieldMetadataMap,
                     onRowClick,
-                    onSelectRow
+                    onSelectRow,
+                    profilesForColumns
                 );
             }
 
@@ -324,7 +343,8 @@ export const CampaignUsersTable = ({
                 campaignFieldsMap,
                 fieldMetadataMap,
                 onRowClick,
-                onSelectRow
+                onSelectRow,
+                profilesForColumns
             );
         },
         [
@@ -334,6 +354,7 @@ export const CampaignUsersTable = ({
             handleDeleteLead,
             campaignFieldsMap,
             fieldMetadataMap,
+            profilesForColumns,
         ]
     );
 

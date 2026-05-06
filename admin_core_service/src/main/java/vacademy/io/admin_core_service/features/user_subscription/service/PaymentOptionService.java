@@ -76,16 +76,34 @@ public class PaymentOptionService {
         return true;
     }
 
+    /**
+     * Sentinel values for List parameters bound when the corresponding "has*" boolean
+     * flag is false. Postgres JDBC requires non-null List bindings for IN-list
+     * parameters; the boolean flag short-circuits the AND so the IN clause is never
+     * actually evaluated. The sentinel value just needs to be non-empty and won't
+     * match any real row.
+     */
+    private static final List<String> SENTINEL_LIST = List.of("__NONE__");
+
     public List<PaymentOptionDTO> getPaymentOptions(PaymentOptionFilterDTO paymentOptionFilterDTO, CustomUserDetails userDetails) {
         List<String> excludeTypes = resolveExcludeTypes(paymentOptionFilterDTO);
+        List<String> types = paymentOptionFilterDTO.getTypes();
+
+        boolean hasTypes = types != null && !types.isEmpty();
+        boolean hasExcludeTypes = excludeTypes != null && !excludeTypes.isEmpty();
+        List<String> activeStatuses = List.of(StatusEnum.ACTIVE.name());
 
         List<PaymentOption> paymentOptions = paymentOptionRepository.findPaymentOptionsWithPaymentPlansNative(
-                paymentOptionFilterDTO.getTypes(),
-                excludeTypes,
+                hasTypes,
+                hasTypes ? types : SENTINEL_LIST,
+                hasExcludeTypes,
+                hasExcludeTypes ? excludeTypes : SENTINEL_LIST,
                 paymentOptionFilterDTO.getSource(),
                 paymentOptionFilterDTO.getSourceId(),
-                List.of(StatusEnum.ACTIVE.name()),
-                List.of(StatusEnum.ACTIVE.name()),
+                true,
+                activeStatuses,
+                true,
+                activeStatuses,
                 paymentOptionFilterDTO.isRequireApproval(),
                 paymentOptionFilterDTO.isNotRequireApproval()
         );
@@ -93,7 +111,17 @@ public class PaymentOptionService {
     }
 
     public Optional<PaymentOption> getPaymentOption(String source, String sourceId, String tag, List<String> statuses) {
-        return paymentOptionRepository.findTopByFiltersWithPlans(source, sourceId, tag, DEFAULT_EXCLUDE_TYPES, statuses, statuses);
+        boolean hasStatuses = statuses != null && !statuses.isEmpty();
+        return paymentOptionRepository.findTopByFiltersWithPlans(
+                source,
+                sourceId,
+                tag,
+                true,
+                DEFAULT_EXCLUDE_TYPES,
+                hasStatuses,
+                hasStatuses ? statuses : SENTINEL_LIST,
+                hasStatuses,
+                hasStatuses ? statuses : SENTINEL_LIST);
     }
 
     private void changeDefaultPaymentOption(String source, String sourceId) {

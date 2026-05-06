@@ -17,6 +17,11 @@ public class VacademyException extends RuntimeException {
         this.status = HttpStatus.NOT_EXTENDED;
     }
 
+    public VacademyException(String message, Throwable cause) {
+        super(message, cause);
+        this.status = HttpStatus.NOT_EXTENDED;
+    }
+
     public HttpStatus getStatus() {
         return this.status;
     }

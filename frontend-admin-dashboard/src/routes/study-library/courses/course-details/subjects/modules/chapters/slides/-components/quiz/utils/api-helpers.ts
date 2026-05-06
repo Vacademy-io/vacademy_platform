@@ -147,7 +147,11 @@ const createQuestionStructure = (
     questionResponseType: string,
     evaluationType: string
 ): QuizSlideQuestion => {
-    const explanationContent = question.explanation || '';
+    const explanationContent =
+        question.explanation ||
+        question.explanation_text_data?.content ||
+        question.explanation_text?.content ||
+        '';
     let textContent = question.questionName || '';
     let parentRichTextContent = '';
     let parentRichTextId = '';

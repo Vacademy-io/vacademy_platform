@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
 import vacademy.io.admin_core_service.features.payments.enums.WebHookStatus;
+import vacademy.io.admin_core_service.features.payments.util.WebHookErrorUtils;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.RenewalPaymentService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -75,53 +76,11 @@ public class StripeWebHookService {
                 return ResponseEntity.status(400).body("Invalid signature");
             }
 
-            log.info("Processing Stripe event: {} for institute: {}", event.getType(), instituteId);
-
-            // Extract the PaymentIntent object from the event payload
-            PaymentIntent paymentIntent = extractPaymentIntentFromEvent(event);
-            if (paymentIntent == null) {
-                // This could be an event we don't handle, like `customer.created`. This is
-                // normal.
-                log.info("Event {} does not contain a PaymentIntent object. Acknowledging and skipping.",
-                        event.getType());
-                updateWebhookStatus(webhookId, WebHookStatus.PROCESSED,
-                        "Event does not contain a PaymentIntent, skipped.");
-                return ResponseEntity.ok("Webhook acknowledged, no action taken.");
-            }            String orderId = paymentIntent.getMetadata().get("orderId");
-            if (orderId == null) {
-                log.error("Missing 'orderId' in PaymentIntent metadata for pi_id: {}", paymentIntent.getId());
-                SentryLogger.logError(new IllegalStateException("Missing orderId in metadata"),
-                        "Stripe webhook missing orderId in PaymentIntent metadata", Map.of(
-                                "payment.vendor", "STRIPE",
-                                "payment.intent.id", paymentIntent.getId(),
-                                "institute.id", instituteId,
-                                "webhook.id", webhookId != null ? webhookId : "unknown",
-                                "payment.webhook.event", event.getType(),
-                                "operation", "extractOrderId"));
-                updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Missing orderId in metadata");
-                return ResponseEntity.status(400).body("Missing orderId in metadata");
-            }
-
-            // Update our internal records with the final event type and order ID
-            webHookService.updateWebHook(webhookId, payload, orderId, event.getType());
-
-            // Extract payment_type from metadata
-            String paymentType = paymentIntent.getMetadata().get("payment_type");
-            
-            // Route based on payment_type
-            if (paymentType != null && PaymentType.RENEWAL.name().equals(paymentType)) {
-                log.info("Processing RENEWAL payment webhook for orderId: {}", orderId);
-                handleRenewalPayment(event, paymentIntent, orderId, instituteId);
-            } else {
-                log.info("Processing INITIAL payment webhook for orderId: {}", orderId);
-                handleInitialPayment(event, orderId, instituteId);
-            }
-
-            updateWebhookStatus(webhookId, WebHookStatus.PROCESSED, null);
-            return ResponseEntity.ok("Webhook processed successfully");
+            return processVerifiedEvent(webhookId, event, instituteId, payload);
 
         } catch (Exception ex) {
-            log.error("Unhandled error during webhook processing", ex);
+            String detailedMessage = WebHookErrorUtils.describeException(ex);
+            log.error("Unhandled error during Stripe webhook processing: {}", detailedMessage, ex);
             SentryLogger.SentryEventBuilder.error(ex)
                     .withMessage("Stripe webhook processing failed with unhandled error")
                     .withTag("payment.vendor", "STRIPE")
@@ -129,10 +88,123 @@ public class StripeWebHookService {
                     .withTag("operation", "processStripeWebhook")
                     .send();
             if (webhookId != null) {
-                updateWebhookStatus(webhookId, WebHookStatus.FAILED, ex.getMessage());
+                updateWebhookStatus(webhookId, WebHookStatus.FAILED, detailedMessage);
             }
             return ResponseEntity.status(500).body("Internal server error");
         }
+    }
+
+    /**
+     * Manually re-runs a previously persisted Stripe webhook by id, bypassing
+     * signature verification (the signature was checked when the webhook was
+     * first received). Resets the WebHook row to RECEIVED before processing.
+     */
+    public ResponseEntity<String> reprocessWebhook(String webhookId) {
+        log.info("Manual reprocess requested for Stripe webhookId={}", webhookId);
+
+        var webhookOpt = webHookService.findById(webhookId);
+        if (webhookOpt.isEmpty()) {
+            return ResponseEntity.status(404).body("WebHook not found: " + webhookId);
+        }
+        var webhook = webhookOpt.get();
+
+        if (!PaymentGateway.STRIPE.name().equalsIgnoreCase(webhook.getVendor())) {
+            return ResponseEntity.status(400)
+                    .body("WebHook vendor is " + webhook.getVendor() + ", expected STRIPE for this endpoint.");
+        }
+
+        String payload = webhook.getPayload();
+        if (payload == null || payload.isBlank()) {
+            updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Stored payload is empty, cannot reprocess");
+            return ResponseEntity.status(400).body("Stored payload is empty for webhook " + webhookId);
+        }
+
+        String instituteId = extractInstituteId(payload);
+        if (instituteId == null) {
+            updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Missing instituteId in stored payload");
+            return ResponseEntity.status(400).body("Missing instituteId in stored payload");
+        }
+
+        webHookService.resetForReprocess(webhookId);
+
+        try {
+            // Bypass signature verification: deserialize Event directly from stored payload
+            // using the same Gson instance the SDK uses for Webhook.constructEvent.
+            Event event = com.stripe.net.ApiResource.GSON.fromJson(payload, Event.class);
+            if (event == null || event.getType() == null) {
+                updateWebhookStatus(webhookId, WebHookStatus.FAILED,
+                        "Stored payload does not parse as a Stripe Event");
+                return ResponseEntity.status(400).body("Stored payload is not a valid Stripe Event");
+            }
+            return processVerifiedEvent(webhookId, event, instituteId, payload);
+        } catch (Exception ex) {
+            String detailedMessage = WebHookErrorUtils.describeException(ex);
+            log.error("Manual reprocess failed for Stripe webhookId={}: {}", webhookId, detailedMessage, ex);
+            SentryLogger.SentryEventBuilder.error(ex)
+                    .withMessage("Stripe webhook manual reprocess failed")
+                    .withTag("payment.vendor", "STRIPE")
+                    .withTag("webhook.id", webhookId)
+                    .withTag("institute.id", instituteId)
+                    .withTag("operation", "reprocessWebhook")
+                    .send();
+            updateWebhookStatus(webhookId, WebHookStatus.FAILED, detailedMessage);
+            return ResponseEntity.status(500).body("Reprocess failed: " + detailedMessage);
+        }
+    }
+
+    /**
+     * Steps after signature verification. Shared between live webhook delivery
+     * and manual reprocess so behavior matches exactly.
+     */
+    private ResponseEntity<String> processVerifiedEvent(String webhookId, Event event, String instituteId,
+            String payload) {
+        log.info("Processing Stripe event: {} for institute: {} (webhookId={})", event.getType(), instituteId,
+                webhookId);
+
+        // Extract the PaymentIntent object from the event payload
+        PaymentIntent paymentIntent = extractPaymentIntentFromEvent(event);
+        if (paymentIntent == null) {
+            // This could be an event we don't handle, like `customer.created`. This is
+            // normal.
+            log.info("Event {} does not contain a PaymentIntent object. Acknowledging and skipping.",
+                    event.getType());
+            updateWebhookStatus(webhookId, WebHookStatus.PROCESSED,
+                    "Event does not contain a PaymentIntent, skipped.");
+            return ResponseEntity.ok("Webhook acknowledged, no action taken.");
+        }
+
+        String orderId = paymentIntent.getMetadata().get("orderId");
+        if (orderId == null) {
+            log.error("Missing 'orderId' in PaymentIntent metadata for pi_id: {}", paymentIntent.getId());
+            SentryLogger.logError(new IllegalStateException("Missing orderId in metadata"),
+                    "Stripe webhook missing orderId in PaymentIntent metadata", Map.of(
+                            "payment.vendor", "STRIPE",
+                            "payment.intent.id", paymentIntent.getId(),
+                            "institute.id", instituteId,
+                            "webhook.id", webhookId != null ? webhookId : "unknown",
+                            "payment.webhook.event", event.getType(),
+                            "operation", "extractOrderId"));
+            updateWebhookStatus(webhookId, WebHookStatus.FAILED, "Missing orderId in metadata");
+            return ResponseEntity.status(400).body("Missing orderId in metadata");
+        }
+
+        // Update our internal records with the final event type and order ID
+        webHookService.updateWebHook(webhookId, payload, orderId, event.getType());
+
+        // Extract payment_type from metadata
+        String paymentType = paymentIntent.getMetadata().get("payment_type");
+
+        // Route based on payment_type
+        if (paymentType != null && PaymentType.RENEWAL.name().equals(paymentType)) {
+            log.info("Processing RENEWAL payment webhook for orderId: {}", orderId);
+            handleRenewalPayment(event, paymentIntent, orderId, instituteId);
+        } else {
+            log.info("Processing INITIAL payment webhook for orderId: {}", orderId);
+            handleInitialPayment(event, orderId, instituteId);
+        }
+
+        updateWebhookStatus(webhookId, WebHookStatus.PROCESSED, null);
+        return ResponseEntity.ok("Webhook processed successfully");
     }
 
     private void updateWebhookStatus(String webhookId, WebHookStatus status, String notes) {

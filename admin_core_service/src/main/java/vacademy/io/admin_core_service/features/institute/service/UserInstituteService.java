@@ -173,7 +173,7 @@ public class UserInstituteService {
         institute.setStaffStrength(instituteInfo.getStaffStrength());
         institute.setSchoolStrength(instituteInfo.getSchoolStrength());
         institute.setAccountType(instituteInfo.getAccountType());
-        institute.setProduct(instituteInfo.getProduct());
+        institute.setProduct(instituteInfo.getProduct() != null ? instituteInfo.getProduct() : "vacademy");
         institute.setCompanySize(instituteInfo.getCompanySize());
         return institute;
     }

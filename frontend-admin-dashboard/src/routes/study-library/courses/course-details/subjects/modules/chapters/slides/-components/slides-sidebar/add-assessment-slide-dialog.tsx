@@ -17,7 +17,11 @@ import {
 } from '../../-hooks/use-slides';
 import { useContentStore } from '../../-stores/chapter-sidebar-store';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
-import { generateUniqueSlideTitle } from '../../-helper/slide-naming-utils';
+import {
+    buildAppendReorderPayload,
+    generateUniqueSlideTitle,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 interface AssessmentRow {
     assessment_id: string;
@@ -213,7 +217,7 @@ export const AddAssessmentSlideDialog = ({
                 title,
                 description: '',
                 image_file_id: '',
-                slide_order: 0,
+                slide_order: getNextSlideOrder((items as Slide[]) || []),
                 status: getSlideStatusForUser(),
                 new_slide: true,
                 notify: false,
@@ -228,14 +232,9 @@ export const AddAssessmentSlideDialog = ({
             const response = await addUpdateAssessmentSlide(payload);
             if (!response) throw new Error('Failed to link assessment');
 
-            // Reorder so the new slide appears at top
+            // Reorder so the new slide appears at the bottom
             const currentSlides = (items as Slide[]) || [];
-            const reordered = [
-                { slide_id: slideId, slide_order: 0 },
-                ...currentSlides
-                    .filter((s) => s.id !== slideId)
-                    .map((s, idx) => ({ slide_id: s.id, slide_order: idx + 1 })),
-            ];
+            const reordered = buildAppendReorderPayload(slideId, currentSlides);
             await updateSlideOrder({
                 chapterId: chapterId || '',
                 slideOrderPayload: reordered,
@@ -252,7 +251,7 @@ export const AddAssessmentSlideDialog = ({
                 image_file_id: '',
                 description: '',
                 status: payload.status,
-                slide_order: 0,
+                slide_order: payload.slide_order ?? 0,
                 video_slide: null,
                 document_slide: null,
                 question_slide: null,

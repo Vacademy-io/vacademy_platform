@@ -584,7 +584,7 @@ export const useSlidesMutations = (
                     const { setActiveItem, items } = useContentStore.getState();
 
                     if (items && items.length > 0) {
-                        setActiveItem(items[0] as Slide);
+                        setActiveItem(items[items.length - 1] as Slide);
                     }
                 }, 1000); // Increased timeout to ensure refetch completes
             }
@@ -609,19 +609,20 @@ export const useSlidesMutations = (
             queryClient.invalidateQueries({ queryKey: ['GET_STUDENT_SLIDES_PROGRESS'] });
 
             // When a new DOC slide is created, auto-switch to it. New slides
-            // are inserted at slide_order 0, so items[0] IS the new slide
-            // after the refetch lands. Poll the store briefly instead of
-            // using a fixed setTimeout — the old 1s delay raced with slow
-            // networks (new slide didn't switch) and was redundantly late
-            // on fast ones. Callers that want to control the active slide
-            // themselves (e.g. AddDocDialog.reorderSlidesAfterNewSlide)
-            // will simply overwrite this with the same target.
+            // are appended at the end (highest slide_order), so the last
+            // item in the sorted list IS the new slide after the refetch
+            // lands. Poll the store briefly instead of using a fixed
+            // setTimeout — the old 1s delay raced with slow networks (new
+            // slide didn't switch) and was redundantly late on fast ones.
+            // Callers that want to control the active slide themselves
+            // (e.g. AddDocDialog.reorderSlidesAfterNewSlide) will simply
+            // overwrite this with the same target.
             if (result.isNewSlide) {
                 for (let i = 0; i < 15; i++) {
                     await new Promise((r) => setTimeout(r, 100));
                     const { setActiveItem, items } = useContentStore.getState();
                     if (items && items.length > 0) {
-                        setActiveItem(items[0] as Slide);
+                        setActiveItem(items[items.length - 1] as Slide);
                         break;
                     }
                 }
@@ -671,7 +672,7 @@ export const useSlidesMutations = (
                     const { setActiveItem, items } = useContentStore.getState();
 
                     if (items && items.length > 0) {
-                        setActiveItem(items[0] as Slide);
+                        setActiveItem(items[items.length - 1] as Slide);
                     }
                 }, 1000); // Increased timeout to ensure refetch completes
             }
@@ -700,7 +701,7 @@ export const useSlidesMutations = (
                     const { setActiveItem, items } = useContentStore.getState();
 
                     if (items && items.length > 0) {
-                        setActiveItem(items[0] as Slide);
+                        setActiveItem(items[items.length - 1] as Slide);
                     }
                 }, 1000);
             }
@@ -725,7 +726,7 @@ export const useSlidesMutations = (
                 setTimeout(() => {
                     const { setActiveItem, items } = useContentStore.getState();
                     if (items && items.length > 0) {
-                        setActiveItem(items[0] as Slide);
+                        setActiveItem(items[items.length - 1] as Slide);
                     }
                 }, 1000);
             }
@@ -750,7 +751,7 @@ export const useSlidesMutations = (
                 setTimeout(() => {
                     const { setActiveItem, items } = useContentStore.getState();
                     if (items && items.length > 0) {
-                        setActiveItem(items[0] as Slide);
+                        setActiveItem(items[items.length - 1] as Slide);
                     }
                 }, 1000);
             }
@@ -808,7 +809,7 @@ export const useSlidesMutations = (
                     const { setActiveItem, items } = useContentStore.getState();
 
                     if (items && items.length > 0) {
-                        setActiveItem(items[0] as Slide);
+                        setActiveItem(items[items.length - 1] as Slide);
                     }
                 }, 1000); // Increased timeout to ensure refetch completes
             }
@@ -837,7 +838,7 @@ export const useSlidesMutations = (
                     const { setActiveItem, items } = useContentStore.getState();
 
                     if (items && items.length > 0) {
-                        setActiveItem(items[0] as Slide);
+                        setActiveItem(items[items.length - 1] as Slide);
                     }
                 }, 1000); // Increased timeout to ensure refetch completes
             }

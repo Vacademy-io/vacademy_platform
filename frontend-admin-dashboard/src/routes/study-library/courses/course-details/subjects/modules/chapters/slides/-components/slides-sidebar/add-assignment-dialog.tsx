@@ -8,6 +8,10 @@ import { useSlidesMutations } from '../../-hooks/use-slides';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CheckCircle, File } from '@phosphor-icons/react';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
+import {
+    buildAppendReorderPayload,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 const AddAssignmentDialog = ({
     openState,
@@ -30,27 +34,16 @@ const AddAssignmentDialog = ({
     const [title, setTitle] = useState('');
     const [isAssignmentAdding, setIsAssignmentAdding] = useState(false);
 
-    // Function to reorder slides after adding a new one at the top
+    // Function to reorder slides after adding a new one at the bottom
     const reorderSlidesAfterNewSlide = async (newSlideId: string) => {
         try {
-            // Get current slides and reorder them
             const currentSlides = items || [];
             const newSlide = currentSlides.find((slide) => slide.id === newSlideId);
 
             if (!newSlide) return;
 
-            // Create new order: new slide at top (order 0), then existing slides
-            const reorderedSlides = [
-                { slide_id: newSlideId, slide_order: 0 },
-                ...currentSlides
-                    .filter((slide) => slide.id !== newSlideId)
-                    .map((slide, index) => ({
-                        slide_id: slide.id,
-                        slide_order: index + 1,
-                    })),
-            ];
+            const reorderedSlides = buildAppendReorderPayload(newSlideId, currentSlides);
 
-            // Update slide order in backend
             await updateSlideOrder({
                 chapterId: chapterId || '',
                 slideOrderPayload: reorderedSlides,
@@ -78,7 +71,7 @@ const AddAssignmentDialog = ({
                 image_file_id: '',
                 description: '',
                 status: slideStatus,
-                slide_order: 0, // Always insert at top
+                slide_order: getNextSlideOrder(items || []),
                 assignment_slide: {
                     id: crypto.randomUUID(),
                     // eslint-disable-next-line @typescript-eslint/ban-ts-comment

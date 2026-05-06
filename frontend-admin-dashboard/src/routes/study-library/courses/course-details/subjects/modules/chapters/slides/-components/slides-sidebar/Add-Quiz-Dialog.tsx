@@ -21,6 +21,10 @@ import {
 import { Route } from '../..';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import QuizQuestionDialogAddPreview from './QuizQuestionDialog';
+import {
+    buildAppendReorderPayload,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 export interface QuestionTypeProps {
     icon: React.ReactNode;
@@ -422,7 +426,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
                 description: 'Quiz',
                 image_file_id: '',
                 status: 'DRAFT',
-                slide_order: 0,
+                slide_order: getNextSlideOrder(items || []),
                 video_slide: null,
                 document_slide: null,
                 question_slide: null,
@@ -438,15 +442,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
             } as QuizSlidePayload);
 
             if (response) {
-                const reorderedSlides = [
-                    { slide_id: response, slide_order: 0 },
-                    ...items
-                        .filter((slide) => slide.id !== response)
-                        .map((slide, index) => ({
-                            slide_id: slide.id,
-                            slide_order: index + 1,
-                        })),
-                ];
+                const reorderedSlides = buildAppendReorderPayload(response, items || []);
 
                 await updateSlideOrder({
                     chapterId: chapterId || '',
@@ -545,7 +541,7 @@ const AddQuizDialog = ({ openState }: { openState?: (open: boolean) => void }) =
                 image_file_id: '',
                 description: 'Quiz',
                 status: 'DRAFT',
-                slide_order: 0,
+                slide_order: getNextSlideOrder(items || []),
                 video_slide: null,
                 document_slide: null,
                 question_slide: null,

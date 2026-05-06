@@ -25,6 +25,10 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
 import { Textarea } from '@/components/ui/textarea';
 import { MusicNotes } from '@phosphor-icons/react';
+import {
+    buildAppendReorderPayload,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 const formSchema = z.object({
     title: z.string().min(1, 'Title is required'),
@@ -120,15 +124,7 @@ export const AddAudioDialog = ({ openState }: { openState?: (open: boolean) => v
             const newSlide = currentSlides.find((slide) => slide.id === newSlideId);
             if (!newSlide) return;
 
-            const reorderedSlides = [
-                { slide_id: newSlideId, slide_order: 0 },
-                ...currentSlides
-                    .filter((slide) => slide.id !== newSlideId)
-                    .map((slide, index) => ({
-                        slide_id: slide.id,
-                        slide_order: index + 1,
-                    })),
-            ];
+            const reorderedSlides = buildAppendReorderPayload(newSlideId, currentSlides);
 
             await updateSlideOrder({
                 chapterId: chapterId || '',
@@ -183,7 +179,7 @@ export const AddAudioDialog = ({ openState }: { openState?: (open: boolean) => v
                 description: data.description || null,
                 image_file_id: thumbnailFileId,
                 status: slideStatus as 'DRAFT' | 'PUBLISHED',
-                slide_order: 0,
+                slide_order: getNextSlideOrder(items || []),
                 notify: false,
                 new_slide: true,
                 audio_slide: {

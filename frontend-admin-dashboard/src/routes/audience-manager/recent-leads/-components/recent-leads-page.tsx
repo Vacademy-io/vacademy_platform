@@ -23,6 +23,9 @@ import { StudentSidebar } from '@/routes/manage-students/students-list/-componen
 import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-providers/student-sidebar-provider';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import type { StudentTable } from '@/types/student-table-types';
+import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useLeadProfiles } from '@/hooks/use-lead-profiles';
+import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 
 const PAGE_SIZE = 20;
 // Sentinel for "All audiences" — shadcn `<Select>` doesn't allow an empty
@@ -335,6 +338,21 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const { setSelectedStudent } = useStudentSidebar();
 
+    const leadSettings = useLeadSettings();
+    // Show lead-score badges only when the lead system is on AND the institute
+    // has the per-table flag enabled. Recent Leads is treated as an enquiry
+    // surface for this gate (these are raw form submissions).
+    const showLeadScore =
+        !leadSettings.isLoading && leadSettings.enabled && leadSettings.showScoreInEnquiryTable;
+    const leadUserIds = useMemo(
+        () =>
+            (data?.content ?? [])
+                .map((l) => l.user?.id || l.user_id || '')
+                .filter((id): id is string => !!id),
+        [data]
+    );
+    const { profiles: leadProfiles } = useLeadProfiles(leadUserIds, showLeadScore);
+
     const handleSelectLead = useCallback(
         (lead: RecentLeadDetail) => {
             setSelectedStudent(mapRecentLeadToStudent(lead));
@@ -376,7 +394,11 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                             </tr>
                         </thead>
                         <tbody>
-                            {data.content.map((lead, idx) => (
+                            {data.content.map((lead, idx) => {
+                                const userId = lead.user?.id || lead.user_id;
+                                const profile =
+                                    showLeadScore && userId ? leadProfiles[userId] : undefined;
+                                return (
                                 <tr
                                     key={lead.response_id ?? idx}
                                     className="border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50"
@@ -390,7 +412,15 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                                         </SidebarTrigger>
                                     </td>
                                     <td className="px-4 py-3 font-medium text-neutral-900">
-                                        {displayName(lead)}
+                                        <div className="flex flex-col gap-0.5">
+                                            <span>{displayName(lead)}</span>
+                                            {profile && (
+                                                <LeadScoreBadge
+                                                    score={profile.best_score}
+                                                    size="sm"
+                                                />
+                                            )}
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3 text-neutral-700">
                                         {displayEmail(lead)}
@@ -405,7 +435,8 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                                         {displaySubmittedAt(lead)}
                                     </td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 )}

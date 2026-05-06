@@ -236,19 +236,18 @@ public class PaymentLogService {
             return;
         }
 
+        // Single-transaction semantics: invoice generation failure propagates so
+        // the original cause is preserved end-to-end (see handlePostPaymentLogic
+        // for the full rationale). Swallowing here did not actually protect the
+        // payment — generateInvoice's @Transactional had already marked the
+        // outer transaction rollback-only.
         if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
-            try {
-                log.info("Generating invoice for payment log ID: {} (sync path)", paymentLog.getId());
-                invoiceService.generateInvoice(
-                        paymentLog.getUserPlan(),
-                        paymentLog,
-                        instituteId);
-                log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
-            } catch (Exception e) {
-                log.error(
-                        "Failed to generate invoice for payment log ID: {}. Payment confirmation will continue without invoice.",
-                        paymentLog.getId(), e);
-            }
+            log.info("Generating invoice for payment log ID: {} (sync path)", paymentLog.getId());
+            invoiceService.generateInvoice(
+                    paymentLog.getUserPlan(),
+                    paymentLog,
+                    instituteId);
+            log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
         }
     }
 
@@ -398,16 +397,20 @@ public class PaymentLogService {
         // --- Pass 2: Run post-payment logic AFTER all statuses are updated ---
         // This ensures that when invoice generation checks for related PAID logs,
         // all sibling logs are already marked as PAID and can be grouped into one invoice.
+        // Single-transaction semantics: if any post-payment side effect throws, we log
+        // and re-throw so the original exception (not Spring's UnexpectedRollbackException)
+        // surfaces to the webhook layer, where it can be stored verbatim in web_hook.notes.
         for (PaymentLog paymentLog : allLogsToUpdate) {
             try {
                 handlePostPaymentLogic(paymentLog, paymentStatus, instituteId);
             } catch (Exception e) {
-                log.error("Failed post-payment logic for log {}: {}. Continuing with remaining logs.",
-                        paymentLog.getId(), e.getMessage());
+                log.error("Failed post-payment logic for log {} (orderId={}, status={}).",
+                        paymentLog.getId(), orderId, paymentStatus, e);
                 SentryLogger.logError(e, "Post-payment logic failure", Map.of(
                         "payment.log.id", paymentLog.getId(),
                         "order.id", orderId,
                         "payment.status", paymentStatus));
+                throw e;
             }
         }
     }
@@ -442,21 +445,20 @@ public class PaymentLogService {
                     paymentLog.getUserPlan().getId());
             userPlanService.applyOperationsOnFirstPayment(paymentLog.getUserPlan());
 
-            // Generate invoice for paid enrollments
+            // Generate invoice for paid enrollments. Single-transaction semantics:
+            // any failure here propagates so the original cause (preserved via
+            // VacademyException(msg, cause)) reaches the webhook layer and is
+            // stored verbatim in web_hook.error_message. The previous silent
+            // catch was harmful — generateInvoice's @Transactional already marked
+            // the outer transaction rollback-only, so swallowing didn't actually
+            // save the payment, it only deleted the diagnostic info.
             if (paymentLog.getPaymentAmount() != null && paymentLog.getPaymentAmount() > 0) {
-                try {
-                    log.info("Generating invoice for payment log ID: {}", paymentLog.getId());
-                    invoiceService.generateInvoice(
-                            paymentLog.getUserPlan(),
-                            paymentLog,
-                            instituteId);
-                    log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
-                } catch (Exception e) {
-                    // Don't fail payment confirmation if invoice generation fails
-                    log.error(
-                            "Failed to generate invoice for payment log ID: {}. Payment confirmation will continue without invoice.",
-                            paymentLog.getId(), e);
-                }
+                log.info("Generating invoice for payment log ID: {}", paymentLog.getId());
+                invoiceService.generateInvoice(
+                        paymentLog.getUserPlan(),
+                        paymentLog,
+                        instituteId);
+                log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
             }
 
             // Applicant sync: only when paying user is an applicant

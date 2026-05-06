@@ -173,7 +173,7 @@ public class InvoiceService {
         } catch (Exception e) {
             log.error("Error generating invoice for userPlanId: {}, paymentLogId: {}",
                     userPlan.getId(), paymentLog.getId(), e);
-            throw new VacademyException("Failed to generate invoice: " + e.getMessage());
+            throw new VacademyException("Failed to generate invoice: " + e.getMessage(), e);
         }
     }
 
@@ -1047,9 +1047,19 @@ public class InvoiceService {
             // Get logo URL from file ID (public URL without expiry)
             String logoUrl = mediaService.getFilePublicUrlByIdWithoutExpiry(institute.getLogoFileId());
             if (logoUrl != null && !logoUrl.trim().isEmpty()) {
-                return "<div class=\"logo-container\"><img src=\"" + logoUrl + "\" alt=\"" +
-                        (institute.getInstituteName() != null ? institute.getInstituteName() : "Logo") +
-                        " Logo\" /></div>";
+                // S3 presigned URLs contain bare '&' (e.g. ?X-Amz-Algorithm=…&X-Amz-Date=…). XHTML
+                // requires those written as &amp; — without this, the PDF builder's SAX parser
+                // throws "The entity name must immediately follow the '&'" once the value is
+                // serialized into an attribute. processImagesForPdf is supposed to inline the
+                // image as base64 (which would also resolve this), but that has a silent
+                // fallback: when the S3 fetch fails the raw URL stays in the document, so we
+                // need the source-side escape too.
+                String safeLogoUrl = escapeXmlAttributeValue(logoUrl);
+                String safeAlt = escapeXmlAttributeValue(
+                        (institute.getInstituteName() != null ? institute.getInstituteName() : "Logo")
+                                + " Logo");
+                return "<div class=\"logo-container\"><img src=\"" + safeLogoUrl + "\" alt=\""
+                        + safeAlt + "\" /></div>";
             }
         } catch (Exception e) {
             log.warn("Failed to get logo URL for institute: {}. Error: {}",
@@ -1058,6 +1068,22 @@ public class InvoiceService {
 
         // Return empty div to maintain layout structure
         return "<div class=\"logo-container\"></div>";
+    }
+
+    /**
+     * Escape XML special characters for safe insertion into an attribute value.
+     * Use whenever raw text or URLs are concatenated into an HTML attribute
+     * before the document is parsed as XHTML by openhtmltopdf.
+     */
+    private static String escapeXmlAttributeValue(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 
     /**
@@ -1371,17 +1397,80 @@ public class InvoiceService {
             }, "Arial");
 
             String processedHtml = processImagesForPdf(htmlWithCss);
+            String sanitized = sanitizeToXhtml(processedHtml);
+            // Defensive last-mile fixup: openhtmltopdf parses input strictly as XML, so any
+            // remaining bare '&' (typical sources: URLs inside <style>/CDATA blocks that
+            // Jsoup serializes verbatim, custom institute templates that hand-wrote a URL
+            // with raw '&') would throw "The entity name must immediately follow the '&'".
+            // Replace bare '&' (one not followed by a recognised entity reference) with &amp;.
+            String xhtml = escapeBareAmpersands(sanitized);
             String baseUri = "file:///";
-            builder.withHtmlContent(sanitizeToXhtml(processedHtml), baseUri);
-            builder.useDefaultPageSize(210f, 297f, PdfRendererBuilder.PageSizeUnits.MM); // A4 portrait
 
-            builder.toStream(outputStream);
-            builder.run();
+            try {
+                builder.withHtmlContent(xhtml, baseUri);
+                builder.useDefaultPageSize(210f, 297f, PdfRendererBuilder.PageSizeUnits.MM); // A4 portrait
+                builder.toStream(outputStream);
+                builder.run();
+            } catch (Exception renderError) {
+                // Persist the rendered HTML that failed to parse so the operator can grep for
+                // the exact byte sequence at the column the SAX parser reported. This catch
+                // only fires AFTER the bare-& fixup, so anything reaching here is a different
+                // XML issue (unclosed tag, etc.).
+                dumpHtmlForDebugging(xhtml, renderError);
+                throw renderError;
+            }
 
             return outputStream.toByteArray();
         } catch (Exception e) {
             log.error("Error generating PDF from HTML", e);
-            throw new VacademyException("Failed to generate PDF: " + e.getMessage());
+            throw new VacademyException("Failed to generate PDF: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Replace bare '&' (one not introducing a known XML/HTML entity) with '&amp;'.
+     * Recognised forms left alone: named entities like &amp; &lt; &copy; &nbsp; &times;
+     * (any '&' followed by an ASCII letter then word chars then ';'), decimal numeric
+     * entities &#123; and hex numeric entities &#x1A;. Anything else, including the
+     * '&X-Amz-…' query separators in S3 presigned URLs, gets escaped.
+     */
+    private static String escapeBareAmpersands(String xhtml) {
+        if (xhtml == null) {
+            return null;
+        }
+        return xhtml.replaceAll("&(?![A-Za-z][A-Za-z0-9]*;|#[0-9]+;|#x[0-9A-Fa-f]+;)", "&amp;");
+    }
+
+    /**
+     * Write the failing HTML to a temp file (and a snippet to the log) so the operator
+     * can see exactly what tripped openhtmltopdf's parser. Best-effort — never throws.
+     */
+    private static void dumpHtmlForDebugging(String html, Throwable cause) {
+        try {
+            java.nio.file.Path dump = java.nio.file.Files.createTempFile("invoice-pdf-fail-", ".html");
+            java.nio.file.Files.writeString(dump, html, java.nio.charset.StandardCharsets.UTF_8);
+            log.error("Failing invoice HTML written to {} (size={} chars). Cause: {}", dump,
+                    html.length(), cause.getMessage());
+            // Try to surface the line/column the SAX parser blamed (format:
+            // "lineNumber: 383; columnNumber: 19;") so the snippet is useful even
+            // without opening the file.
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("lineNumber:\\s*(\\d+);\\s*columnNumber:\\s*(\\d+)")
+                    .matcher(cause.getMessage() == null ? "" : cause.getMessage());
+            if (m.find()) {
+                int line = Integer.parseInt(m.group(1));
+                int col = Integer.parseInt(m.group(2));
+                String[] lines = html.split("\\r?\\n", -1);
+                if (line - 1 < lines.length) {
+                    String offending = lines[line - 1];
+                    int from = Math.max(0, col - 30);
+                    int to = Math.min(offending.length(), col + 30);
+                    log.error("Offending content around line {} col {}: '...{}...'", line, col,
+                            offending.substring(from, to));
+                }
+            }
+        } catch (Exception dumpErr) {
+            log.warn("Could not write invoice HTML debug dump: {}", dumpErr.getMessage());
         }
     }
 

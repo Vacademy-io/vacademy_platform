@@ -97,6 +97,10 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         assignment: true,
         jupyterNotebook: true,
         scratch: true,
+        ppt: true,
+        audio: true,
+        scorm: true,
+        assessment: true,
     },
     slideView: {
         showCopyTo: true,
@@ -131,6 +135,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         enquiryTab: false,
         applicationTab: false,
         leadTab: false,
+        fullHistoryTab: false,
         // Default rendering order. Tabs render left-to-right by ascending number.
         // The keys match `StudentSideViewTabId` and the side-view's category strings.
         tabOrders: {

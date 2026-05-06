@@ -21,6 +21,10 @@ export interface SidebarTabConfig {
     }>;
     // Whether this tab was added as a custom tab from settings
     isCustom?: boolean;
+    // For custom tabs: which sidebar category (CRM/LMS/AI) it belongs to.
+    // Built-in tabs derive their category from SidebarItemsData; this only applies
+    // to user-added custom tabs whose id isn't in SidebarItemsData.
+    category?: 'CRM' | 'LMS' | 'AI';
 }
 
 // Dashboard widget identifiers. These are string literal ids that we can enforce in UI.
@@ -89,6 +93,10 @@ export interface CourseContentTypeSettings {
     assignment: boolean;
     jupyterNotebook: boolean;
     scratch: boolean;
+    ppt: boolean;
+    audio: boolean;
+    scorm: boolean;
+    assessment: boolean;
 }
 
 export interface CourseCreationSettings {

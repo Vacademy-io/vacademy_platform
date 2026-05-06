@@ -134,7 +134,10 @@ const SubmissionCard = ({
     const [isSaving, setIsSaving] = useState(false);
     const [savedFlash, setSavedFlash] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const isGraded = row.marks != null;
+    // marks=0 is set by default at student submission time, so the teacher has
+    // only actually graded if any of: positive marks, feedback, or checked copy.
+    const isGraded =
+        (row.marks != null && row.marks > 0) || !!row.feedback || !!row.checkedFileId;
 
     const handleUploadCheckedFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -786,7 +789,10 @@ export const ActivityLogDialog = ({
                         const isAssignment = activeItem?.source_type === 'ASSIGNMENT';
                         const total = resolvedAssignmentData.length;
                         const graded = resolvedAssignmentData.filter(
-                            (r) => r.marks != null
+                            (r) =>
+                                (r.marks != null && r.marks > 0) ||
+                                !!r.feedback ||
+                                !!r.checkedFileId
                         ).length;
                         const pending = total - graded;
 

@@ -17,6 +17,7 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
     FROM payment_option po
     LEFT JOIN payment_plan pp ON po.id = pp.payment_option_id
     WHERE (:types IS NULL OR po.type IN (:types))
+      AND (:excludeTypes IS NULL OR po.type NOT IN (:excludeTypes))
       AND (:source IS NULL OR po.source = :source)
       AND (:sourceId IS NULL OR po.source_id = :sourceId)
       AND (:paymentOptionStatuses IS NULL OR po.status IN (:paymentOptionStatuses))
@@ -36,11 +37,12 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
           (:notRequireApproval = true AND po.require_approval = false) OR
           (:requireApproval = false AND :notRequireApproval = false)
       )
-    GROUP BY po.id, po.name, po.status, po.source, po.source_id, po.tag, po.type, po.require_approval, po.unit, po.created_at, po.updated_at
+    GROUP BY po.id, po.name, po.status, po.source, po.source_id, po.tag, po.type, po.require_approval, po.unit, po.complex_payment_option_id, po.created_at, po.updated_at
     ORDER BY po.created_at DESC, MAX(pp.created_at) DESC NULLS LAST
 """, nativeQuery = true)
     List<PaymentOption> findPaymentOptionsWithPaymentPlansNative(
             @Param("types") List<String> types,
+            @Param("excludeTypes") List<String> excludeTypes,
             @Param("source") String source,
             @Param("sourceId") String sourceId,
             @Param("paymentOptionStatuses") List<String> paymentOptionStatuses,
@@ -56,6 +58,7 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
     WHERE (:source IS NULL OR po.source = :source)
       AND (:sourceId IS NULL OR po.sourceId = :sourceId)
       AND (:tag IS NULL OR po.tag = :tag)
+      AND (:excludeTypes IS NULL OR po.type NOT IN :excludeTypes)
       AND (:paymentOptionStatus IS NULL OR po.status IN :paymentOptionStatus)
       AND (
             :planStatuses IS NULL
@@ -68,8 +71,15 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
             @Param("source") String source,
             @Param("sourceId") String sourceId,
             @Param("tag") String tag,
+            @Param("excludeTypes") List<String> excludeTypes,
             @Param("paymentOptionStatus") List<String> paymentOptionStatus,
             @Param("planStatuses") List<String> planStatuses
     );
+
+    /**
+     * Finds the mirror PaymentOption for a given ComplexPaymentOption, if any.
+     * Used by ComplexPaymentOptionOperation, SchoolEnrollService, and the mirror sync helper.
+     */
+    Optional<PaymentOption> findByComplexPaymentOptionId(String complexPaymentOptionId);
 
 }

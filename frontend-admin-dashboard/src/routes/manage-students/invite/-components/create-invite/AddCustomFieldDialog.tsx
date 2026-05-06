@@ -15,7 +15,11 @@ export const AddCustomFieldDialog = ({
     onAddField,
     customFields,
 }: AddCustomFieldDialogProps) => {
-    const existingFieldNames = customFields.map((f) => f.name);
+    // Only consider ACTIVE fields as duplicates — admins should be able to
+    // re-add a field they previously deleted in the same dialog session.
+    const existingFieldNames = customFields
+        .filter((f) => (f as any).status !== 'DELETED')
+        .map((f) => f.name);
 
     return (
         <SharedAddCustomFieldDialog

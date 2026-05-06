@@ -15,7 +15,11 @@ import { routeTree } from "./routeTree.gen";
 import "./i18n";
 import { Toaster } from "./components/ui/sonner";
 import "./lib/debug";
-import { installChunkErrorHandler } from "./lib/chunk-reload";
+import {
+  installChunkErrorHandler,
+  isChunkLoadError,
+  reloadForChunkError,
+} from "./lib/chunk-reload";
 import {
   getTokenFromCookie,
   getTokenDecodedData,
@@ -165,18 +169,31 @@ const queryClient = new QueryClient({
   },
 });
 
-// Lazy load push notification hook to avoid Firebase initialization blocking render
+// Lazy load push notification hook to avoid Firebase initialization blocking render.
+// Only chunk-load failures (stale tab whose hashed chunk no longer exists on the CDN)
+// are intercepted: trigger a reload, and if the reload budget is exhausted fall back
+// to a no-op so notifications fail open instead of taking down the whole app.
+// Any other import rejection (a real bug in the module) is re-thrown so it surfaces
+// to Sentry and behaves the same as before this guard was added.
 const LazyNotificationInitializer = lazy(() =>
-  import("./components/lazy/NotificationInitializer")
+  import("./components/lazy/NotificationInitializer").catch((err) => {
+    if (!isChunkLoadError(err)) throw err;
+    reloadForChunkError();
+    return { default: () => null };
+  })
 );
 
-// Fallback wrapper for notifications
+// Render the lazy notification initializer in its own Suspense so a stalled
+// or failed import cannot suspend the whole app subtree (router included)
+// and produce a silent white screen.
 const NotificationWrapper = ({ children }: { children: React.ReactNode }) => {
   return (
-    <Suspense fallback={null}>
-      <LazyNotificationInitializer />
+    <>
+      <Suspense fallback={null}>
+        <LazyNotificationInitializer />
+      </Suspense>
       {children}
-    </Suspense>
+    </>
   );
 };
 
@@ -215,7 +232,7 @@ if (!rootElement.innerHTML) {
         <ColorThemeProvider>
           <QueryClientProvider client={queryClient}>
             <NotificationWrapper>
-              <SidebarProvider>
+              <SidebarProvider defaultOpen={false}>
                 <RouterProvider router={router} />
                 <Toaster />
               </SidebarProvider>

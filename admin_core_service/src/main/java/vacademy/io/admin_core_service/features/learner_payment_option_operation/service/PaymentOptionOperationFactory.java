@@ -8,17 +8,19 @@ import java.util.Map;
 
 @Service
 public class PaymentOptionOperationFactory {
-    private final Map<PaymentOptionType,PaymentOptionOperationStrategy> strategies;
+    private final Map<PaymentOptionType, PaymentOptionOperationStrategy> strategies;
 
     public PaymentOptionOperationFactory(SubscriptionPaymentOptionOperation subscriptionPaymentOptionOperation,
                                          OneTimePaymentOptionOperation oneTimePaymentOptionOperation,
                                          DonationPaymentOptionOperation donationPaymentOptionOperation,
-                                         FreePaymentOptionOperation freePaymentOptionOperation) {
+                                         FreePaymentOptionOperation freePaymentOptionOperation,
+                                         ComplexPaymentOptionOperation complexPaymentOptionOperation) {
         strategies = Map.of(
                 PaymentOptionType.SUBSCRIPTION, subscriptionPaymentOptionOperation,
                 PaymentOptionType.ONE_TIME, oneTimePaymentOptionOperation,
                 PaymentOptionType.DONATION, donationPaymentOptionOperation,
-                PaymentOptionType.FREE, freePaymentOptionOperation
+                PaymentOptionType.FREE, freePaymentOptionOperation,
+                PaymentOptionType.CPO, complexPaymentOptionOperation
         );
     }
 

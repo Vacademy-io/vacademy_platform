@@ -969,7 +969,7 @@ export function LoginForm({
                   transition={{ delay: 0.7 }}
                   className="grid grid-cols-1 gap-3"
                 >
-                  {/* {authProviders?.google && (
+                  {authProviders?.google && (
                     <Button
                       variant="outline"
                       className="w-full relative h-11"
@@ -979,8 +979,8 @@ export function LoginForm({
                       <FcGoogle className="mr-2 h-4 w-4" />
                       Continue with Google
                     </Button>
-                  )} */}
-                  {/* {authProviders?.github && (
+                  )}
+                  {authProviders?.github && (
                     <Button
                       variant="outline"
                       className="w-full relative h-11"
@@ -990,7 +990,7 @@ export function LoginForm({
                       <GitHubLogoIcon className="mr-2 h-4 w-4" />
                       Continue with GitHub
                     </Button>
-                  )} */}
+                  )}
                 </motion.div>
 
                 {/* Divider */}

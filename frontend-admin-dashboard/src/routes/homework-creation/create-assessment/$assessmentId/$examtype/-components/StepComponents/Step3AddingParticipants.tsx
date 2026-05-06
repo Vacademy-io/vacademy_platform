@@ -769,7 +769,9 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
                                             }
                                             onAddField={handleAddCustomField}
                                             existingFieldNames={
-                                                customFields?.map((f) => f.name) ?? []
+                                                customFields
+                                                    ?.filter((f) => (f as any).status !== 'DELETED')
+                                                    .map((f) => f.name) ?? []
                                             }
                                         />
                                     </div>

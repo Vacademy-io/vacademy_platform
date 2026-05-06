@@ -813,7 +813,9 @@ export default function ScheduleStep2() {
                                                     : [],
                                             });
                                         }}
-                                        existingFieldNames={fields.map((f) => f.label)}
+                                        existingFieldNames={fields
+                                            .filter((f) => (f as any).status !== 'DELETED')
+                                            .map((f) => f.label)}
                                     />
                                     <MyButton
                                         buttonType="secondary"

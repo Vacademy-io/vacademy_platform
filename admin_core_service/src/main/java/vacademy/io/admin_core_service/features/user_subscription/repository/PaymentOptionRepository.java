@@ -12,19 +12,25 @@ import java.util.Optional;
 @Repository
 public interface PaymentOptionRepository extends JpaRepository<PaymentOption, String> {
 
+    /**
+     * NOTE on parameter shape:
+     * Postgres JDBC cannot infer the SQL type for a List parameter bound to NULL inside
+     * `:list IS NULL` checks (manifests as `ERROR: could not determine data type of parameter $1`).
+     * The fix is to always bind non-null lists and gate inclusion via boolean flags
+     * (`:hasTypes`, `:hasExcludeTypes`, etc.). When a flag is false the OR short-circuits
+     * and the IN clause never executes, so the sentinel list contents don't matter.
+     */
     @Query(value = """
     SELECT po.*
     FROM payment_option po
     LEFT JOIN payment_plan pp ON po.id = pp.payment_option_id
-    WHERE (:types IS NULL OR po.type IN (:types))
-      AND (:excludeTypes IS NULL OR po.type NOT IN (:excludeTypes))
+    WHERE (:hasTypes = false OR po.type IN (:types))
+      AND (:hasExcludeTypes = false OR po.type NOT IN (:excludeTypes))
       AND (:source IS NULL OR po.source = :source)
       AND (:sourceId IS NULL OR po.source_id = :sourceId)
-      AND (:paymentOptionStatuses IS NULL OR po.status IN (:paymentOptionStatuses))
+      AND (:hasPaymentOptionStatuses = false OR po.status IN (:paymentOptionStatuses))
       AND (
-          -- This block now correctly includes payment options that have NO payment plans,
-          -- even when filtering by payment plan status.
-          :paymentPlanStatuses IS NULL
+          :hasPaymentPlanStatuses = false
           OR NOT EXISTS (SELECT 1 FROM payment_plan pp_sub WHERE pp_sub.payment_option_id = po.id)
           OR EXISTS (
               SELECT 1
@@ -41,11 +47,15 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
     ORDER BY po.created_at DESC, MAX(pp.created_at) DESC NULLS LAST
 """, nativeQuery = true)
     List<PaymentOption> findPaymentOptionsWithPaymentPlansNative(
+            @Param("hasTypes") boolean hasTypes,
             @Param("types") List<String> types,
+            @Param("hasExcludeTypes") boolean hasExcludeTypes,
             @Param("excludeTypes") List<String> excludeTypes,
             @Param("source") String source,
             @Param("sourceId") String sourceId,
+            @Param("hasPaymentOptionStatuses") boolean hasPaymentOptionStatuses,
             @Param("paymentOptionStatuses") List<String> paymentOptionStatuses,
+            @Param("hasPaymentPlanStatuses") boolean hasPaymentPlanStatuses,
             @Param("paymentPlanStatuses") List<String> paymentPlanStatuses,
             @Param("requireApproval") boolean requireApproval,
             @Param("notRequireApproval") boolean notRequireApproval
@@ -58,10 +68,10 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
     WHERE (:source IS NULL OR po.source = :source)
       AND (:sourceId IS NULL OR po.sourceId = :sourceId)
       AND (:tag IS NULL OR po.tag = :tag)
-      AND (:excludeTypes IS NULL OR po.type NOT IN :excludeTypes)
-      AND (:paymentOptionStatus IS NULL OR po.status IN :paymentOptionStatus)
+      AND (:hasExcludeTypes = false OR po.type NOT IN :excludeTypes)
+      AND (:hasPaymentOptionStatus = false OR po.status IN :paymentOptionStatus)
       AND (
-            :planStatuses IS NULL
+            :hasPlanStatuses = false
             OR pp IS NULL
             OR pp.status IN :planStatuses
           )
@@ -71,8 +81,11 @@ public interface PaymentOptionRepository extends JpaRepository<PaymentOption, St
             @Param("source") String source,
             @Param("sourceId") String sourceId,
             @Param("tag") String tag,
+            @Param("hasExcludeTypes") boolean hasExcludeTypes,
             @Param("excludeTypes") List<String> excludeTypes,
+            @Param("hasPaymentOptionStatus") boolean hasPaymentOptionStatus,
             @Param("paymentOptionStatus") List<String> paymentOptionStatus,
+            @Param("hasPlanStatuses") boolean hasPlanStatuses,
             @Param("planStatuses") List<String> planStatuses
     );
 

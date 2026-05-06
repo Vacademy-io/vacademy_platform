@@ -60,6 +60,10 @@ export const VIMOTION_BRAND_KIT_DEFAULT = `${BASE_URL}/admin-core-service/vimoti
 export const VIMOTION_BRAND_KIT_SET_DEFAULT = (id: string) =>
     `${BASE_URL}/admin-core-service/vimotion/v1/brand-kits/${id}/set-default`;
 
+// Brand-kit-from-website scrape (ai_service, JWT-auth — does NOT persist;
+// returns a draft the FE prefills into the existing BrandKitDrawer).
+export const VIMOTION_BRAND_KIT_SCRAPE = `${AI_SERVICE_BASE_URL}/admin/vimotion/v1/brand-kits/scrape`;
+
 export const VIMOTION_AVATARS = `${BASE_URL}/admin-core-service/vimotion/v1/avatars`;
 export const VIMOTION_AVATAR_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/vimotion/v1/avatars/${id}`;

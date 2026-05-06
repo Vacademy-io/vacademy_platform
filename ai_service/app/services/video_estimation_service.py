@@ -184,7 +184,7 @@ def _resolve_default_video_model(db: Session) -> Optional[str]:
     """Same fallback chain video_generation_service uses."""
     try:
         from .ai_models_service import AIModelsService
-        return AIModelsService(db).get_models_for_use_case("video").default_model_id
+        return AIModelsService(db).get_models_for_use_case("video").default_model.model_id
     except Exception as e:
         logger.warning(f"[VideoEstimation] default model lookup failed: {e}")
         return None

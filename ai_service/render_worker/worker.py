@@ -622,24 +622,97 @@ class RenderWorker:
             # Run workers in parallel
             logger.info(f"Launching {len(frame_ranges)} parallel render workers: {frame_ranges}")
 
-            def _run_chunk(start: int, end: int) -> subprocess.CompletedProcess:
-                chunk_cmd = base_cmd + ["--start-frame", str(start), "--end-frame", str(end)]
+            # Per-worker frame progress (rendered, total) for aggregate %.
+            _worker_progress: dict[int, tuple[int, int]] = {
+                i: (0, end - start) for i, (start, end) in enumerate(frame_ranges)
+            }
+            import re as _re_mod
+            _frame_progress_re = _re_mod.compile(
+                r"\[FRAME-PROGRESS\][^\n]*?rendered=(\d+)/(\d+)"
+            )
+
+            def _push_aggregate_progress() -> None:
+                if not on_progress:
+                    return
+                # Scale into the [25, 70] band — earlier % is download/setup,
+                # later % is FFmpeg encode + S3 upload.
+                done = sum(p[0] for p in _worker_progress.values())
+                total = sum(p[1] for p in _worker_progress.values()) or 1
+                pct = 25.0 + (done / total) * 45.0
                 try:
-                    return subprocess.run(
+                    on_progress(min(70.0, pct))
+                except Exception:
+                    pass
+
+            def _run_chunk(worker_idx: int, start: int, end: int) -> subprocess.CompletedProcess:
+                chunk_cmd = base_cmd + ["--start-frame", str(start), "--end-frame", str(end)]
+                proc = subprocess.Popen(
+                    chunk_cmd,
+                    cwd=str(REPO_ROOT),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,  # line-buffered
+                )
+                stdout_chunks: list[str] = []
+                stderr_chunks: list[str] = []
+
+                import threading as _th
+
+                def _drain_stdout() -> None:
+                    assert proc.stdout is not None
+                    for line in proc.stdout:
+                        stdout_chunks.append(line)
+                        # Forward to container logs in real time. Strip trailing \n
+                        # to avoid double newlines from logger formatting.
+                        _stripped = line.rstrip("\n")
+                        if _stripped:
+                            logger.info(f"[w{worker_idx}] {_stripped}")
+                        # Aggregate frame progress when we see a [FRAME-PROGRESS] line.
+                        m = _frame_progress_re.search(line)
+                        if m:
+                            try:
+                                rendered = int(m.group(1))
+                                total = int(m.group(2))
+                                _worker_progress[worker_idx] = (rendered, total)
+                                _push_aggregate_progress()
+                            except Exception:
+                                pass
+
+                def _drain_stderr() -> None:
+                    assert proc.stderr is not None
+                    for line in proc.stderr:
+                        stderr_chunks.append(line)
+
+                t_out = _th.Thread(target=_drain_stdout, daemon=True)
+                t_err = _th.Thread(target=_drain_stderr, daemon=True)
+                t_out.start()
+                t_err.start()
+
+                try:
+                    proc.wait(timeout=5400)
+                    t_out.join(timeout=10)
+                    t_err.join(timeout=10)
+                    return subprocess.CompletedProcess(
                         chunk_cmd,
-                        check=False,
-                        cwd=str(REPO_ROOT),
-                        capture_output=True,
-                        text=True,
-                        timeout=5400,
+                        returncode=proc.returncode,
+                        stdout="".join(stdout_chunks),
+                        stderr="".join(stderr_chunks),
                     )
-                except subprocess.TimeoutExpired as te:
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=10)
+                    except Exception:
+                        pass
+                    t_out.join(timeout=5)
+                    t_err.join(timeout=5)
                     return subprocess.CompletedProcess(
                         chunk_cmd,
                         returncode=124,
-                        stdout=(te.stdout.decode("utf-8", "replace") if isinstance(te.stdout, bytes) else (te.stdout or "")),
+                        stdout="".join(stdout_chunks),
                         stderr=(
-                            (te.stderr.decode("utf-8", "replace") if isinstance(te.stderr, bytes) else (te.stderr or ""))
+                            "".join(stderr_chunks)
                             + f"\n[WORKER-TIMEOUT] subprocess exceeded 5400s for frames ({start}, {end})\n"
                         ),
                     )
@@ -648,8 +721,8 @@ class RenderWorker:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=NUM_WORKERS) as pool:
                 futures = [
-                    loop.run_in_executor(pool, _run_chunk, start, end)
-                    for start, end in frame_ranges
+                    loop.run_in_executor(pool, _run_chunk, i, start, end)
+                    for i, (start, end) in enumerate(frame_ranges)
                 ]
                 results = await asyncio.gather(*futures)
 

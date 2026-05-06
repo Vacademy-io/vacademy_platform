@@ -393,6 +393,15 @@ export interface ErrorEvent {
     video_id?: string;
 }
 
+/** Emitted by the backend when the user cancels via POST /cancel/{video_id}.
+ *  Distinct from `error` so the FE can show a friendlier "Stopped" UI and
+ *  skip the failure-recovery / retry suggestions. */
+export interface CancelledEvent {
+    type: 'cancelled';
+    message?: string;
+    video_id?: string;
+}
+
 /** Sub-stage progress event emitted during long phases (e.g. director_planning, shot_done) */
 export interface SubStageEvent {
     type: 'sub_stage';
@@ -476,6 +485,7 @@ export type SSEEvent =
     | CompletedEvent
     | InfoEvent
     | ErrorEvent
+    | CancelledEvent
     | SubStageEvent
     | ShotDoneEvent
     | ShotErrorEvent;
@@ -1261,6 +1271,35 @@ export async function getRenderStatus(
         throw new Error(`Failed to get render status: ${response.statusText}`);
     }
 
+    return response.json();
+}
+
+/**
+ * Stop an in-flight generation pipeline server-side.
+ *
+ * The backend signals the pipeline thread to abort at its next safe
+ * checkpoint, transitions the video to `CANCELLED`, refunds all credits
+ * charged so far for it, and pushes a `cancelled` SSE event.
+ *
+ * Idempotent: returns `{ stopped: false }` if the video already finished
+ * (completed / failed / previously cancelled). 404 if the videoId doesn't
+ * exist.
+ */
+export async function cancelGeneration(
+    videoId: string,
+    apiKey: string
+): Promise<{ status: string; video_id: string; stopped: boolean }> {
+    const response = await fetch(
+        `${AI_SERVICE_BASE_URL}/external/video/v1/cancel/${videoId}`,
+        {
+            method: 'POST',
+            headers: { 'X-Institute-Key': apiKey },
+        }
+    );
+    if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText);
+        throw new Error(`Cancel failed: ${text}`);
+    }
     return response.json();
 }
 

@@ -19,6 +19,16 @@ from uuid import uuid4
 
 from ..repositories.ai_video_repository import AiVideoRepository
 from .s3_service import S3Service
+from . import cancellation_registry
+
+
+def _is_pipeline_cancelled(exc: BaseException) -> bool:
+    """The pipeline lives in the ``ai-video-gen-main/`` directory (not a
+    proper Python package importable from ``app.*``). It defines its own
+    ``PipelineCancelled`` exception and raises it at safe checkpoints. We
+    detect it here by class name so we don't need a fragile dynamic import
+    at module load time — the pipeline is only loaded later via sys.path."""
+    return type(exc).__name__ == "PipelineCancelled"
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..models.ai_token_usage import ApiProvider, RequestType
@@ -584,7 +594,7 @@ class VideoGenerationService:
             try:
                 from ..services.ai_models_service import AIModelsService
                 if db_session:
-                    resolved_model = AIModelsService(db_session).get_models_for_use_case("video").default_model_id
+                    resolved_model = AIModelsService(db_session).get_models_for_use_case("video").default_model.model_id
                     logger.info(f"[VideoGenService] Auto-selected default model '{resolved_model}' for video generation")
             except Exception as e:
                 logger.warning(f"[VideoGenService] Failed to auto-select model from defaults: {e}")
@@ -1318,12 +1328,40 @@ class VideoGenerationService:
         
         # Store image path mapping across stages (needed for html stage)
         image_path_mapping = {}  # Maps local file paths to S3 URLs
-        
+
+        # Cooperative stop signal — set by POST /cancel/{video_id} from the
+        # router. Pipeline thread checks this at safe checkpoints and raises
+        # PipelineCancelled. Cleared at the end of this generator (and as a
+        # safety net by the router's _run_generation finally block).
+        stop_event = cancellation_registry.register(video_id)
+
         # Iterate through stages individually
         for stage_idx in range(start_stage_idx, target_stage_idx + 1):
             if pipeline_error:
                 logger.warning(f"[VideoGenService] Stopping stage loop due to error in previous stage")
                 break
+
+            # Check the stop flag at the start of each stage — cheapest
+            # checkpoint, catches the case where the user cancelled while
+            # we were uploading the previous stage's outputs to S3.
+            if stop_event.is_set():
+                logger.info(f"[VideoGenService] Cancellation detected before stage {stage_idx}; halting")
+                # Re-assert CANCELLED in DB. The cancel endpoint already
+                # wrote it, but the previous stage's upload-loop may have
+                # overwritten with IN_PROGRESS in between (race window).
+                try:
+                    self.repository.update_stage(
+                        video_id, stage="CANCELLED", status="CANCELLED"
+                    )
+                except Exception:
+                    pass
+                yield {
+                    "type": "cancelled",
+                    "video_id": video_id,
+                    "message": "Stopped by user",
+                }
+                cancellation_registry.clear(video_id)
+                return
 
             stage_name = self.STAGES[stage_idx]
             config = stage_config[stage_idx]
@@ -1409,6 +1447,7 @@ class VideoGenerationService:
                     video_type_plan=video_type_plan.model_dump() if video_type_plan else None,
                     host_plan=host_plan.model_dump() if host_plan else None,
                     progress_callback=_progress_cb,
+                    stop_event=stop_event,
                 )
 
                 # Run pipeline in thread while draining the progress queue in the
@@ -1744,6 +1783,28 @@ class VideoGenerationService:
                     logger.error(f"[VideoGenService] {pipeline_error}")
 
             except Exception as e:
+                # Detect PipelineCancelled by class name — the pipeline class
+                # lives outside `app.*` so we can't catch the type directly
+                # (see `_is_pipeline_cancelled` near the top of this module).
+                if _is_pipeline_cancelled(e):
+                    logger.info(
+                        f"[VideoGenService] Pipeline cancelled by user during stage {stage_pipeline_name}"
+                    )
+                    # Re-assert CANCELLED to win any race with a concurrent
+                    # post-stage upload that may have written IN_PROGRESS.
+                    try:
+                        self.repository.update_stage(
+                            video_id, stage="CANCELLED", status="CANCELLED"
+                        )
+                    except Exception:
+                        pass
+                    yield {
+                        "type": "cancelled",
+                        "video_id": video_id,
+                        "message": "Stopped by user",
+                    }
+                    cancellation_registry.clear(video_id)
+                    return
                 import traceback
                 pipeline_error = str(e)
                 error_traceback = traceback.format_exc()
@@ -2261,7 +2322,11 @@ class VideoGenerationService:
                 "error_details": pipeline_error,
                 "stage": video_record.current_stage if video_record else "PENDING"
             }
-    
+
+        # Clean up the cooperative-stop registry entry. Idempotent — safe even
+        # if we already cleared on a PipelineCancelled return earlier.
+        cancellation_registry.clear(video_id)
+
     # Note: _process_pipeline_outputs is now handled inline in _run_pipeline_stages
     # for real-time database updates at each stage
 

@@ -27,6 +27,7 @@ import {
     getVideoUrls,
     getVideoStatus,
     getRemoteHistory,
+    cancelGeneration,
     DEFAULT_OPTIONS,
 } from '../-services/video-generation';
 import { HistorySidebar } from './HistorySidebar';
@@ -1164,6 +1165,26 @@ export function VideoConsoleWorkspace({
                                 recentErrors: [...existing, errEntry].slice(-RECENT_ERRORS_CAP),
                             };
                         });
+                    } else if (event.type === 'cancelled') {
+                        // BE acknowledged the stop (this fires for either:
+                        // a) the user's own Stop click — handleAbort already
+                        //    tore down local state, so this is a no-op echo,
+                        // or b) a sibling tab watching the same generation
+                        //    that needs to update its UI when the cancel was
+                        //    initiated elsewhere). Idempotent state cleanup.
+                        localStorage.removeItem(PENDING_GENERATION_KEY);
+                        setCurrentGeneration(null);
+                        setConsoleState('idle');
+                        updateHistoryState({
+                            id: videoId,
+                            video_id: videoId,
+                            prompt: request.prompt,
+                            content_type: contentType,
+                            status: 'failed', // history sidebar lacks a 'cancelled' status
+                            stage: 'PENDING',
+                            created_at: new Date().toISOString(),
+                            options: pendingOptions,
+                        });
                     } else if (event.type === 'error') {
                         // Use the ref so we read the *latest* state (the closure value
                         // is stale by the time SSE error events arrive). If we already
@@ -1495,6 +1516,15 @@ export function VideoConsoleWorkspace({
     );
 
     const handleNewVideo = useCallback(() => {
+        // If a generation is in flight, also cancel it server-side. Otherwise
+        // the backend would keep running (and charging) after the user moved
+        // on. Fire-and-forget — UI teardown happens regardless.
+        const vid = currentGeneration?.videoId;
+        if (vid && activeApiKey && consoleState === 'generating') {
+            void cancelGeneration(vid, activeApiKey).catch(() => {
+                /* swallow — user already moved on */
+            });
+        }
         if (abortRef.current) {
             abortRef.current();
             abortRef.current = null;
@@ -1516,17 +1546,44 @@ export function VideoConsoleWorkspace({
         setIgnoredUrls(new Set());
         setRoutingOverrides({});
         setConsoleState('idle');
-    }, []);
+    }, [currentGeneration, activeApiKey, consoleState]);
 
     /**
-     * Cancel an in-flight production from the pipeline panel. Aborts the
-     * SSE stream, kills polling, and clears the persisted pending key. The
-     * BE background task may keep running for a few more seconds before it
-     * notices the disconnect — we surface that via toast so the user
-     * doesn't expect immediate cleanup. Composer context is preserved so
-     * the user can re-submit with the same prompt + attachments.
+     * Cancel an in-flight production from the pipeline panel.
+     *
+     * Three things happen here:
+     *   1. POST /cancel/{video_id} — server-side: signals the pipeline to
+     *      stop at its next safe checkpoint, marks the video CANCELLED, and
+     *      refunds all credits charged so far. This is fire-and-forget from
+     *      the UI's perspective; we move on without awaiting it.
+     *   2. Local SSE abort + polling teardown so the UI flips immediately.
+     *   3. Clear the persisted pending key + composer state.
+     *
+     * Composer context (prompt, attachments, routing) is preserved so the
+     * user can re-submit with tweaks rather than starting from blank.
      */
     const handleAbort = useCallback(() => {
+        const vid = currentGeneration?.videoId;
+        // Fire the BE cancel without blocking the UI teardown. Toast on
+        // success/failure separately so user gets confirmation that credits
+        // were actually refunded server-side.
+        if (vid && activeApiKey) {
+            void cancelGeneration(vid, activeApiKey)
+                .then((res) => {
+                    if (res.stopped) {
+                        toast.success('Generation stopped — credits refunded');
+                    } else {
+                        toast.info(`Already ${res.status.toLowerCase()} — nothing to refund`);
+                    }
+                })
+                .catch((err: unknown) => {
+                    toast.error(
+                        err instanceof Error
+                            ? `Stop failed: ${err.message}`
+                            : 'Stop failed (server unreachable)'
+                    );
+                });
+        }
         if (abortRef.current) {
             abortRef.current();
             abortRef.current = null;
@@ -1540,10 +1597,7 @@ export function VideoConsoleWorkspace({
         setCurrentGeneration(null);
         setReviewScript('');
         setConsoleState('idle');
-        toast.info(
-            "Stopped on your end. The server may take a moment to wind down — that's normal."
-        );
-    }, []);
+    }, [currentGeneration, activeApiKey]);
 
     // Resume generation after script review
     const handleResumeFromReview = useCallback(() => {

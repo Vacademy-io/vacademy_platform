@@ -34,6 +34,15 @@ import urllib.request
 import time
 import functools
 
+
+class PipelineCancelled(Exception):
+    """Raised at a safe checkpoint when the cooperative stop flag has been
+    set by ``POST /cancel/{video_id}``. Caught by ``video_generation_service``
+    and translated into a ``cancelled`` SSE event. Distinct exception class
+    so callers can differentiate cancellation from a real pipeline error."""
+    pass
+
+
 try:
     from rembg import remove as rembg_remove, new_session as rembg_new_session
     REMBG_AVAILABLE = True
@@ -1543,6 +1552,14 @@ class VideoGenerationPipeline:
             return bool(override)
         return bool(self._tier_config.get("background_music_enabled", False))
 
+    def _check_stop(self) -> None:
+        """Raise ``PipelineCancelled`` if the cooperative stop flag has been
+        set by the cancel endpoint. Called at safe checkpoints — between
+        stages and before submitting each parallel HTML shot — so the
+        pipeline unwinds without leaving zombie LLM calls in flight."""
+        if self._stop_event is not None and self._stop_event.is_set():
+            raise PipelineCancelled("Pipeline cancelled by user")
+
     def run(
         self,
         base_prompt: Optional[str],
@@ -1580,7 +1597,13 @@ class VideoGenerationPipeline:
         video_type_plan: Optional[Dict[str, Any]] = None,
         host_plan: Optional[Dict[str, Any]] = None,
         progress_callback: Optional[Any] = None,
+        stop_event: Optional[Any] = None,
     ) -> Dict[str, Any]:
+        # Stash the cooperative stop signal on the instance so deeply-nested
+        # methods (per-shot HTML, sound planner, etc.) can check it via
+        # `self._check_stop()` without threading the parameter through every
+        # call site. None disables checking entirely (legacy / tests).
+        self._stop_event = stop_event
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
         self.video_width = video_width
         self.video_height = video_height
@@ -8624,18 +8647,32 @@ class VideoGenerationPipeline:
 
             return entries, usage
 
-        # Run all shots in parallel using ThreadPoolExecutor
+        # Run all shots in parallel using ThreadPoolExecutor.
+        # Cooperative-stop checkpoint: don't submit more shots if the user
+        # has cancelled, and bail out of the result-collection loop early
+        # if cancellation comes mid-batch. In-flight shots (≤ max_workers)
+        # complete naturally; everything queued behind them is skipped.
         all_entries: List[Dict[str, Any]] = []
         max_workers = min(8, max(1, total_shots))
 
         print(f"   🎬 Generating HTML for {total_shots} shots (parallel, max {max_workers} workers)...")
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_map = {
-                executor.submit(_shot_task, i, shot): i
-                for i, shot in enumerate(shots)
-            }
+            future_map: Dict[Any, int] = {}
+            for i, shot in enumerate(shots):
+                # Check before each submission so cancellation midway through
+                # the queue-up phase saves submissions for the remaining shots.
+                self._check_stop()
+                future_map[executor.submit(_shot_task, i, shot)] = i
+
             for future in concurrent.futures.as_completed(future_map):
+                # Check between completions too — if cancellation comes after
+                # all shots are queued but only some have run, the remaining
+                # in-flight ones still have to finish (ThreadPoolExecutor has
+                # no per-future cancel for already-running tasks), but we
+                # stop collecting their results so the pipeline can unwind.
+                if self._stop_event is not None and self._stop_event.is_set():
+                    raise PipelineCancelled("Pipeline cancelled by user during shot generation")
                 shot_idx = future_map[future]
                 try:
                     entries, usage = future.result()

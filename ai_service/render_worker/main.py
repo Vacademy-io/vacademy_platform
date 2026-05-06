@@ -161,9 +161,56 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
 
 
 def _update_progress(job_id: str, progress: float):
-    if job_id in jobs:
-        jobs[job_id]["progress"] = progress
-        jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+    """Update in-memory progress and debounce-push to the AI server.
+
+    Called from sync threads (subprocess stdout streamer in worker.py), so we
+    use a sync httpx client. We rate-limit pushes: at most one push per 5s
+    OR when progress moves by ≥ 2% — whichever comes first. This keeps the
+    AI server's DB fresh without flooding it.
+    """
+    if job_id not in jobs:
+        return
+    import time as _time
+    job = jobs[job_id]
+    job["progress"] = progress
+    job["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    callback_url = job.get("callback_url")
+    if not callback_url:
+        return
+
+    now_ts = _time.time()
+    last_pushed = job.get("_last_pushed_progress", -1.0)
+    last_pushed_at = job.get("_last_pushed_at", 0.0)
+    moved_enough = abs(progress - last_pushed) >= 2.0
+    enough_time = (now_ts - last_pushed_at) >= 5.0
+    if not (moved_enough or enough_time):
+        return
+
+    job["_last_pushed_progress"] = progress
+    job["_last_pushed_at"] = now_ts
+
+    # Sync HTTP push — runs on the worker thread, doesn't block the event loop.
+    try:
+        import httpx as _httpx
+        headers = {}
+        if RENDER_KEY:
+            headers["X-Render-Key"] = RENDER_KEY
+        with _httpx.Client(timeout=10) as client:
+            client.post(
+                callback_url,
+                json={
+                    "video_id": job["video_id"],
+                    "job_id": job_id,
+                    "status": "running",
+                    "progress": progress,
+                },
+                headers=headers,
+            )
+    except Exception as e:
+        # Push failure is non-fatal — the AI server has a watchdog on
+        # last_seen_at. We just log.
+        logger.debug(f"Progress push failed for {job_id}: {e}")
 
 
 async def _send_callback(url: str, data: dict):
@@ -214,6 +261,11 @@ async def submit_job(
         "error": None,
         "created_at": now,
         "updated_at": now,
+        # Push-based status: cached so _update_progress can debounce-POST
+        # progress to the AI server. Without callback_url the push is skipped.
+        "callback_url": request.callback_url,
+        "_last_pushed_progress": -1.0,  # sentinel so first update fires
+        "_last_pushed_at": 0.0,
     }
 
     # Fire and forget

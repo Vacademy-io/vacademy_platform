@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import re
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 import argparse
@@ -1358,8 +1359,17 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
 
                             // Creator of scoped GSAP instance
                             const createScopedGsap = () => {
-                                const g = { ...window.gsap }; // shallow clone
-                                
+                                // Capture window.gsap once at scope-creation time. If it's
+                                // ever undefined at call-time (rare race condition we've
+                                // observed in concurrent worker browsers), fall back to the
+                                // captured reference. If both are unavailable, return safe
+                                // no-op stubs so a failed gsap lookup can't crash the entire
+                                // shot's script — we'd rather render the static HTML than a
+                                // black frame stuck at opacity:0.
+                                const _wg = window.gsap;
+                                const _g = (typeof window.gsap !== 'undefined') ? window.gsap : _wg;
+                                const g = _g ? { ..._g } : {};
+
                                 const resolveGsap = (target) => {
                                     if (target == null) return target;
                                     if (typeof target === 'string') {
@@ -1379,22 +1389,48 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                                     return target;
                                 };
 
-                                g.to = (target, vars) => window.gsap.to(resolveGsap(target), vars);
-                                g.from = (target, vars) => window.gsap.from(resolveGsap(target), vars);
-                                g.fromTo = (target, f, t) => window.gsap.fromTo(resolveGsap(target), f, t);
-                                g.set = (target, vars) => window.gsap.set(resolveGsap(target), vars);
+                                // _safeCall always uses the live window.gsap when present,
+                                // otherwise the captured _wg, otherwise a no-op. This
+                                // prevents "Cannot read properties of undefined (reading
+                                // fromTo)" errors that lock elements at opacity:0.
+                                const _safeCall = (method, ...args) => {
+                                    const lib = window.gsap || _wg;
+                                    if (!lib || typeof lib[method] !== 'function') return undefined;
+                                    try { return lib[method](...args); } catch (e) {
+                                        console.warn('[scoped-gsap] ' + method + ' failed:', e && e.message);
+                                        return undefined;
+                                    }
+                                };
+
+                                g.to = (target, vars) => _safeCall('to', resolveGsap(target), vars);
+                                g.from = (target, vars) => _safeCall('from', resolveGsap(target), vars);
+                                g.fromTo = (target, f, t) => _safeCall('fromTo', resolveGsap(target), f, t);
+                                g.set = (target, vars) => _safeCall('set', resolveGsap(target), vars);
                                 g.timeline = (vars) => {
-                                    const tl = window.gsap.timeline(vars);
+                                    const lib = window.gsap || _wg;
+                                    if (!lib || typeof lib.timeline !== 'function') {
+                                        // Stub timeline so .to/.from/.fromTo/.set chains don't crash.
+                                        const stub = {
+                                            to: () => stub, from: () => stub,
+                                            fromTo: () => stub, set: () => stub,
+                                            add: () => stub, addLabel: () => stub,
+                                            play: () => stub, pause: () => stub,
+                                            seek: () => stub, kill: () => stub,
+                                            duration: () => 0, totalDuration: () => 0,
+                                        };
+                                        return stub;
+                                    }
+                                    const tl = lib.timeline(vars);
                                     const explicitProxy = (tlInstance) => {
                                         const originalTo = tlInstance.to.bind(tlInstance);
                                         const originalFrom = tlInstance.from.bind(tlInstance);
                                         const originalFromTo = tlInstance.fromTo.bind(tlInstance);
                                         const originalSet = tlInstance.set.bind(tlInstance);
-                                        
-                                        tlInstance.to = (t, v, p) => { originalTo(resolveGsap(t), v, p); return tlInstance; };
-                                        tlInstance.from = (t, v, p) => { originalFrom(resolveGsap(t), v, p); return tlInstance; };
-                                        tlInstance.fromTo = (t, f, to, p) => { originalFromTo(resolveGsap(t), f, to, p); return tlInstance; };
-                                        tlInstance.set = (t, v, p) => { originalSet(resolveGsap(t), v, p); return tlInstance; };
+
+                                        tlInstance.to = (t, v, p) => { try { originalTo(resolveGsap(t), v, p); } catch(e){} return tlInstance; };
+                                        tlInstance.from = (t, v, p) => { try { originalFrom(resolveGsap(t), v, p); } catch(e){} return tlInstance; };
+                                        tlInstance.fromTo = (t, f, to, p) => { try { originalFromTo(resolveGsap(t), f, to, p); } catch(e){} return tlInstance; };
+                                        tlInstance.set = (t, v, p) => { try { originalSet(resolveGsap(t), v, p); } catch(e){} return tlInstance; };
                                         return tlInstance;
                                     };
                                     return explicitProxy(tl);
@@ -1501,7 +1537,41 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
                             try {
                                 ${originalCode}
                             } catch (e) {
-                                console.error("Script execution error in snippet:", e);
+                                console.error("[SCRIPT-ERR shot=${e.id}] Script execution error in snippet:", e && (e.message || e));
+                                // Visual recovery: when the LLM script crashes mid-animation,
+                                // GSAP often leaves elements stuck at the from state
+                                // (opacity:0, scale, transform) because fromTo applies the
+                                // from values immediately then errors before queuing the tween.
+                                // Walk the shadow root and force any element with an
+                                // invisible inline style back to a visible neutral state —
+                                // matching what admin FE preview shows when animations
+                                // play out fully.
+                                try {
+                                    const _all = scope.querySelectorAll('*');
+                                    for (const _el of _all) {
+                                        const _st = _el.style;
+                                        if (!_st) continue;
+                                        // opacity:0 → 1 (covers fade-in animations that crashed)
+                                        if (_st.opacity !== '' && parseFloat(_st.opacity) < 1) {
+                                            _st.opacity = '1';
+                                        }
+                                        // visibility:hidden → visible
+                                        if (_st.visibility === 'hidden') {
+                                            _st.visibility = 'visible';
+                                        }
+                                        // scale:0/0.something → reset transform if it's an entrance scale
+                                        if (_st.transform && /scale\((0(\.\d+)?|0\.\d)\)/.test(_st.transform)) {
+                                            _st.transform = '';
+                                        }
+                                        // clip-path: inset(...) hidden states
+                                        if (_st.clipPath && /inset\(.*100%.*\)/.test(_st.clipPath)) {
+                                            _st.clipPath = '';
+                                        }
+                                    }
+                                } catch (_recoveryErr) {
+                                    // Recovery itself shouldn't crash; log and move on.
+                                    console.warn("[SCRIPT-ERR shot=${e.id}] visual recovery failed:", _recoveryErr && _recoveryErr.message);
+                                }
                             }
                         })(document.getElementById('${e.id}').shadowRoot);
                       `;
@@ -2583,7 +2653,7 @@ def render_video_from_json(
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
         # ── Build version marker ── (bump this when deploying changes)
-        print(f"[RENDER-VERSION] generate_video.py build=2026-05-01-v15 (vx-tweens-conv, diag-heartbeats, fps={fps})", flush=True)
+        print(f"[RENDER-VERSION] generate_video.py build=2026-05-06-v16 (gsap-proxy-defended, visual-recovery, shot-id-in-errors, fps={fps})", flush=True)
         # Wait for fonts to load before rendering frames
         try:
             page.evaluate("() => document.fonts.ready")
@@ -2710,6 +2780,8 @@ def render_video_from_json(
 
         _prev_active_ids = set()
         _crossfade_duration: float = float(opts.get("crossfade_duration", 0.0))
+        _frame_progress_start = time.time()
+        _frame_progress_chunk_size = max(1, _render_end - _render_start)
 
         for frame_index in range(_render_start, _render_end):
             t = frame_index / float(fps)
@@ -3080,8 +3152,23 @@ def render_video_from_json(
                     _caption_entry = {"x": 0, "y": 0, "w": width, "h": height, "html": html}
 
             # ── Single batched evaluate: camera + character + caption + GSAP + video seek + annotations + paint wait ──
-            if frame_index % 30 == 0:
-                print(f"DEBUG: Processing frame {frame_index}/{total_frames} (t={t:.2f}s)")
+            # Emit a parseable progress line every 50 frames so the parent
+            # render-worker process can see liveness in real time and forward
+            # aggregate progress to the AI server. Format consumed by
+            # render_worker/worker.py's stdout streamer.
+            _local_idx = frame_index - _render_start
+            if _local_idx > 0 and (_local_idx % 50 == 0 or frame_index + 1 == _render_end):
+                _elapsed = max(0.001, time.time() - _frame_progress_start)
+                _rate = _local_idx / _elapsed
+                _remaining = max(0, _frame_progress_chunk_size - _local_idx)
+                _eta = _remaining / _rate if _rate > 0 else 0
+                print(
+                    f"[FRAME-PROGRESS] worker_pid={os.getpid()} "
+                    f"rendered={_local_idx}/{_frame_progress_chunk_size} "
+                    f"frame_index={frame_index} elapsed={_elapsed:.1f}s "
+                    f"eta={_eta:.1f}s rate={_rate:.2f}fps"
+                )
+                sys.stdout.flush()
 
             page.evaluate("async (state) => await window.__batchRenderFrame(state)", {
                 "entries": None,  # Already updated via __updateSnippets above

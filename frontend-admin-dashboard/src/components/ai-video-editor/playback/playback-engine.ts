@@ -14,7 +14,7 @@
  */
 import { useSyncExternalStore } from 'react';
 import { useVideoEditorStore } from '../stores/video-editor-store';
-import { decodeFromUrl } from './audio-decode-cache';
+import { decodeForContext } from './audio-decode-cache';
 import type { AudioTrack, Entry } from '@/components/ai-video-player/types';
 
 interface ScheduledSource {
@@ -149,7 +149,7 @@ async function scheduleNarration(
     playheadStart: number
 ) {
     try {
-        const buffer = await decodeFromUrl(ctx, url);
+        const buffer = await decodeForContext(ctx, url);
         if (isStale(ctx, gen)) return;
         const scheduled = scheduleBuffer({
             ctx,
@@ -173,7 +173,7 @@ async function scheduleTrack(
     playheadStart: number
 ) {
     try {
-        const buffer = await decodeFromUrl(ctx, track.url);
+        const buffer = await decodeForContext(ctx, track.url);
         if (isStale(ctx, gen)) return;
         const scheduled = scheduleBuffer({
             ctx,
@@ -203,7 +203,7 @@ async function schedulePerEntryAudio(
         if (!e.audio_url) continue;
         const timelineStart = e.inTime ?? e.start ?? 0;
         try {
-            const buffer = await decodeFromUrl(ctx, e.audio_url);
+            const buffer = await decodeForContext(ctx, e.audio_url);
             if (isStale(ctx, gen)) return;
             const scheduled = scheduleBuffer({
                 ctx,

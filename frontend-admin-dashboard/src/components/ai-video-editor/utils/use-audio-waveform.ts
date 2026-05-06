@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react';
+import { decodeFromUrl } from '../playback/audio-decode-cache';
 
 /**
- * Fetches an audio file and decodes it via the Web Audio API,
- * returning a normalised array of peak amplitudes (0–1) ready for rendering.
+ * Returns normalized peak amplitudes (0–1) for an audio URL, ready to render.
  *
- * The computation runs once per URL and is cancelled if the URL changes or
- * the component unmounts before decoding finishes.
+ * Decoding is shared with the playback engine via `audio-decode-cache.ts`,
+ * so the master narration is decoded exactly once per session even when both
+ * the waveform and the playback engine want it. Decoding runs in a Web
+ * Worker — the main thread stays responsive on first scrub.
+ *
+ * The peak-extraction loop runs on the main thread but is cheap (O(samples)
+ * with one pass producing `numPeaks` blocks).
  */
 export function useAudioWaveform(audioUrl?: string, numPeaks = 400) {
     const [peaks, setPeaks] = useState<number[]>([]);
@@ -16,29 +21,20 @@ export function useAudioWaveform(audioUrl?: string, numPeaks = 400) {
             setPeaks([]);
             return;
         }
-
         let cancelled = false;
-        let audioCtx: AudioContext | null = null;
         setLoading(true);
 
-        (async () => {
-            try {
-                const response = await fetch(audioUrl);
+        decodeFromUrl(audioUrl)
+            .then((decoded) => {
                 if (cancelled) return;
-
-                const arrayBuffer = await response.arrayBuffer();
-                if (cancelled) return;
-
-                audioCtx = new AudioContext();
-                const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-                if (cancelled) return;
-
-                // Use the first channel (mono / left channel)
-                const raw = audioBuffer.getChannelData(0);
+                const raw = decoded.channels[0];
+                if (!raw || raw.length === 0) {
+                    setPeaks([]);
+                    return;
+                }
                 const blockSize = Math.max(1, Math.floor(raw.length / numPeaks));
-                const computed: number[] = [];
+                const computed: number[] = new Array(numPeaks);
                 let globalMax = 0;
-
                 for (let i = 0; i < numPeaks; i++) {
                     let peak = 0;
                     const start = i * blockSize;
@@ -47,22 +43,18 @@ export function useAudioWaveform(audioUrl?: string, numPeaks = 400) {
                         const abs = Math.abs(raw[j] ?? 0);
                         if (abs > peak) peak = abs;
                     }
-                    computed.push(peak);
+                    computed[i] = peak;
                     if (peak > globalMax) globalMax = peak;
                 }
-
-                // Normalise so the loudest peak = 1
-                const normalised =
-                    globalMax > 0 ? computed.map((p) => p / globalMax) : computed;
-
+                const normalised = globalMax > 0 ? computed.map((p) => p / globalMax) : computed;
                 if (!cancelled) setPeaks(normalised);
-            } catch {
-                // Audio unavailable or CORS blocked — silently skip waveform
-            } finally {
+            })
+            .catch(() => {
+                // Audio unavailable / CORS — silently skip waveform.
+            })
+            .finally(() => {
                 if (!cancelled) setLoading(false);
-                audioCtx?.close().catch(() => {});
-            }
-        })();
+            });
 
         return () => {
             cancelled = true;

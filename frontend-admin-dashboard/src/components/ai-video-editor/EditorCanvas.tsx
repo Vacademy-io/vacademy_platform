@@ -6,6 +6,7 @@ import { computePreviewStyle, TransitionPair } from './utils/transitions';
 import { getEditorIframeAgentScript } from './utils/editor-iframe-agent';
 import { pauseIfPlaying } from './playback/playback-engine';
 import { LayerHandlesOverlay } from './LayerHandlesOverlay';
+import { CanvasGuides } from './CanvasGuides';
 import type { Entry, ContentType } from '@/components/ai-video-player/types';
 import type { EntryTransform } from './stores/video-editor-store';
 
@@ -103,6 +104,27 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
 
     const containerRef = useRef<HTMLDivElement>(null);
     const [scale, setScale] = useState(1);
+    /** Persist guide preferences in localStorage so a user's "show safe area"
+     *  choice survives reloads. */
+    const [guides, setGuides] = useState<{ safe: boolean; thirds: boolean; center: boolean }>(
+        () => {
+            try {
+                const saved = localStorage.getItem('vx-canvas-guides');
+                if (saved) return JSON.parse(saved);
+            } catch {
+                /* ignore */
+            }
+            return { safe: false, thirds: false, center: false };
+        }
+    );
+    useEffect(() => {
+        try {
+            localStorage.setItem('vx-canvas-guides', JSON.stringify(guides));
+        } catch {
+            /* quota / private mode — silently ignore */
+        }
+    }, [guides]);
+    const guidesActive = guides.safe || guides.thirds || guides.center;
 
     const canvasW = meta.dimensions?.width ?? 1920;
     const canvasH = meta.dimensions?.height ?? 1080;
@@ -181,6 +203,12 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
         const onKey = (e: KeyboardEvent) => {
             if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
                 return;
+            // When a layer is selected, arrow keys nudge the layer (handled
+            // in LayerHandlesOverlay) and Delete removes the layer (handled
+            // in LayersTab). Bow out so we don't double-handle.
+            const layerSelected = useVideoEditorStore.getState().selectedLayerPath != null;
+            if (layerSelected) return;
+
             // Delete / Backspace → remove selected entry
             if ((e.key === 'Delete' || e.key === 'Backspace') && selectedEntryId) {
                 deleteEntry(selectedEntryId);
@@ -292,8 +320,16 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
                         DOM layer. Lives inside the scaled 1920×1080 div so
                         positions just use canvas-space pixel values from the
                         iframe's getBoundingClientRect(). */}
+                    <CanvasGuides
+                        canvasW={canvasW}
+                        canvasH={canvasH}
+                        scale={scale}
+                        showSafeArea={guides.safe}
+                        showRuleOfThirds={guides.thirds}
+                        showCenter={guides.center}
+                    />
                     {!isPreviewMode && (
-                        <LayerHandlesOverlay scale={scale} />
+                        <LayerHandlesOverlay scale={scale} canvasW={canvasW} canvasH={canvasH} />
                     )}
                 </div>
 
@@ -315,8 +351,98 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
                 >
                     {Math.round(scale * 100)}%
                 </div>
+
+                {/* Guides toggle pill — top-right of the canvas, sits above
+                    the iframes via z-index. Each segment toggles independently. */}
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: 6,
+                        right: 8,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        background: 'rgba(255,255,255,0.95)',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: 6,
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                        padding: 2,
+                        zIndex: 10001,
+                        fontSize: 10,
+                        fontFamily: 'system-ui, sans-serif',
+                    }}
+                >
+                    <GuideToggle
+                        label="Safe"
+                        active={guides.safe}
+                        onClick={() => setGuides((g) => ({ ...g, safe: !g.safe }))}
+                        title="Show broadcast safe areas (action 95% / title 90%)"
+                    />
+                    <GuideToggle
+                        label="Thirds"
+                        active={guides.thirds}
+                        onClick={() => setGuides((g) => ({ ...g, thirds: !g.thirds }))}
+                        title="Show rule-of-thirds grid"
+                    />
+                    <GuideToggle
+                        label="Center"
+                        active={guides.center}
+                        onClick={() => setGuides((g) => ({ ...g, center: !g.center }))}
+                        title="Show center crosshair"
+                    />
+                    {guidesActive && (
+                        <button
+                            type="button"
+                            onClick={() => setGuides({ safe: false, thirds: false, center: false })}
+                            title="Hide all guides"
+                            style={{
+                                marginLeft: 2,
+                                padding: '2px 4px',
+                                color: '#9ca3af',
+                                background: 'transparent',
+                                border: 'none',
+                                cursor: 'pointer',
+                                fontSize: 10,
+                            }}
+                        >
+                            ×
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
+    );
+}
+
+function GuideToggle({
+    label,
+    active,
+    onClick,
+    title,
+}: {
+    label: string;
+    active: boolean;
+    onClick: () => void;
+    title: string;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            title={title}
+            style={{
+                padding: '2px 6px',
+                fontSize: 10,
+                fontWeight: 500,
+                background: active ? '#6366f1' : 'transparent',
+                color: active ? '#fff' : '#6b7280',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+            }}
+        >
+            {label}
+        </button>
     );
 }
 

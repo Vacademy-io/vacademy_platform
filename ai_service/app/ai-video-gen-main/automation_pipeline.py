@@ -19,6 +19,7 @@ import base64
 import concurrent.futures
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -534,7 +535,14 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "min_animated_elements": 4,  # ultra: looser than super_ultra's 6
         "shot_pack_enabled": True,
         "shot_templates_enabled": True,
-        "skill_library_enabled": True,
+        # Skill library (number_counter, typewriter_text, ring_progress, ...) is
+        # disabled at ultra/super_ultra: at this tier the model is capable enough
+        # to design the visualization end-to-end, and injecting the skill catalog
+        # was producing visibly templated outputs (every counter / chart shot
+        # converged on the same primitive). Lower tiers may still adopt skills as
+        # a stable fallback in a follow-up; aspirational mode + a less prescriptive
+        # preamble does the heavy lifting at ultra+.
+        "skill_library_enabled": False,
         "image_continuity_enabled": True,
         "per_shot_max_tokens": 16000,  # was 24000 — measured outputs ~10-14K
         "crossfade_duration": 0.35,
@@ -567,7 +575,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_templates_enabled": True,
         "shot_animation_validator": True,
         "stock_video_ranking": True,
-        "skill_library_enabled": True,
+        # See note on `skill_library_enabled` in the `ultra` tier above —
+        # disabled here for the same reason: the catalog drives convergence
+        # to the same handful of motion primitives across every shot.
+        "skill_library_enabled": False,
         "image_continuity_enabled": True,
         "per_shot_max_tokens": 20000,  # was 32000 — densest HTML ~14-18K; 20K gives headroom
         "kinetic_text_shots": True,
@@ -1386,6 +1397,10 @@ class VideoGenerationPipeline:
         else:
             q_lower = (query or "").lower()
             pixabay_first = any(kw in q_lower for kw in self._PIXABAY_FIRST_KEYWORDS)
+            if not pixabay_first:
+                # No illustration signal — coin-flip so Pixabay's (disjoint) video pool
+                # isn't permanently shadowed by Pexels for scene-based queries.
+                pixabay_first = random.random() < 0.4
             ordered = [pixabay, pexels] if pixabay_first else [pexels, pixabay]
 
         for svc in ordered:
@@ -4657,6 +4672,17 @@ class VideoGenerationPipeline:
                 "svg_fill": "var(--brand-svg-fill)",
                 "annotation": "var(--brand-annotation)",
             },
+            # Canonical semantic-accent palette. Off-palette by default — only
+            # used when the Director flags a shot with `semantic_accents:[...]`
+            # on a narration contrast (warning vs success, real vs fake, etc.).
+            # Single source of truth so every shot in a run uses the SAME
+            # warn-red / good-green / gold rather than each shot picking its
+            # own. Wired in `_shot_task` via `shot.get("semantic_accents")`.
+            "semantic_accents": {
+                "warn": "#ff2e3a",  # danger, red-flag, error, gamble
+                "good": "#16a34a",  # success, check, positive proof
+                "gold": "#c9a86a",  # premium, elevated, brand-positive
+            },
             "font_family": {
                 "display": "'Bebas Neue', 'Montserrat', sans-serif",
                 "heading": style_guide.get("fonts", {}).get("primary", "Montserrat"),
@@ -7304,8 +7330,15 @@ class VideoGenerationPipeline:
                     )
             # ── end shot template bypass ──
 
-            # Build per-shot system prompt (only the relevant shot type card)
-            system_prompt = build_per_shot_system_prompt(shot_type, _w, _h)
+            # Build per-shot system prompt (only the relevant shot type card).
+            # At ultra / super_ultra we swap to the aspirational variant: drops
+            # the layout/effect bans and downgrades the mandatory `.stage-drift`
+            # + 2-text-levels prescriptions to defaults, so capable models can
+            # diverge in composition instead of converging on one templated look.
+            _aspirational_prompt = self._quality_tier in ("ultra", "super_ultra")
+            system_prompt = build_per_shot_system_prompt(
+                shot_type, _w, _h, aspirational=_aspirational_prompt
+            )
 
             # Inject the filtered skill catalog (ultra / super_ultra).
             # The LLM sees a compact list of skills that match this shot type + tier
@@ -7604,6 +7637,58 @@ class VideoGenerationPipeline:
                 ).replace(
                     "s{shot_idx}_", f"s{shot_idx}_"
                 )
+
+            # ── Semantic accent injection (ultra / super_ultra) ──
+            # Director flags shots whose narration introduces a contrast
+            # (warning vs success, real vs fake, before vs after, right vs
+            # wrong) by setting `shot["semantic_accents"]` to a subset of
+            # ["warn", "good", "gold"]. Pipeline emits the canonical hex
+            # values from the shot pack so every shot in the run uses the
+            # SAME warn-red / good-green / gold rather than each shot
+            # picking its own off-brand palette.
+            _semantic_accents_requested = shot.get("semantic_accents") or []
+            if (
+                _semantic_accents_requested
+                and self._quality_tier in ("ultra", "super_ultra")
+            ):
+                _accent_pack = (
+                    getattr(self, "_current_shot_pack", None) or {}
+                ).get("semantic_accents", {})
+                _accent_lines = [
+                    f"  --{name}: {_accent_pack[name]};"
+                    for name in _semantic_accents_requested
+                    if name in _accent_pack
+                ]
+                if _accent_lines:
+                    _accent_descriptions = {
+                        "warn": "danger / red-flag / warning",
+                        "good": "success / check / positive proof",
+                        "gold": "premium / elevated / brand-positive",
+                    }
+                    _desc_lines = "\n".join(
+                        f"- `--{name}` → {_accent_descriptions.get(name, '')}"
+                        for name in _semantic_accents_requested
+                        if name in _accent_pack
+                    )
+                    _accent_block = (
+                        "\n\n**🎨 SEMANTIC ACCENTS FOR THIS SHOT** "
+                        "(narration introduces a contrast — Director-flagged):\n"
+                        "Define these as local CSS vars at the top of your `<style>` block:\n"
+                        "```css\n:host {\n"
+                        + "\n".join(_accent_lines)
+                        + "\n}\n```\n"
+                        "Semantic meaning:\n"
+                        + _desc_lines
+                        + "\nUse rules:\n"
+                        "- Apply these colors to the contrasting element ONLY (the 'wrong' side of "
+                        "a comparison, the warning headline, the success checkmarks). The rest of "
+                        "the composition stays on the brand palette.\n"
+                        "- These are the ONLY off-brand colors permitted in this shot. Do NOT add "
+                        "other non-brand colors.\n"
+                        "- Pre-injected `.flash.red` already references `var(--warn)` for cut "
+                        "transitions on warning beats.\n"
+                    )
+                    user_prompt = user_prompt + _accent_block
 
             # Append motion-density + cadence + brand-palette requirement
             # (skipped for KINETIC_TEXT since it's bypassed anyway)
@@ -10251,6 +10336,51 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                   rgba(0,0,0,0.92) 100%);
             }}
 
+            /* --- INTRA-SHOT CUT TRANSITIONS ---
+               For multi-act long shots (≥12s spanning ≥2 sentences): hide the
+               composition swap behind a brief flash. Pattern at timestamp T:
+                 gsap.to('#flash-white', {{opacity:0.7, duration:0.07, delay:T, ease:'none',
+                   onComplete: () => gsap.to('#flash-white', {{opacity:0, duration:0.25, ease:'power2.out'}})}});
+                 gsap.to('#act-2', {{opacity:1, duration:0.5, delay:T, ease:'power3.inOut'}});
+               Markup: <div class="flash white" id="flash-white"></div> at z-index above all acts.
+               .flash.red uses mix-blend-mode:difference for a more aggressive cut
+               (good for warning / red-flag transitions). */
+            .flash {{
+              position: absolute;
+              inset: 0;
+              pointer-events: none;
+              z-index: 55;
+              opacity: 0;
+              will-change: opacity;
+            }}
+            .flash.white {{ background: #ffffff; }}
+            .flash.red   {{ background: var(--warn, #ff2e3a); mix-blend-mode: difference; }}
+            .flash.black {{ background: #000000; }}
+
+            /* --- GLITCH CUT (chromatic-aberration flicker, 0.18s total) ---
+               Apply to a transition wrapper. Pattern:
+                 gsap.set('.glitch-cut', {{display:'block'}});
+                 gsap.delayedCall(T + 0.18, () => gsap.set('.glitch-cut', {{display:'none'}})); */
+            .glitch-cut {{
+              display: none;
+              position: absolute;
+              inset: 0;
+              pointer-events: none;
+              z-index: 56;
+              background: repeating-linear-gradient(0deg,
+                  rgba(255,255,255,0.0) 0px, rgba(255,255,255,0.0) 2px,
+                  rgba(255,255,255,0.08) 2px, rgba(255,255,255,0.08) 3px);
+              animation: glitchFlicker 0.18s steps(6, end) 1;
+            }}
+            @keyframes glitchFlicker {{
+              0%   {{ transform: translate(0,0);     opacity: 0.0; }}
+              20%  {{ transform: translate(-3px,1px);opacity: 0.9; }}
+              40%  {{ transform: translate(2px,-2px);opacity: 0.6; }}
+              60%  {{ transform: translate(-1px,2px);opacity: 0.8; }}
+              80%  {{ transform: translate(2px,0);   opacity: 0.4; }}
+              100% {{ transform: translate(0,0);     opacity: 0.0; }}
+            }}
+
             /* --- HAND-DRAWN ROUGHEN FILTER ---
                Applied via `filter="url(#roughen)"` on any SVG <path>/<rect>/<line>.
                Gives the blueprint-sketch wobble effect WITHOUT breaking
@@ -10896,11 +11026,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 for svc in services:
                     provider_name = type(svc).__name__.replace("Service", "")
                     if use_ranking:
+                        # Over-fetch a wider pool, then random-sample 6 for the LLM
+                        # ranker. The ranker still picks the best-of-6, but each run
+                        # sees a different 6 — breaks the "same top-6 every time"
+                        # repetition without dropping into low-relevance pages.
                         candidates = svc.search_video_candidates(
-                            query, orientation=orientation, per_page=6
+                            query, orientation=orientation, per_page=24
                         )
                         fresh = [c for c in candidates if c.get("id") not in used_ids]
-                        pool = fresh if fresh else candidates
+                        pool_full = fresh if fresh else candidates
+                        pool = (
+                            random.sample(pool_full, k=min(6, len(pool_full)))
+                            if pool_full else []
+                        )
                         if pool:
                             picked, stock_usage = self._rank_pexels_candidates_with_llm(
                                 candidates=pool,

@@ -7,6 +7,10 @@ import { patchNodeStyle } from './utils/html-tree';
 interface LayerHandlesOverlayProps {
     /** Scale factor: canvas-space (1920×1080) → screen pixels. */
     scale: number;
+    /** Canvas width in canvas coordinates (e.g. 1920). Used by align tools. */
+    canvasW: number;
+    /** Canvas height in canvas coordinates (e.g. 1080). */
+    canvasH: number;
 }
 
 interface CanvasRect {
@@ -24,6 +28,9 @@ interface CanvasRect {
     /** Inline `transform` string at the moment we read the rect — captured so
      *  rotate composes with whatever the LLM authored. */
     transform: string;
+    /** Inline standalone `rotate` value (e.g. "45deg"). Preferred over the
+     *  rotate component of `transform` because anime/gsap don't touch it. */
+    rotate: string;
 }
 
 type ResizeHandlePos = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
@@ -39,7 +46,7 @@ type Handle = 'move' | 'rotate' | ResizeHandlePos;
  * straight from `getBoundingClientRect()` inside the iframe. Visual sizes
  * are counter-scaled so they stay constant at any canvas zoom.
  */
-export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
+export function LayerHandlesOverlay({ scale, canvasW, canvasH }: LayerHandlesOverlayProps) {
     const { selectedEntryId, selectedLayerPath, updateEntryHtml } = useVideoEditorStore(
         useShallow((s) => ({
             selectedEntryId: s.selectedEntryId,
@@ -56,6 +63,16 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
 
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const requestIdRef = useRef(0);
+    const resizeRequestIdRef = useRef(0);
+    /** Latest values echoed back by `vx-resize-applied`. The commit handler
+     *  reads these on pointerup so the HTML matches what the agent actually
+     *  wrote (which compensates for any centering-translate). */
+    const latestResizeAppliedRef = useRef<{
+        leftPx: number;
+        topPx: number;
+        width: number;
+        height: number;
+    } | null>(null);
 
     // Resolve which iframe to talk to whenever the selection changes.
     useEffect(() => {
@@ -102,6 +119,7 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
                           topPx?: number | null;
                       };
                       transform?: string;
+                      rotate?: string;
                   }
                 | undefined;
             if (!data) return;
@@ -119,6 +137,7 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
                     leftPx: data.rect.leftPx ?? null,
                     topPx: data.rect.topPx ?? null,
                     transform: data.transform ?? '',
+                    rotate: data.rotate ?? '',
                 });
             } else if (
                 data.type === 'vx-iframe-ready' &&
@@ -126,6 +145,32 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
             ) {
                 // Re-query one tick later so any post-mount layout has settled.
                 requestAnimationFrame(queryRect);
+            } else if ((data as { type?: string; ok?: boolean }).type === 'vx-resize-applied') {
+                const r = data as unknown as {
+                    requestId?: number;
+                    ok?: boolean;
+                    leftPx?: number;
+                    topPx?: number;
+                    width?: number;
+                    height?: number;
+                };
+                // Latest-write-wins: only the most recent resize request
+                // matters for commit purposes.
+                if (
+                    r.ok &&
+                    r.requestId === resizeRequestIdRef.current &&
+                    typeof r.leftPx === 'number' &&
+                    typeof r.topPx === 'number' &&
+                    typeof r.width === 'number' &&
+                    typeof r.height === 'number'
+                ) {
+                    latestResizeAppliedRef.current = {
+                        leftPx: r.leftPx,
+                        topPx: r.topPx,
+                        width: r.width,
+                        height: r.height,
+                    };
+                }
             }
         };
         window.addEventListener('message', onMessage);
@@ -149,6 +194,78 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
         return () => window.removeEventListener('resize', onResize);
     }, [queryRect]);
 
+    // Arrow-key nudge: 1px / 10px (Shift) move the selected layer in canvas
+    // coords. Skipped when focus is in an input so the inspector keeps its
+    // own arrow-key behavior.
+    useEffect(() => {
+        if (!rect || !selectedLayerPath || !selectedEntryId) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (
+                e.key !== 'ArrowUp' &&
+                e.key !== 'ArrowDown' &&
+                e.key !== 'ArrowLeft' &&
+                e.key !== 'ArrowRight'
+            )
+                return;
+            const t = e.target as HTMLElement | null;
+            if (
+                t &&
+                (t.tagName === 'INPUT' ||
+                    t.tagName === 'TEXTAREA' ||
+                    t.tagName === 'SELECT' ||
+                    t.isContentEditable)
+            )
+                return;
+            e.preventDefault();
+            const step = e.shiftKey ? 10 : 1;
+            let dx = 0;
+            let dy = 0;
+            if (e.key === 'ArrowLeft') dx = -step;
+            if (e.key === 'ArrowRight') dx = step;
+            if (e.key === 'ArrowUp') dy = -step;
+            if (e.key === 'ArrowDown') dy = step;
+            const baseLeft = rect.leftPx ?? rect.left;
+            const baseTop = rect.topPx ?? rect.top;
+            const newLeft = baseLeft + dx;
+            const newTop = baseTop + dy;
+            const iframe = iframeRef.current;
+            const path = selectedLayerPath;
+            // Imperative live update for smoothness — same channel as drag.
+            try {
+                iframe?.contentWindow?.postMessage(
+                    {
+                        type: 'vx-set-style',
+                        path,
+                        style: {
+                            position: 'absolute',
+                            left: `${newLeft}px`,
+                            top: `${newTop}px`,
+                        },
+                    },
+                    '*'
+                );
+            } catch {
+                /* ignore */
+            }
+            // Commit through the store so undo + save pick it up. The iframe
+            // will re-mount with the new HTML and re-handshake the rect.
+            const state = useVideoEditorStore.getState();
+            const entry = state.entries.find((x) => x.id === selectedEntryId);
+            if (entry) {
+                updateEntryHtml(
+                    entry.id,
+                    patchNodeStyle(entry.html, path, {
+                        position: 'absolute',
+                        left: `${Math.round(newLeft * 100) / 100}px`,
+                        top: `${Math.round(newTop * 100) / 100}px`,
+                    })
+                );
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [rect, selectedLayerPath, selectedEntryId, updateEntryHtml]);
+
     // The rect we actually draw — preview during a gesture, otherwise committed.
     const drawRect = previewRect ?? rect;
 
@@ -165,6 +282,8 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
             const startRect: CanvasRect = { ...rect };
             const path = selectedLayerPath;
             const iframe = iframeRef.current;
+            // Reset the resize echo cache for this gesture.
+            latestResizeAppliedRef.current = null;
 
             const sendStyle = (style: Record<string, string>) => {
                 try {
@@ -178,11 +297,14 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
             const cx = startRect.left + startRect.width / 2;
             const cy = startRect.top + startRect.height / 2;
 
-            // Capture the original transform-component at gesture start so we
-            // compose live updates against a stable baseline.
-            const origTransform = startRect.transform.trim();
-            const origRotateDeg = parseRotateDeg(origTransform);
-            const origNoRotate = stripRotate(origTransform);
+            // Capture the rotation baseline at gesture start. Prefer the
+            // standalone `rotate` property (which we use for our commits and
+            // anime/gsap don't touch) over a rotate() inside `transform`.
+            const origRotateDeg = (() => {
+                const fromStandalone = parseStandaloneRotateDeg(startRect.rotate);
+                if (fromStandalone !== null) return fromStandalone;
+                return parseRotateDeg(startRect.transform);
+            })();
 
             const onMove = (ev: PointerEvent) => {
                 const [dxCanvas, dyCanvas] = screenToCanvas(
@@ -220,22 +342,40 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
                         scale
                     );
                     const ang = Math.atan2(pyCanvas - cy, pxCanvas - cx) * (180 / Math.PI) + 90;
-                    sendStyle({
-                        transform: composeRotateTransform(origNoRotate, ang),
-                    });
+                    // Write the standalone CSS `rotate` property — anime/gsap
+                    // animate `transform`, which is a separate property, so
+                    // our rotation isn't clobbered on every iframe re-mount.
+                    sendStyle({ rotate: `${Math.round(ang * 100) / 100}deg` });
                     setPreviewRotate(ang);
                 } else {
-                    // Resize handle — recompute width/height from drag.
+                    // Resize handle — compute the target rect for the gesture
+                    // and let the agent absorb any centering-translate drift
+                    // by writing left/top after width/height. See `vx-resize-
+                    // to-rect` in editor-iframe-agent.ts.
                     const next = computeResize(startRect, handle, dxCanvas, dyCanvas);
-                    sendStyle({
-                        width: `${Math.max(1, Math.round(next.width))}px`,
-                        height: `${Math.max(1, Math.round(next.height))}px`,
-                    });
+                    const requestId = ++resizeRequestIdRef.current;
+                    try {
+                        iframe.contentWindow?.postMessage(
+                            {
+                                type: 'vx-resize-to-rect',
+                                path,
+                                requestId,
+                                left: next.left,
+                                top: next.top,
+                                width: Math.max(1, next.width),
+                                height: Math.max(1, next.height),
+                            },
+                            '*'
+                        );
+                    } catch {
+                        /* iframe gone */
+                    }
                     setPreviewRect({
                         ...next,
                         transform: startRect.transform,
                         leftPx: startRect.leftPx,
                         topPx: startRect.topPx,
+                        rotate: startRect.rotate,
                     });
                 }
             };
@@ -269,11 +409,22 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
                         top: `${Math.round((baseTop + dy) * 100) / 100}px`,
                     };
                 } else if (handle === 'rotate') {
+                    const ang = previewRotateRef.current ?? origRotateDeg;
                     finalPatch = {
-                        transform: composeRotateTransform(
-                            origNoRotate,
-                            previewRotateRef.current ?? origRotateDeg
-                        ),
+                        rotate: `${Math.round(ang * 100) / 100}deg`,
+                    };
+                } else if (latestResizeAppliedRef.current) {
+                    // Commit the actual values the agent wrote (which already
+                    // compensated for any centering-translate). Falls back to
+                    // the raw computeResize values if the agent never echoed
+                    // (e.g. the gesture was too short to dispatch a message).
+                    const r = latestResizeAppliedRef.current;
+                    finalPatch = {
+                        position: 'absolute',
+                        left: `${Math.round(r.leftPx * 100) / 100}px`,
+                        top: `${Math.round(r.topPx * 100) / 100}px`,
+                        width: `${Math.max(1, Math.round(r.width))}px`,
+                        height: `${Math.max(1, Math.round(r.height))}px`,
                     };
                 } else if (previewRectRef.current) {
                     finalPatch = {
@@ -311,6 +462,69 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
         previewRotateRef.current = previewRotate;
     }, [previewRotate]);
 
+    /**
+     * Align the selected layer to a canvas edge / center. Sends the same
+     * `vx-resize-to-rect` message as our resize handles — width/height stay
+     * the same, only left/top change. The agent absorbs any centering-
+     * translate drift, and the parent commits the echoed values to HTML.
+     */
+    const alignToCanvas = useCallback(
+        (h: 'left' | 'center' | 'right' | null, v: 'top' | 'middle' | 'bottom' | null) => {
+            if (!rect || !selectedLayerPath || !iframeRef.current || !selectedEntryId) return;
+            let targetLeft = rect.left;
+            let targetTop = rect.top;
+            if (h === 'left') targetLeft = 0;
+            else if (h === 'center') targetLeft = (canvasW - rect.width) / 2;
+            else if (h === 'right') targetLeft = canvasW - rect.width;
+            if (v === 'top') targetTop = 0;
+            else if (v === 'middle') targetTop = (canvasH - rect.height) / 2;
+            else if (v === 'bottom') targetTop = canvasH - rect.height;
+
+            // Reset echo cache and bump request id so the listener captures
+            // this commit and not an in-flight resize from earlier.
+            latestResizeAppliedRef.current = null;
+            const requestId = ++resizeRequestIdRef.current;
+            try {
+                iframeRef.current.contentWindow?.postMessage(
+                    {
+                        type: 'vx-resize-to-rect',
+                        path: selectedLayerPath,
+                        requestId,
+                        left: targetLeft,
+                        top: targetTop,
+                        width: rect.width,
+                        height: rect.height,
+                    },
+                    '*'
+                );
+            } catch {
+                /* iframe gone */
+            }
+
+            // Echo arrives async; commit on the next animation frame so the
+            // agent has had a chance to write the imperative style and reply.
+            requestAnimationFrame(() => {
+                const r = latestResizeAppliedRef.current;
+                const state = useVideoEditorStore.getState();
+                const entry = state.entries.find((x) => x.id === selectedEntryId);
+                if (!entry) return;
+                const patch = r
+                    ? {
+                          position: 'absolute',
+                          left: `${Math.round(r.leftPx * 100) / 100}px`,
+                          top: `${Math.round(r.topPx * 100) / 100}px`,
+                      }
+                    : {
+                          position: 'absolute',
+                          left: `${Math.round(targetLeft * 100) / 100}px`,
+                          top: `${Math.round(targetTop * 100) / 100}px`,
+                      };
+                updateEntryHtml(entry.id, patchNodeStyle(entry.html, selectedLayerPath, patch));
+            });
+        },
+        [rect, selectedLayerPath, selectedEntryId, canvasW, canvasH, updateEntryHtml]
+    );
+
     // Bail without rendering when no layer is selected.
     if (!drawRect || !selectedLayerPath) return null;
 
@@ -323,6 +537,12 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
 
     // Counter-scale so handle visuals stay constant size at any canvas zoom.
     const handleScale = scale > 0 ? 1 / scale : 1;
+
+    // Stop click + dblclick from bubbling up to the canvas — without this, the
+    // mouseup at the end of a drag fires `click` on the handle, which bubbles
+    // to EditorCanvas's `handleCanvasClick` and toggles the entry selection
+    // off (which in turn clears the layer selection via `selectEntry`).
+    const stop = (e: React.MouseEvent) => e.stopPropagation();
 
     return (
         <div
@@ -339,10 +559,14 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
                 outline: '2px solid #6366f1',
                 outlineOffset: -1,
             }}
+            onClick={stop}
+            onDoubleClick={stop}
         >
             {/* Move handle: covers the body of the box. */}
             <div
                 onPointerDown={startGesture('move')}
+                onClick={stop}
+                onDoubleClick={stop}
                 style={{
                     position: 'absolute',
                     inset: 0,
@@ -353,11 +577,152 @@ export function LayerHandlesOverlay({ scale }: LayerHandlesOverlayProps) {
             />
 
             {(['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'] as const).map((h) => (
-                <ResizeHandle key={h} pos={h} scale={handleScale} onPointerDown={startGesture(h)} />
+                <ResizeHandle
+                    key={h}
+                    pos={h}
+                    scale={handleScale}
+                    onPointerDown={startGesture(h)}
+                    onClick={stop}
+                />
             ))}
 
-            <RotateHandle scale={handleScale} onPointerDown={startGesture('rotate')} />
+            <RotateHandle
+                scale={handleScale}
+                onPointerDown={startGesture('rotate')}
+                onClick={stop}
+            />
+
+            <AlignToolbar scale={handleScale} onAlign={alignToCanvas} />
         </div>
+    );
+}
+
+function AlignToolbar({
+    scale,
+    onAlign,
+}: {
+    scale: number;
+    onAlign: (h: 'left' | 'center' | 'right' | null, v: 'top' | 'middle' | 'bottom' | null) => void;
+}) {
+    // Positioned below the selection box. Counter-scaled so the toolbar stays
+    // legible at any canvas zoom.
+    return (
+        <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+                position: 'absolute',
+                left: '50%',
+                top: '100%',
+                transform: `translate(-50%, ${10 * scale}px) scale(${scale})`,
+                transformOrigin: 'top center',
+                pointerEvents: 'auto',
+                background: '#fff',
+                border: '1px solid #e5e7eb',
+                borderRadius: 6,
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                padding: '3px 4px',
+                display: 'flex',
+                gap: 1,
+                whiteSpace: 'nowrap',
+            }}
+        >
+            <AlignBtn title="Align left" onClick={() => onAlign('left', null)}>
+                <AlignH x="0" />
+            </AlignBtn>
+            <AlignBtn title="Center horizontally" onClick={() => onAlign('center', null)}>
+                <AlignH x="50%" />
+            </AlignBtn>
+            <AlignBtn title="Align right" onClick={() => onAlign('right', null)}>
+                <AlignH x="100%" />
+            </AlignBtn>
+            <span style={{ width: 1, background: '#e5e7eb', margin: '2px 3px' }} />
+            <AlignBtn title="Align top" onClick={() => onAlign(null, 'top')}>
+                <AlignV y="0" />
+            </AlignBtn>
+            <AlignBtn title="Center vertically" onClick={() => onAlign(null, 'middle')}>
+                <AlignV y="50%" />
+            </AlignBtn>
+            <AlignBtn title="Align bottom" onClick={() => onAlign(null, 'bottom')}>
+                <AlignV y="100%" />
+            </AlignBtn>
+        </div>
+    );
+}
+
+function AlignBtn({
+    title,
+    onClick,
+    children,
+}: {
+    title: string;
+    onClick: () => void;
+    children: React.ReactNode;
+}) {
+    return (
+        <button
+            type="button"
+            title={title}
+            aria-label={title}
+            onClick={onClick}
+            style={{
+                width: 22,
+                height: 22,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: 'transparent',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+                color: '#4b5563',
+            }}
+            onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#eef2ff';
+                e.currentTarget.style.color = '#4338ca';
+            }}
+            onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = '#4b5563';
+            }}
+        >
+            {children}
+        </button>
+    );
+}
+
+function AlignH({ x }: { x: string }) {
+    // Vertical guide line + a small filled rect attached to it.
+    return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <line x1={x} y1="1" x2={x} y2="13" stroke="currentColor" strokeWidth="1.2" />
+            <rect
+                x={x === '0' ? 1.5 : x === '100%' ? 5.5 : 3.5}
+                y="3.5"
+                width="7"
+                height="7"
+                rx="0.5"
+                fill="currentColor"
+                opacity="0.55"
+            />
+        </svg>
+    );
+}
+
+function AlignV({ y }: { y: string }) {
+    return (
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <line x1="1" y1={y} x2="13" y2={y} stroke="currentColor" strokeWidth="1.2" />
+            <rect
+                x="3.5"
+                y={y === '0' ? 1.5 : y === '100%' ? 5.5 : 3.5}
+                width="7"
+                height="7"
+                rx="0.5"
+                fill="currentColor"
+                opacity="0.55"
+            />
+        </svg>
     );
 }
 
@@ -365,10 +730,12 @@ function ResizeHandle({
     pos,
     scale,
     onPointerDown,
+    onClick,
 }: {
     pos: ResizeHandlePos;
     scale: number;
     onPointerDown: (e: React.PointerEvent) => void;
+    onClick?: (e: React.MouseEvent) => void;
 }) {
     const SIZE = 10; // screen-space px after counter-scale
     const half = SIZE / 2;
@@ -388,6 +755,7 @@ function ResizeHandle({
     return (
         <div
             onPointerDown={onPointerDown}
+            onClick={onClick}
             style={{
                 position: 'absolute',
                 left,
@@ -410,9 +778,11 @@ function ResizeHandle({
 function RotateHandle({
     scale,
     onPointerDown,
+    onClick,
 }: {
     scale: number;
     onPointerDown: (e: React.PointerEvent) => void;
+    onClick?: (e: React.MouseEvent) => void;
 }) {
     const SIZE = 12;
     const OFFSET = 28; // distance above the rect's top edge
@@ -420,6 +790,7 @@ function RotateHandle({
     return (
         <div
             onPointerDown={onPointerDown}
+            onClick={onClick}
             style={{
                 position: 'absolute',
                 left: '50%',
@@ -458,22 +829,19 @@ function screenToCanvasFromIframe(
     return screenToCanvas(clientX - r.left, clientY - r.top, scale);
 }
 
-/** Replace the rotate component of `origNoRotate` (which already has rotate
- *  stripped) with a fresh rotate(deg). */
-function composeRotateTransform(origNoRotate: string, deg: number): string {
-    const r = `rotate(${Math.round(deg * 100) / 100}deg)`;
-    return origNoRotate ? `${origNoRotate} ${r}` : r;
-}
-
 const ROTATE_RE = /\brotate\s*\(\s*([-+]?\d*\.?\d+)\s*deg\s*\)/i;
+const STANDALONE_ROTATE_RE = /^\s*([-+]?\d*\.?\d+)\s*deg\s*$/i;
 
 function parseRotateDeg(transform: string): number {
     const m = transform.match(ROTATE_RE);
     return m && m[1] ? parseFloat(m[1]) : 0;
 }
 
-function stripRotate(transform: string): string {
-    return transform.replace(ROTATE_RE, '').replace(/\s+/g, ' ').trim();
+/** Returns null if the standalone `rotate` value is empty / not in degrees,
+ *  so the caller can fall back to parsing the transform string. */
+function parseStandaloneRotateDeg(rotate: string): number | null {
+    const m = rotate.match(STANDALONE_ROTATE_RE);
+    return m && m[1] ? parseFloat(m[1]) : null;
 }
 
 interface ResizeResult {

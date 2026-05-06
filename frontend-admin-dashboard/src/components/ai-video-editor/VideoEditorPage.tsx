@@ -143,6 +143,35 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     const canvasH = meta.dimensions?.height ?? 1080;
     const isPortrait = canvasH > canvasW;
 
+    // ── Preconnect to iframe library CDNs ──────────────────────────────────
+    // Each shot iframe pulls gsap / anime / katex / etc. from these hosts.
+    // Adding `<link rel="preconnect">` from the parent document warms TCP/TLS
+    // for those origins so the very first iframe doesn't have to pay the
+    // handshake latency on top of the script download. ~150–300ms saved on
+    // a cold load with high-RTT connections.
+    useEffect(() => {
+        const HOSTS = [
+            'https://cdnjs.cloudflare.com',
+            'https://cdn.jsdelivr.net',
+            'https://unpkg.com',
+            'https://code.iconify.design',
+            'https://fonts.googleapis.com',
+            'https://fonts.gstatic.com',
+        ];
+        const links: HTMLLinkElement[] = [];
+        for (const href of HOSTS) {
+            const link = document.createElement('link');
+            link.rel = 'preconnect';
+            link.href = href;
+            link.crossOrigin = '';
+            document.head.appendChild(link);
+            links.push(link);
+        }
+        return () => {
+            for (const l of links) l.remove();
+        };
+    }, []);
+
     // ── Bootstrap ──────────────────────────────────────────────────────────
     useEffect(() => {
         init(props);
@@ -277,6 +306,21 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     const handleRenderConfirm = useCallback(
         async (settings: RenderSettings) => {
             if (!props.apiKey || !props.videoId) return;
+            // Render reads the server-side timeline; unsaved local edits would
+            // be silently missing from the MP4. Save first if needed.
+            if (dirtyEntryIds.length > 0) {
+                try {
+                    await saveChanges();
+                    toast.info('Saved pending edits before rendering');
+                } catch (err) {
+                    toast.error(
+                        err instanceof Error
+                            ? `Save failed before render: ${err.message}`
+                            : 'Save failed before render'
+                    );
+                    return;
+                }
+            }
             setRenderState('submitting');
             setRenderProgress(0);
             try {
@@ -291,7 +335,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                 toast.error(err instanceof Error ? err.message : 'Failed to start render');
             }
         },
-        [props.apiKey, props.videoId, startRenderPolling]
+        [props.apiKey, props.videoId, startRenderPolling, dirtyEntryIds, saveChanges]
     );
 
     const handleRenderRetry = useCallback(() => {
@@ -556,7 +600,9 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                 title={
                     !props.apiKey
                         ? 'API key required to save to backend; changes saved locally'
-                        : 'Save changes'
+                        : dirtyEntryIds.length > 0
+                          ? `Save ${dirtyEntryIds.length} unsaved shot${dirtyEntryIds.length === 1 ? '' : 's'}`
+                          : 'Save changes'
                 }
                 onClick={handleSave}
             >
@@ -569,6 +615,11 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                     <>
                         <Save className="mr-1 size-3" />
                         Save
+                        {dirtyEntryIds.length > 0 && (
+                            <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">
+                                {dirtyEntryIds.length}
+                            </span>
+                        )}
                     </>
                 )}
             </Button>

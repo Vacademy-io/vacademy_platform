@@ -23,6 +23,15 @@
  *     declarations live, without re-mounting the iframe. Used during drag/
  *     resize/rotate gestures; final value is committed to the entry HTML on
  *     pointerup via the React store, which causes one final re-mount.
+ *   { type: 'vx-resize-to-rect', path, requestId, left, top, width, height }
+ *     parent → iframe : resize the element so its post-transform bounding rect
+ *     lands at the requested (left, top, width, height) in iframe-viewport
+ *     coords. Compensates for any centering `translate(...%, ...%)` in the
+ *     existing transform by writing width/height first, re-measuring, then
+ *     adjusting `left`/`top` to absorb the drift.
+ *   { type: 'vx-resize-applied', requestId, ok, leftPx, topPx, width, height }
+ *     iframe → parent : echo back the computed inline style values so the
+ *     parent can commit the same values to the entry HTML on pointerup.
  */
 export function getEditorIframeAgentScript(): string {
     return `<script>
@@ -161,17 +170,62 @@ export function getEditorIframeAgentScript(): string {
         } else if (msg.type === 'vx-get-rect') {
             var el = findElementAtPath(msg.path || []);
             var rect = elementRect(el);
+            // Read both the legacy transform-rotate and the modern standalone
+            // rotate property so the parent can pick up either source.
+            var inlineRotate = el && el.style ? el.style.rotate || '' : '';
             try {
                 window.parent.postMessage({
                     type: 'vx-rect',
                     requestId: msg.requestId,
                     ok: !!rect,
                     rect: rect,
-                    transform: el ? (el.style && el.style.transform) || '' : ''
+                    transform: el ? (el.style && el.style.transform) || '' : '',
+                    rotate: inlineRotate
                 }, '*');
             } catch (_) {}
         } else if (msg.type === 'vx-set-style') {
             applyStylePatch(findElementAtPath(msg.path || []), msg.style);
+        } else if (msg.type === 'vx-resize-to-rect') {
+            var target = findElementAtPath(msg.path || []);
+            var ok = false;
+            var leftPx = null, topPx = null, w = null, h = null;
+            if (target) {
+                try {
+                    target.style.position = 'absolute';
+                    target.style.width = (msg.width || 0) + 'px';
+                    target.style.height = (msg.height || 0) + 'px';
+                    // Re-read after width/height applied. Any percentage-based
+                    // translate in the existing transform now resolves against
+                    // the new size; we read the resulting rect and absorb the
+                    // drift by adjusting left/top.
+                    var r2 = target.getBoundingClientRect();
+                    var cs2 = target.ownerDocument.defaultView.getComputedStyle(target);
+                    var curLeft = parseFloat(cs2.left) || 0;
+                    var curTop = parseFloat(cs2.top) || 0;
+                    var dx = (msg.left || 0) - r2.left;
+                    var dy = (msg.top || 0) - r2.top;
+                    var newLeft = curLeft + dx;
+                    var newTop = curTop + dy;
+                    target.style.left = newLeft + 'px';
+                    target.style.top = newTop + 'px';
+                    leftPx = newLeft;
+                    topPx = newTop;
+                    w = msg.width || 0;
+                    h = msg.height || 0;
+                    ok = true;
+                } catch (_) {}
+            }
+            try {
+                window.parent.postMessage({
+                    type: 'vx-resize-applied',
+                    requestId: msg.requestId,
+                    ok: ok,
+                    leftPx: leftPx,
+                    topPx: topPx,
+                    width: w,
+                    height: h
+                }, '*');
+            } catch (_) {}
         }
     });
 })();

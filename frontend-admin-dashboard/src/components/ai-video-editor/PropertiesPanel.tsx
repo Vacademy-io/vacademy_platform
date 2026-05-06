@@ -15,6 +15,8 @@ import {
     Shapes,
     Film,
     Upload,
+    Download,
+    Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useVideoEditorStore, DEFAULT_TRANSFORM } from './stores/video-editor-store';
@@ -46,6 +48,7 @@ import {
 } from './utils/html-overlay-editor';
 import { TRANSITION_OPTIONS, Transition, TransitionType } from './utils/transitions';
 import { LayersTab } from './LayersTab';
+import { downloadShotHtml } from './utils/download-shot';
 
 // ── Shared helpers ─────────────────────────────────────────────────────────
 
@@ -133,103 +136,31 @@ interface TransformTabProps {
     entryId: string;
     canvasW: number;
     canvasH: number;
-    inTime?: number | null;
-    exitTime?: number | null;
 }
 
-function TransformTab({ entryId, canvasW, canvasH, inTime, exitTime }: TransformTabProps) {
+function TransformTab({ entryId, canvasW, canvasH }: TransformTabProps) {
     const {
         entryTransforms,
         entryBackgrounds,
-        entryTransitions,
-        naturalDurations,
         updateEntryTransform,
         resetEntryTransform,
         updateEntryBackground,
-        updateEntryTransition,
-        fitAnimationsToDuration,
-        meta,
     } = useVideoEditorStore(
         useShallow((s) => ({
             entryTransforms: s.entryTransforms,
             entryBackgrounds: s.entryBackgrounds,
-            entryTransitions: s.entryTransitions,
-            naturalDurations: s.naturalDurations,
             updateEntryTransform: s.updateEntryTransform,
             resetEntryTransform: s.resetEntryTransform,
             updateEntryBackground: s.updateEntryBackground,
-            updateEntryTransition: s.updateEntryTransition,
-            fitAnimationsToDuration: s.fitAnimationsToDuration,
-            meta: s.meta,
         }))
     );
     const transform = entryTransforms[entryId] ?? DEFAULT_TRANSFORM;
     const background = entryBackgrounds[entryId] ?? '';
     // Only feed a valid 7-char hex into <input type="color"> (it can't render gradients/named colors).
     const pickerValue = /^#[0-9a-fA-F]{6}$/.test(background) ? background : '#ffffff';
-    const transitions = entryTransitions[entryId];
-
-    const setTransition = (which: 'in' | 'out', type: TransitionType | '') => {
-        if (!type) {
-            updateEntryTransition(entryId, which, null);
-            return;
-        }
-        const existing = transitions?.[which];
-        updateEntryTransition(entryId, which, {
-            type,
-            duration: existing?.duration ?? 0.4,
-            easing: existing?.easing,
-        });
-    };
-    const setDuration = (which: 'in' | 'out', duration: number) => {
-        const existing = transitions?.[which];
-        if (!existing) return;
-        updateEntryTransition(entryId, which, { ...existing, duration });
-    };
-
-    const renderTransitionRow = (which: 'in' | 'out', label: string) => {
-        const current: Transition | undefined = transitions?.[which];
-        return (
-            <div className="flex items-center gap-1.5">
-                <label className="w-8 text-[10px] font-medium text-gray-600">{label}</label>
-                <select
-                    value={current?.type ?? ''}
-                    onChange={(e) => setTransition(which, e.target.value as TransitionType | '')}
-                    className="h-7 flex-1 rounded border border-gray-200 bg-white px-1 text-[11px] focus:border-indigo-400 focus:outline-none"
-                >
-                    <option value="">None</option>
-                    {TRANSITION_OPTIONS.map((o) => (
-                        <option key={o.value} value={o.value}>
-                            {o.label}
-                        </option>
-                    ))}
-                </select>
-                <input
-                    type="number"
-                    step={0.05}
-                    min={0.05}
-                    max={3}
-                    value={current?.duration ?? ''}
-                    disabled={!current}
-                    placeholder="0.4s"
-                    onChange={(e) => setDuration(which, parseFloat(e.target.value) || 0.4)}
-                    className="h-7 w-14 rounded border border-gray-200 bg-white px-1 text-center font-mono text-[11px] disabled:bg-gray-50 disabled:text-gray-300"
-                />
-            </div>
-        );
-    };
 
     return (
         <div className="space-y-3 p-3">
-            {/* Transitions */}
-            <div className="space-y-1.5 rounded-md border border-gray-200 bg-gray-50 p-2">
-                <div className="text-[11px] font-medium text-gray-600">Transitions</div>
-                {renderTransitionRow('in', 'In')}
-                {renderTransitionRow('out', 'Out')}
-                <div className="text-[10px] text-gray-400">
-                    Plays at the shot's start / end. Duration in seconds.
-                </div>
-            </div>
             <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
                 <div className="flex items-center justify-between">
                     <span className="text-[11px] font-medium text-gray-600">Background</span>
@@ -298,46 +229,6 @@ function TransformTab({ entryId, canvasW, canvasH, inTime, exitTime }: Transform
                 unit="°"
                 onChange={(v) => updateEntryTransform(entryId, { rotation: v })}
             />
-            {/* Fit animations to duration — only meaningful for time_driven */}
-            {meta.navigation === 'time_driven' &&
-                (() => {
-                    const currentDur = (exitTime ?? 0) - (inTime ?? 0);
-                    const baseDur = naturalDurations[entryId];
-                    const canFit =
-                        currentDur > 0 &&
-                        baseDur != null &&
-                        baseDur > 0 &&
-                        Math.abs(currentDur - baseDur) > 0.05;
-                    const currentSpeed =
-                        baseDur != null && currentDur > 0 ? baseDur / currentDur : null;
-                    return (
-                        <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[11px] font-medium text-gray-600">
-                                    Animation Speed
-                                </span>
-                                {currentSpeed != null && (
-                                    <span className="font-mono text-[10px] text-indigo-600">
-                                        {currentSpeed.toFixed(2)}×
-                                    </span>
-                                )}
-                            </div>
-                            <div className="text-[10px] text-gray-400">
-                                Natural: {baseDur != null ? `${baseDur.toFixed(1)}s` : '—'}
-                                {' · '}Current: {currentDur > 0 ? `${currentDur.toFixed(1)}s` : '—'}
-                            </div>
-                            <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-7 w-full text-xs text-gray-600 disabled:opacity-40"
-                                disabled={!canFit}
-                                onClick={() => fitAnimationsToDuration(entryId)}
-                            >
-                                Fit animations to duration
-                            </Button>
-                        </div>
-                    );
-                })()}
             <Button
                 size="sm"
                 variant="outline"
@@ -346,6 +237,134 @@ function TransformTab({ entryId, canvasW, canvasH, inTime, exitTime }: Transform
             >
                 Reset Transform
             </Button>
+        </div>
+    );
+}
+
+// ── Motion tab ─────────────────────────────────────────────────────────────
+
+interface MotionTabProps {
+    entryId: string;
+    inTime?: number | null;
+    exitTime?: number | null;
+}
+
+function MotionTab({ entryId, inTime, exitTime }: MotionTabProps) {
+    const {
+        entryTransitions,
+        naturalDurations,
+        updateEntryTransition,
+        fitAnimationsToDuration,
+        meta,
+    } = useVideoEditorStore(
+        useShallow((s) => ({
+            entryTransitions: s.entryTransitions,
+            naturalDurations: s.naturalDurations,
+            updateEntryTransition: s.updateEntryTransition,
+            fitAnimationsToDuration: s.fitAnimationsToDuration,
+            meta: s.meta,
+        }))
+    );
+    const transitions = entryTransitions[entryId];
+
+    const setTransition = (which: 'in' | 'out', type: TransitionType | '') => {
+        if (!type) {
+            updateEntryTransition(entryId, which, null);
+            return;
+        }
+        const existing = transitions?.[which];
+        updateEntryTransition(entryId, which, {
+            type,
+            duration: existing?.duration ?? 0.4,
+            easing: existing?.easing,
+        });
+    };
+    const setDuration = (which: 'in' | 'out', duration: number) => {
+        const existing = transitions?.[which];
+        if (!existing) return;
+        updateEntryTransition(entryId, which, { ...existing, duration });
+    };
+
+    const renderTransitionRow = (which: 'in' | 'out', label: string) => {
+        const current: Transition | undefined = transitions?.[which];
+        return (
+            <div className="flex items-center gap-1.5">
+                <label className="w-8 text-[10px] font-medium text-gray-600">{label}</label>
+                <select
+                    value={current?.type ?? ''}
+                    onChange={(e) => setTransition(which, e.target.value as TransitionType | '')}
+                    className="h-7 flex-1 rounded border border-gray-200 bg-white px-1 text-[11px] focus:border-indigo-400 focus:outline-none"
+                >
+                    <option value="">None</option>
+                    {TRANSITION_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                            {o.label}
+                        </option>
+                    ))}
+                </select>
+                <input
+                    type="number"
+                    step={0.05}
+                    min={0.05}
+                    max={3}
+                    value={current?.duration ?? ''}
+                    disabled={!current}
+                    placeholder="0.4s"
+                    onChange={(e) => setDuration(which, parseFloat(e.target.value) || 0.4)}
+                    className="h-7 w-14 rounded border border-gray-200 bg-white px-1 text-center font-mono text-[11px] disabled:bg-gray-50 disabled:text-gray-300"
+                />
+            </div>
+        );
+    };
+
+    const currentDur = (exitTime ?? 0) - (inTime ?? 0);
+    const baseDur = naturalDurations[entryId];
+    const canFit =
+        currentDur > 0 && baseDur != null && baseDur > 0 && Math.abs(currentDur - baseDur) > 0.05;
+    const currentSpeed = baseDur != null && currentDur > 0 ? baseDur / currentDur : null;
+
+    return (
+        <div className="space-y-3 p-3">
+            {/* Transitions */}
+            <div className="space-y-1.5 rounded-md border border-gray-200 bg-gray-50 p-2">
+                <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-gray-700">Transitions</span>
+                </div>
+                {renderTransitionRow('in', 'In')}
+                {renderTransitionRow('out', 'Out')}
+                <div className="text-[10px] text-gray-400">
+                    Plays at the shot&apos;s start / end. Duration in seconds.
+                </div>
+            </div>
+
+            {/* Animation speed — only meaningful for time_driven */}
+            {meta.navigation === 'time_driven' && (
+                <div className="space-y-1 rounded-md border border-gray-200 bg-gray-50 p-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-gray-700">
+                            Animation speed
+                        </span>
+                        {currentSpeed != null && (
+                            <span className="font-mono text-[10px] text-indigo-600">
+                                {currentSpeed.toFixed(2)}×
+                            </span>
+                        )}
+                    </div>
+                    <div className="text-[10px] text-gray-400">
+                        Natural: {baseDur != null ? `${baseDur.toFixed(1)}s` : '—'}
+                        {' · '}Current: {currentDur > 0 ? `${currentDur.toFixed(1)}s` : '—'}
+                    </div>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 w-full text-xs text-gray-600 disabled:opacity-40"
+                        disabled={!canFit}
+                        onClick={() => fitAnimationsToDuration(entryId)}
+                    >
+                        Fit animations to duration
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }
@@ -1191,7 +1210,7 @@ function OverlaysTab({ entryId, entryHtml }: OverlaysTabProps) {
 
 // ── Main component ─────────────────────────────────────────────────────────
 
-type Tab = 'transform' | 'text' | 'media' | 'overlays' | 'layers' | 'code';
+type Tab = 'layers' | 'transform' | 'motion' | 'text' | 'media' | 'overlays' | 'code';
 
 interface PropertiesPanelProps {
     /**
@@ -1347,21 +1366,38 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                             <span className="ml-1">#{entries.indexOf(entry) + 1}</span>
                         )}
                     </span>
-                    {/* Remake button — only shown when apiKey is available */}
+                    {/* Remake button — only shown when apiKey is available.
+                        Prominent because AI-remake is the differentiator the
+                        editor is built around. */}
                     {apiKey && (
                         <button
                             onClick={handleRemakeOpen}
                             className={[
-                                'shrink-0 transition-colors',
+                                'inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition',
                                 remakeOpen
-                                    ? 'text-indigo-500'
-                                    : 'text-gray-300 hover:text-indigo-500',
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100',
                             ].join(' ')}
                             title="Remake this shot with AI"
                         >
-                            <Wand2 className="size-3.5" />
+                            <Wand2 className="size-3" />
+                            Remake
                         </button>
                     )}
+                    <button
+                        onClick={() => {
+                            downloadShotHtml(
+                                entry,
+                                meta,
+                                entries.indexOf(entry) > 0 && !entry.id?.startsWith('branding-')
+                            );
+                            toast.success('Shot HTML downloaded — open it in a browser to preview');
+                        }}
+                        className="shrink-0 text-gray-300 transition-colors hover:text-indigo-500"
+                        title="Download this shot as a standalone HTML file"
+                    >
+                        <Download className="size-3.5" />
+                    </button>
                     <button
                         onClick={() => deleteEntry(entryId)}
                         className="shrink-0 text-gray-300 transition-colors hover:text-red-500"
@@ -1442,6 +1478,7 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                             icon: <Sliders className="size-3" />,
                             label: 'Transform',
                         },
+                        { id: 'motion', icon: <Zap className="size-3" />, label: 'Motion' },
                         { id: 'text', icon: <Type className="size-3" />, label: 'Text' },
                         { id: 'media', icon: <Image className="size-3" />, label: 'Media' },
                         {
@@ -1475,13 +1512,10 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                 )}
             >
                 {tab === 'transform' && (
-                    <TransformTab
-                        entryId={entryId}
-                        canvasW={canvasW}
-                        canvasH={canvasH}
-                        inTime={inTime}
-                        exitTime={outTime}
-                    />
+                    <TransformTab entryId={entryId} canvasW={canvasW} canvasH={canvasH} />
+                )}
+                {tab === 'motion' && (
+                    <MotionTab entryId={entryId} inTime={inTime} exitTime={outTime} />
                 )}
                 {tab === 'text' && (
                     <TextTab

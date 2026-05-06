@@ -90,6 +90,44 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
         [entryHtml, entryId, updateEntryHtml, selectLayer]
     );
 
+    /** Apply a structural change (delete/duplicate/move) and clear the layer
+     *  selection — the path it was pointing to may now reference the wrong
+     *  node or no node at all. */
+    const applyStructural = useCallback(
+        (newHtml: string) => {
+            updateEntryHtml(entryId, newHtml);
+            selectLayer(null);
+        },
+        [entryId, updateEntryHtml, selectLayer]
+    );
+
+    // Keyboard shortcuts while a layer is selected.
+    useEffect(() => {
+        if (!selectedPath) return;
+        const onKey = (e: KeyboardEvent) => {
+            const t = e.target as HTMLElement | null;
+            // Don't steal keys from inputs/textareas/contenteditable.
+            if (
+                t &&
+                (t.tagName === 'INPUT' ||
+                    t.tagName === 'TEXTAREA' ||
+                    t.tagName === 'SELECT' ||
+                    t.isContentEditable)
+            ) {
+                return;
+            }
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                selectLayer(null);
+            } else if (e.key === 'Delete' || e.key === 'Backspace') {
+                e.preventDefault();
+                applyStructural(deleteNodeAtPath(entryHtml, selectedPath));
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [selectedPath, entryHtml, applyStructural, selectLayer]);
+
     return (
         <div className="flex h-full flex-col">
             {/* Tree */}
@@ -114,6 +152,7 @@ export function LayersTab({ entryId, entryHtml }: LayersTabProps) {
                             onSelect={selectLayer}
                             entryHtml={entryHtml}
                             apply={apply}
+                            applyStructural={applyStructural}
                             onInsertChild={insertChild}
                         />
                     ))
@@ -146,6 +185,9 @@ interface LayerRowProps {
     onSelect: (path: number[] | null) => void;
     entryHtml: string;
     apply: (newHtml: string) => void;
+    /** Like `apply` but also clears selection — use for delete/move/duplicate
+     *  where the path may stop pointing to the same node. */
+    applyStructural: (newHtml: string) => void;
     onInsertChild: (parentPath: number[] | null, kind: NewLayerKind) => void;
 }
 
@@ -158,6 +200,7 @@ function LayerRow({
     onSelect,
     entryHtml,
     apply,
+    applyStructural,
     onInsertChild,
 }: LayerRowProps) {
     const Icon = KIND_ICON[node.kind];
@@ -220,7 +263,7 @@ function LayerRow({
                             title="Move up"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                apply(moveNodeAtPath(entryHtml, node.path, 'up'));
+                                applyStructural(moveNodeAtPath(entryHtml, node.path, 'up'));
                             }}
                         >
                             <ArrowUp className="size-3" />
@@ -229,7 +272,7 @@ function LayerRow({
                             title="Move down"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                apply(moveNodeAtPath(entryHtml, node.path, 'down'));
+                                applyStructural(moveNodeAtPath(entryHtml, node.path, 'down'));
                             }}
                         >
                             <ArrowDown className="size-3" />
@@ -238,7 +281,7 @@ function LayerRow({
                             title="Duplicate"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                apply(duplicateNodeAtPath(entryHtml, node.path));
+                                applyStructural(duplicateNodeAtPath(entryHtml, node.path));
                             }}
                         >
                             <Copy className="size-3" />
@@ -247,7 +290,7 @@ function LayerRow({
                             title="Delete"
                             onClick={(e) => {
                                 e.stopPropagation();
-                                apply(deleteNodeAtPath(entryHtml, node.path));
+                                applyStructural(deleteNodeAtPath(entryHtml, node.path));
                             }}
                             danger
                         >
@@ -270,6 +313,7 @@ function LayerRow({
                             onSelect={onSelect}
                             entryHtml={entryHtml}
                             apply={apply}
+                            applyStructural={applyStructural}
                             onInsertChild={onInsertChild}
                         />
                     ))}
@@ -469,26 +513,19 @@ function NodeInspector({ node, entryHtml, apply }: NodeInspectorProps) {
 
             {node.kind === 'text' && (
                 <Field label="Text">
-                    <textarea
-                        defaultValue={node.textContent ?? ''}
-                        onBlur={(e) => {
-                            if (e.currentTarget.value !== (node.textContent ?? '')) {
-                                setText(e.currentTarget.value);
-                            }
-                        }}
+                    <ControlledTextarea
+                        value={node.textContent ?? ''}
                         rows={2}
-                        className="w-full rounded border border-gray-300 px-2 py-1 font-mono text-[11px]"
+                        onCommit={(v) => setText(v)}
                     />
                 </Field>
             )}
 
             {(node.kind === 'image' || node.kind === 'video') && (
                 <Field label="Source URL">
-                    <input
-                        type="text"
-                        defaultValue={node.attrs.src ?? ''}
-                        onBlur={(e) => setAttr('src', e.currentTarget.value || null)}
-                        className="w-full rounded border border-gray-300 px-2 py-1 font-mono text-[11px]"
+                    <ControlledTextInput
+                        value={node.attrs.src ?? ''}
+                        onCommit={(v) => setAttr('src', v || null)}
                     />
                 </Field>
             )}
@@ -571,14 +608,68 @@ function NodeInspector({ node, entryHtml, apply }: NodeInspectorProps) {
 
             {/* CSS class — handy escape hatch */}
             <Field label="Class">
-                <input
-                    type="text"
-                    defaultValue={node.attrs.class ?? ''}
-                    onBlur={(e) => setAttr('class', e.currentTarget.value || null)}
-                    className="w-full rounded border border-gray-300 px-2 py-1 font-mono text-[11px]"
+                <ControlledTextInput
+                    value={node.attrs.class ?? ''}
+                    onCommit={(v) => setAttr('class', v || null)}
                 />
             </Field>
         </div>
+    );
+}
+
+function ControlledTextInput({
+    value,
+    onCommit,
+}: {
+    value: string;
+    onCommit: (v: string) => void;
+}) {
+    const [draft, setDraft] = useState(value);
+    useEffect(() => {
+        setDraft(value);
+    }, [value]);
+    return (
+        <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.currentTarget.value)}
+            onBlur={() => {
+                if (draft !== value) onCommit(draft);
+            }}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.currentTarget.blur();
+                }
+            }}
+            className="w-full rounded border border-gray-300 px-2 py-1 font-mono text-[11px]"
+        />
+    );
+}
+
+function ControlledTextarea({
+    value,
+    rows,
+    onCommit,
+}: {
+    value: string;
+    rows: number;
+    onCommit: (v: string) => void;
+}) {
+    const [draft, setDraft] = useState(value);
+    useEffect(() => {
+        setDraft(value);
+    }, [value]);
+    return (
+        <textarea
+            rows={rows}
+            value={draft}
+            onChange={(e) => setDraft(e.currentTarget.value)}
+            onBlur={() => {
+                if (draft !== value) onCommit(draft);
+            }}
+            className="w-full rounded border border-gray-300 px-2 py-1 font-mono text-[11px]"
+        />
     );
 }
 
@@ -600,13 +691,21 @@ function StyleInput({
     onCommit: (v: string) => void;
     placeholder?: string;
 }) {
+    // Controlled with a local draft so users can type freely, but the draft
+    // resyncs whenever the underlying value changes externally (undo, store
+    // commit from elsewhere, etc.) — `defaultValue` would have masked those.
+    const [draft, setDraft] = useState(value);
+    useEffect(() => {
+        setDraft(value);
+    }, [value]);
     return (
         <input
             type="text"
-            defaultValue={value}
+            value={draft}
             placeholder={placeholder}
-            onBlur={(e) => {
-                if (e.currentTarget.value !== value) onCommit(e.currentTarget.value);
+            onChange={(e) => setDraft(e.currentTarget.value)}
+            onBlur={() => {
+                if (draft !== value) onCommit(draft);
             }}
             onKeyDown={(e) => {
                 if (e.key === 'Enter') {

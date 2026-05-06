@@ -514,13 +514,30 @@ function SettingsBody({
                                         <Button
                                             variant="ghost"
                                             size="sm"
-                                            className="size-6 p-0"
-                                            onClick={() => onPlayPreview(voice)}
+                                            type="button"
+                                            aria-label={
+                                                isPlaying
+                                                    ? `Stop preview of ${voice.name}`
+                                                    : `Play preview of ${voice.name}`
+                                            }
+                                            title={
+                                                isPlaying ? 'Stop preview' : 'Play voice preview'
+                                            }
+                                            className={[
+                                                'size-7 shrink-0 rounded-full p-0 transition-colors',
+                                                isPlaying
+                                                    ? 'bg-violet-600 text-white shadow-sm hover:bg-violet-700 hover:text-white'
+                                                    : 'text-muted-foreground hover:bg-violet-100 hover:text-violet-700 dark:hover:bg-violet-950/40',
+                                            ].join(' ')}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onPlayPreview(voice);
+                                            }}
                                         >
                                             {isPlaying ? (
-                                                <Pause className="size-3" />
+                                                <Pause className="size-3.5 fill-current" />
                                             ) : (
-                                                <Play className="size-3" />
+                                                <Play className="ml-0.5 size-3.5 fill-current" />
                                             )}
                                         </Button>
                                     </div>

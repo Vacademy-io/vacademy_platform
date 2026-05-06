@@ -255,6 +255,267 @@ DO_NOT_RULES = (
 )
 
 
+# ---------------------------------------------------------------------------
+# Aspirational variants — used at ultra / super_ultra to reduce templating.
+#
+# The defensive CORE_PREAMBLE + DO_NOT_RULES pair was tuned to keep cheap
+# models inside a safe visual envelope. At ultra+ the model is capable enough
+# that those guardrails become a uniformity tax: every shot inherits the same
+# "exactly 2 text levels", "wrap in stage-drift", "no shadows / gradients /
+# card grids" recipe and outputs converge on a single look.
+#
+# These aspirational variants keep the *technical* rails (named easing, no
+# setTimeout, palette tokens from the shot pack, narration sync) and drop
+# the *stylistic* bans, plus add an explicit override clause so any residual
+# "mandatory stage-drift" / "SIMPLE TEXT" guidance still embedded in the
+# shot-card or educational principles blocks below them is downgraded to a
+# default suggestion instead of a hard requirement.
+# ---------------------------------------------------------------------------
+
+CORE_PREAMBLE_ASPIRATIONAL = (
+    "You are an expert Educational Video Designer creating premium, distinctive visuals for LEARNING VIDEOS.\n"
+    "Think: 3Blue1Brown, Vox Explained, Apple keynote inserts, top brand reels — visually rich, memorable, never templated.\n"
+    "Two shots covering different ideas should never look like recolored copies of each other.\n\n"
+
+    "**DESIGN PHILOSOPHY**:\n"
+    "Design for visual impact. Each shot should feel intentionally composed for its specific narration and concept, "
+    "not assembled from a recipe. Deviate from any default conventions in the guidance below when the narrative "
+    "justifies it. Aim for a distinct composition every shot — different focal anchors, different rhythms, "
+    "different visual metaphors — even within the same shot type.\n\n"
+
+    "**TECHNICAL CORRECTNESS (still mandatory)**:\n"
+    "- **EASING** — every GSAP tween MUST use a named ease (`expo.out`, `power3.out`, `back.out(1.6)`, "
+    "`power2.inOut`, `circ.out`, etc.). Never use the default linear or omit `ease`.\n"
+    "- **NO setTimeout** — the renderer seeks `gsap.globalTimeline` frame-by-frame. "
+    "Use `gsap.to('#el', {delay:1.4})` or `gsap.delayedCall(1.4, fn)`. setTimeout never fires.\n"
+    "- **PALETTE & TYPOGRAPHY TOKENS** — use the shot pack tokens supplied in the user prompt verbatim. "
+    "Do not invent new colors, font sizes, spacings, or eases outside the shared design system; that is "
+    "how cross-shot drift creeps in.\n"
+    "- **NARRATION SYNC** — animate to the word timings provided. Reveals should land on emphasis words, "
+    "not on round-number delays.\n"
+    "- **LEGIBILITY** — display text remains readable: enough contrast vs. background, body and labels "
+    "never below ~0.95rem for landscape / ~1.1rem for portrait.\n\n"
+
+    "**WHAT TO PURSUE (aspirational, not prescriptive)**:\n"
+    "- Distinctive composition: hero asymmetry, layered SVG illustration, large-scale type, deliberate "
+    "negative space, unexpected framing, off-axis anchors. Avoid centered hero+sub on every shot.\n"
+    "- Rich custom SVG: hand-crafted diagrams, annotated illustrations, motion-pathed elements, draw-on "
+    "strokes — not just stock icons placed on a flat background. SVG is your strongest tool here; use it.\n"
+    "- Multiple ambient motion layers (target 3+): drift on the composition wrapper, breathing/yoyo on a "
+    "secondary subject, slow rotation or opacity pulse on a background pattern, glow pulse on a hero "
+    "element. One `.stage-drift` tween is NOT enough on its own — design at least three independent "
+    "loops on different DOM layers so no part of the frame is ever fully still.\n"
+    "- Built UI over photographed UI: when the narration depicts a digital interaction (phone, app, "
+    "chat, browser, code editor, dashboard, document), CONSTRUCT the interface in HTML/CSS — frame, "
+    "status bar, header, message bubbles, metadata strips — so every element can animate to narration. "
+    "Stock photos of phones or screens read as generic and cannot choreograph; reserve stock photography "
+    "for atmospherics, hooks, and real-world subjects (people, places, materials).\n"
+    "- Typography as a graphic element: scale, tracking, kinetic splits, paired display + small-caps label. "
+    "Use 2 levels when minimal is right, 3 when the content demands hierarchy. The 'exactly 2 levels' "
+    "rule is a default, not a ceiling.\n"
+    "- Effects judged by impact: shadows, gradients, blur, glassmorphism are ALLOWED when they serve "
+    "the composition (depth, focus, mood, separation). Avoid them when they're decorative noise. "
+    "Default = no effect; override with intent.\n\n"
+
+    "**MULTI-ACT STRUCTURE FOR LONG SHOTS**:\n"
+    "If your shot's duration is ≥12s AND the narration crosses two or more distinct sentences/ideas, "
+    "do NOT stretch one composition across the whole hold. Build 2–3 visually distinct sub-compositions "
+    "(acts) and CUT between them on sentence boundaries. Each act gets its own layout, its own focal "
+    "subject, and its own typographic treatment; the cut is a hard transition, not a fade.\n"
+    "Cut utilities are PRE-INJECTED in the global stylesheet — use them directly, do not redeclare:\n"
+    "- `.flash.white`, `.flash.red`, `.flash.black` — full-screen flash overlays at z-index 55. "
+    "`.flash.red` uses `mix-blend-mode:difference` for an aggressive warning cut.\n"
+    "- `.glitch-cut` — chromatic-aberration flicker (0.18s) at z-index 56, triggered by "
+    "`gsap.set('.glitch-cut', {display:'block'})`.\n"
+    "Layout your acts as siblings inside the `.stage-drift` wrapper, each starting at opacity 0:\n"
+    "```html\n"
+    "<div class='stage-drift'>\n"
+    "  <div id='act-1' class='act'>...</div>\n"
+    "  <div id='act-2' class='act' style='opacity:0'>...</div>\n"
+    "  <div id='act-3' class='act' style='opacity:0'>...</div>\n"
+    "</div>\n"
+    "<div class='flash white' id='flash-white'></div>\n"
+    "<div class='flash red'   id='flash-red'></div>\n"
+    "```\n"
+    "Cut pattern at timestamp T:\n"
+    "```js\n"
+    "gsap.to('#flash-white', {opacity:0.7, duration:0.07, delay:T, ease:'none',\n"
+    "  onComplete: () => gsap.to('#flash-white', {opacity:0, duration:0.25, ease:'power2.out'})});\n"
+    "gsap.to('#act-2', {opacity:1, duration:0.5, delay:T, ease:'power3.inOut'});\n"
+    "// previous act stays visible underneath; flash hides the swap\n"
+    "```\n"
+    "A 20s shot covering 4 sentences should typically be 3 acts; pace the cuts to land on sentence "
+    "boundaries from the WORD TIMINGS table, not on round-number delays.\n\n"
+
+    "**PLAN BEFORE YOU CODE — TIMELINE MAP**:\n"
+    "Begin your `<script>` block with a TIMELINE MAP comment that lists every narration phrase with its "
+    "absolute timestamp and the animation it triggers. Then implement against the map. Every emphasis "
+    "word in the WORD TIMINGS table should anchor at least one beat — reveals, annotations, scale "
+    "punches, color swaps, cuts. Round-number delays (1.0s, 2.0s, 3.0s) are a sign you ignored the "
+    "timing data; pull `delay:` values from the Rel(s) column.\n"
+    "Format:\n"
+    "```js\n"
+    "/* TIMELINE MAP — Total: 20.0s\n"
+    "   ──────────────────────────────────────\n"
+    "   ACT 1 (0.0s – 10.0s) — \"protect your investment, demand transparency\"\n"
+    "     0.40s  eyebrow + sub-line fade in        (\"protect\")\n"
+    "     2.50s  headline word 1 slam              (\"demand\")\n"
+    "     3.10s  headline word 2 slam              (\"transparency\")\n"
+    "     4.00s  phone enters from right\n"
+    "     4.70s  proof msg 1 + receipt check 1     (\"photos / fabric arrives\")\n"
+    "     6.40s  proof msg 2 + receipt check 2     (\"video / sewing lines\")\n"
+    "     8.10s  proof msg 3 + receipt check 3     (\"pre-shipment report\")\n"
+    "   ACT 2 (10.0s – 15.5s) — \"you aren't a partner — you're a gamble\"\n"
+    "     10.00s red flash + cut to act 2\n"
+    "     12.60s line1 reveal                       (\"you aren't a partner\")\n"
+    "     13.60s strike-through on \"partner\"\n"
+    "     14.10s headline slam                      (\"GAMBLE\")\n"
+    "   ACT 3 (15.5s – 20.0s) — \"a real brand, from a hobby\"\n"
+    "     15.50s white flash + cut to act 3\n"
+    "     16.95s brand-side reveal                  (\"a real brand\")\n"
+    "     18.10s vs-text reveal                     (\"from\")\n"
+    "     18.55s hobby-side reveal                  (\"a hobby\")\n"
+    "*/\n"
+    "```\n"
+    "This is not optional polish — the planning step is what produces choreographed shots instead of "
+    "decorated ones.\n\n"
+
+    "**SEMANTIC ACCENT COLOR**:\n"
+    "When the Director detects a narration contrast (warning vs success, real vs fake, before vs after, "
+    "right vs wrong), it flags the shot with `semantic_accents: [...]` and the pipeline injects a "
+    "**🎨 SEMANTIC ACCENTS FOR THIS SHOT** block into the user prompt below containing the canonical "
+    "hex values to use. Define those as local CSS vars in your `<style>` block and apply them ONLY "
+    "to the contrasting element — the rest of the composition stays on the brand palette so cohesion "
+    "holds. The injected vars are: `--warn` (danger/red-flag), `--good` (success/check), `--gold` "
+    "(premium/elevated).\n"
+    "If no semantic-accent block appears in the user prompt, this shot is descriptive without a "
+    "contrast — do NOT introduce off-brand colors on your own initiative. Use the brand palette only.\n\n"
+
+    "**CSS UTILITIES (available toolkit, NOT requirements)**:\n"
+    "- `.halftone`, `.halftone-light` — dot-texture overlays\n"
+    "- `.flat-badge` — flat colored callout, no border-radius\n"
+    "- `.slam-wrapper` + `.slam-text` — overflow-hidden translateY reveal container\n"
+    "- `.tracking-label` — small-caps tracking label (Inter, letter-spacing:0.3em)\n"
+    "- `.svg-canvas` — cream #f5f0e8 illustrated background with grid\n"
+    "- `.product-stage` — full-screen relative container for layered subjects\n"
+    "- `.stage-drift` — ambient composition drift wrapper. Use when a slow camera feel suits the shot; "
+    "skip when the shot has its own internal motion or wants a static, framed feel.\n"
+    "- `.draft-guide` / `.solid-overlay` — blueprint two-phase reveal pair\n"
+    "- `.paper-texture`, `.paper-texture.strong` — parchment grain overlay\n"
+    "- `.tech-annotation`, `.tech-annotation-label`, `.tech-annotation-caption` — red dashed engineer "
+    "annotations (the one allowed utility color outside the shot-pack palette)\n"
+    "- `.vignette-overlay` — radial darkening for cinematic exits\n\n"
+
+    "**SVG FILTERS (pre-registered)**:\n"
+    "- `filter=\"url(#roughen)\"` — hand-drawn wobble; preserves stroke-dashoffset animation\n"
+    "- `filter=\"url(#roughen-strong)\"` — bolder sketch feel\n\n"
+
+    "**PLATFORM CAPABILITIES**:\n"
+    "1. **Math**: `$$ E=mc^2 $$` (KaTeX).\n"
+    "2. **Code**: `<pre><code class='language-python'>...</code></pre>` (Prism.js).\n"
+    "3. **Diagrams**: `<div class='mermaid'>graph TD; A-->B;</div>`.\n"
+    "4. **SVG Animations**: stroke-dashoffset draws, motion paths, morph transforms via Anime.js.\n"
+    "5. **Images**: stock-first, AI-generate for cutouts / fictional / stylized art. Use "
+    "`data-subject-id='stable_slug'` for recurring subjects across shots.\n"
+    "6. **Icons**: `<iconify-icon icon='mdi:atom' width='48'></iconify-icon>` "
+    "(sets: mdi:, lucide:, tabler:, noto:, fluent-emoji:).\n"
+    "7. **SVG Maps**: `https://vacademy-media.s3.ap-south-1.amazonaws.com/assets/maps/us.svg`.\n\n"
+
+    "**OVERRIDES OVER ANY GUIDANCE BELOW**:\n"
+    "The shot card, educational principles, and any other guidance after this preamble may contain directives "
+    "such as 'wrap content in `.stage-drift`', 'exactly 2 text levels', 'SIMPLE TEXT — that's it', "
+    "'NO APP-LIKE CARDS', or lists of effects to avoid. In aspirational mode those are DEFAULT suggestions, "
+    "not requirements. If a different composition, hierarchy, or effect serves this shot's narration and "
+    "visual concept better, take that path. The technical rails above (easing, no setTimeout, palette tokens, "
+    "narration sync, legibility) remain hard requirements.\n\n"
+)
+
+DO_NOT_RULES_TECHNICAL = (
+    "**HARD CONSTRAINTS** (technical only — stylistic bans are intentionally relaxed in aspirational mode):\n"
+    "- **setTimeout for animations** — use GSAP `delay:` or `gsap.delayedCall()`. setTimeout never fires "
+    "in the renderer.\n"
+    "- **Unnamed eases / linear default** — every GSAP tween must specify a named ease.\n"
+    "- **Hardcoded colors / sizes outside the shot pack** — always use the supplied tokens so the video "
+    "feels like one designer authored every shot. Local `--warn / --good / --gold` semantic vars are "
+    "an explicit exception (see SEMANTIC ACCENT COLOR above).\n"
+    "- **Vertical text or high-rotation type** — keep text readable; max ±15° rotation, no `writing-mode: "
+    "vertical-*` for narration-bearing copy.\n"
+    "- **Emoji as content icons** — 📸 🎥 📋 etc. render inconsistently across video frames, can't pick "
+    "up brand color, and read as casual. Use inline SVG (with `stroke=\"var(--brand-primary)\"`) or "
+    "Iconify (`<iconify-icon icon='mdi:camera' width='32'></iconify-icon>`) instead. Decorative emoji "
+    "in editorial flourishes are fine; emoji standing in for diagram/UI elements are not.\n\n"
+)
+
+
+EDUCATIONAL_PRINCIPLES_ASPIRATIONAL = (
+    "**EDUCATIONAL DESIGN PRINCIPLES**:\n"
+    "1. **ONE CONCEPT AT A TIME**: Each shot = one idea. No clutter — but 'one idea' can be expressed "
+    "with rich, layered visuals.\n"
+    "2. **ANNOTATE KEY TERMS**: Use Rough Notation to underline/circle important words.\n"
+    "3. **DRAW, DON'T JUST SHOW**: Use Vivus / SVG draw-on / motion paths to construct diagrams "
+    "as if sketching on a whiteboard. Custom SVG > stock icons.\n"
+    "4. **SIGNALING**: Use arrows, circles, highlights, focal scale, and contrast to direct attention. "
+    "Text density is a design choice — minimal when minimal is right, layered when the concept demands it.\n\n"
+
+    "**PROGRESSIVE DISCLOSURE** (recommended for complex concepts):\n"
+    "Build understanding layer by layer within each shot:\n"
+    "1. Show the main heading/question FIRST (delay: 0)\n"
+    "2. Draw/reveal the first part of the diagram (delay: 2-3s, sync to word timing)\n"
+    "3. Annotate the key term being spoken (sync to word timing)\n"
+    "4. Add the next layer of detail (delay: 5-7s)\n"
+    "Each reveal should ADD to what's on screen, NOT replace it.\n\n"
+
+    "**DUAL CODING PRINCIPLE**:\n"
+    "Shots that introduce a new concept should pair:\n"
+    "1. TEXT (the concept name + brief explanation)\n"
+    "2. A VISUAL (SVG diagram, flowchart, comparison, annotated image, or code block)\n"
+    "Text-only shots are reserved for Key Takeaway cards and LOWER_THIRD overlays.\n\n"
+)
+
+
+# Substrings that flag a stage-drift / static-frame mandate inside a card
+# guideline. When aspirational mode is active, any guideline line containing
+# one of these is dropped — the override clause in the preamble already says
+# "those are defaults, not requirements", but leaving the prescriptive
+# sentence in the prompt anyway sends the model mixed signals.
+_ASPIRATIONAL_GUIDELINE_BANS = (
+    "wrap the content in `.stage-drift`",
+    "wrap the content in .stage-drift",
+    "No static frames",
+    "so the whole composition drifts during any hold",
+    "MUST WRAP in `.stage-drift`",
+    "MUST WRAP in .stage-drift",
+)
+
+
+def _relax_card_for_aspirational(card_text: str) -> str:
+    """Strip prescriptive stage-drift / no-static-frames mandate lines from a
+    formatted shot-type card and neutralize canonical `.stage-drift` wrappers
+    in the example HTML so they read as one option among many rather than the
+    canonical pattern. Used only when `aspirational=True` is passed to
+    `build_per_shot_system_prompt`.
+    """
+    out_lines = []
+    for line in card_text.splitlines():
+        if any(ban in line for ban in _ASPIRATIONAL_GUIDELINE_BANS):
+            continue
+        out_lines.append(line)
+    text = "\n".join(out_lines)
+    # Drop the canonical `.stage-drift` wrapper from example HTML so the model
+    # doesn't anchor on it as the one true layout. The `.stage-drift` utility
+    # remains documented and available — just no longer shown as the default
+    # composition wrapper in every card.
+    text = text.replace(
+        "<div class='stage-drift full-screen-center'>",
+        "<div class='full-screen-center'>",
+    )
+    text = text.replace(
+        "<div class=\"stage-drift full-screen-center\">",
+        "<div class=\"full-screen-center\">",
+    )
+    return text
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # SHOT TYPE CARDS — one per shot type, self-contained documentation.
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1038,6 +1299,121 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
         ],
     },
     # ------------------------------------------------------------------
+    # DEVICE_MOCKUP — purpose-built HTML/CSS UI for digital interactions
+    # (phone, browser, terminal, dashboard, chat) instead of a stock photo
+    # of one. Every element is animatable; nothing is locked into a JPEG.
+    # ------------------------------------------------------------------
+    "DEVICE_MOCKUP": {
+        "id": "DEVICE_MOCKUP",
+        "name": "Device Mockup",
+        "category": "ui",
+        "description": (
+            "Purpose-built HTML/CSS device interface — phone, browser tab, terminal window, "
+            "code editor, chat app, or dashboard — constructed from primitives so every "
+            "element can animate to narration. Strictly NO stock photo of the device."
+        ),
+        "use_for": (
+            "Any moment whose narration depicts a digital interaction: receiving a chat message, "
+            "opening a browser tab, running a command, scrolling a dashboard, signing into an app, "
+            "watching code update, viewing a notification, sending a document. Stock photos of "
+            "phones / screens read as generic and cannot be choreographed; build the UI instead."
+        ),
+        "requires_image": False,
+        "requires_video": False,
+        "preferred_domains": [
+            "saas_marketing", "saas_demo", "business_marketing",
+            "coding", "general", "input_video_demo",
+        ],
+        "html_template": (
+            "<!-- DEVICE_MOCKUP — phone variant. Browser / terminal / dashboard variants in guidelines. -->\n"
+            "<!-- Layout: composition wrapper (.stage-drift) + device frame + interior + flash overlay slot. -->\n"
+            "<div class='stage-drift' style='display:flex; align-items:center; justify-content:center;\n"
+            "     background: linear-gradient(135deg, #f0e5d0 0%, #e0d2b8 100%);'>\n"
+            "  <div class='phone' style='position:relative; width:320px; max-width:80%; height:620px;\n"
+            "       max-height:85%; background:#1a120a; border-radius:36px; padding:12px;\n"
+            "       box-shadow:0 24px 60px rgba(0,0,0,0.4); transform:rotate(-3deg) translateY(20px);\n"
+            "       opacity:0;'>\n"
+            "    <!-- Notch -->\n"
+            "    <div style='position:absolute; top:18px; left:50%; transform:translateX(-50%);\n"
+            "         width:100px; height:22px; background:#0a0604; border-radius:12px; z-index:10;'></div>\n"
+            "    <!-- Screen -->\n"
+            "    <div style='width:100%; height:100%; background:#fdf8ec; border-radius:26px;\n"
+            "         padding:44px 14px 14px 14px; overflow:hidden; position:relative;\n"
+            "         display:flex; flex-direction:column; gap:0.6rem;'>\n"
+            "      <!-- Status bar (fake clock + signal/wifi/battery) -->\n"
+            "      <div style='position:absolute; top:14px; left:24px; right:24px;\n"
+            "           display:flex; justify-content:space-between;\n"
+            "           font-family:Fira Code,monospace; font-size:0.65rem; font-weight:700;\n"
+            "           letter-spacing:0.1em; color:var(--brand-text);'>\n"
+            "        <span>9:41</span><span>● ● ● ●</span>\n"
+            "      </div>\n"
+            "      <!-- Header strip -->\n"
+            "      <div style='display:flex; align-items:center; gap:0.6rem; padding:0.6rem 0.8rem;\n"
+            "           border-bottom:1px solid rgba(110,100,83,0.15);'>\n"
+            "        <div style='width:32px; height:32px; border-radius:50%;\n"
+            "             background:var(--brand-primary); color:#fff;\n"
+            "             display:flex; align-items:center; justify-content:center;\n"
+            "             font-family:Bebas Neue,sans-serif;'>FM</div>\n"
+            "        <div>\n"
+            "          <div style='font-size:0.78rem; font-weight:700;'>Factory Manager</div>\n"
+            "          <div style='font-size:0.62rem; color:#16a34a; font-weight:600;'>● online</div>\n"
+            "        </div>\n"
+            "      </div>\n"
+            "      <!-- Message 1 — text bubble -->\n"
+            "      <div id='msg-1' class='msg' style='opacity:0; transform:translateY(20px) scale(0.9);\n"
+            "           transform-origin:bottom left; max-width:88%;'>\n"
+            "        <div style='padding:0.4rem; background:#fff; border-radius:14px;\n"
+            "             border-bottom-left-radius:4px;\n"
+            "             box-shadow:0 2px 8px rgba(0,0,0,0.06); font-size:0.78rem;'>\n"
+            "          Fabric arrived. Batch 402 logged.\n"
+            "        </div>\n"
+            "      </div>\n"
+            "      <!-- Message 2 — photo proof with metadata strip -->\n"
+            "      <div id='msg-2' class='msg' style='opacity:0; transform:translateY(20px) scale(0.9);\n"
+            "           max-width:88%;'>\n"
+            "        <div style='padding:0.4rem; background:#fff; border-radius:14px;'>\n"
+            "          <div style='width:100%; height:90px; border-radius:10px; position:relative;\n"
+            "               background:linear-gradient(135deg,#9c8770,#6e6453);'>\n"
+            "            <div style='position:absolute; bottom:4px; left:6px;\n"
+            "                 font-family:Fira Code,monospace; font-size:0.55rem; font-weight:700;\n"
+            "                 color:#fff; background:rgba(0,0,0,0.5); padding:1px 6px;\n"
+            "                 border-radius:3px; letter-spacing:0.1em;'>FABRIC · BATCH 402</div>\n"
+            "          </div>\n"
+            "        </div>\n"
+            "      </div>\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>\n"
+        ),
+        "script_block": (
+            "// Phone enters and breathes\n"
+            "gsap.fromTo('.phone', {opacity:0, y:20, scale:0.92},\n"
+            "  {opacity:1, y:0, scale:1, duration:0.7, delay:0.3, ease:'power3.out'});\n"
+            "gsap.to('.phone', {y:-8, duration:2.5, delay:1.2,\n"
+            "  repeat:-1, yoyo:true, ease:'sine.inOut'});\n"
+            "// Messages reveal one-by-one synced to narration beats\n"
+            "// Pull `delay:` values from the WORD TIMINGS table — do NOT use round numbers\n"
+            "gsap.to('#msg-1', {opacity:1, y:0, scale:1, duration:0.5,\n"
+            "  delay:1.0, ease:'back.out(1.5)'});\n"
+            "gsap.to('#msg-2', {opacity:1, y:0, scale:1, duration:0.5,\n"
+            "  delay:2.4, ease:'back.out(1.5)'});\n"
+        ),
+        "guidelines": [
+            "Build the device CHROME from primitives — frame, notch, status bar, header. NEVER use a stock photo of a phone, browser, or screen.",
+            "Phone variant: rounded body with `border-radius:36px`, padding for the notch, dark frame color (#0a0604 or similar), screen tilt of -3° to 4° feels organic.",
+            "Browser variant: chrome bar with three traffic-light dots (#fc625d, #fdbc40, #34c749), URL pill, tab strip. Body interior is the actual page being shown.",
+            "Terminal variant: black/charcoal body, top bar with traffic lights, monospace text inside, blinking cursor (`@keyframes blink {50% {opacity:0}}`). Use ANSI-style colors for output.",
+            "Code editor variant: dark bg (#1e1e2e or similar), syntax-highlighted span colors (Prism.js or hand-coded), line numbers in muted gray gutter, optional file tab.",
+            "Dashboard variant: side nav bar, header with user avatar, content grid with chart cards. Each card is a `.bento-card` with a sparkline/bar SVG inside.",
+            "EVERY interactive element gets its own id and animates to narration: notification dots ping in, messages slide+scale on emphasis words, status text typewrites in.",
+            "Reveal pattern: device enters at 0.0–0.5s (scale + rotate + fade), one element appears per narration emphasis word, ambient breath/yoyo on the device for the hold.",
+            "Multi-message sequences (chat, log streams, code typing): pull each `delay:` from the Rel(s) column of WORD TIMINGS. Do NOT space them on round numbers.",
+            "Inline SVG icons inside the device — emoji 📸 🎥 📋 inside a phone screen render badly across video frames. Use Iconify (`<iconify-icon icon='mdi:camera-outline' width='14'>`) or hand-coded SVG.",
+            "Allowed off-brand colors INSIDE the device chrome: traffic-light dots, REC indicator red, signal-bar grey. Outside the chrome, stay on brand palette + Director-flagged semantic accents.",
+        ],
+    },
+
+    # ------------------------------------------------------------------
     # SOURCE_CLIP — play a clip from the indexed source video with
     # transparent HTML overlays on top (captions, lower thirds, callouts)
     # ------------------------------------------------------------------
@@ -1158,7 +1534,7 @@ DIAGRAM_TEMPLATES = (
 # TEXT_DIAGRAM is always included. Order matters — first listed = most preferred.
 DOMAIN_SHOT_TYPES: Dict[str, List[str]] = {
     # Education domains
-    "coding": ["TEXT_DIAGRAM", "PROCESS_STEPS", "DATA_STORY", "IMAGE_SPLIT"],
+    "coding": ["TEXT_DIAGRAM", "PROCESS_STEPS", "DATA_STORY", "IMAGE_SPLIT", "DEVICE_MOCKUP"],
     "history": ["IMAGE_HERO", "VIDEO_HERO", "IMAGE_SPLIT", "ANIMATED_ASSET", "TEXT_DIAGRAM", "LOWER_THIRD"],
     "science": ["IMAGE_SPLIT", "ANIMATED_ASSET", "TEXT_DIAGRAM", "ANNOTATION_MAP", "PROCESS_STEPS", "VIDEO_HERO"],
     "biology": ["ANNOTATION_MAP", "ANIMATED_ASSET", "IMAGE_SPLIT", "PROCESS_STEPS", "TEXT_DIAGRAM", "VIDEO_HERO"],
@@ -1167,9 +1543,9 @@ DOMAIN_SHOT_TYPES: Dict[str, List[str]] = {
     "math": ["TEXT_DIAGRAM", "EQUATION_BUILD", "PROCESS_STEPS"],
     "language": ["TEXT_DIAGRAM", "IMAGE_HERO", "LOWER_THIRD", "IMAGE_SPLIT"],
     # Marketing / business domains
-    "saas_marketing": ["VIDEO_HERO", "IMAGE_HERO", "TEXT_DIAGRAM", "DATA_STORY", "IMAGE_SPLIT"],
-    "business_marketing": ["VIDEO_HERO", "IMAGE_HERO", "TEXT_DIAGRAM", "DATA_STORY", "IMAGE_SPLIT"],
-    "saas_demo": ["IMAGE_SPLIT", "PROCESS_STEPS", "TEXT_DIAGRAM", "ANNOTATION_MAP", "IMAGE_HERO"],
+    "saas_marketing": ["VIDEO_HERO", "DEVICE_MOCKUP", "IMAGE_HERO", "TEXT_DIAGRAM", "DATA_STORY", "IMAGE_SPLIT"],
+    "business_marketing": ["VIDEO_HERO", "DEVICE_MOCKUP", "IMAGE_HERO", "TEXT_DIAGRAM", "DATA_STORY", "IMAGE_SPLIT"],
+    "saas_demo": ["DEVICE_MOCKUP", "IMAGE_SPLIT", "PROCESS_STEPS", "TEXT_DIAGRAM", "ANNOTATION_MAP", "IMAGE_HERO"],
     # Creative domains
     "visual_storytelling": ["VIDEO_HERO", "IMAGE_HERO", "IMAGE_SPLIT", "ANIMATED_ASSET", "LOWER_THIRD"],
     # Illustrated SVG mode — pure SVG, no photos
@@ -1177,10 +1553,10 @@ DOMAIN_SHOT_TYPES: Dict[str, List[str]] = {
     # Product showcase — subject-centric brand reel
     "product_showcase": ["PRODUCT_HERO", "KINETIC_TITLE", "DATA_STORY", "LOWER_THIRD"],
     # Default
-    "general": ["IMAGE_HERO", "VIDEO_HERO", "TEXT_DIAGRAM", "IMAGE_SPLIT", "ANIMATED_ASSET", "PROCESS_STEPS", "LOWER_THIRD"],
+    "general": ["IMAGE_HERO", "VIDEO_HERO", "TEXT_DIAGRAM", "IMAGE_SPLIT", "ANIMATED_ASSET", "PROCESS_STEPS", "DEVICE_MOCKUP", "LOWER_THIRD"],
     # Input video modes — SOURCE_CLIP is the primary shot type
     "input_video_podcast": ["SOURCE_CLIP", "KINETIC_TITLE", "TEXT_DIAGRAM", "DATA_STORY", "LOWER_THIRD"],
-    "input_video_demo": ["SOURCE_CLIP", "KINETIC_TITLE", "TEXT_DIAGRAM", "PROCESS_STEPS", "ANNOTATION_MAP", "LOWER_THIRD"],
+    "input_video_demo": ["SOURCE_CLIP", "DEVICE_MOCKUP", "KINETIC_TITLE", "TEXT_DIAGRAM", "PROCESS_STEPS", "ANNOTATION_MAP", "LOWER_THIRD"],
 }
 
 
@@ -1313,12 +1689,19 @@ def build_per_shot_system_prompt(
     shot_type: str,
     width: int = 1920,
     height: int = 1080,
+    *,
+    aspirational: bool = False,
 ) -> str:
     """Build a system prompt with only ONE shot type card.
 
     Used by Phase 2+3 (Director → per-shot HTML generation).
     Even smaller than build_filtered_system_prompt — includes only the single
     card needed plus shared tools and principles.
+
+    When `aspirational=True` (wired on at ultra / super_ultra), swaps the
+    defensive preamble + DO-NOT list for variants that drop the stylistic
+    bans and the mandatory `.stage-drift` / 2-text-levels prescriptions while
+    keeping the technical rails. Reduces cross-shot templating.
     """
     aspect_label = "9:16 portrait" if width < height else "16:9"
 
@@ -1327,13 +1710,20 @@ def build_per_shot_system_prompt(
         # Fallback to TEXT_DIAGRAM if unknown type
         card = SHOT_TYPE_CARDS["TEXT_DIAGRAM"]
 
-    parts = [
-        CORE_PREAMBLE,
+    preamble = CORE_PREAMBLE_ASPIRATIONAL if aspirational else CORE_PREAMBLE
+    do_not = DO_NOT_RULES_TECHNICAL if aspirational else DO_NOT_RULES
+    principles = EDUCATIONAL_PRINCIPLES_ASPIRATIONAL if aspirational else EDUCATIONAL_PRINCIPLES
+
+    card_text = (
         _format_card(card)
-            .replace("{canvas_width}", str(width))
-            .replace("{canvas_height}", str(height))
-            .replace("{aspect_label}", aspect_label),
-    ]
+        .replace("{canvas_width}", str(width))
+        .replace("{canvas_height}", str(height))
+        .replace("{aspect_label}", aspect_label)
+    )
+    if aspirational:
+        card_text = _relax_card_for_aspirational(card_text)
+
+    parts = [preamble, card_text]
 
     if card.get("requires_image") or card.get("requires_video"):
         parts.append(
@@ -1341,7 +1731,7 @@ def build_per_shot_system_prompt(
         )
 
     parts.append(ANIMATION_TOOLS)
-    parts.append(EDUCATIONAL_PRINCIPLES)
-    parts.append(DO_NOT_RULES)
+    parts.append(principles)
+    parts.append(do_not)
 
     return "\n".join(parts)

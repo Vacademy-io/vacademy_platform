@@ -1,0 +1,38 @@
+-- =========================================================================
+-- V233: Restore the bridge.cpo_id column for rolling-deploy compatibility.
+--
+-- Background: V232 unified ComplexPaymentOption (CPO) into the PaymentOption
+-- table and dropped the now-redundant `cpo_id` column on
+-- `package_session_learner_invitation_to_payment_option`. The migration is
+-- safe IFF the matching application code (which removed `cpoId` from the
+-- entity) ships in the same deploy. If V232 runs before the new JAR is live
+-- (e.g. staging DB was migrated ahead of the staging server roll), the OLD
+-- bytecode still emits SELECTs/INSERTs that include `cpo_id`, and Postgres
+-- aborts every transaction that touches the bridge table — breaking course
+-- creation, the Razorpay webhook, school enrollment, etc.
+--
+--   ERROR: column "cpo_id" of relation
+--   "package_session_learner_invitation_to_payment_option" does not exist
+--
+-- This migration re-adds the column as nullable with no FK and no index, so
+-- the legacy queries succeed (writing/reading NULL). The new application code
+-- (post-deploy) does not reference this column at all — the field was
+-- removed from the entity, repository queries derive the CPO via
+-- payment_option.complex_payment_option_id, and assignCpoToPackageSession
+-- attaches the CPO via the mirror PaymentOption — so the column becomes inert
+-- once the rollout completes.
+--
+-- Note: V232 has already repointed bridge.payment_option_id at the CPO mirror
+-- for every row that previously carried a cpo_id. The CPO id remains
+-- recoverable via:
+--   bridge.payment_option_id -> payment_option.complex_payment_option_id
+-- The restored cpo_id column is intentionally NOT backfilled — old code that
+-- reads cpo_id will see NULL, which is the correct cue to skip CPO-specific
+-- branches that no longer apply.
+--
+-- A follow-up migration should drop this column again once every deployed
+-- environment is on the V232-aware code.
+-- =========================================================================
+
+ALTER TABLE package_session_learner_invitation_to_payment_option
+    ADD COLUMN IF NOT EXISTS cpo_id VARCHAR(255);

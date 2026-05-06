@@ -217,7 +217,8 @@ export function BrandKitDrawer({ open, onOpenChange, instituteId, kit }: BrandKi
     });
 
     const scrape = useMutation({
-        mutationFn: (vars: { url: string; sessionId: number }) => scrapeBrandKitFromUrl(vars.url),
+        mutationFn: (vars: { url: string; sessionId: number }) =>
+            scrapeBrandKitFromUrl(vars.url, instituteId),
         onSuccess: (result, vars) => {
             // Drop results from a stale session — the user may have reopened
             // the drawer (different kit, or the same kit after closing).

@@ -76,14 +76,18 @@ export async function deleteBrandKit(id: string, instituteId: string): Promise<v
     });
 }
 
-export async function scrapeBrandKitFromUrl(url: string): Promise<BrandKitScrapeResult> {
+export async function scrapeBrandKitFromUrl(
+    url: string,
+    instituteId: string
+): Promise<BrandKitScrapeResult> {
     // Hits ai_service directly — JWT-auth via authenticatedAxiosInstance, no
-    // persistence. Long-running (15-40s typical); the axios default timeout
-    // would cut us off, so we extend it for this call only.
+    // persistence. instituteId scopes the S3 path. Long-running (15-40s
+    // typical); the axios default timeout would cut us off, so extend for this
+    // call only.
     const { data } = await authenticatedAxiosInstance.post<BrandKitScrapeResult>(
         VIMOTION_BRAND_KIT_SCRAPE,
         { url },
-        { timeout: 60_000 }
+        { params: { instituteId }, timeout: 60_000 }
     );
     return data;
 }

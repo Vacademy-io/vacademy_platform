@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Query
 
 from ..core.security import get_current_user
 from ..schemas.auth import CustomUserDetails
@@ -30,13 +30,13 @@ router = APIRouter(prefix="/admin/vimotion/v1/brand-kits", tags=["Vimotion Brand
 )
 async def scrape_brand_kit(
     request: BrandKitScrapeRequest,
-    user: CustomUserDetails = Depends(get_current_user),
+    instituteId: str = Query(..., description="Institute ID — used for S3 path scoping."),
+    user: CustomUserDetails = Depends(get_current_user),  # auth side-effect — verifies JWT
 ):
-    institute_id = user.institute_id
-    if not institute_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Institute context required (clientId header).",
-        )
+    # `instituteId` matches the existing VimotionBrandKitController query param
+    # name on admin-core-service. The institute is supplied explicitly because
+    # authenticatedAxiosInstance does not propagate the `clientId` header that
+    # get_current_user would otherwise use to set user.institute_id.
+    logger.info(f"[BrandKitScrape] user={user.username!r} institute={instituteId!r}")
     service = BrandKitScrapeService()
-    return await service.scrape_brand_kit(str(request.url), institute_id)
+    return await service.scrape_brand_kit(str(request.url), instituteId)

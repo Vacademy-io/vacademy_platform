@@ -7,6 +7,8 @@ import {
     getCampaignCustomFields,
     CampaignFormCustomField,
 } from '../../-utils/getCampaignCustomFields';
+import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
 
 // Details cell — opens the side view via SidebarTrigger, mirroring the
 // "Details" column used in manage-students and manage-contacts so the affordance
@@ -117,7 +119,8 @@ export const generateDynamicColumns = (
     campaignFieldsMap?: Map<string, { name: string; key?: string }>,
     fieldMetadataMap?: Map<string, { fieldName?: string; fieldKey?: string; fieldType?: string }>,
     onRowClick?: (row: CampaignUserTable) => void,
-    onSelectRow?: (row: CampaignUserTable) => void
+    onSelectRow?: (row: CampaignUserTable) => void,
+    leadProfiles?: Record<string, LeadProfileSummary>
 ): ColumnDef<CampaignUserTable>[] => {
     // When a select-row callback is provided, render a "Details" column first —
     // matching manage-students and manage-contacts so the side-view affordance is
@@ -281,12 +284,28 @@ export const generateDynamicColumns = (
                             ? String(value)
                             : '-';
                     const clickable = !!onRowClick && !!row.original._user_id;
+                    // Augment the Name cell with a HOT/WARM/COLD lead-score badge
+                    // when the lead system is on and a profile exists for this row's
+                    // user. Leads without a linked user_id silently render no badge.
+                    const userId = row.original._user_id;
+                    const leadProfile =
+                        isNameFieldCell && leadProfiles && userId
+                            ? leadProfiles[userId]
+                            : undefined;
                     return (
                         <div
                             className={`p-3 text-sm ${isNameFieldCell ? 'font-medium text-neutral-900' : 'text-neutral-700'} ${clickable ? 'cursor-pointer hover:text-primary-600' : ''}`}
                             onClick={clickable ? () => onRowClick!(row.original) : undefined}
                         >
-                            {displayValue}
+                            <div className="flex flex-col gap-0.5">
+                                <span>{displayValue}</span>
+                                {leadProfile && (
+                                    <LeadScoreBadge
+                                        score={leadProfile.best_score}
+                                        size="sm"
+                                    />
+                                )}
+                            </div>
                         </div>
                     );
                 },

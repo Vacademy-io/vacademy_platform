@@ -11,7 +11,11 @@ import {
   isTokenExpired,
 } from '@/lib/auth/sessionUtility';
 import { getUserRoles } from '@/lib/auth/sessionUtility';
-import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
+import {
+    getDisplaySettings,
+    getDisplaySettingsFromCache,
+    resolveEffectivePostLoginRoute,
+} from '@/services/display-settings';
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 
 export const Route = createLazyFileRoute('/auth-transfer/')({
@@ -55,7 +59,7 @@ function AuthTransferPage() {
       const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
     const roleKey = getActiveRoleDisplaySettingsKey();
 
-      let ds: { postLoginRedirectRoute?: string } | null = null;
+      let ds: Awaited<ReturnType<typeof getDisplaySettings>> | null = null;
       const maxRetries = 3;
       let retry = 0;
 
@@ -73,7 +77,8 @@ function AuthTransferPage() {
         }
       }
 
-      const redirectTo = ds?.postLoginRedirectRoute || '/dashboard';
+      const candidate = ds?.postLoginRedirectRoute || '/dashboard';
+      const redirectTo = resolveEffectivePostLoginRoute(candidate, ds);
 
       // 3) Navigate to the post-login route with a single loader experience
       navigate({ to: redirectTo, replace: true });

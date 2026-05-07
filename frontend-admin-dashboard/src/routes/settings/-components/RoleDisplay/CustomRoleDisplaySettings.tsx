@@ -55,6 +55,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     enquiryTab: false,
     applicationTab: false,
     leadTab: false,
+    fullHistoryTab: false,
 };
 
 const STUDENT_SIDE_VIEW_OPTIONS: Array<{
@@ -66,6 +67,11 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
         key: 'overviewTab',
         label: 'Overview Tab',
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.overviewTab,
+    },
+    {
+        key: 'coursesTab',
+        label: 'Courses Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.coursesTab,
     },
     { key: 'testTab', label: 'Test Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.testTab },
     {
@@ -123,6 +129,11 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
         key: 'leadTab',
         label: 'Lead Profile Tab',
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.leadTab,
+    },
+    {
+        key: 'fullHistoryTab',
+        label: 'Full History Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fullHistoryTab ?? false,
     },
 ];
 
@@ -194,6 +205,7 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
             visible: true,
             subTabs: [],
             isCustom: true,
+            category: activeCategory,
         } as DisplaySettingsData['sidebar'][number];
         updateSettings((prev) => ({ ...prev, sidebar: [...prev.sidebar, newTab] }));
     };
@@ -312,7 +324,7 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
             const categoryTabs = prev.sidebar
                 .filter((t) => {
                     const baseItem = SidebarItemsData.find((i) => i.id === t.id);
-                    const cat = baseItem?.category || 'CRM';
+                    const cat = baseItem?.category || t.category || 'CRM';
                     return cat === activeCategory;
                 })
                 .sort((a, b) => a.order - b.order);
@@ -1112,7 +1124,7 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             const categoryTabs = settings.sidebar
                                 .filter((tab) => {
                                     const baseItem = SidebarItemsData.find((i) => i.id === tab.id);
-                                    const cat = baseItem?.category || 'CRM';
+                                    const cat = baseItem?.category || tab.category || 'CRM';
                                     return cat === activeCategory;
                                 })
                                 .sort((a, b) => a.order - b.order);
@@ -1452,13 +1464,11 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             ));
                         })()}
                     </Tabs>
-                    {activeCategory === 'CRM' && (
-                        <div className="pt-2">
-                            <Button variant="outline" onClick={addCustomTab}>
-                                Add Custom Tab
-                            </Button>
-                        </div>
-                    )}
+                    <div className="pt-2">
+                        <Button variant="outline" onClick={addCustomTab}>
+                            Add Custom Tab
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -1474,6 +1484,7 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                     {(
                         [
                             ['pdf', 'PDF'],
+                            ['ppt', 'PPT Presentation'],
                             ['codeEditor', 'Code Editor'],
                             ['document', 'Document'],
                             ['question', 'Question'],
@@ -1481,6 +1492,9 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             ['assignment', 'Assignment'],
                             ['jupyterNotebook', 'Jupyter Notebook'],
                             ['scratch', 'Scratch'],
+                            ['audio', 'Audio'],
+                            ['scorm', 'SCORM Package'],
+                            ['assessment', 'Assessment'],
                         ] as const satisfies ReadonlyArray<
                             readonly [keyof Omit<CourseContentTypeSettings, 'video'>, string]
                         >
@@ -1504,6 +1518,10 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                             jupyterNotebook:
                                                 prev.contentTypes?.jupyterNotebook ?? true,
                                             scratch: prev.contentTypes?.scratch ?? true,
+                                            ppt: prev.contentTypes?.ppt ?? true,
+                                            audio: prev.contentTypes?.audio ?? true,
+                                            scorm: prev.contentTypes?.scorm ?? true,
+                                            assessment: prev.contentTypes?.assessment ?? true,
                                             video: {
                                                 enabled: prev.contentTypes?.video?.enabled ?? true,
                                                 showInVideoQuestion:
@@ -1540,6 +1558,10 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                             jupyterNotebook:
                                                 prev.contentTypes?.jupyterNotebook ?? true,
                                             scratch: prev.contentTypes?.scratch ?? true,
+                                            ppt: prev.contentTypes?.ppt ?? true,
+                                            audio: prev.contentTypes?.audio ?? true,
+                                            scorm: prev.contentTypes?.scorm ?? true,
+                                            assessment: prev.contentTypes?.assessment ?? true,
                                             video: {
                                                 enabled: prev.contentTypes?.video?.enabled ?? true,
                                                 showInVideoQuestion:
@@ -1580,6 +1602,10 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                             jupyterNotebook:
                                                 prev.contentTypes?.jupyterNotebook ?? true,
                                             scratch: prev.contentTypes?.scratch ?? true,
+                                            ppt: prev.contentTypes?.ppt ?? true,
+                                            audio: prev.contentTypes?.audio ?? true,
+                                            scorm: prev.contentTypes?.scorm ?? true,
+                                            assessment: prev.contentTypes?.assessment ?? true,
                                             video: {
                                                 enabled: prev.contentTypes?.video?.enabled ?? true,
                                                 showInVideoQuestion:

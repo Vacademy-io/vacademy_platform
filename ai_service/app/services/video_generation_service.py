@@ -18,6 +18,7 @@ from typing import Optional, Dict, Any, AsyncIterator, List
 from uuid import uuid4
 
 from ..repositories.ai_video_repository import AiVideoRepository
+from ..db import db_session as _fresh_db_session
 from .s3_service import S3Service
 from . import cancellation_registry
 
@@ -1493,8 +1494,16 @@ class VideoGenerationService:
                             break
                     outputs = await _pipeline_future
                 
-                # Record token usage per stage
-                if outputs and "token_usage" in outputs and db_session:
+                # Record token usage per stage.
+                #
+                # Use a FRESH session — the request-scoped `db_session` may have
+                # been killed by Postgres' idle-in-transaction timeout while
+                # the pipeline was busy with LLM/TTS/render I/O (script + TTS +
+                # words + HTML can take many minutes; SQLAlchemy auto-begins a
+                # transaction on first read and never commits it, leaving the
+                # session idle-in-tx for the entire run). Each token-usage
+                # write is a short atomic op that doesn't need request scope.
+                if outputs and "token_usage" in outputs:
                     try:
                         from .token_usage_service import TokenUsageService
                         usage = outputs["token_usage"]
@@ -1502,9 +1511,10 @@ class VideoGenerationService:
                         has_images = usage.get("image_count", 0) > 0
                         has_tts = usage.get("tts_character_count", 0) > 0
                         has_stock = usage.get("stock_count", 0) > 0
-                        
+
                         if has_tokens or has_images or has_tts or has_stock:
-                            token_service = TokenUsageService(db_session)
+                          with _fresh_db_session() as _fresh:
+                            token_service = TokenUsageService(_fresh)
                             provider = ApiProvider.OPENAI
                             if resolved_model and "gemini" in resolved_model.lower():
                                 provider = ApiProvider.GEMINI

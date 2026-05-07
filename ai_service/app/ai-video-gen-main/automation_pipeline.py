@@ -5619,14 +5619,14 @@ class VideoGenerationPipeline:
                 pass
             return None, total_usage
 
-        # Validate shot types
-        valid_types = {
-            "IMAGE_HERO", "VIDEO_HERO", "IMAGE_SPLIT", "TEXT_DIAGRAM",
-            "LOWER_THIRD", "ANNOTATION_MAP", "DATA_STORY", "PROCESS_STEPS",
-            "EQUATION_BUILD", "ANIMATED_ASSET", "KINETIC_TEXT",
-            "INFOGRAPHIC_SVG", "KINETIC_TITLE", "PRODUCT_HERO",
-            "SOURCE_CLIP",
-        }
+        # Validate shot types — derive the allow-list from SHOT_TYPE_CARDS so
+        # the validator can't drift behind the catalog. Previously this was a
+        # hand-maintained set that missed DEVICE_MOCKUP, causing every Director-
+        # picked DEVICE_MOCKUP shot (recommended for coding/saas/saas_demo
+        # domains) to be silently downgraded to TEXT_DIAGRAM, throwing away
+        # the purpose-built phone/browser/terminal/dashboard HTML template.
+        from shot_type_cards import SHOT_TYPE_CARDS
+        valid_types = set(SHOT_TYPE_CARDS.keys())
         for i, shot in enumerate(shots):
             if shot.get("shot_type") not in valid_types:
                 print(f"   ⚠️ Director shot {i} has invalid type '{shot.get('shot_type')}' — defaulting to TEXT_DIAGRAM")

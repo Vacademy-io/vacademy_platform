@@ -67,6 +67,11 @@ AvatarModelLiteral = Literal[
     "veed/fabric-1.0",
 ]
 
+# Provider for studio_avatar / saved-avatar resolution. Single source of truth —
+# referenced by HostAvatarPlan.provider in routing.py and by
+# vimotion_resolver._ALLOWED_PROVIDERS so the resolver allow-list cannot drift.
+AvatarProviderLiteral = Literal["custom", "argil", "veed"]
+
 
 class HostAvatarConfig(BaseModel):
     """Avatar-host inputs. Required when host.type='avatar'.

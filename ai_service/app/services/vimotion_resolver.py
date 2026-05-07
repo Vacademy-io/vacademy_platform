@@ -18,11 +18,15 @@ from typing import Any, Dict, Optional
 from sqlalchemy import text
 
 from ..db import db_session
+from ..schemas.video_generation import AvatarProviderLiteral
 
 logger = logging.getLogger(__name__)
 
 
-_ALLOWED_PROVIDERS = {"custom", "argil", "veed"}
+# Derive from the schema's Literal so the resolver allow-list cannot drift
+# behind HostAvatarPlan.provider (which used to be a separately-maintained
+# inline Literal in schemas/routing.py).
+_ALLOWED_PROVIDERS = set(AvatarProviderLiteral.__args__)
 
 
 def resolve_studio_avatar(

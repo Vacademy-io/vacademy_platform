@@ -11,6 +11,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
+from .video_generation import AvatarModelLiteral, AvatarProviderLiteral
+
 
 # Supported tools — adding a new tool is a one-line registry change here + a
 # branch in video_generation_service.py to execute it.
@@ -120,14 +122,14 @@ class HostAvatarPlan(BaseModel):
     For built-in providers, `face_image_url` is empty and `avatar_model` is
     irrelevant — the provider's endpoint is fixed.
     """
-    provider: Literal["custom", "argil", "veed"] = "custom"
+    provider: AvatarProviderLiteral = "custom"
     external_avatar_id: Optional[str] = None
     face_image_url: str = ""
     details_prompt: str = ""
-    avatar_model: Literal[
-        "fal-ai/kling-video/ai-avatar/v2/standard",
-        "veed/fabric-1.0",
-    ] = "fal-ai/kling-video/ai-avatar/v2/standard"
+    # Source of truth for the model id list lives next to the request schema —
+    # see schemas/video_generation.py::AvatarModelLiteral. Importing here so
+    # the request side and the runtime plan side cannot drift.
+    avatar_model: AvatarModelLiteral = "fal-ai/kling-video/ai-avatar/v2/standard"
     quality: Literal["480p", "720p"] = "480p"
 
 

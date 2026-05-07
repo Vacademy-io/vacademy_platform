@@ -395,11 +395,28 @@ export function NodeConfigPanel() {
                                         { value: 'package_session_id', label: 'Batch ID' },
                                     ],
                                 };
-                                // SpEL context fields (available for all trigger types)
+                                // SpEL context fields (available for all trigger types).
+                                // Grouped by source so the dropdown is readable when there are many.
                                 const CONTEXT_FIELDS = [
+                                    // Institute (always populated by the engine)
+                                    { value: "#ctx['instituteName']", label: 'Institute Name (auto)' },
+                                    { value: "#ctx['instituteId']", label: 'Institute ID (auto)' },
+
+                                    // User fields — populated for LEARNER_BATCH_ENROLLMENT and other
+                                    // user-centric triggers. Bracket-style for `user` (it's a UserDTO
+                                    // bean, so SpEL bean accessor resolves the property).
+                                    { value: "#ctx['user'].username", label: 'Learner Username (from trigger)' },
+                                    { value: "#ctx['user'].password", label: 'Learner Password (from trigger)' },
+                                    { value: "#ctx['user'].fullName", label: 'Learner Full Name (from trigger)' },
+                                    { value: "#ctx['user'].email", label: 'Learner Email (from trigger)' },
+                                    { value: "#ctx['user'].mobileNumber", label: 'Learner Mobile (from trigger)' },
+
+                                    // Live session fields (LIVE_SESSION_* triggers)
                                     { value: "#ctx['liveSession'].title", label: 'Live Session Title (from trigger)' },
                                     { value: "#ctx['liveSession'].startTime", label: 'Session Start Time (from trigger)' },
                                     { value: "#ctx['liveSession'].defaultMeetLink", label: 'Session Meet Link (from trigger)' },
+
+                                    // Audience / campaign fields
                                     { value: "#ctx['campaignName']", label: 'Campaign Name (from trigger)' },
                                     { value: "#ctx['submissionTime']", label: 'Submission Time (from trigger)' },
                                 ];
@@ -419,43 +436,36 @@ export function NodeConfigPanel() {
                                             return (
                                                 <div key={key}>
                                                     <Label className="text-xs">{`{{${key}}}`} <span className="text-gray-400 text-[10px]">({label || key})</span></Label>
-                                                    {availableFields.length > 0 ? (
-                                                        <select
-                                                            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                                            value={currentValue}
-                                                            onChange={(e) => {
-                                                                const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: e.target.value };
-                                                                handleConfigChange('templateVars', vars);
-                                                            }}
-                                                        >
-                                                            <option value="">Select a field...</option>
-                                                            <optgroup label="Item Fields">
+                                                    {/* Always render the dropdown so triggers without a list (e.g. LEARNER_BATCH_ENROLLMENT)
+                                                        still get to pick from CONTEXT_FIELDS. The Item Fields optgroup is only
+                                                        rendered when the node iterates a list (`on` is set). */}
+                                                    <select
+                                                        className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                                        value={currentValue}
+                                                        onChange={(e) => {
+                                                            const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: e.target.value };
+                                                            handleConfigChange('templateVars', vars);
+                                                        }}
+                                                    >
+                                                        <option value="">Select a field...</option>
+                                                        {availableFields.length > 0 && (
+                                                            <optgroup label="Item Fields (from list)">
                                                                 {availableFields.map((f) => (
                                                                     <option key={f.value} value={f.value}>{f.label} ({f.value})</option>
                                                                 ))}
                                                             </optgroup>
-                                                            <optgroup label="Context / Trigger Fields">
-                                                                {CONTEXT_FIELDS.map((f) => (
-                                                                    <option key={f.value} value={f.value}>{f.label}</option>
-                                                                ))}
+                                                        )}
+                                                        <optgroup label="Context / Trigger Fields">
+                                                            {CONTEXT_FIELDS.map((f) => (
+                                                                <option key={f.value} value={f.value}>{f.label}</option>
+                                                            ))}
+                                                        </optgroup>
+                                                        {hasCustomFieldsContext && (
+                                                            <optgroup label="Custom Fields (type name manually)">
+                                                                <option value="" disabled>Type the custom field name below</option>
                                                             </optgroup>
-                                                            {hasCustomFieldsContext && (
-                                                                <optgroup label="Custom Fields (type name manually)">
-                                                                    <option value="" disabled>Type the custom field name below</option>
-                                                                </optgroup>
-                                                            )}
-                                                        </select>
-                                                    ) : (
-                                                        <Input
-                                                            value={currentValue}
-                                                            onChange={(e) => {
-                                                                const vars = { ...(data.config.templateVars as Record<string, string> ?? {}), [key]: e.target.value };
-                                                                handleConfigChange('templateVars', vars);
-                                                            }}
-                                                            className="mt-1"
-                                                            placeholder="Type field name or SpEL expression"
-                                                        />
-                                                    )}
+                                                        )}
+                                                    </select>
                                                     {/* Allow manual override if dropdown value doesn't fit */}
                                                     {availableFields.length > 0 && !availableFields.some((f) => f.value === currentValue) && currentValue && (
                                                         <p className="mt-0.5 text-[10px] text-primary-500">Custom: {currentValue}</p>

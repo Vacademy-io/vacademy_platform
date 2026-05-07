@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner_management.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOp
 import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -33,6 +36,7 @@ import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.common.dto.CustomFieldValueDTO;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
+import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -69,6 +73,8 @@ public class BulkAssignmentService {
     private final PaymentLogRepository paymentLogRepository;
     private final InvoiceService invoiceService;
     private final InstituteSettingService instituteSettingService;
+    private final ObjectMapper objectMapper;
+    private final InstituteRepository instituteRepository;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -101,10 +107,21 @@ public class BulkAssignmentService {
         // Track userId → NewUserDTO so we can save extra details/custom fields after
         // enrollment
         Map<String, NewUserDTO> newUserDataMap = new HashMap<>();
+        // Resolve learner portal URL for the credential email's "Access Your Account" link.
+        // Priority: package.course_setting.LMS_SETTING.learndash_base_url → institute.learnerPortalBaseUrl → null.
+        // Picks the first non-empty value across the assignments' package sessions —
+        // kept in sync with the v1 path (LearnerEnrollRequestService.resolveLearnerPortalUrl).
+        List<String> assignmentPackageSessionIds = request.getAssignments() == null ? List.of()
+                : request.getAssignments().stream()
+                        .map(AssignmentItemDTO::getPackageSessionId)
+                        .filter(StringUtils::hasText)
+                        .collect(Collectors.toList());
+        String learndashBaseUrl = resolveLearnerPortalUrl(assignmentPackageSessionIds, request.getInstituteId());
+
         if (!CollectionUtils.isEmpty(request.getNewUsers()) && !dryRun) {
             for (NewUserDTO newUser : request.getNewUsers()) {
                 try {
-                    String createdUserId = createNewUser(newUser, request.getInstituteId(), sendCredentials);
+                    String createdUserId = createNewUser(newUser, request.getInstituteId(), sendCredentials, learndashBaseUrl);
                     allUserIds.add(createdUserId);
                     newUserDataMap.put(createdUserId, newUser);
                     log.info("Created new user: email={}, userId={}", newUser.getEmail(), createdUserId);
@@ -317,7 +334,7 @@ public class BulkAssignmentService {
      * for the workflow context is resolved later in bulkAssign() via a
      * read-back from auth-service.
      */
-    private String createNewUser(NewUserDTO newUser, String instituteId, boolean sendCredentials) {
+    private String createNewUser(NewUserDTO newUser, String instituteId, boolean sendCredentials, String learndashBaseUrl) {
         UserDTO.UserDTOBuilder builder = UserDTO.builder()
                 .email(newUser.getEmail())
                 .fullName(newUser.getFullName())
@@ -357,7 +374,7 @@ public class BulkAssignmentService {
         UserDTO userDTO = builder.build();
 
         UserDTO created = authService.createUserFromAuthServiceForLearnerEnrollment(
-                userDTO, instituteId, sendCredentials);
+                userDTO, instituteId, sendCredentials, learndashBaseUrl);
 
         if (created == null || !StringUtils.hasText(created.getId())) {
             throw new VacademyException("User creation returned empty result for " + newUser.getEmail());
@@ -1011,6 +1028,49 @@ public class BulkAssignmentService {
         details.setParentsToMotherEmail(newUser.getParentsToMotherEmail());
         details.setLinkedInstituteName(newUser.getLinkedInstituteName());
         return details;
+    }
+
+    /**
+     * Resolves the learner portal URL for the credential email's "Access Your Account" link.
+     * Priority: package.course_setting.LMS_SETTING.learndash_base_url → institute.learnerPortalBaseUrl → null.
+     * Mirrors the same priority chain used on the v1 path
+     * (LearnerEnrollRequestService.resolveLearnerPortalUrl) — keep them in sync.
+     */
+    private String resolveLearnerPortalUrl(List<String> packageSessionIds, String instituteId) {
+        try {
+            if (!CollectionUtils.isEmpty(packageSessionIds)) {
+                List<PackageSession> packageSessions = packageSessionService.findAllByIds(packageSessionIds);
+                for (PackageSession packageSession : packageSessions) {
+                    if (packageSession.getPackageEntity() == null) {
+                        continue;
+                    }
+                    String courseSetting = packageSession.getPackageEntity().getCourseSetting();
+                    if (!StringUtils.hasText(courseSetting)) {
+                        continue;
+                    }
+                    JsonNode urlNode = objectMapper.readTree(courseSetting)
+                            .path("setting")
+                            .path("LMS_SETTING")
+                            .path("data")
+                            .path("data")
+                            .path("learndash_base_url");
+                    if (!urlNode.isMissingNode() && urlNode.isTextual()) {
+                        String url = urlNode.asText();
+                        if (StringUtils.hasText(url)) {
+                            return url;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error reading learndash_base_url from package courseSetting; falling back to institute URL", e);
+        }
+        if (StringUtils.hasText(instituteId)) {
+            return instituteRepository.findById(instituteId)
+                    .map(Institute::getLearnerPortalBaseUrl)
+                    .orElse(null);
+        }
+        return null;
     }
 
     private boolean hasAnyAssignmentCustomFields(BulkAssignRequestDTO request) {

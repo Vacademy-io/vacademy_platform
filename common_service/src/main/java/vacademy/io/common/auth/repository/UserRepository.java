@@ -223,6 +223,43 @@ public interface UserRepository extends CrudRepository<User, String> {
       @Param("email") String email,
       @Param("mobile") String mobile);
 
+  // Variants that additionally restrict by a list of user IDs (used by sub-org team listing).
+  @Query(value = "SELECT DISTINCT u.* FROM users u " +
+      "JOIN user_role ur ON u.id = ur.user_id " +
+      "JOIN roles r ON r.id = ur.role_id " +
+      "WHERE ur.status IN (:statuses) " +
+      "AND r.role_name IN (:roles) " +
+      "AND ur.institute_id = :instituteId " +
+      "AND u.id IN (:userIds) " +
+      "AND (:name IS NULL OR CAST(u.full_name AS TEXT) ILIKE CONCAT('%', :name, '%')) " +
+      "AND (:email IS NULL OR CAST(u.email AS TEXT) ILIKE CONCAT('%', :email, '%')) " +
+      "AND (:mobile IS NULL OR u.mobile_number LIKE CONCAT('%', :mobile, '%')) " +
+      "ORDER BY u.full_name ASC", nativeQuery = true)
+  List<User> findUsersByStatusAndInstituteAndUserIdsPaged(@Param("statuses") List<String> statuses,
+      @Param("roles") List<String> roles, @Param("instituteId") String instituteId,
+      @Param("userIds") List<String> userIds,
+      @Param("name") String name,
+      @Param("email") String email,
+      @Param("mobile") String mobile,
+      org.springframework.data.domain.Pageable pageable);
+
+  @Query(value = "SELECT COUNT(DISTINCT u.id) FROM users u " +
+      "JOIN user_role ur ON u.id = ur.user_id " +
+      "JOIN roles r ON r.id = ur.role_id " +
+      "WHERE ur.status IN (:statuses) " +
+      "AND r.role_name IN (:roles) " +
+      "AND ur.institute_id = :instituteId " +
+      "AND u.id IN (:userIds) " +
+      "AND (:name IS NULL OR CAST(u.full_name AS TEXT) ILIKE CONCAT('%', :name, '%')) " +
+      "AND (:email IS NULL OR CAST(u.email AS TEXT) ILIKE CONCAT('%', :email, '%')) " +
+      "AND (:mobile IS NULL OR u.mobile_number LIKE CONCAT('%', :mobile, '%'))", nativeQuery = true)
+  long countUsersByStatusAndInstituteAndUserIds(@Param("statuses") List<String> statuses,
+      @Param("roles") List<String> roles, @Param("instituteId") String instituteId,
+      @Param("userIds") List<String> userIds,
+      @Param("name") String name,
+      @Param("email") String email,
+      @Param("mobile") String mobile);
+
   @Modifying
   @Transactional
   @Query("UPDATE User u SET u.lastTokenUpdateTime = CURRENT_TIMESTAMP WHERE u.id IN :userIds")

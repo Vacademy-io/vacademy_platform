@@ -122,6 +122,13 @@ public class RoleService {
             CustomUserDetails customUserDetails) {
         int pageNumber = filterDTO.getPageNumber() != null ? filterDTO.getPageNumber() : 0;
         int pageSize = filterDTO.getPageSize() != null ? filterDTO.getPageSize() : 10;
+        // When userIds is provided, route to the user-id-restricted variant. Existing callers
+        // that don't set userIds keep the original behaviour.
+        if (filterDTO.getUserIds() != null) {
+            return userService.getUsersByInstituteIdAndStatusPagedAndUserIds(instituteId, filterDTO.getStatus(),
+                    filterDTO.getRoles(), filterDTO.getUserIds(), filterDTO.getName(), pageNumber, pageSize,
+                    customUserDetails);
+        }
         return userService.getUsersByInstituteIdAndStatusPaged(instituteId, filterDTO.getStatus(), filterDTO.getRoles(),
                 filterDTO.getName(), pageNumber, pageSize, customUserDetails);
     }

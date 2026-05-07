@@ -149,6 +149,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'teams',
             },
             {
+                subItem: 'Sub-Org Teams',
+                subItemLink: '/manage-suborg-teams',
+                subItemId: 'suborg-teams',
+            },
+            {
                 subItem: `${getTerminology(OtherTerms.Inventory, SystemTerms.Inventory)} Management`,
                 subItemLink: '/manage-inventory',
                 subItemId: 'inventory-management',

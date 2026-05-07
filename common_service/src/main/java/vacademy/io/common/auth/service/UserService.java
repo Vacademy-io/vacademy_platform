@@ -348,6 +348,67 @@ public class UserService {
                 .build();
     }
 
+    /**
+     * Same as {@link #getUsersByInstituteIdAndStatusPaged} but additionally restricts results
+     * to users whose id is in {@code userIds}. Used by the sub-org team listing flow where the
+     * caller pre-resolves the eligible user IDs from FSPSSM.
+     * <p>
+     * If {@code userIds} is null or empty, returns an empty page (no users in scope).
+     */
+    public PagedUserWithRolesResponse getUsersByInstituteIdAndStatusPagedAndUserIds(String instituteId,
+            List<String> statuses, List<String> roles, List<String> userIds, String searchName,
+            int pageNumber, int pageSize, CustomUserDetails userDetails) {
+        if (userIds == null || userIds.isEmpty()) {
+            return PagedUserWithRolesResponse.builder()
+                    .content(java.util.Collections.emptyList())
+                    .pageNumber(pageNumber)
+                    .pageSize(pageSize)
+                    .totalElements(0L)
+                    .totalPages(0)
+                    .first(true)
+                    .last(true)
+                    .build();
+        }
+
+        org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(pageNumber,
+                pageSize);
+
+        String name = null;
+        String email = null;
+        String mobile = null;
+
+        if (searchName != null && !searchName.trim().isEmpty()) {
+            if (searchName.contains("@")) {
+                email = searchName;
+            } else if (searchName.matches("^[0-9+\\-\\s]+$")) {
+                mobile = searchName;
+            } else {
+                name = searchName;
+            }
+        }
+
+        List<User> users = userRepository.findUsersByStatusAndInstituteAndUserIdsPaged(statuses, roles, instituteId,
+                userIds, name, email, mobile, pageable);
+        long totalElements = userRepository.countUsersByStatusAndInstituteAndUserIds(statuses, roles, instituteId,
+                userIds, name, email, mobile);
+
+        List<UserWithRolesDTO> content = users.stream()
+                .map(UserWithRolesDTO::new)
+                .collect(Collectors.toList());
+
+        int totalPages = (int) Math.ceil((double) totalElements / pageSize);
+
+        return PagedUserWithRolesResponse.builder()
+                .content(content)
+                .pageNumber(pageNumber)
+                .pageSize(pageSize)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .first(pageNumber == 0)
+                .last(pageNumber >= totalPages - 1)
+                .build();
+    }
+
     public User updateUser(User user, UserDTO userDTO) {
         if (StringUtils.hasText(userDTO.getUsername()))
             user.setUsername(userDTO.getUsername());

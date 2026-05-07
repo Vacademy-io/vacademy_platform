@@ -19,6 +19,7 @@ import {
     inviteUser,
     createCustomRole,
     getAllRoles,
+    addSubOrgTeamMember,
 } from '../-services/custom-team-services';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,9 +54,13 @@ interface AddMemberFormProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onSuccess?: () => void;
+    /** 'institute' (default) — original 2-step invite + grantUserAccess flow.
+     *  'subOrg' — single-call backend that creates user + FSPSSM with linkage_type=SUB_ORG. */
+    mode?: 'institute' | 'subOrg';
+    subOrgId?: string;
 }
 
-export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormProps) {
+export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute', subOrgId }: AddMemberFormProps) {
     const queryClient = useQueryClient();
     const [isCustomRole, setIsCustomRole] = useState(false);
     const [customRoleName, setCustomRoleName] = useState('');
@@ -127,6 +132,32 @@ export function AddMemberForm({ open, onOpenChange, onSuccess }: AddMemberFormPr
                 const selectedRole = roles.find((r: any) => r.id === data.roleId);
                 roleName = selectedRole?.name || data.roleId;
                 roleId = data.roleId;
+            }
+
+            // Sub-org mode: single backend call that does invite + scoped FSPSSM grant.
+            if (mode === 'subOrg') {
+                if (!subOrgId) throw new Error('Missing sub-org id');
+                if (isCustomRole) {
+                    // Create the role first (still institute-level), then proceed with its id.
+                    const permissionIds = hasFacultyAssigned ? ['109'] : [];
+                    const roleResponse = await createCustomRole({ name: customRoleName, permissionIds });
+                    roleId = roleResponse.id || roleResponse.roleId;
+                    roleName = customRoleName;
+                }
+                const result = await addSubOrgTeamMember({
+                    sub_org_id: subOrgId,
+                    institute_id: instituteId,
+                    user: {
+                        email: data.email,
+                        full_name: data.fullName,
+                        mobile_number: data.mobileNumber,
+                    },
+                    role_name: roleName,
+                    role_id: roleId,
+                    package_session_ids: selectedPackageSessionIds,
+                    access_permission: data.accessPermission,
+                });
+                return { userId: result.user_id, roleId, success: true };
             }
 
             // STEP 1: Invite user with the role name

@@ -236,4 +236,65 @@ public interface FacultySubjectPackageSessionMappingRepository
   List<String> findSubOrgIdsByUserAndPackageSession(
       @Param("userId") String userId,
       @Param("packageSessionId") String packageSessionId);
+
+  // ─────────── Sub-org team management ───────────
+
+  /**
+   * Distinct user IDs that have at least one active SUB_ORG-linked FSPSSM entry for the given
+   * sub-org. Used as the candidate set for the sub-org team listing.
+   */
+  @Query("""
+          SELECT DISTINCT f.userId
+          FROM FacultySubjectPackageSessionMapping f
+          WHERE f.suborgId = :subOrgId
+            AND f.linkageType = 'SUB_ORG'
+            AND f.status IN :statuses
+      """)
+  List<String> findDistinctUserIdsBySubOrgIdAndLinkage(
+      @Param("subOrgId") String subOrgId,
+      @Param("statuses") List<String> statuses);
+
+  /**
+   * Distinct sub-org IDs the caller currently has SUB_ORG-linked FSPSSM access to. Used to
+   * validate that a sub-org admin is operating on their own sub-org.
+   */
+  @Query("""
+          SELECT DISTINCT f.suborgId
+          FROM FacultySubjectPackageSessionMapping f
+          WHERE f.userId = :userId
+            AND f.linkageType = 'SUB_ORG'
+            AND f.suborgId IS NOT NULL
+            AND f.status IN :statuses
+      """)
+  List<String> findDistinctSubOrgIdsByUserAndLinkage(
+      @Param("userId") String userId,
+      @Param("statuses") List<String> statuses);
+
+  /**
+   * All FSPSSM entries for a user under a specific sub-org. Used by the remove-member flow
+   * to mark the entries inactive.
+   */
+  @Query("""
+          SELECT f
+          FROM FacultySubjectPackageSessionMapping f
+          WHERE f.userId = :userId
+            AND f.suborgId = :subOrgId
+            AND f.linkageType = 'SUB_ORG'
+      """)
+  List<FacultySubjectPackageSessionMapping> findByUserIdAndSubOrgIdAndLinkage(
+      @Param("userId") String userId,
+      @Param("subOrgId") String subOrgId);
+
+  /**
+   * Count the still-active SUB_ORG-linked FSPSSM entries for a user across the institute.
+   * Used to decide whether to also drop the user's UserRole when removing them from a sub-org.
+   */
+  @Query("""
+          SELECT COUNT(f)
+          FROM FacultySubjectPackageSessionMapping f
+          WHERE f.userId = :userId
+            AND f.linkageType = 'SUB_ORG'
+            AND f.status = 'ACTIVE'
+      """)
+  long countActiveSubOrgLinkagesByUser(@Param("userId") String userId);
 }

@@ -21,6 +21,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS } from './sidebar-colors';
 import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
+import type { DisplaySettingsData } from '@/types/display-settings';
 import { LockKey } from '@phosphor-icons/react';
 import { recordRecentTab } from './recent-tabs-store';
 
@@ -30,6 +31,8 @@ interface SidebarSearchProps {
     /** Already role + display-settings filtered items */
     sidebarItems: SidebarItemsType[];
     instituteId?: string;
+    /** Sidebar category visibility — hidden categories are dropped from results. */
+    sidebarCategories?: DisplaySettingsData['sidebarCategories'];
 }
 
 export const SidebarSearch: React.FC<SidebarSearchProps> = ({
@@ -37,6 +40,7 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
     onOpenChange,
     sidebarItems,
     instituteId,
+    sidebarCategories,
 }) => {
     const navigate = useNavigate();
 
@@ -51,6 +55,15 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
         document.addEventListener('keydown', down);
         return () => document.removeEventListener('keydown', down);
     }, [open, onOpenChange]);
+
+    // Build a quick lookup for hidden categories so we can skip them entirely.
+    const hiddenCategoryIds = React.useMemo(() => {
+        const set = new Set<'CRM' | 'LMS' | 'AI'>();
+        (sidebarCategories || []).forEach((c) => {
+            if (c.visible === false) set.add(c.id as 'CRM' | 'LMS' | 'AI');
+        });
+        return set;
+    }, [sidebarCategories]);
 
     // Group items by category
     const groupedItems = React.useMemo(() => {
@@ -67,14 +80,18 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
             // Filter by institute
             if (item.showForInstitute && item.showForInstitute !== instituteId) return;
 
-            const category = item.category || 'CRM';
+            const category = (item.category || 'CRM') as 'CRM' | 'LMS' | 'AI';
+            // Drop entries that belong to a category the role has hidden — surfacing
+            // them in search would let users click through to features the sidebar
+            // is hiding for them.
+            if (hiddenCategoryIds.has(category)) return;
             if (groups[category]) {
                 groups[category].push(item);
             }
         });
 
         return groups;
-    }, [sidebarItems, instituteId]);
+    }, [sidebarItems, instituteId, hiddenCategoryIds]);
 
     const handleSelect = useCallback(
         (to: string | undefined, title: string, category?: string, itemId?: string) => {

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.workflow.engine.NodeHandler;
 import vacademy.io.admin_core_service.features.workflow.engine.NodeHandlerRegistry;
 import vacademy.io.admin_core_service.features.workflow.entity.NodeTemplate;
@@ -14,6 +15,7 @@ import vacademy.io.admin_core_service.features.workflow.repository.NodeTemplateR
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowNodeMappingRepository;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowRepository;
 import vacademy.io.admin_core_service.features.workflow.spel.SpelEvaluator;
+import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.logging.SentryLogger;
 
 import java.util.*;
@@ -29,6 +31,7 @@ public class WorkflowEngineService {
     private final NodeHandlerRegistry nodeHandlerRegistry;
     private final SpelEvaluator spelEvaluator;
     private final ObjectMapper objectMapper;
+    private final InstituteRepository instituteRepository;
 
     public Map<String, Object> run(String workflowId, Map<String, Object> seedContext) {
         try {
@@ -59,6 +62,19 @@ public class WorkflowEngineService {
             }
             ctx.put("workflowId", workflowId);
             ctx.put("instituteId", wf.getInstituteId());
+
+            // Resolve and inject the institute name so SEND_EMAIL templates can use
+            // {{instituteName}} without each trigger source having to populate it.
+            // Lookup is once per workflow run (cheap) and silently no-ops if the
+            // institute can't be resolved — handlers that need it must branch on null.
+            try {
+                instituteRepository.findById(wf.getInstituteId())
+                        .map(Institute::getInstituteName)
+                        .ifPresent(name -> ctx.put("instituteName", name));
+            } catch (Exception e) {
+                log.warn("Could not resolve instituteName for instituteId={}: {}",
+                        wf.getInstituteId(), e.getMessage());
+            }
 
             // Propagate dryRun flag into context so all handlers can read it
             if (dryRun) {

@@ -47,6 +47,15 @@ export type Verdict =
   | "ERROR"
   | "TIMED_OUT";
 
+export type CodeErrorType =
+  | "TLE"
+  | "MLE"
+  | "COMPILE"
+  | "RUNTIME"
+  | "JUDGE0"
+  | "RUNTIME_JS"
+  | "OTHER";
+
 export interface TestCaseResult {
   id: string;
   label?: string;
@@ -58,6 +67,8 @@ export interface TestCaseResult {
   timeMs?: number;
   memoryKb?: number;
   error?: string;
+  errorType?: CodeErrorType;
+  errorLabel?: string;
 }
 
 export interface CodingSubmission {

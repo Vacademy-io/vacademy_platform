@@ -1536,12 +1536,23 @@ async def request_video_render(
     # video's extra_metadata.render_status (see /render-callback below). When
     # AI_SERVICE_PUBLIC_URL is unset (dev), the render worker can't reach us,
     # so we fall back to a DB-only response with no live progress.
+    #
+    # Path construction: AI_SERVICE_PUBLIC_URL is the public host (e.g.
+    # https://backend-stage.vacademy.io). The full path includes the
+    # gateway-mounted prefix `settings.api_base_path` (default `/ai-service`)
+    # plus the router prefix `/external/video/v1`. We strip a trailing
+    # `/api_base_path` if the user accidentally included it in the env so
+    # both `https://host` and `https://host/ai-service` work.
     _callback_url: Optional[str] = None
     if settings.ai_service_public_url:
+        _public = settings.ai_service_public_url.rstrip("/")
+        _prefix = settings.api_base_path.rstrip("/")
+        if _prefix and _public.endswith(_prefix):
+            _public = _public[: -len(_prefix)]
         _callback_url = (
-            settings.ai_service_public_url.rstrip("/")
-            + f"/external/video/v1/render-callback/{video_id}"
+            f"{_public}{_prefix}/external/video/v1/render-callback/{video_id}"
         )
+        logger.info(f"[render] callback_url for video {video_id}: {_callback_url}")
 
     try:
         job_id = render_svc.submit(

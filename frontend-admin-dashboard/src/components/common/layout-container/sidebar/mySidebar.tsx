@@ -263,6 +263,10 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                 to: t.route,
                 id: t.id,
                 locked: t.locked,
+                // Honor the category the admin chose when creating the custom tab.
+                // Without this, the panel filter defaults to 'CRM' and hides
+                // LMS/AI custom tabs even when they were saved with the right category.
+                category: t.category,
             }));
         return ([...mapped, ...customTabs] as SidebarItemsType[]).sort((a, b) => {
             const ao = tabVis.get(a.id)?.order ?? 0;

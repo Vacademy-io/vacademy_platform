@@ -483,6 +483,7 @@ export function BulkCreateTable({
             {/* Course Content Dialog */}
             {activeCourse && (
                 <CourseContentDialog
+                    key={activeCourse.id}
                     open={contentDialogOpen}
                     onOpenChange={setContentDialogOpen}
                     courseName={activeCourse.course_name || `Untitled ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`}

@@ -15,7 +15,11 @@ import {
 } from '@/lib/auth/instituteUtils';
 import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { trackEvent, identifyUser } from '@/lib/amplitude';
-import { getDisplaySettingsFromCache, getDisplaySettings } from '@/services/display-settings';
+import {
+    getDisplaySettingsFromCache,
+    getDisplaySettings,
+    resolveEffectivePostLoginRoute,
+} from '@/services/display-settings';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
     TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
@@ -313,28 +317,25 @@ export const handleLoginFlow = async (options: LoginFlowOptions): Promise<LoginF
                 }
             }
 
-            let redirectUrl = ds?.postLoginRedirectRoute || '/dashboard';
+            // Priority: role-specific Display Settings postLoginRedirectRoute (when explicitly
+            // saved by an admin) wins over domain branding's afterLoginRoute. Domain branding
+            // is only used as a fallback when the role's postLoginRedirectRoute isn't set.
+            const cachedBrandingOverride = getCachedInstituteBranding(instituteResult.selectedInstitute.id);
+            let redirectUrl =
+                ds?.postLoginRedirectRoute ||
+                cachedBrandingOverride?.afterLoginRoute ||
+                '/dashboard';
+            // If the candidate redirect lands in a sidebar category the role can't see
+            // (e.g. /dashboard for a role with CRM hidden), reroute to the default visible
+            // category's first visible tab so the sidebar and content stay in sync.
+            redirectUrl = resolveEffectivePostLoginRoute(redirectUrl, ds);
             console.log('🔍 LOGIN DEBUG: Determined redirect URL:', {
                 postLoginRedirectRoute: ds?.postLoginRedirectRoute,
+                domainAfterLoginRoute: cachedBrandingOverride?.afterLoginRoute,
                 finalRedirectUrl: redirectUrl,
                 roleKey,
                 hasAdminRole,
             });
-
-            // Prefer afterLoginRoute from domain resolve if available
-            const cachedBrandingOverride = getCachedInstituteBranding(instituteResult.selectedInstitute.id);
-            console.log('🔍 LOGIN DEBUG: Checking domain branding override:', {
-                domainBranding: cachedBrandingOverride,
-                afterLoginRoute: cachedBrandingOverride?.afterLoginRoute,
-                willOverride: !!cachedBrandingOverride?.afterLoginRoute,
-            });
-            if (cachedBrandingOverride?.afterLoginRoute) {
-                console.log('🔍 LOGIN DEBUG: OVERRIDING redirect URL with domain branding:', {
-                    originalUrl: redirectUrl,
-                    newUrl: cachedBrandingOverride.afterLoginRoute,
-                });
-                redirectUrl = cachedBrandingOverride.afterLoginRoute;
-            }
 
             return {
                 success: true,
@@ -546,13 +547,14 @@ export const handleInstituteSelection = async (instituteId: string): Promise<Log
             }
         }
 
-        let redirectUrl = ds?.postLoginRedirectRoute || '/dashboard';
-
-        // Prefer afterLoginRoute from domain resolve if available
+        // Priority: role-specific Display Settings postLoginRedirectRoute (explicitly saved by
+        // an admin) wins over domain branding's afterLoginRoute. afterLoginRoute is the fallback
+        // when the role has no postLoginRedirectRoute configured.
         const cached = getCachedInstituteBranding(instituteId);
-        if (cached?.afterLoginRoute) {
-            redirectUrl = cached.afterLoginRoute;
-        }
+        let redirectUrl =
+            ds?.postLoginRedirectRoute || cached?.afterLoginRoute || '/dashboard';
+        // Reroute away from hidden sidebar categories so the sidebar and page content match.
+        redirectUrl = resolveEffectivePostLoginRoute(redirectUrl, ds);
 
         // Preserve learner tab hint if user also has STUDENT role and route points to dashboard
         if (

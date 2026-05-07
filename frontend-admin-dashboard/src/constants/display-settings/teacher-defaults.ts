@@ -110,6 +110,10 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         assignment: true,
         jupyterNotebook: true,
         scratch: true,
+        ppt: true,
+        audio: true,
+        scorm: true,
+        assessment: true,
     },
     slideView: {
         showCopyTo: true,
@@ -144,6 +148,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         enquiryTab: false,
         applicationTab: false,
         leadTab: false,
+        fullHistoryTab: false,
         tabOrders: {
             overview: 1,
             courses: 2,

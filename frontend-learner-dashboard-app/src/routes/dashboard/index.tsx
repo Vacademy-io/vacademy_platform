@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { openInBrowser } from "@/lib/open-in-browser";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { LayoutContainer } from "@/components/common/layout-container/layout-container";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
@@ -417,7 +418,7 @@ export function DashboardComponent() {
             },
           });
         } else {
-          window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+          await openInBrowser(session.meeting_link);
         }
       } catch (error) {
         console.error("Failed to mark attendance:", error);
@@ -435,7 +436,7 @@ export function DashboardComponent() {
             },
           });
         } else {
-          window.open(session.meeting_link, "_blank", "noopener,noreferrer");
+          await openInBrowser(session.meeting_link);
         }
       }
     }
@@ -886,7 +887,11 @@ export function DashboardComponent() {
                         </p>
                       </div>
                     </div>
-                    <Button size="sm" variant="secondary">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => navigate({ to: "/referral" })}
+                    >
                       Invite
                     </Button>
                   </CardContent>

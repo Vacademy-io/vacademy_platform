@@ -48,91 +48,67 @@ export const useTitleStore = create<TitleStore>((set, get) => ({
     ensureCorrectTitle: () => {
         const { globalTitle } = get();
         const finalTitle = globalTitle || 'Admin Dashboard';
-        document.title = finalTitle;
+        if (document.title !== finalTitle) {
+            document.title = finalTitle;
+        }
     },
 
     ensureCorrectFavicon: () => {
         const { globalFavicon } = get();
-        if (globalFavicon) {
-            const link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
-            if (link && link.href !== globalFavicon) {
-                link.href = globalFavicon;
-            }
+        if (!globalFavicon) return;
+        const link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null;
+        if (link && link.href !== globalFavicon) {
+            link.href = globalFavicon;
         }
     },
 }));
 
-// Override Helmet's title changes and protect favicon
-if (typeof window !== 'undefined') {
-    const originalTitleSetter = Object.getOwnPropertyDescriptor(Document.prototype, 'title')?.set;
-
-    if (originalTitleSetter) {
-        Object.defineProperty(document, 'title', {
-            set: function (newTitle: string) {
-                // Allow the title to be set initially, but then override with our global title
-                originalTitleSetter?.call(this, newTitle);
-
-                // Small delay to ensure our title takes precedence over Helmet
-                setTimeout(() => {
-                    const store = useTitleStore.getState();
-                    store.ensureCorrectTitle();
-                }, 10);
-            },
-            get: function () {
-                return document.getElementsByTagName('title')[0]?.textContent || '';
-            },
-            configurable: true,
-        });
+declare global {
+    interface Window {
+        __vacademyFaviconObserverInstalled?: boolean;
     }
+}
 
-    // Set up MutationObserver to protect favicon from being changed
+// Single MutationObserver watches <head> for new favicon links and watches
+// each link for href changes. WeakSet de-dupes observe() calls so the same
+// <link> is never observed twice when head fires multiple childList mutations.
+if (typeof window !== 'undefined' && !window.__vacademyFaviconObserverInstalled) {
+    window.__vacademyFaviconObserverInstalled = true;
+
+    const observedLinks = new WeakSet<Element>();
+
+    const observeIfNew = (link: Element, observer: MutationObserver) => {
+        if (observedLinks.has(link)) return;
+        observedLinks.add(link);
+        observer.observe(link, { attributes: true, attributeFilter: ['href'] });
+    };
+
     const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
+        for (const mutation of mutations) {
             if (mutation.type === 'attributes' && mutation.attributeName === 'href') {
                 const target = mutation.target as HTMLLinkElement;
                 if (target.rel === 'icon') {
-                    // Favicon href was changed, restore our global favicon
-                    setTimeout(() => {
-                        const store = useTitleStore.getState();
-                        store.ensureCorrectFavicon();
-                    }, 10);
+                    useTitleStore.getState().ensureCorrectFavicon();
                 }
+                continue;
             }
-        });
-    });
 
-    // Start observing favicon changes
-    const faviconLink = document.querySelector("link[rel='icon']");
-    if (faviconLink) {
-        observer.observe(faviconLink, {
-            attributes: true,
-            attributeFilter: ['href'],
-        });
-    }
-
-    // Also observe for new favicon links being added
-    const headObserver = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            mutation.addedNodes.forEach((node) => {
-                if (node.nodeType === Node.ELEMENT_NODE) {
+            if (mutation.type === 'childList') {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType !== Node.ELEMENT_NODE) return;
                     const element = node as Element;
                     if (element.tagName === 'LINK' && element.getAttribute('rel') === 'icon') {
-                        // New favicon link added, start observing it and restore our favicon
-                        observer.observe(element, {
-                            attributes: true,
-                            attributeFilter: ['href'],
-                        });
-                        setTimeout(() => {
-                            const store = useTitleStore.getState();
-                            store.ensureCorrectFavicon();
-                        }, 10);
+                        observeIfNew(element, observer);
+                        useTitleStore.getState().ensureCorrectFavicon();
                     }
-                }
-            });
-        });
+                });
+            }
+        }
     });
 
-    headObserver.observe(document.head, {
-        childList: true,
+    observer.observe(document.head, { childList: true });
+
+    document.querySelectorAll("link[rel='icon']").forEach((link) => {
+        observeIfNew(link, observer);
     });
 }

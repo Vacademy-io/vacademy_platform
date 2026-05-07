@@ -65,6 +65,11 @@ export const SlideMaterial = () => {
   // Slide navigation helpers
   const slidesList = Array.isArray(items) ? items : [];
   const currentIndex = slidesList.findIndex((s) => s.id === activeItem?.id);
+  // The route appends a synthetic "Give Feedback" slide (source_type ===
+  // "FEEDBACK") to items. Hide it from the user-visible counter so a chapter
+  // with N real slides shows N, not N+1.
+  const realSlides = slidesList.filter((s) => s.source_type !== "FEEDBACK");
+  const realIndex = realSlides.findIndex((s) => s.id === activeItem?.id);
 
   // Check if prev/next slides are locked
   const prevSlide = currentIndex > 0 ? slidesList[currentIndex - 1] : null;
@@ -1012,9 +1017,9 @@ export const SlideMaterial = () => {
             <CaretLeft size={14} />
             <span>Previous</span>
           </button>
-          {slidesList.length > 0 && currentIndex > -1 && (
+          {realSlides.length > 0 && realIndex > -1 && (
             <span className="text-xs font-medium text-neutral-500 tabular-nums">
-              {currentIndex + 1} / {slidesList.length}
+              {realIndex + 1} / {realSlides.length}
             </span>
           )}
           <button
@@ -1047,9 +1052,9 @@ export const SlideMaterial = () => {
         </MyButton>
 
         <div className="flex-1 flex items-center justify-center gap-2 min-w-0">
-          {slidesList.length > 0 && currentIndex > -1 && (
+          {realSlides.length > 0 && realIndex > -1 && (
             <span className="text-[11px] font-semibold text-neutral-400 shrink-0 tabular-nums">
-              {currentIndex + 1} / {slidesList.length}
+              {realIndex + 1} / {realSlides.length}
             </span>
           )}
           <AskDoubtButton />

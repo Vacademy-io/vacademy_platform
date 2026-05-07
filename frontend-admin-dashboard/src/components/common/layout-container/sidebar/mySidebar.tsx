@@ -123,40 +123,69 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
             return cfg ? cfg.visible !== false : true;
         };
 
-        const findCategory = (): 'CRM' | 'LMS' | 'AI' | null => {
-            if (isVoltSubdomain) return 'LMS';
+        // Collect every category whose tab/sub-tab/custom-tab matches the current
+        // route. Custom tabs (saved in roleDisplay.sidebar) participate too — without
+        // this, an LMS custom tab pointing to a CRM route loses to the static CRM
+        // entry and the wrong category gets activated.
+        const findMatchingCategories = (): Array<'CRM' | 'LMS' | 'AI'> => {
+            if (isVoltSubdomain) return ['LMS'];
+            const hits: Array<'CRM' | 'LMS' | 'AI'> = [];
+            const push = (cat?: 'CRM' | 'LMS' | 'AI') => {
+                const c = cat || 'CRM';
+                if (!hits.includes(c)) hits.push(c);
+            };
 
             for (const item of getSidebarItemsData()) {
-                if (item.id === 'settings') continue; // Skip settings — handled above
-                const isActive = item.to ? currentRoute.startsWith(item.to) : false;
-                if (isActive) return item.category || 'CRM';
+                if (item.id === 'settings') continue;
+                if (item.to && currentRoute.startsWith(item.to)) push(item.category);
                 if (item.subItems) {
                     for (const sub of item.subItems) {
                         const link = sub.subItemLink || '';
-                        if (link && currentRoute.startsWith(link)) {
-                            return item.category || 'CRM';
-                        }
+                        if (link && currentRoute.startsWith(link)) push(item.category);
                     }
                 }
             }
-            return null;
+
+            // Custom tabs from the saved role config — these have their own category.
+            const customTabs = roleDisplay?.sidebar?.filter((t) => t.isCustom) || [];
+            for (const t of customTabs) {
+                if (t.route && currentRoute.startsWith(t.route)) {
+                    push(t.category as 'CRM' | 'LMS' | 'AI' | undefined);
+                }
+                for (const s of t.subTabs || []) {
+                    if (s.route && currentRoute.startsWith(s.route)) {
+                        push(t.category as 'CRM' | 'LMS' | 'AI' | undefined);
+                    }
+                }
+            }
+
+            return hits;
         };
 
-        const matched = findCategory();
-        let targetCategory = matched;
+        const matches = findMatchingCategories();
+        // Prefer a visible match; if none of the matches are visible, prefer the
+        // default visible category from sidebarCategories; otherwise fall through.
+        const visibleMatch = matches.find((c) => checkCategoryVisibility(c));
+        let targetCategory: 'CRM' | 'LMS' | 'AI' | null = visibleMatch ?? null;
 
-        if (targetCategory && !checkCategoryVisibility(targetCategory)) {
-            targetCategory = null;
+        if (!targetCategory && roleDisplay?.sidebarCategories) {
+            // Find a visible category to land on. Try `default && visible`, then
+            // any visible by order. Skipping plain `default` here — a category
+            // that's marked default but hidden isn't a usable landing target.
+            const cats = roleDisplay.sidebarCategories
+                .slice()
+                .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+            const defVisible = cats.find((c) => c.default && c.visible !== false);
+            const anyVisible = cats.find((c) => c.visible !== false);
+            targetCategory = (defVisible?.id || anyVisible?.id || null) as
+                | 'CRM'
+                | 'LMS'
+                | 'AI'
+                | null;
         }
 
-        if (targetCategory) {
-            // Don't override if user is browsing "Recent" or "Settings"
-            if (activeCategory !== 'RECENT' && activeCategory !== 'SETTINGS') {
-                setActiveCategory(targetCategory);
-            }
-        } else if (roleDisplay?.sidebarCategories) {
-            const def = roleDisplay.sidebarCategories.find((c) => c.default);
-            if (def && activeCategory !== 'RECENT' && activeCategory !== 'SETTINGS') setActiveCategory(def.id);
+        if (targetCategory && activeCategory !== 'RECENT' && activeCategory !== 'SETTINGS') {
+            setActiveCategory(targetCategory);
         }
     }, [currentRoute, isVoltSubdomain, roleDisplay]);
 
@@ -263,6 +292,10 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                 to: t.route,
                 id: t.id,
                 locked: t.locked,
+                // Honor the category the admin chose when creating the custom tab.
+                // Without this, the panel filter defaults to 'CRM' and hides
+                // LMS/AI custom tabs even when they were saved with the right category.
+                category: t.category,
             }));
         return ([...mapped, ...customTabs] as SidebarItemsType[]).sort((a, b) => {
             const ao = tabVis.get(a.id)?.order ?? 0;

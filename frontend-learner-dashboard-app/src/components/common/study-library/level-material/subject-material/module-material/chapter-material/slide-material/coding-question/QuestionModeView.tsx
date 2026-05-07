@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Editor from "@monaco-editor/react";
-import { Play, Send, Check, X, Loader2 } from "lucide-react";
+import { Play, Send, Check, X, Loader2, Clock } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import confetti from "canvas-confetti";
 import { Preferences } from "@capacitor/preferences";
@@ -28,10 +28,14 @@ import type {
 import { runCode, runTestCase } from "./executor";
 import { preloadPyodide, isPyodideReady } from "../code-slide-utils.";
 import { SessionTimer } from "./SessionTimer";
-import { clearSessionTimer } from "./session-timer-utils";
 import { SubmissionHistory } from "./SubmissionHistory";
 import { saveSubmission } from "./submission-store";
 import { OutputDiff } from "./OutputDiff";
+
+// Persisted flag: set when the session timer auto-submits, hydrated on mount.
+// Keeps Run/Submit disabled and the editor read-only across reloads so
+// learners can't keep editing past the deadline.
+const expiredKey = (slideId: string) => `coding_session_expired_${slideId}`;
 
 interface Props {
   question: CodingQuestionConfig;
@@ -134,6 +138,24 @@ export function QuestionModeView({ question, slideId }: Props) {
   const [latestScore, setLatestScore] = useState<number | null>(null);
   const [historyTick, setHistoryTick] = useState(0);
   const submitInFlightRef = useRef(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  // Hydrate the expired flag on mount so a reload after timer-auto-submit
+  // keeps the editor locked.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { value } = await Preferences.get({ key: expiredKey(slideId) });
+        if (!cancelled && value === "1") setSessionExpired(true);
+      } catch {
+        // Preferences unavailable — best-effort, default to not-expired.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [slideId]);
 
   const def = getLanguageDef(language);
 
@@ -186,7 +208,7 @@ export function QuestionModeView({ question, slideId }: Props) {
 
   // ---- RUN: execute against sample test cases (if any) or just stdin=""
   const onRun = useCallback(async () => {
-    if (isRunning || isSubmitting) return;
+    if (isRunning || isSubmitting || sessionExpired) return;
     setIsRunning(true);
     setBottomTab(sampleCases.length ? "tests" : "output");
     setTestResults(null);
@@ -223,6 +245,8 @@ export function QuestionModeView({ question, slideId }: Props) {
             timeMs: r.timeMs,
             memoryKb: r.memoryKb,
             error: r.error,
+            errorType: r.errorType,
+            errorLabel: r.errorLabel,
           });
         }
         setTestResults(results);
@@ -248,6 +272,7 @@ export function QuestionModeView({ question, slideId }: Props) {
     sampleCases,
     isRunning,
     isSubmitting,
+    sessionExpired,
     question.perRunLimits.cpuSeconds,
     question.perRunLimits.memoryKb,
   ]);
@@ -256,6 +281,9 @@ export function QuestionModeView({ question, slideId }: Props) {
   const submit = useCallback(
     async (auto = false) => {
       if (submitInFlightRef.current) return;
+      // Once the timer has expired, only the timer-driven auto-submit is
+      // allowed through. Manual clicks and Ctrl+Shift+Enter are no-ops.
+      if (sessionExpired && !auto) return;
       submitInFlightRef.current = true;
       setIsSubmitting(true);
       setBottomTab("tests");
@@ -284,6 +312,8 @@ export function QuestionModeView({ question, slideId }: Props) {
             timeMs: r.timeMs,
             memoryKb: r.memoryKb,
             error: r.error,
+            errorType: r.errorType,
+            errorLabel: r.errorLabel,
           });
         }
 
@@ -372,8 +402,19 @@ export function QuestionModeView({ question, slideId }: Props) {
           }
         }
         if (auto) {
-          // Session expired — clear so a future visit starts a fresh timer.
-          await clearSessionTimer(slideId);
+          // Session expired — persist the flag so subsequent reloads keep
+          // the editor read-only and Run/Submit disabled. Intentionally do
+          // NOT clear `coding_session_started_${slideId}`: leaving it in
+          // place keeps remaining at 00:00 instead of starting a fresh
+          // countdown if the learner reloads after expiry.
+          try {
+            await Preferences.set({
+              key: expiredKey(slideId),
+              value: "1",
+            });
+          } catch {
+            // Preferences unavailable — UI flag is still set in memory.
+          }
         }
       } catch (e) {
         setOutput(
@@ -393,11 +434,15 @@ export function QuestionModeView({ question, slideId }: Props) {
       question.maxPoints,
       question.sessionTimeMinutes,
       slideId,
+      sessionExpired,
     ],
   );
 
-  // Auto-submit when the session timer expires.
+  // Auto-submit when the session timer expires. Flip the expired flag
+  // synchronously so the disabled state takes effect even before the
+  // submit promise resolves.
   const onTimerExpire = useCallback(() => {
+    setSessionExpired(true);
     submit(true);
   }, [submit]);
 
@@ -459,6 +504,15 @@ export function QuestionModeView({ question, slideId }: Props) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded border bg-white">
+      {sessionExpired && (
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+          <Clock className="size-4 shrink-0" />
+          <span>
+            Session ended — your final submission has been recorded. The editor
+            is now read-only.
+          </span>
+        </div>
+      )}
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b bg-gray-50 px-3 py-2">
         <Select
@@ -501,8 +555,12 @@ export function QuestionModeView({ question, slideId }: Props) {
             variant="outline"
             size="sm"
             onClick={onRun}
-            disabled={isRunning || isSubmitting || pythonBlocked}
-            title="Run against sample tests (Ctrl/Cmd+Enter)"
+            disabled={isRunning || isSubmitting || pythonBlocked || sessionExpired}
+            title={
+              sessionExpired
+                ? "Session ended"
+                : "Run against sample tests (Ctrl/Cmd+Enter)"
+            }
           >
             {isRunning ? (
               <Loader2 className="mr-1 size-4 animate-spin" />
@@ -515,9 +573,13 @@ export function QuestionModeView({ question, slideId }: Props) {
           <Button
             size="sm"
             onClick={() => submit(false)}
-            disabled={isSubmitting || isRunning || pythonBlocked}
+            disabled={isSubmitting || isRunning || pythonBlocked || sessionExpired}
             className="bg-primary-500 text-white hover:bg-primary-600"
-            title="Submit against all tests incl. hidden (Ctrl/Cmd+Shift+Enter)"
+            title={
+              sessionExpired
+                ? "Session ended"
+                : "Submit against all tests incl. hidden (Ctrl/Cmd+Shift+Enter)"
+            }
           >
             {isSubmitting ? (
               <Loader2 className="mr-1 size-4 animate-spin" />
@@ -535,7 +597,21 @@ export function QuestionModeView({ question, slideId }: Props) {
         style={{ height: `calc(100% - ${bottomHeight + 36}px)` }}
       >
         {/* Problem */}
-        <div className="w-2/5 min-w-[280px] overflow-auto border-r bg-white p-4">
+        {/* select-none + copy/contextmenu handlers are a malpractice
+            *deterrent* (paste-into-LLM). Not a security control — anyone
+            can read the DOM. Code editor stays selectable. */}
+        <div
+          className="w-2/5 min-w-[280px] select-none overflow-auto border-r bg-white p-4"
+          style={{
+            WebkitUserSelect: "none",
+            MozUserSelect: "none",
+            msUserSelect: "none",
+            userSelect: "none",
+          }}
+          onCopy={(e) => e.preventDefault()}
+          onCut={(e) => e.preventDefault()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
           {question.problemHtml ? (
             <div
               className="prose prose-sm max-w-none"
@@ -575,6 +651,7 @@ export function QuestionModeView({ question, slideId }: Props) {
               scrollBeyondLastLine: false,
               lineNumbers: "on",
               padding: { top: 12 },
+              readOnly: sessionExpired,
             }}
           />
         </div>
@@ -646,6 +723,18 @@ export function QuestionModeView({ question, slideId }: Props) {
                       <span className="text-gray-500">
                         {r.visible ? "(sample)" : "(hidden)"}
                       </span>
+                      {r.errorType && (
+                        <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-800">
+                          {r.errorType === "TLE" && "TLE"}
+                          {r.errorType === "MLE" && "MLE"}
+                          {r.errorType === "COMPILE" && "Compile Error"}
+                          {(r.errorType === "RUNTIME" ||
+                            r.errorType === "RUNTIME_JS") &&
+                            (r.errorLabel || "Runtime Error")}
+                          {r.errorType === "JUDGE0" && "Service Error"}
+                          {r.errorType === "OTHER" && "Error"}
+                        </span>
+                      )}
                       {r.timeMs != null && (
                         <span className="ml-auto text-gray-500">
                           {r.timeMs} ms

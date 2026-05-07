@@ -33,7 +33,11 @@ import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { handleLoginFlow } from '@/lib/auth/loginFlowHandler';
 import { getCachedInstituteBranding } from '@/services/domain-routing';
 import useInstituteLogoStore from '@/components/common/layout-container/sidebar/institutelogo-global-zustand';
-import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
+import {
+    getDisplaySettings,
+    getDisplaySettingsFromCache,
+    resolveEffectivePostLoginRoute,
+} from '@/services/display-settings';
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 
 type FormValues = z.infer<typeof loginSchema>;
@@ -405,11 +409,12 @@ export function LoginForm() {
             const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
     const roleKey = getActiveRoleDisplaySettingsKey();
 
-            let ds: { postLoginRedirectRoute?: string } | null = getDisplaySettingsFromCache(roleKey);
+            const ds = getDisplaySettingsFromCache(roleKey);
 
             // If not in cache, we could fetch it, but handleLoginFlow/handleInstituteSelection should have handled it.
             // For safety, fallback to /dashboard if absolutely nothing is found.
-            const redirectUrl = ds?.postLoginRedirectRoute || '/dashboard';
+            const candidate = ds?.postLoginRedirectRoute || '/dashboard';
+            const redirectUrl = resolveEffectivePostLoginRoute(candidate, ds);
             console.log('🔍 LOGIN FORM DEBUG: Fallback redirect URL:', redirectUrl);
             navigate({ to: redirectUrl });
         } catch (error) {

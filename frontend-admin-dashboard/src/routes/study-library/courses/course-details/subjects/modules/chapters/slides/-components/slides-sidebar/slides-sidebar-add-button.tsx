@@ -300,6 +300,8 @@ export const ChapterSidebarAddButton = () => {
             switch (val) {
                 case 'pdf':
                     return ct.pdf !== false;
+                case 'ppt':
+                    return ct.ppt !== false;
                 case 'doc':
                 case 'upload-doc':
                 case 'create-doc':
@@ -322,11 +324,11 @@ export const ChapterSidebarAddButton = () => {
                 case 'code-editor':
                     return ct.codeEditor !== false;
                 case 'audio':
-                    return true; // Audio slides are enabled by default
+                    return ct.audio !== false;
                 case 'scorm':
-                    return true; // SCORM slides are enabled by default
+                    return ct.scorm !== false;
                 case 'assessment':
-                    return true; // Assessment slides are enabled by default
+                    return ct.assessment !== false;
                 // presentation treated as a document-type control
                 case 'presentation':
                     return ct.document !== false;

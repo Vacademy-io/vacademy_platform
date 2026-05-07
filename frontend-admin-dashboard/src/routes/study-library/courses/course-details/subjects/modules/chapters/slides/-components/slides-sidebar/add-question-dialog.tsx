@@ -15,6 +15,10 @@ import { Route } from '../..';
 import { convertToQuestionSlideFormat } from '../../-helper/helper';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import {
+    buildAppendReorderPayload,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 export interface QuestionTypeProps {
     icon: React.ReactNode;
@@ -106,7 +110,7 @@ const AddQuestionDialog = ({ openState }: { openState?: (open: boolean) => void 
                 description: 'Question',
                 image_file_id: '',
                 status: slideStatus,
-                slide_order: 0,
+                slide_order: getNextSlideOrder(items || []),
                 question_slide: convertToQuestionSlideFormat(responseData),
                 video_slide: {
                     id: '',
@@ -142,15 +146,7 @@ const AddQuestionDialog = ({ openState }: { openState?: (open: boolean) => void 
             });
 
             if (response) {
-                const reorderedSlides = [
-                    { slide_id: response, slide_order: 0 },
-                    ...items
-                        .filter((slide) => slide.id !== response)
-                        .map((slide, index) => ({
-                            slide_id: slide.id,
-                            slide_order: index + 1,
-                        })),
-                ];
+                const reorderedSlides = buildAppendReorderPayload(response, items || []);
 
                 await updateSlideOrder({
                     chapterId: chapterId || '',

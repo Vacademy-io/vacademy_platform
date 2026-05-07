@@ -6,6 +6,7 @@ import type {
 import {
     generateUniqueAssignmentSlideTitle,
     generateUniqueQuizSlideTitle,
+    getNextSlideOrder,
 } from '../../-helper/slide-naming-utils';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
 
@@ -29,7 +30,7 @@ export function createAssignmentSlidePayload(
         image_file_id: '',
         description: 'Assignment',
         status: slideStatus,
-        slide_order: 0,
+        slide_order: getNextSlideOrder(allSlides),
         video_slide: null,
         document_slide: null,
         question_slide: null,
@@ -78,7 +79,7 @@ export function createQuizSlidePayload(
         image_file_id: '',
         description: 'Quiz',
         status: slideStatus,
-        slide_order: 0,
+        slide_order: getNextSlideOrder(allSlides),
         video_slide: null,
         document_slide: null,
         question_slide: null,

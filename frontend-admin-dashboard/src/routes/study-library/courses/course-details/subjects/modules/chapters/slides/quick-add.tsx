@@ -948,13 +948,18 @@ export function QuickAddView({ search }: { search: ChapterSearchParamsForQuickAd
                 }
             }
 
-            // Reorder: new slides at top preserving staged order
+            // Reorder: existing slides first, new slides appended at the bottom (preserving staged order)
             const currentSlides = items || [];
+            const existing = currentSlides
+                .filter((s) => !createdIds.includes(s.id))
+                .slice()
+                .sort((a, b) => (a.slide_order ?? 0) - (b.slide_order ?? 0));
             const reordered = [
-                ...createdIds.map((sid, i) => ({ slide_id: sid, slide_order: i })),
-                ...currentSlides
-                    .filter((s) => !createdIds.includes(s.id))
-                    .map((s, idx) => ({ slide_id: s.id, slide_order: createdIds.length + idx })),
+                ...existing.map((s, idx) => ({ slide_id: s.id, slide_order: idx })),
+                ...createdIds.map((sid, i) => ({
+                    slide_id: sid,
+                    slide_order: existing.length + i,
+                })),
             ];
 
             await updateSlideOrder({

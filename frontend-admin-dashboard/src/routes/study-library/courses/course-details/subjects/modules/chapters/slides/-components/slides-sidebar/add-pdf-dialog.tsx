@@ -16,6 +16,10 @@ import * as pdfjs from 'pdfjs-dist';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CheckCircle, FilePdf } from '@phosphor-icons/react';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
+import {
+    buildAppendReorderPayload,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
@@ -69,15 +73,7 @@ export const AddPdfDialog = ({
             const newSlide = currentSlides.find((slide) => slide.id === newSlideId);
             if (!newSlide) return;
 
-            const reorderedSlides = [
-                { slide_id: newSlideId, slide_order: 0 },
-                ...currentSlides
-                    .filter((slide) => slide.id !== newSlideId)
-                    .map((slide, index) => ({
-                        slide_id: slide.id,
-                        slide_order: index + 1,
-                    })),
-            ];
+            const reorderedSlides = buildAppendReorderPayload(newSlideId, currentSlides);
 
             await updateSlideOrder({
                 chapterId: chapterId || '',
@@ -155,7 +151,7 @@ export const AddPdfDialog = ({
                     title: form.getValues('pdfTitle'),
                     image_file_id: '',
                     description: null,
-                    slide_order: 0,
+                    slide_order: getNextSlideOrder(items || []),
                     document_slide: {
                         id: crypto.randomUUID(),
                         type: 'PDF',

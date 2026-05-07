@@ -26,6 +26,10 @@ import { Textarea } from '@/components/ui/textarea';
 import { Package } from '@phosphor-icons/react';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { SCORM_UPLOAD } from '@/constants/urls';
+import {
+    buildAppendReorderPayload,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 const formSchema = z.object({
     title: z.string().min(1, 'Title is required'),
@@ -133,15 +137,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
             const newSlide = currentSlides.find((slide) => slide.id === newSlideId);
             if (!newSlide) return;
 
-            const reorderedSlides = [
-                { slide_id: newSlideId, slide_order: 0 },
-                ...currentSlides
-                    .filter((slide) => slide.id !== newSlideId)
-                    .map((slide, index) => ({
-                        slide_id: slide.id,
-                        slide_order: index + 1,
-                    })),
-            ];
+            const reorderedSlides = buildAppendReorderPayload(newSlideId, currentSlides);
 
             await updateSlideOrder({
                 chapterId: chapterId || '',
@@ -172,7 +168,7 @@ export const AddScormDialog = ({ openState }: { openState?: (open: boolean) => v
                 title: data.title,
                 description: data.description || null,
                 status: slideStatus as 'DRAFT' | 'PUBLISHED',
-                slide_order: 0,
+                slide_order: getNextSlideOrder(items || []),
                 new_slide: true,
                 scorm_slide: {
                     id: scormUploadResult.id,

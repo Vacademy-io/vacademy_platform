@@ -154,6 +154,10 @@ interface CurrentGeneration {
     audioUrl?: string;
     wordsUrl?: string;
     scriptUrl?: string;
+    /** Final rendered MP4 URL — set when /urls/{video_id} returns video_url
+     *  (i.e. a previous render already completed). Surfaces the "Download MP4"
+     *  CTA on refresh without re-polling render status. */
+    videoMp4Url?: string;
     options: Omit<GenerateVideoRequest, 'prompt'>;
     tokenUsage?: TokenUsage | null;
     shotsCompleted?: number;
@@ -1336,6 +1340,7 @@ export function VideoConsoleWorkspace({
                     htmlUrl: item.html_url,
                     audioUrl: item.audio_url,
                     wordsUrl: item.words_url,
+                    videoMp4Url: item.video_url,
                     options: item.options,
                     tokenUsage: item.token_usage ?? null,
                 });
@@ -1412,6 +1417,7 @@ export function VideoConsoleWorkspace({
                         html_url: urls.html_url,
                         audio_url: urls.audio_url ?? undefined,
                         words_url: urls.words_url ?? undefined,
+                        video_url: urls.video_url ?? undefined,
                         status: 'completed',
                     };
 
@@ -1430,6 +1436,7 @@ export function VideoConsoleWorkspace({
                         htmlUrl: urls.html_url,
                         audioUrl: urls.audio_url ?? undefined,
                         wordsUrl: urls.words_url ?? undefined,
+                        videoMp4Url: urls.video_url ?? undefined,
                         options: item.options,
                         tokenUsage: item.token_usage ?? null,
                     });

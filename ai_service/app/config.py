@@ -134,10 +134,12 @@ class Settings(BaseSettings):
     render_server_url: str = os.getenv("RENDER_SERVER_URL", "")
     render_server_key: str = os.getenv("RENDER_SERVER_KEY", "")
     # Public URL of THIS AI service (used as the callback target the render
-    # worker POSTs progress/completion to). Set in deployments to the
-    # externally reachable base URL; empty in dev disables push and falls
-    # back to AI-server-side polling.
-    ai_service_public_url: str = os.getenv("AI_SERVICE_PUBLIC_URL", "")
+    # worker POSTs progress/completion to). Defaults to the stage gateway so
+    # production-like deployments work out of the box; override in prod /
+    # dev with AI_SERVICE_PUBLIC_URL. Empty string disables push entirely.
+    ai_service_public_url: str = os.getenv(
+        "AI_SERVICE_PUBLIC_URL", "https://backend-stage.vacademy.io/"
+    )
 
     # Internal Auth Configuration
     client_name: str = os.getenv("CLIENT_NAME", "ai_service")

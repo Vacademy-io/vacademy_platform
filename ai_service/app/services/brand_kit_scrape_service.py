@@ -84,9 +84,15 @@ _FONT_ALLOWLIST: Tuple[str, ...] = (
 # Vision-capable model. We don't use the OpenRouterOutlineLLMClient here
 # because it's text-only and doesn't support response_format=json_object.
 # Direct httpx call mirrors the Director's multimodal pattern.
-# Override via BRAND_KIT_SCRAPE_MODEL; otherwise falls back to settings.llm_default_model
-# (google/gemini-3.1-pro-preview by default — vision-capable).
+#
+# Default: google/gemini-3-flash-preview — empirically used elsewhere in the
+# pipeline (automation_pipeline.py) with multimodal `image_url` parts AND
+# response_format=json_object, so we know the combination works on the deployed
+# OpenRouter account. settings.llm_default_model (gemini-3.1-pro-preview at
+# time of writing) was rejecting the request with HTTP 400 on the stage env.
+# Override via BRAND_KIT_SCRAPE_MODEL.
 _LLM_MODEL_ENV = "BRAND_KIT_SCRAPE_MODEL"
+_LLM_DEFAULT_MODEL = "google/gemini-3-flash-preview"
 _LLM_TIMEOUT_S = 45.0
 
 
@@ -94,7 +100,7 @@ def _resolve_llm_model() -> str:
     explicit = os.getenv(_LLM_MODEL_ENV, "").strip()
     if explicit:
         return explicit
-    return get_settings().llm_default_model
+    return _LLM_DEFAULT_MODEL
 
 
 class BrandKitScrapeService:
@@ -522,40 +528,111 @@ class BrandKitScrapeService:
         if logo_url:
             content_parts.append({"type": "image_url", "image_url": {"url": logo_url}})
 
-        payload = {
-            "model": _resolve_llm_model(),
+        model = _resolve_llm_model()
+        base_payload: Dict[str, Any] = {
+            "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": content_parts},
             ],
             "temperature": 0.4,
-            "response_format": {"type": "json_object"},
         }
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
 
+        # Two-attempt strategy: first try with response_format=json_object (the
+        # ideal — guarantees parseable output); if OpenRouter / the underlying
+        # provider returns 400 (some models reject the param), retry without
+        # it. The system prompt already instructs "JSON only", so the second
+        # attempt usually still parses.
+        raw: Optional[str] = None
         try:
             async with httpx.AsyncClient(timeout=_LLM_TIMEOUT_S) as client:
-                resp = await client.post(
-                    settings.llm_base_url, headers=headers, json=payload
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                raw = data["choices"][0]["message"]["content"]
+                attempts = [
+                    {**base_payload, "response_format": {"type": "json_object"}},
+                    base_payload,  # plain retry
+                ]
+                last_error_body: Optional[str] = None
+                for idx, payload in enumerate(attempts):
+                    try:
+                        resp = await client.post(
+                            settings.llm_base_url, headers=headers, json=payload
+                        )
+                    except httpx.HTTPError as e:
+                        warnings.append(f"LLM transport error: {e}")
+                        logger.warning(f"[BrandKitScrape] LLM transport error: {e}")
+                        return None
+                    if resp.status_code == 200:
+                        try:
+                            data = resp.json()
+                            raw = data["choices"][0]["message"]["content"]
+                            break
+                        except Exception as e:
+                            warnings.append(f"LLM response not parseable: {e}")
+                            logger.warning(
+                                f"[BrandKitScrape] LLM response unwrap failed: {e}; "
+                                f"body={resp.text[:500]!r}"
+                            )
+                            return None
+                    last_error_body = resp.text[:1000]
+                    logger.warning(
+                        f"[BrandKitScrape] LLM HTTP {resp.status_code} "
+                        f"(attempt {idx + 1}/{len(attempts)}, model={model}): "
+                        f"{last_error_body!r}"
+                    )
+                    # Only retry on 400 — other statuses (401/402/429/5xx) are
+                    # not fixed by dropping response_format.
+                    if resp.status_code != 400:
+                        break
+                else:
+                    # All attempts failed
+                    pass
         except Exception as e:
             warnings.append(f"LLM extraction failed: {e}")
             logger.warning(f"[BrandKitScrape] LLM call failed: {e}")
+            return None
+
+        if raw is None:
+            warnings.append(
+                f"LLM rejected request (HTTP error from OpenRouter; see logs). "
+                f"Last response: {last_error_body[:200] if last_error_body else 'n/a'}"
+            )
             return None
 
         try:
             parsed = json.loads(raw) if isinstance(raw, str) else raw
             return BrandKitDraftLLMOut.model_validate(parsed)
         except Exception as e:
+            # Some providers wrap JSON in markdown fences when response_format
+            # is dropped — strip and retry once.
+            stripped = self._strip_markdown_fences(raw) if isinstance(raw, str) else None
+            if stripped and stripped != raw:
+                try:
+                    return BrandKitDraftLLMOut.model_validate(json.loads(stripped))
+                except Exception:
+                    pass
             warnings.append(f"LLM output not valid JSON: {e}")
-            logger.warning(f"[BrandKitScrape] LLM JSON parse failed: {e}; raw={raw[:300]!r}")
+            logger.warning(
+                f"[BrandKitScrape] LLM JSON parse failed: {e}; raw={str(raw)[:300]!r}"
+            )
             return None
+
+    @staticmethod
+    def _strip_markdown_fences(text: str) -> Optional[str]:
+        """Strip ```json … ``` (or ``` … ```) wrappers from LLM output."""
+        s = text.strip()
+        if not s.startswith("```"):
+            return None
+        # Drop the opening fence (with optional language tag) and the closing fence.
+        first_nl = s.find("\n")
+        if first_nl == -1:
+            return None
+        s = s[first_nl + 1 :]
+        if s.endswith("```"):
+            s = s[:-3]
+        return s.strip() or None
 
     def _build_system_prompt(self) -> str:
         font_list = ", ".join(_FONT_ALLOWLIST)

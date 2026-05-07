@@ -106,6 +106,19 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
     jobs[job_id]["status"] = "running"
     jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
+    # Surface whether AI service supplied a callback URL. Silent None here
+    # is the most common reason renders complete on the worker but the FE
+    # never sees them — make it impossible to miss in the logs.
+    if request.callback_url:
+        logger.info(
+            f"Job {job_id} (video_id={request.video_id}) will push to: {request.callback_url}"
+        )
+    else:
+        logger.warning(
+            f"Job {job_id} (video_id={request.video_id}) has NO callback_url — "
+            f"AI server will not be notified. Check AI_SERVICE_PUBLIC_URL on AI service."
+        )
+
     try:
         video_url = await worker.render(
             video_id=request.video_id,

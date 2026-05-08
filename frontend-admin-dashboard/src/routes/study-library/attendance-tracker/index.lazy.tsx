@@ -55,6 +55,14 @@ type ClassAttendanceData = {
     [key: string]: ClassAttendanceItem[];
 };
 
+const formatDurationMinutes = (mins: number | null | undefined): string => {
+    if (mins == null || mins <= 0) return '—';
+    if (mins < 60) return `${mins} min`;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m === 0 ? `${h}h` : `${h}h ${m}m`;
+};
+
 interface AttendanceStudent {
     id: string; // studentId
     name: string;
@@ -66,6 +74,7 @@ interface AttendanceStudent {
     attendedClasses: number;
     totalClasses: number;
     attendancePercentage: number;
+    avgDurationMinutes: number | null;
 }
 
 // runtime generated from API. fallback empty.
@@ -390,6 +399,18 @@ function AttendanceTrackerContent() {
                     ).length;
                     const percent = student.attendancePercentage;
 
+                    const sessionsWithDuration = student.sessions.filter(
+                        (s) => typeof s.durationMinutes === 'number' && s.durationMinutes > 0
+                    );
+                    const avgDurationMinutes = sessionsWithDuration.length
+                        ? Math.round(
+                              sessionsWithDuration.reduce(
+                                  (acc, s) => acc + (s.durationMinutes ?? 0),
+                                  0
+                              ) / sessionsWithDuration.length
+                          )
+                        : null;
+
                     // Store sessions for modal
                     classAttendanceData[student.studentId] = student.sessions.map((sess) => ({
                         id: sess.scheduleId,
@@ -414,6 +435,7 @@ function AttendanceTrackerContent() {
                         attendedClasses: attended,
                         totalClasses: total,
                         attendancePercentage: percent,
+                        avgDurationMinutes,
                     };
                 });
                 allStudents.push(...mappedStudents);
@@ -573,6 +595,18 @@ function AttendanceTrackerContent() {
                     (s) => s.attendanceStatus === 'PRESENT'
                 ).length;
 
+                const sessionsWithDuration = student.sessions.filter(
+                    (s) => typeof s.durationMinutes === 'number' && s.durationMinutes > 0
+                );
+                const avgDurationMinutes = sessionsWithDuration.length
+                    ? Math.round(
+                          sessionsWithDuration.reduce(
+                              (acc, s) => acc + (s.durationMinutes ?? 0),
+                              0
+                          ) / sessionsWithDuration.length
+                      )
+                    : null;
+
                 const presentSessions = student.sessions
                     .filter((s) => s.attendanceStatus === 'PRESENT')
                     .map((s) => `${s.title} (${s.meetingDate})`)
@@ -590,6 +624,7 @@ function AttendanceTrackerContent() {
                     'Enrollment Number': student.instituteEnrollmentNumber || '',
                     'Attendance %': `${student.attendancePercentage}%`,
                     'Classes Attended': `${attended}/${total}`,
+                    'Avg Duration': formatDurationMinutes(avgDurationMinutes),
                     'Present': presentSessions,
                     'Absent': absentSessions,
                 };
@@ -616,12 +651,12 @@ function AttendanceTrackerContent() {
                     />
                 </Helmet>
                 <div className="flex flex-col gap-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                            <h1 className="text-2xl font-semibold text-neutral-800">
+                            <h1 className="text-xl font-semibold text-neutral-800 sm:text-2xl">
                                 Live Class Attendance
                             </h1>
-                            <p className="text-neutral-600">
+                            <p className="text-sm text-neutral-600 sm:text-base">
                                 Track and manage student attendance for live classes
                             </p>
                         </div>
@@ -780,6 +815,9 @@ function AttendanceTrackerContent() {
                                                 Email
                                             </th>
                                             <th className="sticky top-0 z-10 bg-primary-100 px-4 py-4">
+                                                Avg Duration
+                                            </th>
+                                            <th className="sticky top-0 z-10 bg-primary-100 px-4 py-4">
                                                 Live Classes and Attendance
                                             </th>
                                         </tr>
@@ -788,7 +826,7 @@ function AttendanceTrackerContent() {
                                         {isLoading ? (
                                             <tr>
                                                 <td
-                                                    colSpan={8}
+                                                    colSpan={9}
                                                     className="p-8 text-center text-neutral-500"
                                                 >
                                                     <div className="flex flex-col items-center">
@@ -806,7 +844,7 @@ function AttendanceTrackerContent() {
                                         ) : error ? (
                                             <tr>
                                                 <td
-                                                    colSpan={8}
+                                                    colSpan={9}
                                                     className="p-8 text-center text-neutral-500"
                                                 >
                                                     <div className="flex flex-col items-center">
@@ -880,6 +918,11 @@ function AttendanceTrackerContent() {
                                                     <td className="px-4 py-3">{student.mobileNumber}</td>
                                                     <td className="px-4 py-3">{student.email}</td>
                                                     <td className="px-4 py-3">
+                                                        {formatDurationMinutes(
+                                                            student.avgDurationMinutes
+                                                        )}
+                                                    </td>
+                                                    <td className="px-4 py-3">
                                                         <div className="flex flex-col">
                                                             <span>
                                                                 {student.attendedClasses}/
@@ -916,7 +959,7 @@ function AttendanceTrackerContent() {
                                         ) : (
                                             <tr>
                                                 <td
-                                                    colSpan={8}
+                                                    colSpan={9}
                                                     className="p-8 text-center text-neutral-500"
                                                 >
                                                     <div className="flex flex-col items-center">
@@ -1159,32 +1202,51 @@ interface BatchDropdownProps {
 }
 
 function BatchDropdown({ label, value, options, onSelect }: BatchDropdownProps) {
+    const [batchSearch, setBatchSearch] = useState('');
+    const filteredOptions = options.filter((opt) =>
+        opt.label.toLowerCase().includes(batchSearch.toLowerCase())
+    );
+
     return (
         <div className="w-full">
-            <Popover>
+            <Popover onOpenChange={(open) => { if (!open) setBatchSearch(''); }}>
                 <PopoverTrigger asChild>
                     <button
                         className={`flex h-9 w-full items-center justify-between rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm ${value !== 'All Batches' ? 'text-neutral-900' : 'text-neutral-500'
                             } focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500`}
                     >
-                        {value || label}
-                        <CaretDownIcon className="ml-2 size-4 text-neutral-500" />
+                        <span className="truncate">{value || label}</span>
+                        <CaretDownIcon className="ml-2 size-4 shrink-0 text-neutral-500" />
                     </button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-3" align="start">
+                <PopoverContent className="w-64 p-3" align="start">
                     <div className="flex flex-col gap-2">
                         <h4 className="mb-1 text-xs font-medium text-neutral-500">{label}</h4>
-                        <div className="flex max-h-60 flex-col gap-2 overflow-y-auto">
-                        {options.map((opt) => (
-                            <button
-                                key={opt.value || 'all'}
-                                onClick={() => onSelect(opt.value)}
-                                className={`w-full rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-left text-xs hover:border-neutral-300 hover:bg-neutral-50 ${value === opt.label ? 'bg-primary-50 text-primary-600' : ''
-                                    }`}
-                            >
-                                {opt.label}
-                            </button>
-                        ))}
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
+                            <input
+                                type="text"
+                                placeholder="Search..."
+                                value={batchSearch}
+                                onChange={(e) => setBatchSearch(e.target.value)}
+                                className="h-8 w-full rounded-md border border-neutral-200 bg-white pl-8 pr-3 text-xs text-neutral-900 placeholder:text-neutral-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                            />
+                        </div>
+                        <div className="flex max-h-52 flex-col gap-1 overflow-y-auto">
+                            {filteredOptions.length > 0 ? (
+                                filteredOptions.map((opt) => (
+                                    <button
+                                        key={opt.value || 'all'}
+                                        onClick={() => onSelect(opt.value)}
+                                        className={`w-full rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-left text-xs hover:border-neutral-300 hover:bg-neutral-50 ${value === opt.label ? 'bg-primary-50 text-primary-600' : ''
+                                            }`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))
+                            ) : (
+                                <p className="py-2 text-center text-xs text-neutral-400">No batches found</p>
+                            )}
                         </div>
                     </div>
                 </PopoverContent>

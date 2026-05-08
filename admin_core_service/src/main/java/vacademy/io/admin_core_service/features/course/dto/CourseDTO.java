@@ -26,6 +26,7 @@ public class CourseDTO {
     private String tags;
     private Integer courseDepth;
     private String courseHtmlDescription;
+    private Double percentageCompleted;
 
     public CourseDTO(PackageEntity packageEntity) {
         this.id = packageEntity.getId();

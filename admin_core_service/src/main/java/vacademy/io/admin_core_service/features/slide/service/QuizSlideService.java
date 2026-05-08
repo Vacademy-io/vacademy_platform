@@ -61,8 +61,9 @@ public class QuizSlideService {
                 slideDTO.getDescription(),
                 slideDTO.getImageFileId(),
                 slideDTO.getSlideOrder(),
-                chapterId,
-                user);
+                chapterId
+                /* , user */ // TODO: restore once SlideService audit refactor is pushed
+        );
 
         return slideId;
     }
@@ -88,8 +89,9 @@ public class QuizSlideService {
                 chapterId,
                 packageSessionId,
                 moduleId,
-                subjectId,
-                user);
+                subjectId
+                /* , user */ // TODO: restore once SlideService audit refactor is pushed
+        );
 
         return "success";
     }

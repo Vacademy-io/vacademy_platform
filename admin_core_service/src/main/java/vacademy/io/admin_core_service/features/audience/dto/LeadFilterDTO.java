@@ -45,10 +45,34 @@ public class LeadFilterDTO {
     // ── Search ──
     private String searchQuery;             // Searches parent name, email, mobile
 
+    // ── Conversion-status filter ──
+    // 'EXCLUDE_CONVERTED' (default) hides leads whose user_lead_profile.conversion_status
+    // is CONVERTED — assignments to a course flip a lead to that state, and we
+    // don't want them cluttering the active-leads view by default.
+    // 'ONLY_CONVERTED' shows only converted leads. 'ALL' shows everything.
+    private String conversionStatusFilter;
+
+    // ── Custom-field dropdown filters ──
+    // Each entry narrows the result set so a response only matches when there
+    // is a {custom_field_id, value} row in custom_field_values for it. Multiple
+    // entries are AND-combined. Built specifically for the Lead List dropdown
+    // filters (per-campaign), where the available fields and option values
+    // come from the campaign's own custom_fields config.
+    private java.util.List<CustomFieldFilter> customFieldFilters;
+
     // Pagination
     private Integer page;
     private Integer size;
     private String sortBy;                  // SUBMITTED_AT, LEAD_SCORE, PARENT_NAME
     private String sortDirection;           // ASC, DESC
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class CustomFieldFilter {
+        private String fieldId;
+        private String value;
+    }
 }
 

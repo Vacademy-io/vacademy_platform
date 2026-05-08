@@ -54,6 +54,7 @@ public class AudienceController {
     @PostMapping("/campaigns")
     public ResponseEntity<Page<AudienceDTO>> getCampaigns(
             @RequestBody AudienceFilterDTO filterDTO,
+            @RequestAttribute("user") CustomUserDetails user,
             @RequestParam(name = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
             @RequestParam(name = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize) {
 
@@ -65,7 +66,7 @@ public class AudienceController {
             filterDTO.setSize(pageSize);
         }
 
-        Page<AudienceDTO> campaigns = audienceService.getCampaigns(filterDTO);
+        Page<AudienceDTO> campaigns = audienceService.getCampaigns(filterDTO, user);
         return ResponseEntity.ok(campaigns);
     }
 
@@ -81,6 +82,7 @@ public class AudienceController {
     @PostMapping("/leads")
     public ResponseEntity<Page<LeadDetailDTO>> getLeads(
             @RequestBody LeadFilterDTO filterDTO,
+            @RequestAttribute("user") CustomUserDetails user,
             @RequestParam(name = "pageNo", defaultValue = PageConstants.DEFAULT_PAGE_NUMBER) int pageNo,
             @RequestParam(name = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE) int pageSize) {
 
@@ -92,7 +94,7 @@ public class AudienceController {
             filterDTO.setSize(pageSize);
         }
 
-        Page<LeadDetailDTO> leads = audienceService.getLeads(filterDTO);
+        Page<LeadDetailDTO> leads = audienceService.getLeads(filterDTO, user);
         return ResponseEntity.ok(leads);
     }
 

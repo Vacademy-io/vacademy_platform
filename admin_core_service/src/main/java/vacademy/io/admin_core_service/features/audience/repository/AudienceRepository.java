@@ -51,7 +51,11 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
             @Param("currentTime") Timestamp currentTime);
 
     /**
-     * Find campaigns with filters and pagination
+     * Find campaigns with filters and pagination.
+     *
+     * <p>{@code allowedAudienceIds} narrows the result to a subset of campaigns
+     * — used by the AUDIENCE_LIST role-access mode. {@code restrictByAllowedIds}
+     * is the on/off flag (JPQL doesn't gracefully handle null collections).
      */
     @Query("""
                 SELECT a FROM Audience a
@@ -63,6 +67,7 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
                        LOWER(a.campaignName) LIKE LOWER(CONCAT('%', :searchName, '%')))
                   AND (:startDateFromProvided = false OR a.startDate IS NULL OR a.startDate >= :startDateFrom)
                   AND (:startDateToProvided = false OR a.startDate IS NULL OR a.startDate <= :startDateTo)
+                  AND (:restrictByAllowedIds = false OR a.id IN :allowedAudienceIds)
                 ORDER BY a.createdAt DESC
             """)
     Page<Audience> findAudiencesWithFilters(
@@ -74,6 +79,8 @@ public interface AudienceRepository extends JpaRepository<Audience, String> {
             @Param("startDateFromProvided") boolean startDateFromProvided,
             @Param("startDateTo") Timestamp startDateTo,
             @Param("startDateToProvided") boolean startDateToProvided,
+            @Param("allowedAudienceIds") List<String> allowedAudienceIds,
+            @Param("restrictByAllowedIds") boolean restrictByAllowedIds,
             Pageable pageable);
 
     /**

@@ -18,10 +18,15 @@ import vacademy.io.common.auth.dto.learner.UserWithJwtDTO;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class AuthService {
+
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(AuthService.class);
+
     @Autowired
     InternalClientUtils hmacClientUtils;
 
@@ -200,6 +205,45 @@ public class AuthService {
             return response.getBody();
         } catch (Exception e) {
             throw new VacademyException("Failed to generate JWT tokens: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Idempotently adds the supplied roles to a user in auth-service. No-op
+     * when the user already has an ACTIVE row for the given (institute, role)
+     * tuple — see {@code RoleService.addRolesToUser} dedup. Failures are
+     * logged but not thrown: callers should treat this as best-effort so a
+     * transient auth-service hiccup doesn't roll back the enrollment that's
+     * already been committed in admin_core_service.
+     *
+     * <p>Specifically used by the bulk-assign flow to make sure existing users
+     * (e.g. leads created from an audience-form submission) carry the
+     * {@code STUDENT} role on enrollment, since the learner-portal login
+     * rejects users without it.
+     */
+    public void addRolesToUserInternal(String userId, List<String> roles, String instituteId) {
+        if (userId == null || userId.isBlank() || roles == null || roles.isEmpty()
+                || instituteId == null || instituteId.isBlank()) {
+            return;
+        }
+        try {
+            Map<String, Object> body = new HashMap<>();
+            body.put("user_id", userId);
+            body.put("roles", roles);
+            body.put("institute_id", instituteId);
+
+            hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    AuthServiceRoutes.ADD_USER_ROLES_INTERNAL,
+                    body);
+        } catch (Exception e) {
+            // Best-effort: log and swallow so a single auth-service blip
+            // doesn't fail an entire bulk-assign batch where the admin_core
+            // rows have already been written.
+            logger.warn("Failed to add roles {} to user {} in institute {}: {}",
+                    roles, userId, instituteId, e.getMessage());
         }
     }
 

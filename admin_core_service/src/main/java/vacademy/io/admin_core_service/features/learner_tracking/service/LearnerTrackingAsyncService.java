@@ -68,9 +68,6 @@ public class LearnerTrackingAsyncService {
                 learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
                                 LearnerOperationSourceEnum.SLIDE.name(), slideId,
                                 LearnerOperationEnum.DOCUMENT_LAST_PAGE.name());
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
-                                LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED.name());
 
                 Double percentageWatched = activityLogRepository.getPercentageDocumentWatched(slideId, userId);
 
@@ -177,10 +174,6 @@ public class LearnerTrackingAsyncService {
         public void updateLearnerOperationsForQuestion(String userId, String slideId, String chapterId,
                         String moduleId, String subjectId, String packageSessionId,
                         ActivityLogDTO activityLogDTO) {
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
-                                LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.PERCENTAGE_QUESTION_COMPLETED.name());
-
                 addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
                                 LearnerOperationEnum.PERCENTAGE_QUESTION_COMPLETED.name(), 100.0);
 
@@ -192,10 +185,6 @@ public class LearnerTrackingAsyncService {
         public void updateLearnerOperationsForAssignment(String userId, String slideId, String chapterId,
                         String moduleId, String subjectId, String packageSessionId,
                         ActivityLogDTO activityLogDTO) {
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
-                                LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.PERCENTAGE_ASSIGNMENT_COMPLETED.name());
-
                 addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
                                 LearnerOperationEnum.PERCENTAGE_ASSIGNMENT_COMPLETED.name(), 100.0);
 
@@ -210,10 +199,6 @@ public class LearnerTrackingAsyncService {
                 Double percentageCompleted = activityLogRepository.getQuizSlideCompletionPercentage(slideId,
                                 List.of(StatusEnum.ACTIVE.name()), userId);
 
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
-                                LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.PERCENTAGE_QUIZ_COMPLETED.name());
-
                 addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
                                 LearnerOperationEnum.PERCENTAGE_QUIZ_COMPLETED.name(), percentageCompleted);
 
@@ -227,10 +212,6 @@ public class LearnerTrackingAsyncService {
         public void updateLearnerOperationsForVideo(String userId, String slideId, String chapterId,
                         String moduleId, String subjectId, String packageSessionId,
                         ActivityLogDTO activityLogDTO) {
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
-                                userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name());
-
                 learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
                                 userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
                                 LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name());
@@ -278,10 +259,6 @@ public class LearnerTrackingAsyncService {
         public void updateLearnerOperationsForHtmlVideo(String userId, String slideId, String chapterId,
                         String moduleId, String subjectId, String packageSessionId,
                         ActivityLogDTO activityLogDTO) {
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
-                                userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name());
-
                 learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
                                 userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
                                 LearnerOperationEnum.VIDEO_LAST_TIMESTAMP.name());
@@ -357,10 +334,6 @@ public class LearnerTrackingAsyncService {
                         ActivityLogDTO activityLogDTO) {
                 learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
                                 userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
-                                LearnerOperationEnum.PERCENTAGE_AUDIO_LISTENED.name());
-
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(
-                                userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
                                 LearnerOperationEnum.AUDIO_LAST_TIMESTAMP.name());
 
                 // STEP 1: Get endTime for timestamp metric
@@ -410,9 +383,6 @@ public class LearnerTrackingAsyncService {
                         String subjectId, String packageSessionId) {
                 learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
                                 LearnerOperationSourceEnum.CHAPTER.name(), chapterId,
-                                LearnerOperationEnum.PERCENTAGE_CHAPTER_COMPLETED.name());
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
-                                LearnerOperationSourceEnum.CHAPTER.name(), chapterId,
                                 LearnerOperationEnum.LAST_SLIDE_VIEWED.name());
                 List<String> operationList = List.of(
                                 LearnerOperationEnum.PERCENTAGE_VIDEO_WATCHED.name(),
@@ -456,9 +426,6 @@ public class LearnerTrackingAsyncService {
         // ==== Module-Level Tracking ====
 
         public void updateModuleCompletionPercentage(String userId, String moduleId) {
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
-                                LearnerOperationSourceEnum.MODULE.name(), moduleId,
-                                LearnerOperationEnum.PERCENTAGE_MODULE_COMPLETED.name());
                 Double percentage = activityLogRepository.getModuleCompletionPercentage(
                                 userId,
                                 moduleId,
@@ -476,9 +443,6 @@ public class LearnerTrackingAsyncService {
         // ==== Subject-Level Tracking ====
 
         public void updateSubjectCompletionPercentage(String userId, String subjectId) {
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
-                                LearnerOperationSourceEnum.SUBJECT.name(), subjectId,
-                                LearnerOperationEnum.PERCENTAGE_SUBJECT_COMPLETED.name());
                 Double percentage = activityLogRepository.getSubjectCompletionPercentage(
                                 userId,
                                 subjectId,
@@ -496,9 +460,6 @@ public class LearnerTrackingAsyncService {
         // ==== Package Session-Level Tracking ====
 
         public void updatePackageSessionCompletionPercentage(String userId, String packageSessionId) {
-                learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
-                                LearnerOperationSourceEnum.PACKAGE_SESSION.name(), packageSessionId,
-                                LearnerOperationEnum.PERCENTAGE_PACKAGE_SESSION_COMPLETED.name());
                 Double percentage = activityLogRepository.getPackageSessionCompletionPercentage(
                                 userId,
                                 List.of(LearnerOperationEnum.PERCENTAGE_SUBJECT_COMPLETED.name()),
@@ -591,6 +552,8 @@ public class LearnerTrackingAsyncService {
          * Saves percentage operation with specific rules:
          * 1. If value is null, do nothing.
          * 2. If value > 100, save as 100.
+         * 3. If an existing percentage is already >= the new value, do nothing.
+         *    Re-visiting a slide must never decrease previously-recorded progress.
          */
         private void addOrUpdatePercentageOperation(String userId, String source, String sourceId, String operation,
                         Double value) {
@@ -600,6 +563,14 @@ public class LearnerTrackingAsyncService {
                 if (value > 100.0) {
                         value = 100.0;
                 }
+
+                Double existing = learnerOperationService
+                                .findDoubleValueByUserIdSourceAndSourceIdAndOperation(userId, source, sourceId, operation)
+                                .orElse(null);
+                if (existing != null && existing >= value) {
+                        return;
+                }
+
                 learnerOperationService.addOrUpdateOperation(userId, source, sourceId, operation,
                                 String.valueOf(value));
         }

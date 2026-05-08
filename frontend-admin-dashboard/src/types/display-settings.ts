@@ -182,6 +182,7 @@ export interface LearnerManagementSettings {
     allowPortalAccess: boolean;
     allowViewPassword: boolean;
     allowSendResetPasswordMail: boolean;
+    showApprovalToggle: boolean;
 }
 
 export interface LiveClassSchedulingSettings {

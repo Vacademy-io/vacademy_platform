@@ -230,6 +230,22 @@ function QuestionField({
                                     }
 
                                     if (!alreadyExists) {
+                                        // Convert ['fullName','username','password','instituteName']
+                                        // → { fullName: 'Full Name', username: 'Username', ... }.
+                                        // The workflow builder reads dynamicParameters off the
+                                        // template entity to render the per-placeholder mapping
+                                        // dropdowns; an empty map means "no variables to map" and
+                                        // the Template Variables section won't show up at all.
+                                        const dynamicParameters: Record<string, string> = {};
+                                        for (const v of sample.variables ?? []) {
+                                            // camelCase / snake_case → "Camel Case" / "Snake Case"
+                                            const label = v
+                                                .replace(/[_-]+/g, ' ')
+                                                .replace(/([a-z])([A-Z])/g, '$1 $2')
+                                                .replace(/\b\w/g, (c) => c.toUpperCase());
+                                            dynamicParameters[v] = label;
+                                        }
+
                                         await authenticatedAxiosInstance.post(
                                             CREATE_MESSAGE_TEMPLATE,
                                             {
@@ -245,7 +261,7 @@ function QuestionField({
                                                     isDefault: false,
                                                     templateType: 'utility',
                                                 },
-                                                dynamicParameters: {},
+                                                dynamicParameters,
                                                 canDelete: true,
                                                 createdBy: 'current-user',
                                                 updatedBy: 'current-user',

@@ -225,9 +225,26 @@ public class SendEmailNodeHandler implements NodeHandler {
                 }
 
                 // If node config has a templateName, inject it into the item so the handler uses the template
-                // instead of the item's pre-built subject/body
-                if (nodeLevelTemplateName != null && item instanceof Map) {
-                    Map<String, Object> enrichedItem = new HashMap<>((Map<String, Object>) item);
+                // instead of the item's pre-built subject/body.
+                // Items can be either Maps (typical — DB rows / JSON objects) OR Java beans
+                // (e.g. UserDTO when the workflow iterates over a single user from the trigger
+                // context via SpEL like `{#ctx['user']}`). For beans we convert to Map first so
+                // (a) we can attach templateName/templateVars and (b) downstream Map.get() lookups
+                // (recipient extraction at line 1054, field substitution at line 926) work.
+                if (nodeLevelTemplateName != null) {
+                    Map<String, Object> enrichedItem;
+                    if (item instanceof Map) {
+                        enrichedItem = new HashMap<>((Map<String, Object>) item);
+                    } else {
+                        try {
+                            enrichedItem = objectMapper.convertValue(item, Map.class);
+                            if (enrichedItem == null) enrichedItem = new HashMap<>();
+                        } catch (Exception e) {
+                            log.warn("Could not convert iteration item ({}) to Map; falling back to empty enriched item: {}",
+                                    item != null ? item.getClass().getSimpleName() : "null", e.getMessage());
+                            enrichedItem = new HashMap<>();
+                        }
+                    }
                     enrichedItem.put("templateName", nodeLevelTemplateName);
                     if (nodeLevelTemplateVars != null) {
                         enrichedItem.put("templateVars", nodeLevelTemplateVars);

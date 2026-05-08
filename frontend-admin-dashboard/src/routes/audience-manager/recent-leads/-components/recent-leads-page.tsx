@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
+import { convertToLocalDateTime } from '@/constants/helper';
+import type { ColumnDef } from '@tanstack/react-table';
+import { MyTable } from '@/components/design-system/table';
 import {
     ChevronLeft,
     ChevronRight,
@@ -9,6 +13,8 @@ import {
     Search,
     Flame,
     CheckCircle2,
+    UserPlus,
+    Download,
 } from 'lucide-react';
 import { ArrowSquareOut } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
@@ -22,7 +28,6 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
-import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { fetchRecentLeads, type RecentLeadDetail } from '../../list/-services/get-recent-leads';
@@ -32,8 +37,12 @@ import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import type { StudentTable } from '@/types/student-table-types';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
-import { useLeadProfiles } from '@/hooks/use-lead-profiles';
+import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
+import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
+import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
+import { LeadActivityNotesCell } from '@/components/shared/lead-activity-notes-cell';
 
 const PAGE_SIZE = 20;
 // Sentinel for "All audiences" — shadcn `<Select>` doesn't allow an empty
@@ -298,6 +307,153 @@ export const RecentLeadsPage = () => {
         tierFilter !== ALL_TIERS_VALUE ||
         conversionFilter !== 'EXCLUDE_CONVERTED';
 
+    // Match the Lead List CSV template — base columns + Counsellor / Activity
+    // & Notes / Notes Count when the lead system is enabled. The hook here is
+    // the same one the table calls; React Query caches it so this isn't a
+    // duplicate fetch.
+    const exportLeadSettings = useLeadSettings();
+    const exportShowLeadOps =
+        !exportLeadSettings.isLoading && exportLeadSettings.enabled;
+
+    const [isExporting, setIsExporting] = useState(false);
+    const EXPORT_PAGE_SIZE = 200;
+
+    const handleExportCsv = async () => {
+        if (!instituteId) return;
+        setIsExporting(true);
+        try {
+            const allLeads: RecentLeadDetail[] = [];
+            let pageNo = 0;
+            let last = false;
+            while (!last) {
+                const resp = await fetchRecentLeads({
+                    institute_id: instituteId,
+                    audience_id:
+                        audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                    submitted_from_local: startOfDayIso(appliedRange.from),
+                    submitted_to_local: endOfDayIso(appliedRange.to),
+                    search_query: appliedSearch || undefined,
+                    lead_tier:
+                        tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
+                    conversion_status_filter: conversionFilter,
+                    page: pageNo,
+                    size: EXPORT_PAGE_SIZE,
+                });
+                if (resp?.content?.length) allLeads.push(...resp.content);
+                last = resp?.last ?? true;
+                pageNo += 1;
+                if (pageNo > 200) break;
+            }
+
+            if (allLeads.length === 0) {
+                toast.info('No leads to export for the current filters');
+                return;
+            }
+
+            // One batch call each for profiles + notes across the entire export
+            // set — keeps the export O(1) calls regardless of lead count.
+            const userIds = Array.from(
+                new Set(
+                    allLeads
+                        .map((l) => l.user?.id || l.user_id || '')
+                        .filter((id): id is string => !!id)
+                )
+            );
+            const [profiles, notes] = await Promise.all([
+                exportShowLeadOps ? fetchBatchProfiles(userIds) : Promise.resolve({}),
+                exportShowLeadOps
+                    ? fetchLatestNotesBatch(userIds)
+                    : Promise.resolve({}),
+            ]);
+
+            // CSV layout mirrors the Lead List export
+            // (campaign-users-table.tsx#L820+): base columns first, then
+            // Counsellor / Activity & Notes / Notes Count appended at the end.
+            const safeString = (val: unknown) => {
+                if (val === undefined || val === null) return '';
+                const str = String(val);
+                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                    return `"${str.replace(/"/g, '""')}"`;
+                }
+                return str;
+            };
+
+            const baseHeaders = ['Lead ID', 'Submitted At', 'Name', 'Email', 'Mobile', 'Audience'];
+            const tailHeaders = exportShowLeadOps
+                ? ['Counsellor', 'Activity & Notes', 'Notes Count']
+                : [];
+            const csvHeaders = [...baseHeaders, ...tailHeaders];
+
+            const csvRows = allLeads.map((lead) => {
+                const u = lead.user ?? {};
+                const userId = u.id || lead.user_id || '';
+                const submittedAt = lead.submitted_at_local
+                    ? convertToLocalDateTime(lead.submitted_at_local)
+                    : '-';
+
+                const row = [
+                    safeString(lead.response_id || lead.user_id || '-'),
+                    safeString(submittedAt),
+                    safeString(u.full_name || lead.parent_name || '-'),
+                    safeString(u.email || lead.parent_email || '-'),
+                    safeString(u.mobile_number || lead.parent_mobile || '-'),
+                    safeString(displayAudience(lead)),
+                ];
+
+                if (exportShowLeadOps) {
+                    const counsellorName = userId
+                        ? profiles[userId]?.assigned_counselor_name ?? ''
+                        : '';
+                    const noteSummary = userId ? notes[userId] : undefined;
+                    const recent = noteSummary?.recent ?? [];
+                    // Same formatting as Lead List:
+                    //   1. {label} - {body}
+                    //      updatedby - {actor}
+                    //      date - {date}
+                    const notesBlock = recent
+                        .map((n, idx) => {
+                            const label = n.title?.trim() || 'Note';
+                            const body = n.description?.trim() || '';
+                            const date = n.created_at
+                                ? convertToLocalDateTime(n.created_at)
+                                : '';
+                            return [
+                                `${idx + 1}. ${label} - ${body}`,
+                                `   updatedby - ${n.actor_name || ''}`,
+                                `   date - ${date}`,
+                            ].join('\n');
+                        })
+                        .join('\n\n');
+                    row.push(safeString(counsellorName));
+                    row.push(safeString(notesBlock));
+                    row.push(safeString(noteSummary?.count ?? 0));
+                }
+
+                return row.join(',');
+            });
+
+            const csvContent = [csvHeaders.join(','), ...csvRows].join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute(
+                'download',
+                `recent_leads_${format(new Date(), 'yyyy-MM-dd')}.csv`
+            );
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            toast.success(`Exported ${allLeads.length} leads`);
+        } catch (err) {
+            console.error('Recent leads export failed:', err);
+            toast.error('Failed to export recent leads');
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     return (
         <StudentSidebarProvider>
         <div className="flex w-full flex-col gap-4">
@@ -436,8 +592,19 @@ export const RecentLeadsPage = () => {
                         </Button>
                     )}
                 </div>
-                <div className="ml-auto text-xs text-neutral-500">
-                    {data ? `${data.totalElements} total` : ''}
+                <div className="ml-auto flex items-center gap-3">
+                    <span className="text-xs text-neutral-500">
+                        {data ? `${data.totalElements} total` : ''}
+                    </span>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleExportCsv}
+                        disabled={isExporting || !data?.totalElements}
+                    >
+                        <Download className="mr-1.5 size-4" />
+                        {isExporting ? 'Exporting…' : 'Export CSV'}
+                    </Button>
                 </div>
             </div>
 
@@ -496,6 +663,10 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
     // surface for this gate (these are raw form submissions).
     const showLeadScore =
         !leadSettings.isLoading && leadSettings.enabled && leadSettings.showScoreInEnquiryTable;
+    // Counsellor + Notes columns are gated on the lead system being on (but
+    // not on the per-table score flag, so admins can still see/edit them
+    // even when score badges are hidden).
+    const showLeadOps = !leadSettings.isLoading && leadSettings.enabled;
     const leadUserIds = useMemo(
         () =>
             (data?.content ?? [])
@@ -504,6 +675,18 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
         [data]
     );
     const { profiles: leadProfiles } = useLeadProfiles(leadUserIds, showLeadScore);
+    // Independent profile fetch for the Counsellor column — runs even when
+    // score badges are off.
+    const { profiles: counsellorProfiles } = useLeadProfiles(leadUserIds, showLeadOps);
+    const { notesByUserId } = useLatestNotesBatch(leadUserIds, showLeadOps);
+
+    // Dialog state lives at the table level so a single mount serves every row.
+    const [noteTarget, setNoteTarget] = useState<{ userId: string; userName: string } | null>(
+        null
+    );
+    const [counsellorTarget, setCounsellorTarget] = useState<
+        { userId: string; userName: string } | null
+    >(null);
 
     const handleSelectLead = useCallback(
         (lead: RecentLeadDetail) => {
@@ -512,6 +695,209 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
         [setSelectedStudent]
     );
 
+    // Columns are built with the same `ColumnDef<T>` shape used by the Lead
+    // List so MyTable renders both pages identically (header styles, row
+    // dividers, cell padding, scroll behaviour).
+    const columns = useMemo<ColumnDef<RecentLeadDetail>[]>(() => {
+        const cols: ColumnDef<RecentLeadDetail>[] = [
+            {
+                id: 'details',
+                header: 'Details',
+                size: 80,
+                minSize: 60,
+                maxSize: 100,
+                cell: ({ row }) => (
+                    <div className="p-3">
+                        <SidebarTrigger
+                            onClick={() => handleSelectLead(row.original)}
+                            aria-label={`Open details for ${displayName(row.original)}`}
+                        >
+                            <ArrowSquareOut className="size-5 cursor-pointer text-neutral-600" />
+                        </SidebarTrigger>
+                    </div>
+                ),
+            },
+            {
+                id: 'name',
+                header: 'Name',
+                size: 200,
+                minSize: 160,
+                maxSize: 260,
+                cell: ({ row }) => {
+                    const lead = row.original;
+                    const userId = lead.user?.id || lead.user_id || '';
+                    const profile = showLeadScore && userId ? leadProfiles[userId] : undefined;
+                    return (
+                        <div className="flex flex-col gap-0.5 p-3 font-medium text-neutral-900">
+                            <span>{displayName(lead)}</span>
+                            {profile && (
+                                <LeadScoreBadge score={profile.best_score} size="sm" />
+                            )}
+                        </div>
+                    );
+                },
+            },
+            {
+                id: 'email',
+                header: 'Email',
+                size: 240,
+                minSize: 200,
+                maxSize: 320,
+                cell: ({ row }) => (
+                    <div className="p-3 text-sm text-neutral-700">
+                        {displayEmail(row.original)}
+                    </div>
+                ),
+            },
+            {
+                id: 'phone',
+                header: 'Phone',
+                size: 160,
+                minSize: 140,
+                maxSize: 200,
+                cell: ({ row }) => (
+                    <div className="p-3 text-sm text-neutral-700">
+                        {displayPhone(row.original)}
+                    </div>
+                ),
+            },
+            {
+                id: 'audience',
+                header: 'Audience',
+                size: 180,
+                minSize: 150,
+                maxSize: 220,
+                cell: ({ row }) => (
+                    <div className="p-3 text-sm text-neutral-700">
+                        {displayAudience(row.original)}
+                    </div>
+                ),
+            },
+        ];
+
+        if (showLeadOps) {
+            cols.push({
+                id: 'counsellor',
+                header: 'Counsellor',
+                size: 200,
+                minSize: 160,
+                maxSize: 240,
+                cell: ({ row }) => {
+                    const lead = row.original;
+                    const userId = lead.user?.id || lead.user_id || '';
+                    const leadName = displayName(lead);
+                    const counsellorName =
+                        userId ? counsellorProfiles[userId]?.assigned_counselor_name ?? null : null;
+                    if (!userId) {
+                        return <div className="p-3 text-sm text-neutral-400">—</div>;
+                    }
+                    if (counsellorName) {
+                        return (
+                            <div className="flex items-center justify-between gap-2 p-3">
+                                <div className="flex min-w-0 items-center gap-2">
+                                    <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-semibold text-primary-700">
+                                        {counsellorName[0]?.toUpperCase()}
+                                    </div>
+                                    <span className="truncate text-sm text-neutral-800">
+                                        {counsellorName}
+                                    </span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setCounsellorTarget({ userId, userName: leadName });
+                                    }}
+                                    className="shrink-0 text-[11px] text-neutral-400 hover:text-primary-600"
+                                >
+                                    Reassign
+                                </button>
+                            </div>
+                        );
+                    }
+                    return (
+                        <div className="p-3">
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCounsellorTarget({ userId, userName: leadName });
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md border border-dashed border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-primary-300 hover:text-primary-600"
+                            >
+                                <UserPlus className="size-3.5" />
+                                Assign
+                            </button>
+                        </div>
+                    );
+                },
+            });
+            cols.push({
+                id: 'activity_notes',
+                header: 'Activity & Notes',
+                size: 320,
+                minSize: 260,
+                maxSize: 420,
+                cell: ({ row }) => {
+                    const lead = row.original;
+                    const userId = lead.user?.id || lead.user_id || '';
+                    const leadName = displayName(lead);
+                    if (!userId) {
+                        return <div className="p-3 text-sm text-neutral-400">—</div>;
+                    }
+                    const summary = notesByUserId[userId];
+                    const recent = summary?.recent ?? [];
+                    return (
+                        <div className="p-2">
+                            <LeadActivityNotesCell
+                                recent={recent}
+                                count={summary?.count ?? recent.length}
+                                onAdd={() => setNoteTarget({ userId, userName: leadName })}
+                            />
+                        </div>
+                    );
+                },
+            });
+        }
+
+        cols.push({
+            id: 'submitted_at',
+            header: 'Submitted On',
+            size: 200,
+            minSize: 160,
+            maxSize: 240,
+            cell: ({ row }) => (
+                <div className="p-3 text-sm text-neutral-700">
+                    {displaySubmittedAt(row.original)}
+                </div>
+            ),
+        });
+
+        return cols;
+    }, [
+        showLeadOps,
+        showLeadScore,
+        leadProfiles,
+        counsellorProfiles,
+        notesByUserId,
+        handleSelectLead,
+    ]);
+
+    // Adapt the page response to MyTable's TableData<T> shape — the recent
+    // leads endpoint returns just `content` + `totalElements`, so we synthesize
+    // the rest from the page params it shares with the rest of the app.
+    const tableData = useMemo(() => {
+        if (!data) return undefined;
+        return {
+            content: data.content,
+            total_pages: 0,
+            page_no: 0,
+            page_size: data.content.length,
+            total_elements: data.totalElements,
+            last: true,
+        };
+    }, [data]);
+
     return (
         <SidebarProvider
             style={{ ['--sidebar-width' as string]: '565px' }}
@@ -519,81 +905,36 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
             open={isSidebarOpen}
             onOpenChange={setIsSidebarOpen}
         >
-            <div className="flex-1 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm">
-                {isLoading ? (
-                    <div className="flex flex-col items-center gap-2 py-12">
-                        <DashboardLoader />
-                        <p className="animate-pulse text-xs text-neutral-500">Loading leads...</p>
-                    </div>
-                ) : error ? (
-                    <div className="flex h-60 items-center justify-center">
-                        <p className="text-sm text-red-500">Failed to load leads.</p>
-                    </div>
-                ) : !data || data.content.length === 0 ? (
-                    <div className="flex h-60 items-center justify-center">
-                        <p className="text-sm text-neutral-500">No leads found.</p>
-                    </div>
-                ) : (
-                    <table className="w-full text-left text-sm">
-                        <thead className="border-b border-neutral-200 bg-neutral-50 text-xs font-semibold uppercase tracking-wide text-neutral-600">
-                            <tr>
-                                <th className="w-20 px-4 py-3">Details</th>
-                                <th className="px-4 py-3">Name</th>
-                                <th className="px-4 py-3">Email</th>
-                                <th className="px-4 py-3">Phone</th>
-                                <th className="px-4 py-3">Audience</th>
-                                <th className="px-4 py-3">Submitted On</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data.content.map((lead, idx) => {
-                                const userId = lead.user?.id || lead.user_id;
-                                const profile =
-                                    showLeadScore && userId ? leadProfiles[userId] : undefined;
-                                return (
-                                <tr
-                                    key={lead.response_id ?? idx}
-                                    className="border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50"
-                                >
-                                    <td className="px-4 py-3">
-                                        <SidebarTrigger
-                                            onClick={() => handleSelectLead(lead)}
-                                            aria-label={`Open details for ${displayName(lead)}`}
-                                        >
-                                            <ArrowSquareOut className="size-5 cursor-pointer text-neutral-600" />
-                                        </SidebarTrigger>
-                                    </td>
-                                    <td className="px-4 py-3 font-medium text-neutral-900">
-                                        <div className="flex flex-col gap-0.5">
-                                            <span>{displayName(lead)}</span>
-                                            {profile && (
-                                                <LeadScoreBadge
-                                                    score={profile.best_score}
-                                                    size="sm"
-                                                />
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 text-neutral-700">
-                                        {displayEmail(lead)}
-                                    </td>
-                                    <td className="px-4 py-3 text-neutral-700">
-                                        {displayPhone(lead)}
-                                    </td>
-                                    <td className="px-4 py-3 text-neutral-700">
-                                        {displayAudience(lead)}
-                                    </td>
-                                    <td className="px-4 py-3 text-neutral-700">
-                                        {displaySubmittedAt(lead)}
-                                    </td>
-                                </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
-                )}
+            <div className="min-w-0 flex-1 rounded-md shadow-sm">
+                <MyTable<RecentLeadDetail>
+                    data={tableData}
+                    columns={columns}
+                    isLoading={isLoading}
+                    error={error}
+                    currentPage={0}
+                    tableState={{ columnVisibility: {} }}
+                />
             </div>
             <StudentSidebar selectedTab="overview" examType="EXAM" isStudentList={false} />
+
+            {noteTarget && (
+                <AddLeadNoteDialog
+                    open={!!noteTarget}
+                    onOpenChange={(o) => !o && setNoteTarget(null)}
+                    userId={noteTarget.userId}
+                    userName={noteTarget.userName}
+                />
+            )}
+
+            {counsellorTarget && (
+                <AssignCounselorToLeadDialog
+                    open={!!counsellorTarget}
+                    onOpenChange={(o) => !o && setCounsellorTarget(null)}
+                    userId={counsellorTarget.userId}
+                    userName={counsellorTarget.userName}
+                    invalidateKeys={[['lead-profiles-batch']]}
+                />
+            )}
         </SidebarProvider>
     );
 };

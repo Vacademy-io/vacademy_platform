@@ -487,6 +487,12 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # synthesized from a generic cinematic-ambient default in run().
         "background_music_enabled": True,
         "background_music_default_volume": 0.18,
+        # Vision reviewer: catches visible defects the regex validator can't.
+        # On standard the per-shot HTML quality is lower, so the reviewer runs
+        # with a tighter cost cap to avoid spending more on review than on gen.
+        "shot_vision_review": True,
+        "vision_review_run_cost_cap_usd": 0.10,
+        "vision_review_max_regens_pct": 30,
     },
     "premium": {
         "script_temperature": 0.6,
@@ -512,6 +518,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "stock_preference": "stock_first",
         "preferred_script_model": "google/gemini-3-flash-preview",
         "preferred_shot_model": "google/gemini-3-flash-preview",
+        # Vision reviewer — see "standard" tier comment.
+        "shot_vision_review": True,
+        "vision_review_run_cost_cap_usd": 0.15,
+        "vision_review_max_regens_pct": 30,
     },
     "ultra": {
         "script_temperature": 0.6,
@@ -563,6 +573,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "background_music_default_volume": 0.20,
         # Use stock where available; AI for hero/conceptual shots
         "stock_preference": "stock_first",
+        # Vision reviewer — see "standard" tier comment.
+        "shot_vision_review": True,
+        "vision_review_run_cost_cap_usd": 0.15,
+        "vision_review_max_regens_pct": 30,
     },
     "super_ultra": {
         "script_temperature": 0.6,
@@ -603,6 +617,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "background_music_default_volume": 0.20,
         # Use stock where available; AI for motion-biased hero shots that need precise visuals
         "stock_preference": "stock_first",
+        # Vision reviewer — see "standard" tier comment.
+        "shot_vision_review": True,
+        "vision_review_run_cost_cap_usd": 0.15,
+        "vision_review_max_regens_pct": 30,
     },
 }
 
@@ -1689,6 +1707,15 @@ class VideoGenerationPipeline:
         # Dedup set for LLM-ranked stock video selection (super_ultra only).
         # Tracks Pexels video IDs already used in this run so shots don't reuse clips.
         self._used_pexels_video_ids: set = set()
+        # Vision-reviewer run state. Cost cap defends against runaway loops on
+        # very long videos; counters drive the run-summary log line.
+        self._vision_review_run_cost_usd: float = 0.0
+        self._vision_review_passed_first: int = 0
+        self._vision_review_regen_passed: int = 0
+        self._vision_review_ship_original: int = 0
+        self._vision_review_issue_codes: Dict[str, int] = {}
+        # Lazy-initialized once per run by _review_shot_visually.
+        self._screenshot_client = None
         # Store max_segments for use in concept-aligned segmentation
         self._max_segments = max_segments
 
@@ -2377,6 +2404,9 @@ class VideoGenerationPipeline:
                 print("🖼️  Checking for visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
+                # Vision-review persistence runs before _process_stock_videos
+                # because the latter strips `_vision_review` from each entry.
+                self._persist_vision_review_cases(html_segments, run_dir, video_id=getattr(self, "_current_video_id", None))
                 html_segments, stock_usage = self._process_stock_videos(html_segments)
                 accumulate_usage(stock_usage)
             else:
@@ -2763,6 +2793,9 @@ class VideoGenerationPipeline:
                 print("🖼️  Checking for any remaining visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
+                # Vision-review persistence runs before _process_stock_videos
+                # because the latter strips `_vision_review` from each entry.
+                self._persist_vision_review_cases(html_segments, run_dir, video_id=getattr(self, "_current_video_id", None))
                 html_segments, stock_usage = self._process_stock_videos(html_segments)
                 accumulate_usage(stock_usage)
 
@@ -4866,6 +4899,257 @@ class VideoGenerationPipeline:
                 break  # one issue is enough; regen the shot
 
         return issues
+
+    # ------------------------------------------------------------------
+    # Vision reviewer — sees the rendered frame, flags blocking defects
+    # the regex-based animation density validator cannot catch (legibility,
+    # face overlap, palette violation, sync drift, etc.). Persists every
+    # flagged shot to vision_review_cases for prompt-tuning analysis.
+    # ------------------------------------------------------------------
+
+    # Skip these shot types entirely — they're built deterministically and
+    # the visible content is constructed by-construction-correct.
+    _VISION_REVIEW_SKIP_SHOT_TYPES = frozenset({"KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP"})
+
+    def _vision_review_pick_timestamps(self, duration_s: float) -> List[float]:
+        """Pick screenshot timestamps for one shot. Three frames (early/middle/exit)
+        for normal-length shots; degrade gracefully on very short shots."""
+        d = max(0.0, float(duration_s))
+        if d < 0.6:
+            return [d * 0.5]
+        if d < 1.2:
+            return [d * 0.3, d * 0.85]
+        # Standard 3-frame sample. The exit frame is slightly inside the shot
+        # (95%) rather than at exactly d so transitions that finish at d are
+        # captured fully tear-down rather than mid-flight.
+        return [round(d * 0.30, 3), round(d * 0.60, 3), round(d * 0.95, 3)]
+
+    def _review_shot_visually(
+        self,
+        *,
+        html: str,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        start_time: float,
+        end_time: float,
+        system_prompt: str,
+        user_prompt: str,
+        last_raw_response: str,
+        usage: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Run vision review on `html`. Returns a record dict for entry stash, or
+        None when the review was skipped (tier off, render worker down, cost cap
+        exceeded). Mutates `html` indirectly through the returned record's
+        `regen_html` field — the caller substitutes when present.
+
+        Never raises. Every failure path returns either None (skip) or a record
+        with `error` set, leaving the original HTML intact.
+        """
+        if not self._tier_config.get("shot_vision_review"):
+            return None
+        shot_type = (shot.get("shot_type") or shot.get("type") or "").upper()
+        if shot_type in self._VISION_REVIEW_SKIP_SHOT_TYPES:
+            return None
+        duration_s = float(end_time - start_time)
+        if duration_s < 1.5:
+            return None
+
+        # Per-run cost circuit-breaker. _vision_review_run_cost_usd accumulates
+        # across all shots in this run; once we cross the cap we silently skip
+        # remaining shots to defend against runaway loops.
+        cap = float(self._tier_config.get("vision_review_run_cost_cap_usd", 0.15))
+        if getattr(self, "_vision_review_run_cost_usd", 0.0) >= cap:
+            print(f"   👁️  Shot {shot_idx + 1}: vision review skipped — run cost cap reached (${cap:.2f})")
+            return None
+
+        # Lazy imports — keeps module load fast for free-tier runs.
+        try:
+            from shot_screenshot_service import ShotScreenshotClient, ScreenshotClientError
+            from shot_visual_reviewer import review_shot, PROMPT_VERSION
+        except ImportError as exc:
+            print(f"   ⚠️ vision review modules not importable: {exc}")
+            return None
+
+        client = getattr(self, "_screenshot_client", None)
+        if client is None:
+            client = ShotScreenshotClient()
+            self._screenshot_client = client
+        if not client.is_configured:
+            return None
+
+        timestamps = self._vision_review_pick_timestamps(duration_s)
+        canvas = "portrait" if getattr(self, "video_width", 1920) < getattr(self, "video_height", 1080) else "landscape"
+
+        # Take the pre-review screenshots.
+        try:
+            frames = client.take_shot_screenshots(
+                html=html,
+                width=int(getattr(self, "video_width", 1920)),
+                height=int(getattr(self, "video_height", 1080)),
+                timestamps=timestamps,
+                background=str((shot.get("background") or shot.get("bg") or "#0a0e27")),
+            )
+        except ScreenshotClientError as exc:
+            print(f"   ⚠️ Shot {shot_idx + 1}: vision review skipped — {exc}")
+            return None
+
+        screenshots_pre = [f.image_bytes for f in frames]
+
+        host_meta = shot.get("host") if isinstance(shot.get("host"), dict) else None
+        if not host_meta and shot.get("host_present"):
+            host_meta = {
+                "host_present": True,
+                "host_layout": shot.get("host_layout"),
+            }
+
+        # Resolve the actual brand palette (hex values) — shot_pack stores
+        # CSS var refs which the vision model can't compare against pixels.
+        _palette = (getattr(self, "_current_style_guide", None) or {}).get("palette") or {}
+        review = review_shot(
+            screenshots=screenshots_pre,
+            shot=shot,
+            shot_pack=getattr(self, "_current_shot_pack", None),
+            canvas=canvas,
+            timestamps=[float(t) for t in timestamps],
+            host_meta=host_meta,
+            palette=_palette,
+            llm_chat=self.html_client.chat,
+        )
+
+        # Tally cost on the run-level accumulator regardless of outcome.
+        self._vision_review_run_cost_usd = (
+            getattr(self, "_vision_review_run_cost_usd", 0.0) + float(review.get("cost_usd") or 0.0)
+        )
+
+        record: Dict[str, Any] = {
+            "passed_first": bool(review.get("passes")),
+            "issues_pre": list(review.get("issues") or []),
+            "severity_max_pre": int(review.get("severity_max") or 0),
+            "review_ms_pre": int(review.get("review_ms") or 0),
+            "review_cost_usd_pre": float(review.get("cost_usd") or 0.0),
+            "prompt_version": review.get("prompt_version") or PROMPT_VERSION,
+            "model": review.get("model"),
+            "shipped": "first_try",
+            "regen_html": None,
+            "screenshots_pre_count": len(screenshots_pre),
+            "host_present": bool(host_meta and host_meta.get("host_present")),
+            # raw screenshots are kept on the record for the persistence layer
+            # to upload to S3; the entry-stripper drops them before timeline ship.
+            "_screenshots_pre_bytes": screenshots_pre,
+            "_screenshots_post_bytes": None,
+            # Preserve BOTH original and (when present) regen HTML so the case
+            # bank can show before/after even when the regen was rejected.
+            # Without these, the persistence sweep falls back to entry["html"]
+            # which is whichever version actually shipped — losing the other side.
+            "original_html": html,
+            "regen_html_attempt": None,
+            "raw_pre": review.get("raw"),
+            "error_pre": review.get("error"),
+        }
+
+        # Severity-3 → fire one corrective regen, then re-screenshot + re-review.
+        if review.get("severity_max", 0) >= 3 and review.get("issues"):
+            corrective = self._build_vision_corrective_prompt(review.get("issues") or [])
+            try:
+                raw2, usage2 = self.html_client.chat(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                        {"role": "assistant", "content": (last_raw_response or "")[:4000]},
+                        {"role": "user", "content": corrective},
+                    ],
+                    temperature=0.4,
+                    max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+                )
+                data2 = _extract_json_blob(raw2)
+                html2 = (data2 or {}).get("html", "")
+                if usage2:
+                    usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)
+                    usage["completion_tokens"] = usage.get("completion_tokens", 0) + usage2.get("completion_tokens", 0)
+                    usage["total_tokens"] = usage.get("total_tokens", 0) + usage2.get("total_tokens", 0)
+
+                if html2:
+                    candidate = self._sanitize_html_content(html2)
+                    # Stash the regen candidate up-front — even if we end up
+                    # shipping the original, the case bank shows what the
+                    # corrective regen attempted. Critical for prompt-tuning.
+                    record["regen_html_attempt"] = candidate
+                    # Re-screenshot + re-review. A regen that replaces the original
+                    # severity-3 with a fresh severity-3 is a regression — ship
+                    # original. Mirrors the animation-validator policy.
+                    try:
+                        frames2 = client.take_shot_screenshots(
+                            html=candidate,
+                            width=int(getattr(self, "video_width", 1920)),
+                            height=int(getattr(self, "video_height", 1080)),
+                            timestamps=timestamps,
+                            background=str((shot.get("background") or shot.get("bg") or "#0a0e27")),
+                        )
+                        screenshots_post = [f.image_bytes for f in frames2]
+                        review2 = review_shot(
+                            screenshots=screenshots_post,
+                            shot=shot,
+                            shot_pack=getattr(self, "_current_shot_pack", None),
+                            canvas=canvas,
+                            timestamps=[float(t) for t in timestamps],
+                            host_meta=host_meta,
+                            palette=_palette,
+                            llm_chat=self.html_client.chat,
+                        )
+                        self._vision_review_run_cost_usd += float(review2.get("cost_usd") or 0.0)
+                        record["issues_post"] = list(review2.get("issues") or [])
+                        record["severity_max_post"] = int(review2.get("severity_max") or 0)
+                        record["review_ms_post"] = int(review2.get("review_ms") or 0)
+                        record["review_cost_usd_post"] = float(review2.get("cost_usd") or 0.0)
+                        record["raw_post"] = review2.get("raw")
+                        record["error_post"] = review2.get("error")
+                        record["_screenshots_post_bytes"] = screenshots_post
+
+                        if review2.get("severity_max", 0) < 3 and review2.get("passes", False):
+                            record["regen_html"] = candidate
+                            record["shipped"] = "regen"
+                            print(f"   👁️  Shot {shot_idx + 1} vision regen passed.")
+                        elif review2.get("severity_max", 0) < review.get("severity_max", 0):
+                            record["regen_html"] = candidate
+                            record["shipped"] = "regen"
+                            print(f"   👁️  Shot {shot_idx + 1} vision regen improved severity — shipping regen.")
+                        else:
+                            record["shipped"] = "ship_original"
+                            print(f"   ⏪ Shot {shot_idx + 1} vision regen no better — shipping original.")
+                    except ScreenshotClientError as exc:
+                        record["shipped"] = "ship_original"
+                        record["regen_screenshot_error"] = str(exc)
+                else:
+                    record["shipped"] = "ship_original"
+                    record["regen_error"] = "regen returned empty html"
+            except Exception as exc:
+                print(f"   ⚠️ Shot {shot_idx + 1} vision corrective regen failed: {exc}")
+                record["shipped"] = "ship_original"
+                record["regen_error"] = str(exc)
+
+        return record
+
+    def _build_vision_corrective_prompt(self, issues: List[Dict[str, Any]]) -> str:
+        """Compose the corrective user message for the regen LLM call. Each
+        sev-3 issue contributes its description + the reviewer's suggestion."""
+        lines = [
+            "Your previous shot HTML had visible quality issues that block shipping.",
+            "Issues identified by the vision reviewer:",
+        ]
+        for it in issues:
+            if int(it.get("severity") or 0) < 3:
+                continue
+            lines.append(f"- [{it.get('code', '?')}] {it.get('description', '')}".rstrip())
+            sug = (it.get("suggestion") or "").strip()
+            if sug:
+                lines.append(f"  → {sug}")
+        lines.append("")
+        lines.append(
+            "Regenerate the shot HTML to address each issue specifically. Keep "
+            "the shot pack tokens (palette, fonts, spacing) and the narration "
+            "unchanged. Return only the JSON shot object."
+        )
+        return "\n".join(lines)
 
     def _build_director_reference_image_block(self) -> List[Dict[str, Any]]:
         """Return OpenRouter-vision content parts for any user-uploaded reference images.
@@ -8470,6 +8754,27 @@ class VideoGenerationPipeline:
                 if issues:
                     _validator_record_for_entry = _validator_record
 
+            # ── Vision reviewer — sees the rendered frame ──
+            # Catches defects the regex validator can't (legibility, face
+            # overlap, palette violation, sync drift). Fires AFTER the density
+            # validator so cheap regex catches dead-air shots before we pay
+            # for screenshots. May trigger one corrective regen with a
+            # ship-original-on-regression policy. Persists every flagged shot
+            # to vision_review_cases for prompt-tuning analysis.
+            _vision_review_record: Optional[Dict[str, Any]] = self._review_shot_visually(
+                html=html,
+                shot=shot,
+                shot_idx=shot_idx,
+                start_time=start_time,
+                end_time=end_time,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                last_raw_response=raw,
+                usage=usage,
+            )
+            if _vision_review_record and _vision_review_record.get("regen_html"):
+                html = _vision_review_record["regen_html"]
+
             html = self._ensure_fonts(html)
 
             entry = {
@@ -8494,6 +8799,11 @@ class VideoGenerationPipeline:
             # is serialized to S3 — same strip path as other underscore fields.
             if _validator_record_for_entry is not None:
                 entry["_validator_record"] = _validator_record_for_entry
+            # Vision-reviewer telemetry. Same strip path. The persistence
+            # service (called at end of HTML stage) reads this off the entry
+            # and writes a row to vision_review_cases.
+            if _vision_review_record is not None:
+                entry["_vision_review"] = _vision_review_record
             # SOURCE_CLIP: propagate source video time range + inject <video> into
             # the HTML so the FE player (iframe preview) shows the actual footage
             # instead of a black rectangle. The render worker will composite
@@ -11003,6 +11313,214 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             print(f"    ⚠️ Candidate ranker failed ({e}) — falling back to first candidate")
         return candidates[0], usage
 
+    # ------------------------------------------------------------------
+    # Vision-review persistence sweep — runs after the HTML stage finishes
+    # but before _process_stock_videos's strip helper drops `_vision_review`
+    # from each entry. Uploads screenshots + before/after HTML to S3 and
+    # writes one row per flagged shot to vision_review_cases.
+    # ------------------------------------------------------------------
+
+    def _persist_vision_review_cases(
+        self,
+        html_segments: List[Dict[str, Any]],
+        run_dir: Path,
+        video_id: Optional[str] = None,
+    ) -> None:
+        """Walk html_segments, upload artifacts, write DB rows. Updates the
+        in-memory record in place so the run-summary log can read normalized
+        counters from the entries afterwards. Never raises — DB / S3 failures
+        log + skip; the shot still ships."""
+        if not any(entry.get("_vision_review") for entry in html_segments):
+            return
+
+        # Lazy imports — keeps module load fast for free-tier runs that never
+        # touch this code path.
+        repo = None
+        try:
+            from app.repositories.vision_review_repository import VisionReviewRepository
+            repo = VisionReviewRepository()
+        except Exception as exc:
+            print(f"   ⚠️ vision-review persistence: repository unavailable ({exc}) — skipping DB writes")
+
+        try:
+            import boto3 as _boto3_vrc
+            import os as _os_vrc
+            s3 = _boto3_vrc.client(
+                "s3",
+                aws_access_key_id=_os_vrc.environ.get("AWS_ACCESS_KEY_ID") or None,
+                aws_secret_access_key=_os_vrc.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                region_name=_os_vrc.environ.get("AWS_REGION", "ap-south-1"),
+            )
+            bucket = "vacademy-media-storage-public"
+        except Exception as exc:
+            print(f"   ⚠️ vision-review persistence: S3 client unavailable ({exc}) — skipping artifact uploads")
+            s3 = None
+            bucket = None
+
+        run_id = run_dir.name or "run"
+        vid = video_id or run_id
+
+        def _upload_png(idx: int, kind: str, ts_idx: int, png: bytes) -> Optional[str]:
+            if s3 is None or bucket is None:
+                return None
+            key = f"VISION_REVIEW/{vid}/shot{idx:03d}/{kind}_{ts_idx}.png"
+            try:
+                s3.put_object(Bucket=bucket, Key=key, Body=png, ContentType="image/png", ACL="public-read")
+                return f"https://{bucket}.s3.amazonaws.com/{key}"
+            except Exception as exc:
+                print(f"   ⚠️ vision-review S3 upload failed ({key}): {exc}")
+                return None
+
+        def _upload_html(idx: int, kind: str, html_str: str) -> Optional[str]:
+            if s3 is None or bucket is None or not html_str:
+                return None
+            key = f"VISION_REVIEW/{vid}/shot{idx:03d}/{kind}.html"
+            try:
+                s3.put_object(
+                    Bucket=bucket, Key=key, Body=html_str.encode("utf-8"),
+                    ContentType="text/html; charset=utf-8", ACL="public-read",
+                )
+                return f"https://{bucket}.s3.amazonaws.com/{key}"
+            except Exception as exc:
+                print(f"   ⚠️ vision-review HTML upload failed ({key}): {exc}")
+                return None
+
+        for entry in html_segments:
+            rec = entry.get("_vision_review")
+            if not rec:
+                continue
+
+            shot_idx = int(entry.get("index", 0))
+            shipped = rec.get("shipped") or "first_try"
+            issues_pre = rec.get("issues_pre") or []
+            issues_post = rec.get("issues_post") or []
+            severity_max = max(
+                int(rec.get("severity_max_pre") or 0),
+                int(rec.get("severity_max_post") or 0),
+            )
+            had_meaningful = bool(issues_pre) or bool(issues_post) or shipped != "first_try"
+            if not had_meaningful:
+                # Clean shot — drop the heavy byte buffers but keep the slim
+                # tally so run-summary counters still see passed_first.
+                rec.pop("_screenshots_pre_bytes", None)
+                rec.pop("_screenshots_post_bytes", None)
+                continue
+
+            screenshots_pre_bytes: List[bytes] = rec.pop("_screenshots_pre_bytes", None) or []
+            screenshots_post_bytes: List[bytes] = rec.pop("_screenshots_post_bytes", None) or []
+            pre_urls = [
+                u for u in (
+                    _upload_png(shot_idx, "pre", i, png)
+                    for i, png in enumerate(screenshots_pre_bytes)
+                ) if u
+            ]
+            post_urls = [
+                u for u in (
+                    _upload_png(shot_idx, "post", i, png)
+                    for i, png in enumerate(screenshots_post_bytes)
+                ) if u
+            ] or None
+
+            # Original HTML is what the shot LLM produced first. When shipped="regen"
+            # the entry now carries the regen html, so we read the stash. When the
+            # regen was rejected, entry["html"] still IS the original.
+            original_html = rec.get("original_html") or entry.get("html")
+            original_html_url = _upload_html(shot_idx, "original", original_html)
+            # Regen attempt: upload whenever the corrective LLM call produced
+            # one, regardless of whether it shipped. Distinguishes "regen tried
+            # and failed" from "regen never fired" in the case bank.
+            regen_html = rec.get("regen_html_attempt") or (entry.get("html") if shipped == "regen" else None)
+            regen_html_url = _upload_html(shot_idx, "regen", regen_html) if regen_html else None
+
+            # Surface URLs back onto the in-memory record for telemetry.
+            rec["screenshots_pre_urls"] = pre_urls
+            rec["screenshots_post_urls"] = post_urls
+            rec["original_html_url"] = original_html_url
+            rec["regen_html_url"] = regen_html_url
+
+            # Build the reviewer JSON blobs we persist verbatim — strip the
+            # large `raw` model output to keep the row reasonable, but keep
+            # the structured issues for analysis queries.
+            reviewer_pre_json = {
+                "passes": rec.get("passed_first"),
+                "issues": issues_pre,
+                "severity_max": rec.get("severity_max_pre") or 0,
+                "model": rec.get("model"),
+                "prompt_version": rec.get("prompt_version"),
+                "error": rec.get("error_pre"),
+            }
+            reviewer_post_json: Optional[Dict[str, Any]] = None
+            if issues_post or rec.get("severity_max_post") is not None or rec.get("error_post"):
+                reviewer_post_json = {
+                    "issues": issues_post,
+                    "severity_max": rec.get("severity_max_post") or 0,
+                    "error": rec.get("error_post"),
+                }
+
+            # Aggregate issue codes for the run-summary log.
+            for it in issues_pre:
+                code = it.get("code")
+                if code:
+                    self._vision_review_issue_codes[code] = self._vision_review_issue_codes.get(code, 0) + 1
+
+            if repo is not None:
+                repo.insert_case(
+                    video_id=vid,
+                    shot_idx=shot_idx,
+                    shot_type=entry.get("_shot_type"),
+                    quality_tier=self._quality_tier,
+                    prompt_version=rec.get("prompt_version"),
+                    issue_codes=[it["code"] for it in issues_pre if it.get("code")],
+                    severity_max=severity_max,
+                    shipped=shipped,
+                    reviewer_pre_json=reviewer_pre_json,
+                    reviewer_post_json=reviewer_post_json,
+                    original_html_url=original_html_url,
+                    regen_html_url=regen_html_url,
+                    screenshots_pre_urls=pre_urls or None,
+                    screenshots_post_urls=post_urls,
+                    review_ms=int(rec.get("review_ms_pre") or 0),
+                    review_cost_usd=float(rec.get("review_cost_usd_pre") or 0.0),
+                    regen_ms=int(rec.get("review_ms_post") or 0) or None,
+                    regen_cost_usd=float(rec.get("review_cost_usd_post") or 0.0) or None,
+                    shot_meta={
+                        "narration_excerpt": entry.get("_narration_excerpt"),
+                        "visual_description": entry.get("_visual_description"),
+                        "duration": float(entry.get("end", 0)) - float(entry.get("start", 0)),
+                    },
+                    shot_pack=getattr(self, "_current_shot_pack", None),
+                    host_present=bool(rec.get("host_present")),
+                )
+
+        # Run-summary counters: walk entries once more for clean totals.
+        passed = regen = ship_orig = 0
+        for entry in html_segments:
+            rec = entry.get("_vision_review") or {}
+            shipped = rec.get("shipped")
+            if shipped == "regen":
+                regen += 1
+            elif shipped == "ship_original":
+                ship_orig += 1
+            elif rec.get("passed_first"):
+                passed += 1
+        self._vision_review_passed_first = passed
+        self._vision_review_regen_passed = regen
+        self._vision_review_ship_original = ship_orig
+
+        if (passed + regen + ship_orig) > 0:
+            top = sorted(
+                self._vision_review_issue_codes.items(),
+                key=lambda kv: kv[1],
+                reverse=True,
+            )[:5]
+            top_str = ", ".join(f"{c}×{n}" for c, n in top) or "(none)"
+            print(
+                f"   👁️  Visual review: {passed}/{passed + regen + ship_orig} passed first try, "
+                f"{regen} regen passes, {ship_orig} ship-original"
+            )
+            print(f"   👁️  Top issues: {top_str}")
+            print(f"   👁️  Cost: ${self._vision_review_run_cost_usd:.4f}")
+
     def _process_stock_videos(self, html_segments: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Scan HTML for <video data-video-query='...'> tags, search Pexels, inject URLs.
 
@@ -11021,6 +11539,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             #   _validator_record   → animation-validator telemetry (pre/post issues,
             #                         shipped='regen'|'original'); useful for log
             #                         aggregation, not for playback.
+            #   _vision_review      → vision reviewer telemetry; the row is already
+            #                         persisted to vision_review_cases at this point,
+            #                         no need to ship it in the timeline JSON.
             # Keep:
             #   _shot_type, _narration_excerpt, _visual_description → small
             #   (≤300 bytes/entry), used by the frame-regen LLM as run-context.
@@ -11029,6 +11550,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             for entry in html_segments:
                 entry.pop("_skill_audio_events", None)
                 entry.pop("_validator_record", None)
+                entry.pop("_vision_review", None)
 
         pexels_ok = self._pexels_service and self._pexels_service.is_available
         pixabay_ok = self._pixabay_service and self._pixabay_service.is_available
@@ -12205,6 +12727,39 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     content_max_end = _audio_end
             except Exception as _e:
                 print(f"   ℹ️ Could not probe audio duration: {_e}")
+
+        # 2.5. Gap-snap: extend each content shot's exitTime so it touches the
+        # next shot's inTime. Director-generated storyboards can leave small
+        # gaps between consecutive shots (e.g. shot N exits at 15.9s, shot N+1
+        # starts at 16.2s). The renderer's _active_entries_at filters with
+        # `t >= ex_t`, so frames inside the gap have zero active shots and
+        # render as the bare page background — visible as flashes of black/
+        # white on the final MP4. Branding entries (intro/outro/watermark) are
+        # excluded; they have their own placement semantics.
+        if navigation == "time_driven":
+            _content = [e for e in timeline_entries
+                        if not str(e.get("id", "")).startswith("branding-")]
+            _content_sorted = sorted(_content, key=lambda e: float(e.get("inTime", 0.0)))
+            _snapped = 0
+            _max_gap_filled = 0.0
+            for _i in range(len(_content_sorted) - 1):
+                _cur = _content_sorted[_i]
+                _nxt = _content_sorted[_i + 1]
+                _cur_exit = float(_cur.get("exitTime", 0.0))
+                _nxt_in = float(_nxt.get("inTime", 0.0))
+                _gap = _nxt_in - _cur_exit
+                # Only fill positive gaps. Touching (gap=0) and overlapping
+                # (gap<0) shots are already fine. Skip absurd gaps (>10s) —
+                # likely indicates an intentional structural break or an
+                # upstream bug that snapping would mask.
+                if 0.0 < _gap <= 10.0:
+                    _cur["exitTime"] = _nxt_in
+                    _snapped += 1
+                    if _gap > _max_gap_filled:
+                        _max_gap_filled = _gap
+            if _snapped > 0:
+                print(f"   🔗 Gap-snap: extended {_snapped} shot(s) to eliminate "
+                      f"timeline gaps (largest gap filled: {_max_gap_filled:.3f}s)")
 
         # 3. Add WATERMARK entry if enabled (spans entire content duration, positioned in corner)
         if watermark_enabled and watermark_config.get("html"):

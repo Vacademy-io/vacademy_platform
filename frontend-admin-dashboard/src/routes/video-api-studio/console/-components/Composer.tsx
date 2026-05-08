@@ -743,7 +743,7 @@ export function Composer({
                 />
 
                 {/* Textarea / preview row */}
-                <div className="px-1.5">
+                <div data-tour="vim-composer-prompt" className="px-1.5">
                     {showPreview ? (
                         <div className="max-h-[240px] min-h-[44px] overflow-y-auto py-2">
                             {prompt ? (
@@ -796,6 +796,7 @@ export function Composer({
                     <Button
                         variant="ghost"
                         size="icon"
+                        data-tour="vim-composer-attach"
                         className="size-8 text-muted-foreground hover:text-blue-600"
                         onClick={() => attachmentInputRef.current?.click()}
                         disabled={isUploadingAttachment || isGenerating || disabled}
@@ -827,7 +828,7 @@ export function Composer({
                     </Button>
 
                     {/* Source video clips — separate popover with upload + selection. */}
-                    <div className="relative">
+                    <div data-tour="vim-composer-source-video" className="relative">
                         <SourceVideoPopover
                             apiKey={apiKey}
                             indexedVideos={indexedVideos}
@@ -860,29 +861,32 @@ export function Composer({
 
                     <div className="ml-auto flex items-center gap-1.5">
                         {/* Settings popover */}
-                        <SettingsPopover
-                            options={options}
-                            onOptionsChange={onOptionsChange}
-                            reviewModeEnabled={reviewModeEnabled}
-                            onReviewModeChange={onReviewModeChange}
-                            availableVoices={availableVoices}
-                            isLoadingVoices={isLoadingVoices}
-                            playingVoiceId={playingVoiceId}
-                            onPlayPreview={handlePlayPreview}
-                            videoStyle={videoStyle}
-                            onVideoStyleChange={setVideoStyle}
-                            videoBranding={videoBranding}
-                            onVideoBrandingChange={setVideoBranding}
-                            videoTemplates={videoTemplates}
-                            models={models}
-                            vimMode={vimMode}
-                        />
+                        <div data-tour="vim-composer-settings">
+                            <SettingsPopover
+                                options={options}
+                                onOptionsChange={onOptionsChange}
+                                reviewModeEnabled={reviewModeEnabled}
+                                onReviewModeChange={onReviewModeChange}
+                                availableVoices={availableVoices}
+                                isLoadingVoices={isLoadingVoices}
+                                playingVoiceId={playingVoiceId}
+                                onPlayPreview={handlePlayPreview}
+                                videoStyle={videoStyle}
+                                onVideoStyleChange={setVideoStyle}
+                                videoBranding={videoBranding}
+                                onVideoBrandingChange={setVideoBranding}
+                                videoTemplates={videoTemplates}
+                                models={models}
+                                vimMode={vimMode}
+                            />
+                        </div>
 
                         {/* Send */}
                         <Button
                             onClick={handleSubmit}
                             disabled={!prompt.trim() || isGenerating || disabled || showPreview}
                             size="icon"
+                            data-tour="vim-composer-send"
                             className="size-9 rounded-md shadow-sm"
                             title="Generate (Enter)"
                             aria-label="Generate"

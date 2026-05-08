@@ -503,7 +503,10 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
 
     // ── Toolbar ────────────────────────────────────────────────────────────
     const toolbar = (
-        <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-gray-200 bg-white px-3">
+        <div
+            data-tour="editor-toolbar"
+            className="flex h-11 shrink-0 items-center gap-1.5 border-b border-gray-200 bg-white px-3"
+        >
             <Button
                 variant="ghost"
                 size="icon"
@@ -569,88 +572,90 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                 <Redo2 className="size-3.5" />
             </Button>
 
-            {/* Add new shot */}
-            <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 text-gray-500 hover:text-gray-900"
-                title="Add new shot"
-                onClick={() => setAddShotOpen(true)}
-            >
-                <FilePlus2 className="size-4" />
-            </Button>
+            {/* Add new shot + Add media overlay */}
+            <div data-tour="editor-add-shot" className="flex items-center gap-1.5">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-gray-500 hover:text-gray-900"
+                    title="Add new shot"
+                    onClick={() => setAddShotOpen(true)}
+                >
+                    <FilePlus2 className="size-4" />
+                </Button>
 
-            {/* Add media overlay */}
-            <Button
-                variant="ghost"
-                size="icon"
-                className="size-8 text-gray-500 hover:text-gray-900"
-                title="Add media overlay"
-                onClick={() => setAddMediaOpen(true)}
-            >
-                <ImagePlus className="size-4" />
-            </Button>
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 text-gray-500 hover:text-gray-900"
+                    title="Add media overlay"
+                    onClick={() => setAddMediaOpen(true)}
+                >
+                    <ImagePlus className="size-4" />
+                </Button>
+            </div>
 
-            {/* Save */}
-            <Button
-                size="sm"
-                variant="outline"
-                className="h-7 border-gray-300 px-3 text-xs text-gray-600 hover:text-gray-900 disabled:opacity-30"
-                disabled={!isDirty || isSaving}
-                title={
-                    !props.apiKey
-                        ? 'API key required to save to backend; changes saved locally'
-                        : dirtyEntryIds.length > 0
-                          ? `Save ${dirtyEntryIds.length} unsaved shot${dirtyEntryIds.length === 1 ? '' : 's'}`
-                          : 'Save changes'
-                }
-                onClick={handleSave}
-            >
-                {isSaving ? (
-                    <>
-                        <Loader2 className="mr-1 size-3 animate-spin" />
-                        Saving…
-                    </>
-                ) : (
-                    <>
-                        <Save className="mr-1 size-3" />
-                        Save
-                        {dirtyEntryIds.length > 0 && (
-                            <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">
-                                {dirtyEntryIds.length}
-                            </span>
-                        )}
-                    </>
-                )}
-            </Button>
+            {/* Save + Render + Preview — grouped so the tour can highlight the
+                full export workflow with one anchor. */}
+            <div data-tour="editor-save-render" className="flex items-center gap-1.5">
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-gray-300 px-3 text-xs text-gray-600 hover:text-gray-900 disabled:opacity-30"
+                    disabled={!isDirty || isSaving}
+                    title={
+                        !props.apiKey
+                            ? 'API key required to save to backend; changes saved locally'
+                            : dirtyEntryIds.length > 0
+                              ? `Save ${dirtyEntryIds.length} unsaved shot${dirtyEntryIds.length === 1 ? '' : 's'}`
+                              : 'Save changes'
+                    }
+                    onClick={handleSave}
+                >
+                    {isSaving ? (
+                        <>
+                            <Loader2 className="mr-1 size-3 animate-spin" />
+                            Saving…
+                        </>
+                    ) : (
+                        <>
+                            <Save className="mr-1 size-3" />
+                            Save
+                            {dirtyEntryIds.length > 0 && (
+                                <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">
+                                    {dirtyEntryIds.length}
+                                </span>
+                            )}
+                        </>
+                    )}
+                </Button>
 
-            {/* Render MP4 */}
-            {renderButton}
+                {renderButton}
 
-            {/* Preview toggle */}
-            <Button
-                size="sm"
-                className={[
-                    'h-7 px-3 text-xs',
-                    isPreviewMode
-                        ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                        : 'border border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200',
-                ].join(' ')}
-                onClick={togglePreviewMode}
-                title={isPreviewMode ? 'Back to editor' : 'Preview video'}
-            >
-                {isPreviewMode ? (
-                    <>
-                        <Pencil className="mr-1 size-3" />
-                        Edit
-                    </>
-                ) : (
-                    <>
-                        <Eye className="mr-1 size-3" />
-                        Preview
-                    </>
-                )}
-            </Button>
+                <Button
+                    size="sm"
+                    className={[
+                        'h-7 px-3 text-xs',
+                        isPreviewMode
+                            ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                            : 'border border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200',
+                    ].join(' ')}
+                    onClick={togglePreviewMode}
+                    title={isPreviewMode ? 'Back to editor' : 'Preview video'}
+                >
+                    {isPreviewMode ? (
+                        <>
+                            <Pencil className="mr-1 size-3" />
+                            Edit
+                        </>
+                    ) : (
+                        <>
+                            <Eye className="mr-1 size-3" />
+                            Preview
+                        </>
+                    )}
+                </Button>
+            </div>
         </div>
     );
 
@@ -719,13 +724,13 @@ function EditorLayout({ toolbar, entriesPanelOpen }: LayoutProps) {
             <div className="flex flex-1 overflow-hidden">
                 {/* Entry list — collapsible left panel */}
                 {entriesPanelOpen && (
-                    <div className="w-52 shrink-0 overflow-hidden">
+                    <div data-tour="editor-entry-list" className="w-52 shrink-0 overflow-hidden">
                         <EntryListPanel />
                     </div>
                 )}
 
                 {/* Canvas — fills remaining space, maintains aspect ratio internally */}
-                <div className="min-w-0 flex-1 overflow-hidden">
+                <div data-tour="editor-canvas" className="min-w-0 flex-1 overflow-hidden">
                     <EditorCanvas />
                 </div>
 
@@ -734,8 +739,12 @@ function EditorLayout({ toolbar, entriesPanelOpen }: LayoutProps) {
             </div>
 
             <PlaybackBar />
-            <TimelineScrubber />
-            <AudioTracksPanel />
+            <div data-tour="editor-timeline">
+                <TimelineScrubber />
+            </div>
+            <div data-tour="editor-audio-tracks">
+                <AudioTracksPanel />
+            </div>
         </div>
     );
 }

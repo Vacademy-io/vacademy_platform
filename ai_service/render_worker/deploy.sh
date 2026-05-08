@@ -39,14 +39,18 @@ rsync -avz --progress \
     "$SCRIPT_DIR/main.py" \
     "$SCRIPT_DIR/worker.py" \
     "$SCRIPT_DIR/transcribe_worker.py" \
+    "$SCRIPT_DIR/screenshot_worker.py" \
+    "$SCRIPT_DIR/audio_ops.py" \
     "$SCRIPT_DIR/requirements.txt" \
     "$SCRIPT_DIR/Dockerfile" \
     "$SCRIPT_DIR/build.sh" \
     "$RENDER_SERVER:$REMOTE_DIR/render_worker/"
 
-# Sync generate_video.py and config files
+# Sync generate_video.py and config files. render_harness.py is shared
+# between the renderer and the screenshot endpoint — see build.sh comment.
 rsync -avz --progress \
     "$AI_SERVICE_DIR/app/ai-video-gen-main/generate_video.py" \
+    "$AI_SERVICE_DIR/app/ai-video-gen-main/render_harness.py" \
     "$RENDER_SERVER:$REMOTE_DIR/app/ai-video-gen-main/"
 
 # Sync extractor package (video indexing pipeline)
@@ -101,12 +105,12 @@ docker run -d \
     --restart unless-stopped \
     -p 8090:8090 \
     -e AWS_ACCESS_KEY_ID='' \
-    -e AWS_SECRET_ACCESS_KEY='' \
+    -e AWS_SECRET_ACCESS_KEY='+l6GtRPpzXxSfhai' \
     -e AWS_REGION='ap-south-1' \
     -e AWS_S3_PUBLIC_BUCKET='vacademy-media-storage-public' \
     -e RENDER_KEY='vsahcraedyeamsyh' \
     -e MAX_CONCURRENT_JOBS='2' \
-    -e OPENROUTER_API_KEY='' \
+    -e OPENROUTER_API_KEY='sk-or-v1-' \
     "$IMAGE_NAME"
 
 echo ""

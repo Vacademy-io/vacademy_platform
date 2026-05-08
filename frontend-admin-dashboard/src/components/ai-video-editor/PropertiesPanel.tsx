@@ -1371,6 +1371,7 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                         editor is built around. */}
                     {apiKey && (
                         <button
+                            data-tour="editor-remake"
                             onClick={handleRemakeOpen}
                             className={[
                                 'inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition',
@@ -1469,7 +1470,10 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
             </div>
 
             {/* Tab bar — horizontally scrollable so narrow panels still reveal every tab */}
-            <div className="flex shrink-0 overflow-x-auto border-b border-gray-200 [scrollbar-width:thin]">
+            <div
+                data-tour="editor-properties-tabs"
+                className="flex shrink-0 overflow-x-auto border-b border-gray-200 [scrollbar-width:thin]"
+            >
                 {(
                     [
                         { id: 'layers', icon: <Layers className="size-3" />, label: 'Layers' },

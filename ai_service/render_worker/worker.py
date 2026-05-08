@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Callable, Optional
 from urllib.request import Request, urlopen
@@ -221,7 +222,48 @@ class RenderWorker:
             # ── Parallel frame rendering ──
             # Split frames across N parallel Playwright processes for speed.
             # Each process renders a subset of frames, then we assemble with FFmpeg.
-            NUM_WORKERS = int(os.environ.get("RENDER_PARALLEL_WORKERS", "4"))
+            #
+            # Worker count picking:
+            #   • RENDER_PARALLEL_WORKERS env var → explicit override, used as-is.
+            #   • Unset → auto-cap based on MemAvailable from /proc/meminfo.
+            #
+            # Each chromium worker peaks at ~2.5 GB during render (browser + renderer
+            # + GPU + utility processes). On an 8 GB box, 4 workers (the old default)
+            # tries to claim 10 GB and the 4th launch fails with a Playwright launch
+            # error that gets truncated by `rewrite_error` so the underlying OOM /
+            # resource-exhaustion cause isn't visible. Auto-cap formula:
+            #   workers = max(1, floor((MemAvailable_MB - 1024) / 2560))
+            # leaving 1 GB for OS / uvicorn / ffmpeg-spawned-later. On a typical
+            # 8 GB box → 2 workers; 16 GB → 6; 32 GB → 12.
+            def _autocap_workers() -> int:
+                try:
+                    with open("/proc/meminfo", "r") as _mf:
+                        for _line in _mf:
+                            if _line.startswith("MemAvailable:"):
+                                _avail_kb = int(_line.split()[1])
+                                _avail_mb = _avail_kb / 1024
+                                _cap = max(1, int((_avail_mb - 1024) / 2560))
+                                logger.info(
+                                    f"[RENDER] Auto-capped workers to {_cap} "
+                                    f"(MemAvailable={_avail_mb:.0f} MB, ~2.5 GB/worker)"
+                                )
+                                return _cap
+                except Exception as _e:
+                    logger.warning(f"[RENDER] Could not read /proc/meminfo for autocap: {_e}")
+                return 4  # last-resort default — same as old behavior
+
+            _env_workers = os.environ.get("RENDER_PARALLEL_WORKERS", "").strip()
+            if _env_workers:
+                NUM_WORKERS = int(_env_workers)
+                _autocap = _autocap_workers()
+                if NUM_WORKERS > _autocap:
+                    logger.warning(
+                        f"[RENDER] RENDER_PARALLEL_WORKERS={NUM_WORKERS} exceeds "
+                        f"RAM-based safe cap of {_autocap}. Honoring env value but "
+                        f"chromium launches may OOM on this box."
+                    )
+            else:
+                NUM_WORKERS = _autocap_workers()
             FPS = fps if fps and fps in (15, 20, 25, 30, 45, 60) else 25
             output_path = work_dir / "output.mp4"
             frames_dir = work_dir / ".render_frames"
@@ -561,6 +603,50 @@ class RenderWorker:
                     f"to {total_duration:.2f}s to cover trailing narration"
                 )
 
+            # Internal gap-snap: extend each content shot's exitTime so it
+            # touches the next shot's inTime. Director-generated storyboards
+            # often leave small gaps (shot N exits at 15.9s, shot N+1 starts
+            # at 16.2s). The renderer's _active_entries_at filter excludes a
+            # shot once t >= exitTime, so frames inside the gap have ZERO
+            # active shots and render as the bare page background — the
+            # blank-white frames the user has been reporting at t=16, t=26
+            # etc. Branding entries (intro/outro/watermark) are excluded;
+            # they have their own placement semantics. Snap is only applied
+            # at the render side here so OLD timelines (built before the
+            # build-side gap-snap shipped in automation_pipeline.py v20)
+            # also get fixed without regenerating.
+            if tl_entries:
+                _content = [
+                    _e for _e in tl_entries
+                    if not str(_e.get("id", "")).startswith("branding-")
+                ]
+                _content_sorted = sorted(
+                    _content, key=lambda _e: float(_e.get("inTime", 0) or 0)
+                )
+                _snapped = 0
+                _max_gap_filled = 0.0
+                for _i in range(len(_content_sorted) - 1):
+                    _cur = _content_sorted[_i]
+                    _nxt = _content_sorted[_i + 1]
+                    _cur_exit = float(_cur.get("exitTime", 0) or 0)
+                    _nxt_in = float(_nxt.get("inTime", 0) or 0)
+                    _gap = _nxt_in - _cur_exit
+                    # Only fill positive gaps. Touching (gap=0) and overlapping
+                    # (gap<0) shots are already fine. Skip absurd gaps (>10s) —
+                    # likely an intentional structural break.
+                    if 0.0 < _gap <= 10.0:
+                        _cur["exitTime"] = _nxt_in
+                        _snapped += 1
+                        if _gap > _max_gap_filled:
+                            _max_gap_filled = _gap
+                if _snapped > 0:
+                    _modified_tl = True
+                    logger.info(
+                        f"[GAP-SNAP] extended {_snapped} shot(s) to eliminate "
+                        f"timeline gaps (largest gap filled: {_max_gap_filled:.3f}s) "
+                        f"— prevents blank frames between shots"
+                    )
+
             if _modified_tl:
                 timeline_path.write_text(_json.dumps(
                     tl_data if isinstance(tl_data, dict) else tl_entries,
@@ -645,6 +731,13 @@ class RenderWorker:
                     pass
 
             def _run_chunk(worker_idx: int, start: int, end: int) -> subprocess.CompletedProcess:
+                # Stagger chromium launches so N parallel workers don't all hit
+                # the chromium-spawn memory peak in the same moment. A 4-worker
+                # render on a tight box used to fail at the last `chromium.launch`
+                # because all four were allocating headers + heaps simultaneously.
+                # 2s/worker is negligible vs. multi-minute renders.
+                if worker_idx > 0:
+                    time.sleep(worker_idx * 2)
                 chunk_cmd = base_cmd + ["--start-frame", str(start), "--end-frame", str(end)]
                 proc = subprocess.Popen(
                     chunk_cmd,
@@ -1043,6 +1136,82 @@ class RenderWorker:
                 str(output_path),
             ]
             logger.info(f"FFmpeg filter_complex: {filter_complex}")
+
+            # ── Pre-FFmpeg frame-gap backfill ──
+            # Under memory pressure (multiple concurrent jobs sharing chromium
+            # on a tight box), Playwright's page.screenshot occasionally
+            # returns "success" without writing the file — no exception, no log
+            # line, just a missing JPG. Workers complete cleanly with 1-8
+            # frames silently dropped, then ffmpeg fails: "Could find no file
+            # with path 'frame_%06d.jpg' and index in the range 0-4". image2's
+            # probe range is 5; a single missing frame in 0-4 sinks the whole
+            # render even though 4000+ usable frames are on disk.
+            #
+            # Defensive fix: detect gaps in the frame index sequence and
+            # backfill each missing index with a copy of its nearest existing
+            # neighbor BEFORE invoking ffmpeg. Quality impact: each gap
+            # becomes a single-frame freeze (67ms at 15 FPS, 33ms at 30 FPS).
+            # Vastly preferable to failing the entire render.
+            try:
+                _frames_now = sorted(frames_dir.glob("frame_*.jpg"))
+                _frame_count = len(_frames_now)
+                _first_5 = [p.name for p in _frames_now[:5]]
+                _last_5 = [p.name for p in _frames_now[-5:]] if _frame_count > 5 else []
+                _frame0 = frames_dir / "frame_000000.jpg"
+                _frame0_exists = _frame0.exists()
+                _frame0_size = _frame0.stat().st_size if _frame0_exists else -1
+                logger.info(
+                    f"[FFMPEG-PREFLIGHT] dir={frames_dir} count={_frame_count} "
+                    f"first5={_first_5} last5={_last_5} "
+                    f"frame0_exists={_frame0_exists} frame0_bytes={_frame0_size}"
+                )
+
+                if _frame_count > 0:
+                    _present_indices: set[int] = set()
+                    for _p in _frames_now:
+                        try:
+                            _present_indices.add(int(_p.stem.split("_")[-1]))
+                        except (ValueError, IndexError):
+                            pass
+                    if _present_indices:
+                        _highest = max(_present_indices)
+                        _missing = [
+                            i for i in range(_highest + 1) if i not in _present_indices
+                        ]
+                        if _missing:
+                            import bisect as _bisect_mod
+                            _present_sorted = sorted(_present_indices)
+                            _filled = 0
+                            _failed = 0
+                            for _idx in _missing:
+                                _pos = _bisect_mod.bisect_left(_present_sorted, _idx)
+                                if _pos == 0:
+                                    _neighbor = _present_sorted[0]
+                                elif _pos == len(_present_sorted):
+                                    _neighbor = _present_sorted[-1]
+                                else:
+                                    _left = _present_sorted[_pos - 1]
+                                    _right = _present_sorted[_pos]
+                                    _neighbor = (
+                                        _left if (_idx - _left) <= (_right - _idx) else _right
+                                    )
+                                _src = frames_dir / f"frame_{_neighbor:06d}.jpg"
+                                _dst = frames_dir / f"frame_{_idx:06d}.jpg"
+                                try:
+                                    shutil.copyfile(_src, _dst)
+                                    _filled += 1
+                                except Exception:
+                                    _failed += 1
+                            _sample = _missing[:10] + (["..."] if len(_missing) > 10 else [])
+                            logger.warning(
+                                f"[FFMPEG-PREFLIGHT] backfilled {_filled}/{len(_missing)} "
+                                f"missing frames with nearest-neighbor copies "
+                                f"(failed={_failed}). Missing indices (sample): {_sample}. "
+                                f"Highest frame: {_highest}. Quality impact: brief "
+                                f"frame freezes at gap locations."
+                            )
+            except Exception as _diag_err:
+                logger.warning(f"[FFMPEG-PREFLIGHT] backfill failed: {_diag_err}")
 
             ffmpeg_result = await loop.run_in_executor(
                 None,

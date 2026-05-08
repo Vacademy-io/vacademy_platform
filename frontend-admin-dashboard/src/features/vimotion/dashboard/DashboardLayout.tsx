@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { getInstituteId } from '@/constants/helper';
 import { VideoConsoleWorkspace } from '@/routes/video-api-studio/-components/VideoConsoleWorkspace';
@@ -8,13 +9,40 @@ import { AvatarsTab } from './AvatarsTab';
 import { BrandKitsTab } from './BrandKitsTab';
 import { OnboardingBanner } from './OnboardingBanner';
 import { isTab, type DashboardTab } from './tabsConfig';
+import { VimTourProvider, useVimTour } from '../tour/VimTourProvider';
 
 export function DashboardLayout() {
+    const instituteId = getInstituteId();
+    return (
+        <VimTourProvider instituteId={instituteId}>
+            <DashboardShell />
+        </VimTourProvider>
+    );
+}
+
+function DashboardShell() {
     const navigate = useNavigate();
     const instituteId = getInstituteId();
     const search = useSearch({ strict: false }) as { tab?: string; videoId?: string };
     const tab: DashboardTab = isTab(search.tab) ? search.tab : 'recent';
     const videoId = typeof search.videoId === 'string' && search.videoId ? search.videoId : null;
+    const { startTourIfNew } = useVimTour();
+
+    // First-time auto-start: dashboard tour kicks in on the recent tab (the
+    // landing tab) once anchors are mounted. The Composer tour kicks in the
+    // first time the user lands on the Create tab. Both are gated by their
+    // own seen-flags so users see each one exactly once.
+    useEffect(() => {
+        if (videoId) return; // production view — no tour
+        const id = window.setTimeout(() => {
+            if (tab === 'create') {
+                startTourIfNew('vim-composer');
+            } else {
+                startTourIfNew('vim-dashboard');
+            }
+        }, 600);
+        return () => window.clearTimeout(id);
+    }, [tab, videoId, startTourIfNew]);
 
     const setTab = (next: DashboardTab) => {
         // Switching tabs clears any pinned videoId so the user lands on the

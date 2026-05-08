@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from worker import RenderWorker
 from transcribe_worker import TranscribeWorker
+from screenshot_worker import get_screenshot_worker
 # audio_ops is imported lazily inside the /audio/* route handlers
 # (matches /concat_audio's pattern — keeps the import surface minimal here).
 
@@ -296,6 +297,74 @@ async def get_job_status(job_id: str, x_render_key: str = Header("")):
 
     j = jobs[job_id]
     return RenderJobStatus(**j)
+
+
+# ---------------------------------------------------------------------------
+# Screenshot — single-shot captures for the vision-review path
+#
+# Loads the same harness as /jobs (via render_harness.py), injects one shot's
+# HTML, and returns base64-encoded PNGs at requested timestamps. Used by the
+# AI service's vision reviewer to grade shots before they're shipped.
+# ---------------------------------------------------------------------------
+
+class ScreenshotRequest(BaseModel):
+    html: str = Field(..., description="Shot HTML — post-skill-composer, post-density-validator")
+    width: int = Field(..., gt=0, le=4096, description="Viewport width in px (e.g. 1920)")
+    height: int = Field(..., gt=0, le=4096, description="Viewport height in px (e.g. 1080)")
+    timestamps: List[float] = Field(..., min_length=1, max_length=5, description="Shot-relative seconds at which to capture frames")
+    background: str = Field(default="#0a0e27", description="CSS color used as the harness fill where shot HTML is transparent")
+
+
+class ScreenshotFrame(BaseModel):
+    t: float
+    image_b64: str = Field(..., description="Base64-encoded PNG bytes")
+
+
+class ScreenshotResponse(BaseModel):
+    screenshots: List[ScreenshotFrame]
+    ms: int = Field(..., description="Wall-clock duration of the screenshot batch")
+
+
+@app.post("/screenshot", response_model=ScreenshotResponse)
+async def take_screenshot(
+    request: ScreenshotRequest,
+    x_render_key: str = Header(""),
+):
+    """Capture N PNG screenshots of one shot's HTML at the given timestamps.
+
+    Synchronous (no job queue) because per-shot screenshot is fast (<3s p95)
+    and the vision reviewer waits inline. Reuses a long-lived Chromium
+    instance under the hood — see screenshot_worker.ScreenshotWorker.
+    """
+    _verify_key(x_render_key)
+
+    # Reject obviously bad timestamps early.
+    for t in request.timestamps:
+        if t < 0 or t > 600:
+            raise HTTPException(status_code=400, detail=f"timestamp out of range: {t}")
+
+    import time as _time
+    start = _time.monotonic()
+    try:
+        worker = get_screenshot_worker()
+        frames = await worker.screenshot_shot(
+            html=request.html,
+            width=request.width,
+            height=request.height,
+            timestamps=request.timestamps,
+            background=request.background,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("screenshot failed")
+        raise HTTPException(status_code=500, detail=f"screenshot failed: {exc}")
+    elapsed_ms = int((_time.monotonic() - start) * 1000)
+
+    return ScreenshotResponse(
+        screenshots=[ScreenshotFrame(**f) for f in frames],
+        ms=elapsed_ms,
+    )
 
 
 # ---------------------------------------------------------------------------

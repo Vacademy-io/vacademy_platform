@@ -17,13 +17,17 @@ mkdir -p "$BUILD_DIR"
 cp "$SCRIPT_DIR/main.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/worker.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/transcribe_worker.py" "$BUILD_DIR/"
+cp "$SCRIPT_DIR/screenshot_worker.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/audio_ops.py" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/requirements.txt" "$BUILD_DIR/"
 cp "$SCRIPT_DIR/Dockerfile" "$BUILD_DIR/"
 
-# Copy the video generation pipeline (generate_video.py + config + assets)
+# Copy the video generation pipeline (generate_video.py + config + assets).
+# render_harness.py is shared between the renderer and the screenshot endpoint
+# so the vision reviewer sees the same DOM the MP4 will produce.
 mkdir -p "$BUILD_DIR/ai-video-gen-main"
 cp "$AI_SERVICE_DIR/app/ai-video-gen-main/generate_video.py" "$BUILD_DIR/ai-video-gen-main/"
+cp "$AI_SERVICE_DIR/app/ai-video-gen-main/render_harness.py" "$BUILD_DIR/ai-video-gen-main/"
 cp "$AI_SERVICE_DIR/app/ai-video-gen-main/video_options.json" "$BUILD_DIR/ai-video-gen-main/" 2>/dev/null || true
 cp "$AI_SERVICE_DIR/app/ai-video-gen-main/captions_settings.json" "$BUILD_DIR/ai-video-gen-main/" 2>/dev/null || true
 cp "$AI_SERVICE_DIR/app/ai-video-gen-main/branding.json" "$BUILD_DIR/ai-video-gen-main/" 2>/dev/null || true

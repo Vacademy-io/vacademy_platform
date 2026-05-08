@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { useAiCreditsQuery } from '@/services/ai-credits/get-ai-credits';
 import { removeCookiesAndLogout } from '@/lib/auth/sessionUtility';
 import { useStudioName } from './hooks/useStudioName';
+import { HelpMenu } from '../tour/HelpMenu';
 import type { DashboardTab } from './tabsConfig';
 
 interface SidebarProps {
@@ -30,7 +31,10 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
     };
 
     return (
-        <aside className="flex w-60 shrink-0 flex-col border-r border-neutral-200 bg-white">
+        <aside
+            data-tour="vim-sidebar"
+            className="flex w-60 shrink-0 flex-col border-r border-neutral-200 bg-white"
+        >
             {/* Brand + studio name */}
             <div className="flex items-center gap-2.5 p-5">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
@@ -53,6 +57,7 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
                             <li key={id}>
                                 <button
                                     type="button"
+                                    data-tour={`vim-sidebar-${id}`}
                                     onClick={() => onTabChange(id)}
                                     aria-current={active ? 'page' : undefined}
                                     className={cn(
@@ -71,9 +76,10 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
                 </ul>
             </nav>
 
-            {/* Credits + Logout */}
+            {/* Credits + Help + Logout */}
             <div className="space-y-2 border-t border-neutral-100 p-3">
                 {credits.data && <CreditsCard data={credits.data} />}
+                <HelpMenu />
                 <button
                     type="button"
                     onClick={handleLogout}
@@ -102,7 +108,10 @@ function CreditsCard({ data }: CreditsCardProps) {
     const usedPct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
 
     return (
-        <div className="rounded-lg border border-neutral-200 bg-neutral-50/60 px-3 py-2.5">
+        <div
+            data-tour="vim-credits"
+            className="rounded-lg border border-neutral-200 bg-neutral-50/60 px-3 py-2.5"
+        >
             <div className="flex items-center gap-1.5 text-xs font-medium text-neutral-600">
                 <Coins className="size-3.5 text-primary-500" />
                 AI credits

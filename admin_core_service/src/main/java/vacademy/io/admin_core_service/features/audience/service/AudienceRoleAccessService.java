@@ -82,8 +82,18 @@ public class AudienceRoleAccessService {
      */
     public EffectiveAccess resolveForCaller(CustomUserDetails user, String instituteId) {
         if (user == null) {
+            logger.info("[audienceRoleAccess] caller=null → DEFAULT");
             return EffectiveAccess.defaultMode();
         }
+        // Pre-compute authorities as a Set<String> for both logging and matching.
+        Set<String> callerRoles = user.getAuthorities() == null ? Collections.emptySet()
+                : user.getAuthorities().stream()
+                        .map(GrantedAuthority::getAuthority)
+                        .filter(Objects::nonNull)
+                        .map(String::toUpperCase)
+                        .collect(Collectors.toSet());
+        logger.info("[audienceRoleAccess] caller userId={} root={} institute={} authorities={}",
+                user.getUserId(), user.isRootUser(), instituteId, callerRoles);
         // ADMIN short-circuit — institute admins always see everything and
         // cannot be scoped via this setting. We deliberately do NOT use
         // CustomUserDetails#isRootUser() as a signal here: in this tenant the
@@ -92,24 +102,20 @@ public class AudienceRoleAccessService {
         // differentiate institute owners from regular accounts. The ADMIN
         // role in JWT authorities is the real differentiator.
         if (hasAuthority(user, "ADMIN")) {
+            logger.info("[audienceRoleAccess] caller has ADMIN → DEFAULT (short-circuit)");
             return EffectiveAccess.defaultMode();
         }
         if (instituteId == null || instituteId.isBlank()) {
+            logger.info("[audienceRoleAccess] instituteId blank → DEFAULT");
             return EffectiveAccess.defaultMode();
         }
 
         AudienceRoleAccessDto config = readConfig(instituteId);
         if (config == null || config.getRoles() == null || config.getRoles().isEmpty()) {
+            logger.info("[audienceRoleAccess] no config / empty roles → DEFAULT");
             return EffectiveAccess.defaultMode();
         }
-
-        // Collect the configured rule for each role the caller carries.
-        Set<String> callerRoles = user.getAuthorities() == null ? Collections.emptySet()
-                : user.getAuthorities().stream()
-                        .map(GrantedAuthority::getAuthority)
-                        .filter(Objects::nonNull)
-                        .map(String::toUpperCase)
-                        .collect(Collectors.toSet());
+        logger.info("[audienceRoleAccess] loaded config roles keys={}", config.getRoles().keySet());
 
         List<AudienceRoleAccessDto.RoleAccessConfig> matched = new ArrayList<>();
         for (Map.Entry<String, AudienceRoleAccessDto.RoleAccessConfig> entry : config.getRoles().entrySet()) {
@@ -119,12 +125,15 @@ public class AudienceRoleAccessService {
             }
         }
         if (matched.isEmpty()) {
+            logger.info("[audienceRoleAccess] no caller role matched config → DEFAULT (callerRoles={}, configKeys={})",
+                    callerRoles, config.getRoles().keySet());
             return EffectiveAccess.defaultMode();
         }
 
         // Most permissive wins.
         boolean anyDefault = matched.stream().anyMatch(c -> normalizeMode(c.getMode()) == Mode.DEFAULT);
         if (anyDefault) {
+            logger.info("[audienceRoleAccess] matched contains DEFAULT → DEFAULT");
             return EffectiveAccess.defaultMode();
         }
         boolean anyList = matched.stream().anyMatch(c -> normalizeMode(c.getMode()) == Mode.AUDIENCE_LIST);
@@ -138,13 +147,16 @@ public class AudienceRoleAccessService {
                     }
                 }
             }
+            logger.info("[audienceRoleAccess] resolved → AUDIENCE_LIST allowedIds={}", union);
             // Empty list = lock the user out entirely (admin-set restriction).
             return new EffectiveAccess(Mode.AUDIENCE_LIST, new ArrayList<>(union));
         }
         boolean anyCounselor = matched.stream().anyMatch(c -> normalizeMode(c.getMode()) == Mode.COUNSELOR);
         if (anyCounselor) {
+            logger.info("[audienceRoleAccess] resolved → COUNSELOR");
             return new EffectiveAccess(Mode.COUNSELOR, Collections.emptyList());
         }
+        logger.info("[audienceRoleAccess] no matched mode produced a non-DEFAULT result → DEFAULT");
         return EffectiveAccess.defaultMode();
     }
 

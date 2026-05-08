@@ -74,8 +74,17 @@ public class AudienceRoleAccessService {
         if (user == null) {
             return EffectiveAccess.defaultMode();
         }
-        // Admin / root short-circuit — never restrict regardless of the saved setting.
-        if (user.isRootUser() || hasAuthority(user, "ADMIN")) {
+        // Root short-circuit — institute owners (the original signup-root user)
+        // always see everything regardless of saved settings.
+        //
+        // Note: we deliberately do NOT short-circuit on the ADMIN authority
+        // here. In this tenant most non-root accounts (including team/junior
+        // admins) carry the ADMIN role too, and we want admins to be able to
+        // scope those accounts to specific audience lists via this setting.
+        // The "ADMIN sees everything" guarantee still holds in practice when
+        // the admin has no role configured in AUDIENCE_ROLE_ACCESS — the
+        // resolver below falls through to DEFAULT in that case.
+        if (user.isRootUser()) {
             return EffectiveAccess.defaultMode();
         }
         if (instituteId == null || instituteId.isBlank()) {
@@ -133,6 +142,41 @@ public class AudienceRoleAccessService {
     }
 
     private AudienceRoleAccessDto readConfig(String instituteId) {
+        // Primary source: nested under ROLE_DISPLAY_SETTING.audienceRoleAccess.
+        // The frontend writes here so the audience-access config lives next to
+        // the rest of the role-display config in the same setting blob.
+        AudienceRoleAccessDto fromDisplaySetting = readFromRoleDisplaySetting(instituteId);
+        if (fromDisplaySetting != null) {
+            return fromDisplaySetting;
+        }
+        // Backward-compat: configs saved before consolidation lived in their
+        // own AUDIENCE_ROLE_ACCESS setting key. Read those too so existing
+        // installs aren't broken on upgrade. Once the admin re-saves from the
+        // UI, the data moves into ROLE_DISPLAY_SETTING.audienceRoleAccess.
+        return readFromLegacyKey(instituteId);
+    }
+
+    @SuppressWarnings("unchecked")
+    private AudienceRoleAccessDto readFromRoleDisplaySetting(String instituteId) {
+        try {
+            Object data = instituteSettingService.getSettingByInstituteIdAndKey(
+                    instituteId, SettingKeyEnums.ROLE_DISPLAY_SETTING.name());
+            if (data == null) return null;
+            // ROLE_DISPLAY_SETTING is a map keyed by role-UUID for display
+            // config plus a top-level "audienceRoleAccess" sibling we own.
+            // Pluck only that field rather than mapping the entire blob.
+            if (!(data instanceof java.util.Map)) return null;
+            Object section = ((java.util.Map<String, Object>) data).get("audienceRoleAccess");
+            if (section == null) return null;
+            return objectMapper.convertValue(section, AudienceRoleAccessDto.class);
+        } catch (Exception e) {
+            logger.warn("Failed to read audienceRoleAccess from ROLE_DISPLAY_SETTING for institute {}: {}",
+                    instituteId, e.getMessage());
+            return null;
+        }
+    }
+
+    private AudienceRoleAccessDto readFromLegacyKey(String instituteId) {
         try {
             Object data = instituteSettingService.getSettingByInstituteIdAndKey(
                     instituteId, SettingKeyEnums.AUDIENCE_ROLE_ACCESS.name());
@@ -140,8 +184,8 @@ public class AudienceRoleAccessService {
             return objectMapper.convertValue(data, AudienceRoleAccessDto.class);
         } catch (Exception e) {
             // Swallow: fail open to DEFAULT so a malformed setting doesn't lock
-            // every non-admin user out of the leads endpoints.
-            logger.warn("Failed to read AUDIENCE_ROLE_ACCESS for institute {}: {}", instituteId, e.getMessage());
+            // every non-root user out of the leads endpoints.
+            logger.warn("Failed to read legacy AUDIENCE_ROLE_ACCESS for institute {}: {}", instituteId, e.getMessage());
             return null;
         }
     }
@@ -155,11 +199,4 @@ public class AudienceRoleAccessService {
         }
     }
 
-    private static boolean hasAuthority(CustomUserDetails user, String role) {
-        if (user == null || user.getAuthorities() == null) return false;
-        return user.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .filter(Objects::nonNull)
-                .anyMatch(role::equalsIgnoreCase);
-    }
 }

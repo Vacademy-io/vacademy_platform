@@ -360,10 +360,16 @@ export const RecentLeadsPage = () => {
                 )
             );
             const [profiles, notes] = await Promise.all([
-                exportShowLeadOps ? fetchBatchProfiles(userIds) : Promise.resolve({}),
+                exportShowLeadOps
+                    ? fetchBatchProfiles(userIds)
+                    : Promise.resolve(
+                          {} as Awaited<ReturnType<typeof fetchBatchProfiles>>
+                      ),
                 exportShowLeadOps
                     ? fetchLatestNotesBatch(userIds)
-                    : Promise.resolve({}),
+                    : Promise.resolve(
+                          {} as Awaited<ReturnType<typeof fetchLatestNotesBatch>>
+                      ),
             ]);
 
             // CSV layout mirrors the Lead List export

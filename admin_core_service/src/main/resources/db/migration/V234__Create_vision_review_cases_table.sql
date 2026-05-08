@@ -56,7 +56,7 @@ CREATE INDEX IF NOT EXISTS idx_vrc_severity_max    ON vision_review_cases (sever
 CREATE INDEX IF NOT EXISTS idx_vrc_issue_codes_gin ON vision_review_cases USING GIN (issue_codes);
 CREATE INDEX IF NOT EXISTS idx_vrc_created_at      ON vision_review_cases (created_at);
 
-COMMENT ON TABLE  vision_review_cases               IS 'One row per shot flagged by the vision reviewer. Drives manual prompt-tuning review.';
+COMMENT ON TABLE  vision_review_cases                IS 'One row per shot flagged by the vision reviewer. Drives manual prompt-tuning review.';
 COMMENT ON COLUMN vision_review_cases.prompt_version IS 'Frozen reviewer rubric version. Bump on every prompt edit so rows are comparable across time.';
-COMMENT ON COLUMN vision_review_cases.shipped       IS 'first_try (regen not fired), regen (regen succeeded), ship_original (regen worse — reverted to original).';
-COMMENT ON COLUMN vision_review_cases.severity_max  IS 'Max severity across all issues: 0=clean, 1=minor, 2=notable, 3=blocking.';
+COMMENT ON COLUMN vision_review_cases.shipped        IS 'first_try (regen not fired), regen (regen succeeded), ship_original (regen worse — reverted to original).';
+COMMENT ON COLUMN vision_review_cases.severity_max   IS 'Max severity across all issues: 0=clean, 1=minor, 2=notable, 3=blocking.';

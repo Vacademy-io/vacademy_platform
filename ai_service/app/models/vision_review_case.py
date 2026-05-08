@@ -5,12 +5,13 @@ its corrective regen). Used by engineers to identify systemic prompt-quality
 issues over a sliding window and feed those findings back into base-prompt
 updates.
 
-Schema sibling: app/migrations/add_vision_review_cases.sql
+Schema sibling: admin_core_service/src/main/resources/db/migration/V234__Create_vision_review_cases_table.sql
+(applied automatically by Flyway when admin_core_service boots).
 """
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 from uuid import uuid4
 
 from sqlalchemy import (

@@ -134,14 +134,24 @@ export function useAudienceRoleAccess() {
     const { data, isLoading } = useQuery({
         queryKey: QUERY_KEY,
         queryFn: fetchAudienceRoleAccess,
-        staleTime: 5 * 60 * 1000,
-        gcTime: 10 * 60 * 1000,
+        // staleTime 0: every consumer mount triggers a fresh GET. Avoids
+        // showing a stale cached blob after a recent save when the user
+        // navigates between role tabs.
+        staleTime: 0,
+        gcTime: 5 * 60 * 1000,
+        // Always refetch when the AudienceAccessCard mounts so switching
+        // between Admin / Teacher / Custom tabs reflects the latest server
+        // state — important if another admin is editing concurrently.
+        refetchOnMount: 'always',
     });
 
     const { mutateAsync: save, isPending: saving } = useMutation({
         mutationFn: saveAudienceRoleAccess,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+        onSuccess: async () => {
+            // Force-await a refetch (not just invalidate) so the caller sees
+            // the new config in the next render, rather than a brief flash of
+            // stale data while the background refetch is still in flight.
+            await queryClient.refetchQueries({ queryKey: QUERY_KEY });
         },
     });
 

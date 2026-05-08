@@ -9,10 +9,10 @@
  *  3. AUDIENCE_LIST  — role only sees the explicitly granted audience lists,
  *                      and only those lists' responses on Recent Leads.
  *
- * Persists into the institute setting key {@code AUDIENCE_ROLE_ACCESS}, which
- * is read on the backend by {@code AudienceRoleAccessService}. Admin / root
- * users always behave as DEFAULT — this UI doesn't show options that would
- * have no effect.
+ * Persists into the institute setting key
+ * {@code ROLE_DISPLAY_SETTINGS.audienceRoleAccess}, read on the backend by
+ * {@code AudienceRoleAccessService}. ADMIN users always behave as DEFAULT
+ * regardless of this config.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -125,12 +125,14 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
     };
 
     const onSave = async () => {
-        // Build the next config: merge the role's new entry into the existing map.
+        // Build the next config: merge the role's new entry into the existing
+        // map. Keep DEFAULT roles persisted (don't drop them) so when the user
+        // re-opens the card they still see "Default" selected — otherwise
+        // dropping the entry leaves no record that the admin explicitly set
+        // it, and on next render the stored blob would be empty.
         const nextRoles = { ...(config.roles ?? {}) };
         if (mode === 'DEFAULT') {
-            // Default mode is the implicit baseline — drop the role entry to
-            // keep the saved blob compact.
-            delete nextRoles[normalizedRole];
+            nextRoles[normalizedRole] = { mode: 'DEFAULT' };
         } else if (mode === 'COUNSELOR') {
             nextRoles[normalizedRole] = { mode: 'COUNSELOR' };
         } else {

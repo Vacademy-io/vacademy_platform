@@ -71,13 +71,21 @@ export default function RoleDisplaySettingsMain() {
             {selectedRole === 'admin' && (
                 <div className="space-y-4">
                     <AdminDisplaySettings />
-                    <AudienceAccessCard roleName="ADMIN" roleLabel="Admin" />
+                    <AudienceAccessCard
+                        key="audience-access-admin"
+                        roleName="ADMIN"
+                        roleLabel="Admin"
+                    />
                 </div>
             )}
             {selectedRole === 'teacher' && (
                 <div className="space-y-4">
                     <TeacherDisplaySettings />
-                    <AudienceAccessCard roleName="TEACHER" roleLabel="Teacher" />
+                    <AudienceAccessCard
+                        key="audience-access-teacher"
+                        roleName="TEACHER"
+                        roleLabel="Teacher"
+                    />
                 </div>
             )}
             {selectedRole === 'custom' && (
@@ -169,6 +177,11 @@ export default function RoleDisplaySettingsMain() {
                                 if (!selectedRoleName) return null;
                                 return (
                                     <AudienceAccessCard
+                                        // key forces a clean remount when the selected
+                                        // custom role changes, so the card hydrates
+                                        // from scratch instead of reusing stale local
+                                        // state from the previous role.
+                                        key={`audience-access-custom-${selectedCustomRoleId}`}
                                         // Backend resolver matches against JWT authorities, which
                                         // are uppercased by `CustomUserDetails`. Mirror that here.
                                         roleName={selectedRoleName.toUpperCase()}

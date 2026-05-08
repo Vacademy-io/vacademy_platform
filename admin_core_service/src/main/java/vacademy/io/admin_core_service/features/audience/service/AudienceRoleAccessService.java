@@ -31,23 +31,24 @@ import java.util.stream.Collectors;
  *
  * <p>Resolution rules:
  * <ul>
- *   <li>{@code isRootUser()} → {@link Mode#DEFAULT} (sees everything; no
- *       scoping). Skips the setting lookup entirely. Note: this no longer
- *       short-circuits on the {@code ADMIN} authority — most non-root team
- *       accounts in this tenant carry ADMIN, and we want to be able to
- *       scope them via this setting.</li>
+ *   <li>{@code ADMIN} authority → {@link Mode#DEFAULT} (institute admins
+ *       always see everything; not configurable via this setting).</li>
+ *   <li>Note: we deliberately do NOT short-circuit on
+ *       {@code CustomUserDetails#isRootUser()}. In this tenant the
+ *       auth-service flags virtually every user as {@code root_user: true}
+ *       (see {@code AuthService.createUserForLearnerEnrollment}), so it
+ *       can't be used as an "institute owner" signal. The presence of the
+ *       {@code ADMIN} role in JWT authorities is the actual differentiator.</li>
  *   <li>Otherwise look up the configured rule for each of the caller's role
  *       authorities (skipping unconfigured roles).</li>
- *   <li>If no role of the caller is configured → {@link Mode#DEFAULT}.
- *       This is the default-DEFAULT guarantee: an unconfigured user always
- *       sees everything, even if they have ADMIN.</li>
+ *   <li>If no role of the caller is configured → {@link Mode#DEFAULT}.</li>
  *   <li>Most-permissive wins among configured roles:
  *       any {@code DEFAULT} → DEFAULT;
  *       else any {@code AUDIENCE_LIST} → AUDIENCE_LIST with the union of
  *       configured audience_ids;
  *       else any {@code COUNSELOR} → COUNSELOR.</li>
  *   <li>Failures reading the setting fail open to DEFAULT so a malformed
- *       blob can't lock every non-root user out of the leads endpoints.</li>
+ *       blob can't lock every non-admin user out of the leads endpoints.</li>
  * </ul>
  */
 @Service
@@ -83,17 +84,14 @@ public class AudienceRoleAccessService {
         if (user == null) {
             return EffectiveAccess.defaultMode();
         }
-        // Root short-circuit — institute owners (the original signup-root user)
-        // always see everything regardless of saved settings.
-        //
-        // Note: we deliberately do NOT short-circuit on the ADMIN authority
-        // here. In this tenant most non-root accounts (including team/junior
-        // admins) carry the ADMIN role too, and we want admins to be able to
-        // scope those accounts to specific audience lists via this setting.
-        // The "ADMIN sees everything" guarantee still holds in practice when
-        // the admin has no role configured in AUDIENCE_ROLE_ACCESS — the
-        // resolver below falls through to DEFAULT in that case.
-        if (user.isRootUser()) {
+        // ADMIN short-circuit — institute admins always see everything and
+        // cannot be scoped via this setting. We deliberately do NOT use
+        // CustomUserDetails#isRootUser() as a signal here: in this tenant the
+        // auth-service marks virtually every user as root_user=true (see
+        // AuthService.createUserForLearnerEnrollment), so it doesn't actually
+        // differentiate institute owners from regular accounts. The ADMIN
+        // role in JWT authorities is the real differentiator.
+        if (hasAuthority(user, "ADMIN")) {
             return EffectiveAccess.defaultMode();
         }
         if (instituteId == null || instituteId.isBlank()) {
@@ -215,6 +213,14 @@ public class AudienceRoleAccessService {
             case "AUDIENCE_LIST":  return Mode.AUDIENCE_LIST;
             default:               return Mode.DEFAULT;
         }
+    }
+
+    private static boolean hasAuthority(CustomUserDetails user, String role) {
+        if (user == null || user.getAuthorities() == null) return false;
+        return user.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .filter(Objects::nonNull)
+                .anyMatch(role::equalsIgnoreCase);
     }
 
 }

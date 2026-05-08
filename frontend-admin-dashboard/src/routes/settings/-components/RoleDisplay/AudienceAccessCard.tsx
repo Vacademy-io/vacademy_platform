@@ -15,14 +15,18 @@
  * regardless of this config.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Button } from '@/components/ui/button';
+import { Loader2, Check } from 'lucide-react';
 import { toast } from 'sonner';
+
+// Auto-save debounce — long enough that toggling several checkboxes in the
+// multi-select batches into one network call, short enough to feel instant.
+const AUTOSAVE_DEBOUNCE_MS = 500;
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import {
@@ -38,11 +42,13 @@ interface AudienceAccessCardProps {
     roleLabel?: string;
 }
 
-const MODE_OPTIONS: Array<{
-    value: AudienceAccessMode;
-    title: string;
-    description: string;
-}> = [
+// Mode options are role-aware so the COUNSELOR option clearly says "assigned
+// to TEAM_PT" / "assigned to TEACHER" instead of the ambiguous "to me" — the
+// admin configuring this is not the future user, so a role-named label is
+// less confusing.
+const buildModeOptions = (
+    roleDisplayName: string
+): Array<{ value: AudienceAccessMode; title: string; description: string }> => [
     {
         value: 'DEFAULT',
         title: 'Default — see everything',
@@ -51,9 +57,8 @@ const MODE_OPTIONS: Array<{
     },
     {
         value: 'COUNSELOR',
-        title: 'Only leads assigned to me',
-        description:
-            'Recent Leads and per-campaign Lead List only show responses where this user is the linked counselor. The list of audience-list cards is unaffected.',
+        title: `Only leads assigned to ${roleDisplayName}`,
+        description: `Recent Leads and per-campaign Lead List only show responses where a user with the ${roleDisplayName} role has been assigned as the counselor (via the lead's profile). The list of audience-list cards is unaffected.`,
     },
     {
         value: 'AUDIENCE_LIST',
@@ -70,11 +75,14 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
     const instituteId = instituteDetails?.id ?? '';
 
     // Local form state, hydrated from the saved setting on first load and
-    // whenever the saved config changes. Keeping it local lets the user toggle
-    // multiple checkboxes before clicking Save.
+    // whenever the saved config changes. The debounce window lets the admin
+    // toggle several checkboxes before the auto-save flush.
     const [mode, setMode] = useState<AudienceAccessMode>('DEFAULT');
     const [selectedAudienceIds, setSelectedAudienceIds] = useState<string[]>([]);
     const [dirty, setDirty] = useState(false);
+    // Briefly show "Saved" after a successful flush so the admin has feedback
+    // even though there's no Save button.
+    const [showJustSaved, setShowJustSaved] = useState(false);
 
     useEffect(() => {
         const existing: RoleAccessConfig | undefined = config.roles?.[normalizedRole];
@@ -124,32 +132,46 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
         setDirty(true);
     };
 
-    const onSave = async () => {
-        // Build the next config: merge the role's new entry into the existing
-        // map. Keep DEFAULT roles persisted (don't drop them) so when the user
-        // re-opens the card they still see "Default" selected — otherwise
-        // dropping the entry leaves no record that the admin explicitly set
-        // it, and on next render the stored blob would be empty.
-        const nextRoles = { ...(config.roles ?? {}) };
-        if (mode === 'DEFAULT') {
-            nextRoles[normalizedRole] = { mode: 'DEFAULT' };
-        } else if (mode === 'COUNSELOR') {
-            nextRoles[normalizedRole] = { mode: 'COUNSELOR' };
-        } else {
-            nextRoles[normalizedRole] = {
-                mode: 'AUDIENCE_LIST',
-                audience_ids: selectedAudienceIds,
-            };
-        }
-        try {
-            await save({ roles: nextRoles });
-            toast.success(`Audience access saved for ${roleLabel ?? normalizedRole}`);
-            setDirty(false);
-        } catch (err) {
-            console.error('Failed to save audience access', err);
-            toast.error('Failed to save audience access');
-        }
-    };
+    // Auto-save with a debounce. Capture the latest mode + selection in a ref
+    // so the timer's flush picks up whatever the user clicked last (avoids
+    // stale-closure bugs on rapid toggles).
+    const latestRef = useRef({ mode, selectedAudienceIds });
+    useEffect(() => {
+        latestRef.current = { mode, selectedAudienceIds };
+    }, [mode, selectedAudienceIds]);
+
+    useEffect(() => {
+        if (!dirty) return;
+        const timer = window.setTimeout(async () => {
+            const { mode: m, selectedAudienceIds: ids } = latestRef.current;
+            const nextRoles = { ...(config.roles ?? {}) };
+            if (m === 'DEFAULT') {
+                nextRoles[normalizedRole] = { mode: 'DEFAULT' };
+            } else if (m === 'COUNSELOR') {
+                nextRoles[normalizedRole] = { mode: 'COUNSELOR' };
+            } else {
+                nextRoles[normalizedRole] = {
+                    mode: 'AUDIENCE_LIST',
+                    audience_ids: ids,
+                };
+            }
+            try {
+                await save({ roles: nextRoles });
+                setDirty(false);
+                setShowJustSaved(true);
+                window.setTimeout(() => setShowJustSaved(false), 1500);
+            } catch (err) {
+                console.error('Failed to save audience access', err);
+                toast.error('Failed to save audience access');
+            }
+        }, AUTOSAVE_DEBOUNCE_MS);
+        return () => window.clearTimeout(timer);
+        // We deliberately depend on the user-triggered state (mode,
+        // selectedAudienceIds, dirty) so any change re-arms the debounce
+        // timer — config/save are stable from React Query and don't need
+        // to retrigger flushes.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [dirty, mode, selectedAudienceIds, normalizedRole]);
 
     const showAudienceMultiSelect = mode === 'AUDIENCE_LIST';
     const audienceListEmpty =
@@ -176,7 +198,7 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
                     className="flex flex-col gap-3"
                     aria-label="Audience access mode"
                 >
-                    {MODE_OPTIONS.map((opt) => (
+                    {buildModeOptions(roleLabel ?? normalizedRole).map((opt) => (
                         <label
                             key={opt.value}
                             htmlFor={`audience-access-${normalizedRole}-${opt.value}`}
@@ -244,17 +266,22 @@ export const AudienceAccessCard = ({ roleName, roleLabel }: AudienceAccessCardPr
                     </div>
                 )}
 
-                <div className="flex items-center justify-end gap-2">
-                    <span className="text-xs text-neutral-500">
-                        {isLoading ? 'Loading current setting…' : ''}
-                    </span>
-                    <Button
-                        size="sm"
-                        onClick={onSave}
-                        disabled={!dirty || saving || isLoading}
-                    >
-                        {saving ? 'Saving…' : 'Save'}
-                    </Button>
+                <div className="flex h-5 items-center justify-end gap-1.5 text-xs text-neutral-500">
+                    {isLoading ? (
+                        <span>Loading current setting…</span>
+                    ) : saving ? (
+                        <>
+                            <Loader2 className="size-3.5 animate-spin" />
+                            <span>Saving…</span>
+                        </>
+                    ) : showJustSaved ? (
+                        <>
+                            <Check className="size-3.5 text-success-600" />
+                            <span className="text-success-700">Saved</span>
+                        </>
+                    ) : dirty ? (
+                        <span>Unsaved changes…</span>
+                    ) : null}
                 </div>
             </CardContent>
         </Card>

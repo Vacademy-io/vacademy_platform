@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.audience.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -9,12 +11,16 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import vacademy.io.admin_core_service.features.audience.dto.AudienceRoleAccessDto;
 import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -86,27 +92,51 @@ public class AudienceRoleAccessService {
             return EffectiveAccess.defaultMode();
         }
         // Pre-compute authorities as a Set<String> for both logging and matching.
-        Set<String> callerRoles = user.getAuthorities() == null ? Collections.emptySet()
+        Set<String> callerRoles = user.getAuthorities() == null ? new java.util.HashSet<>()
                 : user.getAuthorities().stream()
                         .map(GrantedAuthority::getAuthority)
                         .filter(Objects::nonNull)
                         .map(String::toUpperCase)
                         .collect(Collectors.toSet());
+        // JWT-decode fallback: when the JwtAuthFilter can't determine the
+        // institute from the request (e.g. POST /audience/leads carries the
+        // institute_id only in the body, not as a query param/header),
+        // `loadUserByUsername` ends up calling auth-service with
+        // `<null>@<username>` and gets back an empty authorities list.
+        //
+        // The JWT itself, however, contains the user's roles per institute.
+        // Read the Authorization header, decode the payload (Spring already
+        // verified its signature in JwtAuthFilter), and pluck
+        // `authorities[<instituteId>].roles`. We can't query the DB here
+        // because user_role lives in the auth_service database, not this
+        // service's database (the failing fallback that produced
+        // `relation "user_role" does not exist`).
+        if (callerRoles.isEmpty() && instituteId != null && !instituteId.isBlank()) {
+            Set<String> rolesFromJwt = readRolesFromJwt(instituteId);
+            for (String r : rolesFromJwt) {
+                callerRoles.add(r);
+            }
+        }
         logger.info("[audienceRoleAccess] caller userId={} root={} institute={} authorities={}",
                 user.getUserId(), user.isRootUser(), instituteId, callerRoles);
-        // ADMIN short-circuit — institute admins always see everything and
-        // cannot be scoped via this setting. We deliberately do NOT use
-        // CustomUserDetails#isRootUser() as a signal here: in this tenant the
-        // auth-service marks virtually every user as root_user=true (see
-        // AuthService.createUserForLearnerEnrollment), so it doesn't actually
-        // differentiate institute owners from regular accounts. The ADMIN
-        // role in JWT authorities is the real differentiator.
-        if (hasAuthority(user, "ADMIN")) {
-            logger.info("[audienceRoleAccess] caller has ADMIN → DEFAULT (short-circuit)");
-            return EffectiveAccess.defaultMode();
-        }
         if (instituteId == null || instituteId.isBlank()) {
             logger.info("[audienceRoleAccess] instituteId blank → DEFAULT");
+            return EffectiveAccess.defaultMode();
+        }
+        // ADMIN short-circuit — institute admins always see everything and
+        // cannot be scoped via this setting. We check `callerRoles` (which
+        // already includes the JWT-decode fallback) rather than the
+        // CustomUserDetails-derived authorities, so an admin whose authorities
+        // came back empty from loadUserByUsername (see the JwtAuthFilter
+        // institute-resolution issue above) still gets the bypass.
+        // We deliberately do NOT use CustomUserDetails#isRootUser() as a
+        // signal here: in this tenant the auth-service marks virtually every
+        // user as root_user=true (see AuthService.createUserForLearnerEnrollment),
+        // so it doesn't actually differentiate institute owners from regular
+        // accounts. The ADMIN role in (resolved) authorities is the real
+        // differentiator.
+        if (callerRoles.contains("ADMIN")) {
+            logger.info("[audienceRoleAccess] caller has ADMIN → DEFAULT (short-circuit)");
             return EffectiveAccess.defaultMode();
         }
 
@@ -227,12 +257,74 @@ public class AudienceRoleAccessService {
         }
     }
 
-    private static boolean hasAuthority(CustomUserDetails user, String role) {
-        if (user == null || user.getAuthorities() == null) return false;
-        return user.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .filter(Objects::nonNull)
-                .anyMatch(role::equalsIgnoreCase);
+    /**
+     * Decode the JWT from the current request's Authorization header and pull
+     * out {@code authorities.<instituteId>.roles} as a Set of uppercase role
+     * names. Used as a fallback when {@code CustomUserDetails.getAuthorities()}
+     * returns empty (which happens when JwtAuthFilter can't determine the
+     * institute and loads the user with the literal string "null" as
+     * institute id).
+     *
+     * <p>We do NOT re-validate the JWT signature here — Spring's JwtAuthFilter
+     * has already done that earlier in the chain; we're only re-reading the
+     * payload that was already trusted.
+     *
+     * <p>Returns an empty set on any error (no header, malformed, etc.) so
+     * the caller falls through to DEFAULT instead of throwing.
+     */
+    private Set<String> readRolesFromJwt(String instituteId) {
+        try {
+            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder
+                    .getRequestAttributes();
+            if (attrs == null) return Collections.emptySet();
+            HttpServletRequest request = attrs.getRequest();
+            String header = request.getHeader("Authorization");
+            if (header == null || !header.startsWith("Bearer ")) {
+                return Collections.emptySet();
+            }
+            String token = header.substring("Bearer ".length()).trim();
+            String[] parts = token.split("\\.");
+            if (parts.length < 2) return Collections.emptySet();
+            byte[] payload = Base64.getUrlDecoder().decode(parts[1]);
+            JsonNode root = objectMapper.readTree(new String(payload, StandardCharsets.UTF_8));
+            JsonNode authorities = root.get("authorities");
+            if (authorities == null || !authorities.isObject()) {
+                return Collections.emptySet();
+            }
+            JsonNode forInstitute = authorities.get(instituteId);
+            if (forInstitute == null || !forInstitute.isObject()) {
+                return Collections.emptySet();
+            }
+            JsonNode roles = forInstitute.get("roles");
+            if (roles == null || !roles.isArray()) {
+                return Collections.emptySet();
+            }
+            Set<String> out = new LinkedHashSet<>();
+            roles.forEach(r -> {
+                String s = r.asText();
+                if (s != null && !s.isBlank()) {
+                    out.add(s.toUpperCase());
+                }
+            });
+            // Also include the per-institute permissions, since those land in
+            // CustomUserDetails.storedAuthorities alongside role names — keeps
+            // the JWT-fallback set consistent with the loadUserByUsername-derived
+            // set in the happy path.
+            JsonNode perms = forInstitute.get("permissions");
+            if (perms != null && perms.isArray()) {
+                perms.forEach(p -> {
+                    String s = p.asText();
+                    if (s != null && !s.isBlank()) {
+                        out.add(s.toUpperCase());
+                    }
+                });
+            }
+            return out;
+        } catch (Exception e) {
+            logger.warn("[audienceRoleAccess] failed to decode JWT for fallback roles: {}",
+                    e.getMessage());
+            return Collections.emptySet();
+        }
     }
 
 }

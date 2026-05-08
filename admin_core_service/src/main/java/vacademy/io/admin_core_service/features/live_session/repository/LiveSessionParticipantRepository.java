@@ -157,7 +157,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ss.last_entry_time AS lastEntryTime,
         ss.daily_attendance AS dailyAttendance,
         fbl.details AS feedbackDetails,
-        lsp.source_id AS packageSessionId
+        lsp.source_id AS packageSessionId,
+        lsl.provider_total_duration_minutes AS providerTotalDurationMinutes
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m
         ON m.package_session_id = lsp.source_id
@@ -265,7 +266,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ss.last_entry_time AS lastEntryTime,
         ss.daily_attendance AS dailyAttendance,
         fbl.details AS feedbackDetails,
-        lsp.source_id AS packageSessionId
+        lsp.source_id AS packageSessionId,
+        lsl.provider_total_duration_minutes AS providerTotalDurationMinutes
     FROM live_session_participants lsp
     JOIN student_session_institute_group_mapping m
         ON m.package_session_id = lsp.source_id

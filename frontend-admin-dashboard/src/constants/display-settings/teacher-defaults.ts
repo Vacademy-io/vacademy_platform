@@ -173,6 +173,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         allowPortalAccess: true,
         allowViewPassword: true,
         allowSendResetPasswordMail: true,
+        showApprovalToggle: false,
     },
     postLoginRedirectRoute: '/dashboard',
 };

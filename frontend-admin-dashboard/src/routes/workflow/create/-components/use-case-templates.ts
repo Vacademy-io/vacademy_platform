@@ -524,23 +524,34 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 triggerEvent: triggerEvent ?? 'LEARNER_BATCH_ENROLLMENT',
             }, 250, 50, true);
 
-            const queryNode = makeNode('QUERY', 'Fetch enrolled student', {
-                prebuiltKey: 'fetch_students_by_batch',
-                params: { batchId: "#ctx['packageSessionIds']" },
-            }, 250, 230);
-
+            // Wrap the just-enrolled user in a single-element list so SEND_EMAIL
+            // iterates once. We deliberately do NOT fetch batch students here —
+            // the welcome email is for the one user who just enrolled, and only
+            // the trigger context has their plaintext credentials. Iterating over
+            // the whole batch would email everyone the same password (wrong) and
+            // would lose access to {{username}}/{{password}} entirely (the
+            // students-by-batch query doesn't return those fields).
             const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
                 templateName: answers.templateName as string,
-                on: "#ctx['students']",
+                on: "{#ctx['user']}",
                 forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                recipientField: 'email',
+                // Pre-populate the placeholder → context-field mapping so the user
+                // doesn't have to do it manually in the workflow builder. Each value
+                // is a SpEL expression evaluated against the workflow context at
+                // send time. The user can override any of these in the node config.
+                templateVars: {
+                    fullName: "#ctx['user'].fullName",
+                    username: "#ctx['user'].username",
+                    password: "#ctx['user'].password",
+                    email: "#ctx['user'].email",
+                    instituteName: "#ctx['instituteName']",
+                },
+            }, 250, 230);
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
-                edges: [
-                    makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
-                ],
+                nodes: [triggerNode, emailNode],
+                edges: [makeEdge(triggerNode.id, emailNode.id)],
                 workflowDescription: 'Send welcome email when a student enrolls.',
             };
         },

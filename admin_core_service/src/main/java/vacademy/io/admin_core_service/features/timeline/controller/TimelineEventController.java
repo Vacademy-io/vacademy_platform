@@ -7,10 +7,14 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.timeline.dto.StudentLatestNoteDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventRequestDTO;
 import vacademy.io.admin_core_service.features.timeline.service.TimelineEventService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/admin-core-service/timeline/v1")
@@ -64,6 +68,18 @@ public class TimelineEventController {
                 Pageable pageable = PageRequest.of(page, size);
                 Page<TimelineEventDTO> response = timelineEventService.getCrossStageTimeline(studentUserId, pageable);
                 return ResponseEntity.ok(response);
+        }
+
+        /**
+         * Batch fetch the latest cross-stage note + count per student.
+         * POST /admin-core-service/timeline/v1/student/latest-notes-batch
+         * Body: ["userId1", "userId2", ...]
+         * Returns: { "userId1": { latest: {...}, count: 3 }, ... }
+         */
+        @PostMapping("/student/latest-notes-batch")
+        public ResponseEntity<Map<String, StudentLatestNoteDTO>> getLatestNotesBatch(
+                        @RequestBody List<String> studentUserIds) {
+                return ResponseEntity.ok(timelineEventService.getLatestNotesForStudents(studentUserIds));
         }
 
         /**

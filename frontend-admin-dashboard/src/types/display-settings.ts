@@ -184,6 +184,18 @@ export interface LearnerManagementSettings {
     allowSendResetPasswordMail: boolean;
 }
 
+export interface LiveClassSchedulingSettings {
+    /** Whether the "Bulk Schedule" entry point is available for this role. */
+    bulkScheduleEnabled: boolean;
+    /** Whether the single-class scheduling page is available for this role. */
+    singleScheduleEnabled: boolean;
+}
+
+export const DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS: LiveClassSchedulingSettings = {
+    bulkScheduleEnabled: true,
+    singleScheduleEnabled: true,
+};
+
 export interface DisplaySettingsData {
     // 1) Sidebar tabs and sub-tabs configuration and ordering
     sidebar: SidebarTabConfig[];
@@ -266,6 +278,12 @@ export interface DisplaySettingsData {
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;
+
+    // 13b) Live class scheduling controls. Role-level overlay on top of the
+    //      institute-level Live Session Settings — admin can hide bulk
+    //      scheduling for specific roles even if it's institute-enabled.
+    //      Both flags default to true so existing institutes are unaffected.
+    liveClassScheduling?: LiveClassSchedulingSettings;
 
     // 14) Sidebar Category Configuration
     sidebarCategories?: Array<{

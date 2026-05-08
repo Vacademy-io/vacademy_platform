@@ -1,4 +1,4 @@
-import { BACKEND_BASE_URL, LOCAL_BULK_BACKEND_URL } from '../config/baseUrl';
+import { BACKEND_BASE_URL } from '../config/baseUrl';
 
 export const BASE_URL = BACKEND_BASE_URL;
 export const BASE_URL_LEARNER_DASHBOARD =
@@ -406,12 +406,7 @@ export const DUPLICATE_STUDY_MATERIAL_FROM_SESSION = `${BASE_URL}/admin-core-ser
 // Live sessions
 export const CREATE_LIVE_SESSION_STEP_1 = `${BASE_URL}/admin-core-service/live-sessions/v1/create/step1`;
 export const CREATE_LIVE_SESSION_STEP_2 = `${BASE_URL}/admin-core-service/live-sessions/v1/create/step2`;
-// Bulk endpoint is the only API that honours the localhost override (see
-// baseUrl.ts → LOCAL_BULK_BACKEND_URL). This lets you test the new bulk
-// service locally while every other call still goes to staging/prod.
-export const CREATE_LIVE_SESSION_BULK = `${
-    LOCAL_BULK_BACKEND_URL ?? BASE_URL
-}/admin-core-service/live-sessions/v1/create/bulk`;
+export const CREATE_LIVE_SESSION_BULK = `${BASE_URL}/admin-core-service/live-sessions/v1/create/bulk`;
 export const GET_LIVE_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/live`;
 export const DELETE_LIVE_SESSION = `${BASE_URL}/admin-core-service/live-sessions/v1/delete`;
 export const GET_UPCOMING_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/upcoming`;

@@ -1,7 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { format } from 'date-fns';
-import { ChevronLeft, ChevronRight, Calendar, Megaphone } from 'lucide-react';
+import {
+    ChevronLeft,
+    ChevronRight,
+    Calendar,
+    Megaphone,
+    Search,
+    Flame,
+    CheckCircle2,
+} from 'lucide-react';
 import { ArrowSquareOut } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +39,11 @@ const PAGE_SIZE = 20;
 // Sentinel for "All audiences" — shadcn `<Select>` doesn't allow an empty
 // string as an item value, so we use a non-empty marker and translate.
 const ALL_AUDIENCES_VALUE = '__ALL__';
+// Same sentinel pattern for the tier select — empty string is reserved.
+const ALL_TIERS_VALUE = '__ALL__';
+type LeadTier = 'HOT' | 'WARM' | 'COLD';
+type ConversionFilter = 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+const SEARCH_DEBOUNCE_MS = 350;
 
 // Convert a date input value (yyyy-mm-dd) to an ISO timestamp at the start
 // or end of that day in the user's local timezone. Returned as plain ISO so
@@ -67,11 +80,31 @@ const computeDefaultRange = () => {
 // Map a recent-lead row to a partial StudentTable so the shared StudentSidebar
 // can render its tabs (notifications, lead profile, etc.) for this respondent.
 // Only the fields available from the lead payload are populated; the rest are
-// safe defaults — the side-view tabs handle missing data gracefully.
+// safe defaults — the side-view tabs handle missing data gracefully. We also
+// stash `_response_fields` + `_audience_campaign_name` for the side-view's
+// LeadFormResponseCard, derived from the row's custom_field_metadata.
 const mapRecentLeadToStudent = (lead: RecentLeadDetail): StudentTable => {
     const u = lead.user ?? {};
     const userId = u.id || lead.user_id || lead.response_id || '';
-    return {
+
+    const responseFields: Array<{
+        id: string;
+        name: string;
+        type: string;
+        rawValue: string | null;
+    }> = [];
+    const cfv = lead.custom_field_values ?? {};
+    const meta = lead.custom_field_metadata ?? {};
+    Object.entries(cfv).forEach(([fieldId, rawVal]) => {
+        const value = rawVal == null ? null : String(rawVal);
+        if (value === null || value === '') return;
+        const m = meta[fieldId] ?? {};
+        const name = m.fieldName ?? m.field_name ?? fieldId;
+        const type = m.fieldType ?? m.field_type ?? 'textfield';
+        responseFields.push({ id: fieldId, name, type, rawValue: value });
+    });
+
+    const result: StudentTable = {
         id: userId,
         user_id: userId,
         full_name: u.full_name || lead.parent_name || '',
@@ -111,6 +144,11 @@ const mapRecentLeadToStudent = (lead: RecentLeadDetail): StudentTable => {
         payment_status: '',
         custom_fields: {},
     };
+    // Stash for LeadFormResponseCard — kept off the canonical shape via cast.
+    (result as unknown as Record<string, unknown>)._response_fields = responseFields;
+    (result as unknown as Record<string, unknown>)._audience_campaign_name =
+        lead.campaign_name ?? lead.source_audience_name ?? null;
+    return result;
 };
 
 const displayName = (lead: RecentLeadDetail) => lead.user?.full_name || lead.parent_name || '-';
@@ -140,6 +178,30 @@ export const RecentLeadsPage = () => {
     // Audience filter: starts at "All audiences" so a sales rep sees the
     // freshest submissions from every campaign on landing.
     const [audienceId, setAudienceId] = useState<string>(ALL_AUDIENCES_VALUE);
+
+    // Substring search across name / email / phone — applied with a debounce
+    // so we don't fire a query on every keystroke. `searchInput` is what the
+    // user is typing; `appliedSearch` is what the React Query key sees.
+    const [searchInput, setSearchInput] = useState('');
+    const [appliedSearch, setAppliedSearch] = useState('');
+    useEffect(() => {
+        const trimmed = searchInput.trim();
+        if (trimmed === appliedSearch) return;
+        const timer = window.setTimeout(() => {
+            setAppliedSearch(trimmed);
+            setPage(0);
+        }, SEARCH_DEBOUNCE_MS);
+        return () => window.clearTimeout(timer);
+    }, [searchInput, appliedSearch]);
+
+    // Lead tier filter — applied immediately (it's a discrete select).
+    const [tierFilter, setTierFilter] = useState<string>(ALL_TIERS_VALUE);
+
+    // Conversion-state filter. Default hides leads who've been assigned to a
+    // course (the backend marks them CONVERTED on enrollment) so this view
+    // stays focused on still-actionable leads.
+    const [conversionFilter, setConversionFilter] =
+        useState<ConversionFilter>('EXCLUDE_CONVERTED');
 
     useEffect(() => {
         setNavHeading(<h1 className="text-lg">Recent Leads</h1>);
@@ -172,6 +234,9 @@ export const RecentLeadsPage = () => {
             appliedRange.from,
             appliedRange.to,
             audienceId,
+            appliedSearch,
+            tierFilter,
+            conversionFilter,
             page,
         ],
         queryFn: () =>
@@ -181,6 +246,9 @@ export const RecentLeadsPage = () => {
                     audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
                 submitted_from_local: startOfDayIso(appliedRange.from),
                 submitted_to_local: endOfDayIso(appliedRange.to),
+                search_query: appliedSearch || undefined,
+                lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
+                conversion_status_filter: conversionFilter,
                 page,
                 size: PAGE_SIZE,
             }),
@@ -199,6 +267,10 @@ export const RecentLeadsPage = () => {
         setFromDate('');
         setToDate('');
         setAudienceId(ALL_AUDIENCES_VALUE);
+        setSearchInput('');
+        setAppliedSearch('');
+        setTierFilter(ALL_TIERS_VALUE);
+        setConversionFilter('EXCLUDE_CONVERTED');
         setPage(0);
         setAppliedRange({ from: '', to: '' });
     };
@@ -208,16 +280,46 @@ export const RecentLeadsPage = () => {
         setAudienceId(value);
     };
 
+    const handleTierChange = (value: string) => {
+        setPage(0);
+        setTierFilter(value);
+    };
+
+    const handleConversionChange = (value: string) => {
+        setPage(0);
+        setConversionFilter(value as ConversionFilter);
+    };
+
     const isFilterActive =
         !!appliedRange.from ||
         !!appliedRange.to ||
-        audienceId !== ALL_AUDIENCES_VALUE;
+        audienceId !== ALL_AUDIENCES_VALUE ||
+        !!appliedSearch ||
+        tierFilter !== ALL_TIERS_VALUE ||
+        conversionFilter !== 'EXCLUDE_CONVERTED';
 
     return (
         <StudentSidebarProvider>
         <div className="flex w-full flex-col gap-4">
             {/* Filter bar */}
             <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                <div className="flex min-w-[14rem] flex-1 flex-col gap-1">
+                    <Label htmlFor="recent-leads-search" className="text-xs text-neutral-600">
+                        Search
+                    </Label>
+                    <div className="relative">
+                        <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                        <Input
+                            id="recent-leads-search"
+                            type="text"
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            placeholder="Name, email or phone"
+                            className="w-full pl-7"
+                            aria-label="Search leads by name, email or phone"
+                        />
+                    </div>
+                </div>
                 <div className="flex flex-col gap-1">
                     <Label htmlFor="recent-leads-audience" className="text-xs text-neutral-600">
                         Audience
@@ -240,6 +342,56 @@ export const RecentLeadsPage = () => {
                                         {opt.name}
                                     </SelectItem>
                                 ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                    <Label htmlFor="recent-leads-tier" className="text-xs text-neutral-600">
+                        Lead tier
+                    </Label>
+                    <div className="relative">
+                        <Flame className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                        <Select value={tierFilter} onValueChange={handleTierChange}>
+                            <SelectTrigger
+                                id="recent-leads-tier"
+                                className="w-44 pl-7"
+                            >
+                                <SelectValue placeholder="All tiers" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value={ALL_TIERS_VALUE}>All tiers</SelectItem>
+                                <SelectItem value={'HOT' satisfies LeadTier}>Hot</SelectItem>
+                                <SelectItem value={'WARM' satisfies LeadTier}>Warm</SelectItem>
+                                <SelectItem value={'COLD' satisfies LeadTier}>Cold</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                    <Label
+                        htmlFor="recent-leads-conversion"
+                        className="text-xs text-neutral-600"
+                    >
+                        Status
+                    </Label>
+                    <div className="relative">
+                        <CheckCircle2 className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                        <Select value={conversionFilter} onValueChange={handleConversionChange}>
+                            <SelectTrigger
+                                id="recent-leads-conversion"
+                                className="w-48 pl-7"
+                            >
+                                <SelectValue placeholder="Active leads" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="EXCLUDE_CONVERTED">
+                                    Active leads
+                                </SelectItem>
+                                <SelectItem value="ONLY_CONVERTED">
+                                    Converted only
+                                </SelectItem>
+                                <SelectItem value="ALL">All</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

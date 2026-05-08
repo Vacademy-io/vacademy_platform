@@ -75,6 +75,7 @@ public class BulkAssignmentService {
     private final InstituteSettingService instituteSettingService;
     private final ObjectMapper objectMapper;
     private final InstituteRepository instituteRepository;
+    private final vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService userLeadProfileService;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -507,6 +508,24 @@ public class BulkAssignmentService {
                     .build();
         }
 
+        // Idempotently grant the STUDENT role in auth-service. Newly-created
+        // users already get it via createUserFromAuthServiceForLearnerEnrollment;
+        // this covers existing users (e.g. leads from an audience-form
+        // submission) whose user record predates the enrollment and would
+        // otherwise fail the learner-portal login role check.
+        authService.addRolesToUserInternal(userId, List.of("STUDENT"), instituteId);
+
+        // Mark the user's lead profile as CONVERTED — assignment to a course
+        // is the canonical conversion event. Best-effort: a profile-write blip
+        // shouldn't roll back the enrollment that just succeeded. Default
+        // listing filters on the leads endpoints will hide CONVERTED leads.
+        try {
+            userLeadProfileService.markConverted(userId, instituteId);
+        } catch (Exception e) {
+            log.warn("Failed to mark lead converted for userId={} instituteId={}: {}",
+                    userId, instituteId, e.getMessage());
+        }
+
         // Create UserPlan
         UserPlan userPlan = userPlanService.createUserPlan(
                 userId,
@@ -669,6 +688,20 @@ public class BulkAssignmentService {
                     .enrollInviteIdUsed(config.getEnrollInvite().getId())
                     .message("Will re-enroll from " + existingMapping.getStatus() + " status")
                     .build();
+        }
+
+        // Idempotently grant the STUDENT role in auth-service before reactivating
+        // the mapping — re-enrollment paths cover users whose role row may have
+        // been removed at deletion time, plus migrated leads who never had it.
+        authService.addRolesToUserInternal(userId, List.of("STUDENT"), instituteId);
+
+        // Re-enrollment is also a conversion event — flip the lead profile to
+        // CONVERTED so this user falls out of the active leads list. Best-effort.
+        try {
+            userLeadProfileService.markConverted(userId, instituteId);
+        } catch (Exception e) {
+            log.warn("Failed to mark lead converted (re-enroll) for userId={} instituteId={}: {}",
+                    userId, instituteId, e.getMessage());
         }
 
         // Create new UserPlan (stacking is handled automatically by UserPlanService)

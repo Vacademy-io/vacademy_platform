@@ -27,4 +27,17 @@ public class AuthServiceRoutes {
      * Used by the doubt-notification cascade to fall back to ADMIN users when no faculty is mapped.
      */
     public static final String GET_USERS_BY_ROLE = "/auth-service/v1/users/by-role";
+
+    /**
+     * Idempotently adds the supplied roles to a user (no-op when the user
+     * already has an ACTIVE row for that {institute, role}). HMAC-internal
+     * variant of {@code /auth-service/v1/user-roles/add-user-roles}.
+     *
+     * <p>Body: {@code { user_id, roles, institute_id }} (snake_case).
+     *
+     * <p>Used by the bulk-assign flow to make sure existing-user enrollments
+     * (e.g. leads) get the {@code STUDENT} role so the learner-portal login
+     * passes its role check.
+     */
+    public static final String ADD_USER_ROLES_INTERNAL = "/auth-service/internal/v1/user-roles/add-user-roles";
 }

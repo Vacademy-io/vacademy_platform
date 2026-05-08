@@ -72,6 +72,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         @Query(value = """
                             SELECT ar.*
                             FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
                             LEFT JOIN lead_score ls ON ls.audience_response_id = ar.id
                             LEFT JOIN LATERAL (
                                 SELECT lu.user_id
@@ -80,6 +81,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 ORDER BY lu.created_at DESC
                                 LIMIT 1
                             ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
@@ -102,6 +105,30 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
                                 OR (COALESCE(:overallStatusStr, '') != '' AND ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
                               )
+                              AND (
+                                COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
+                                OR (
+                                  COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'EXCLUDE_CONVERTED'
+                                  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                                )
+                                OR (
+                                  :conversionStatusFilter = 'ONLY_CONVERTED'
+                                  AND ulp.conversion_status = 'CONVERTED'
+                                )
+                              )
+                              AND (COALESCE(:customFieldFiltersJson, '') = '' OR :customFieldFiltersJson = '[]' OR
+                                   NOT EXISTS (
+                                       SELECT 1
+                                       FROM jsonb_array_elements(CAST(:customFieldFiltersJson AS jsonb)) AS flt
+                                       WHERE NOT EXISTS (
+                                           SELECT 1
+                                           FROM custom_field_values cfv
+                                           WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
+                                             AND cfv.source_id = ar.id
+                                             AND cfv.custom_field_id = (flt->>'field_id')
+                                             AND cfv.value = (flt->>'value')
+                                       )
+                                   ))
                             ORDER BY
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
                                    THEN COALESCE(ls.raw_score, 0) END DESC,
@@ -115,6 +142,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         """, countQuery = """
                             SELECT COUNT(*)
                             FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
                             LEFT JOIN lead_score ls ON ls.audience_response_id = ar.id
                             LEFT JOIN LATERAL (
                                 SELECT lu.user_id
@@ -123,6 +151,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 ORDER BY lu.created_at DESC
                                 LIMIT 1
                             ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE ar.audience_id = :audienceId
                               AND (COALESCE(:sourceType, '') = '' OR ar.source_type = :sourceType)
                               AND (COALESCE(:sourceId, '') = '' OR ar.source_id = :sourceId)
@@ -145,6 +175,30 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
                                 OR (COALESCE(:overallStatusStr, '') != '' AND ar.overall_status = ANY(STRING_TO_ARRAY(:overallStatusStr, ',')))
                               )
+                              AND (
+                                COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
+                                OR (
+                                  COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'EXCLUDE_CONVERTED'
+                                  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                                )
+                                OR (
+                                  :conversionStatusFilter = 'ONLY_CONVERTED'
+                                  AND ulp.conversion_status = 'CONVERTED'
+                                )
+                              )
+                              AND (COALESCE(:customFieldFiltersJson, '') = '' OR :customFieldFiltersJson = '[]' OR
+                                   NOT EXISTS (
+                                       SELECT 1
+                                       FROM jsonb_array_elements(CAST(:customFieldFiltersJson AS jsonb)) AS flt
+                                       WHERE NOT EXISTS (
+                                           SELECT 1
+                                           FROM custom_field_values cfv
+                                           WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
+                                             AND cfv.source_id = ar.id
+                                             AND cfv.custom_field_id = (flt->>'field_id')
+                                             AND cfv.value = (flt->>'value')
+                                       )
+                                   ))
                         """, nativeQuery = true)
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
@@ -160,6 +214,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("assignedCounselorId") String assignedCounselorId,
                         @Param("isUnassigned") Boolean isUnassigned,
                         @Param("overallStatusStr") String overallStatusStr,
+                        @Param("customFieldFiltersJson") String customFieldFiltersJson,
+                        @Param("conversionStatusFilter") String conversionStatusFilter,
                         @Param("sortBy") String sortBy,
                         @Param("sortDirection") String sortDirection,
                         Pageable pageable);
@@ -179,13 +235,26 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         Pageable pageable);
 
         /**
-         * Find leads across all campaigns for an institute with optional date range
-         * and search filter. Used by the cross-audience "Recent Leads" view.
+         * Find leads across all campaigns for an institute with optional date range,
+         * search, lead-tier and assigned-counselor filters. Used by the
+         * cross-audience "Recent Leads" view. Mirrors the joins / predicates of
+         * {@link #findLeadsWithFilters} so tier and counselor scoping behave
+         * identically across the per-campaign and cross-campaign paths.
          */
         @Query(value = """
                             SELECT ar.*
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN lead_score ls ON ls.audience_response_id = ar.id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
@@ -193,12 +262,39 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
                                    LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
                                    ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%'))
+                              AND (COALESCE(:leadTier, '') = '' OR
+                                   (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
+                                   (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
+                                   (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
+                              AND (COALESCE(:assignedCounselorId, '') = '' OR lu.user_id = :assignedCounselorId)
+                              AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
+                              AND (
+                                COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
+                                OR (
+                                  COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'EXCLUDE_CONVERTED'
+                                  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                                )
+                                OR (
+                                  :conversionStatusFilter = 'ONLY_CONVERTED'
+                                  AND ulp.conversion_status = 'CONVERTED'
+                                )
+                              )
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                             ORDER BY ar.submitted_at DESC
                         """, countQuery = """
                             SELECT COUNT(*)
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN lead_score ls ON ls.audience_response_id = ar.id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
                               AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
                               AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
@@ -206,6 +302,23 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
                                    LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
                                    ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%'))
+                              AND (COALESCE(:leadTier, '') = '' OR
+                                   (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
+                                   (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
+                                   (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
+                              AND (COALESCE(:assignedCounselorId, '') = '' OR lu.user_id = :assignedCounselorId)
+                              AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
+                              AND (
+                                COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
+                                OR (
+                                  COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'EXCLUDE_CONVERTED'
+                                  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                                )
+                                OR (
+                                  :conversionStatusFilter = 'ONLY_CONVERTED'
+                                  AND ulp.conversion_status = 'CONVERTED'
+                                )
+                              )
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                         """, nativeQuery = true)
         Page<AudienceResponse> findInstituteLeadsWithFilters(
@@ -213,6 +326,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("submittedFrom") Timestamp submittedFrom,
                         @Param("submittedTo") Timestamp submittedTo,
                         @Param("searchQuery") String searchQuery,
+                        @Param("leadTier") String leadTier,
+                        @Param("assignedCounselorId") String assignedCounselorId,
+                        @Param("allowedAudienceIdsCsv") String allowedAudienceIdsCsv,
+                        @Param("conversionStatusFilter") String conversionStatusFilter,
                         Pageable pageable);
 
         /**

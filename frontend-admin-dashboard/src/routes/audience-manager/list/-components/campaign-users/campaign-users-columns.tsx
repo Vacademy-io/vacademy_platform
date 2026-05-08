@@ -1,6 +1,7 @@
 import { ColumnDef, Row } from '@tanstack/react-table';
 import { Trash2 } from 'lucide-react';
 import { ArrowSquareOut } from '@phosphor-icons/react';
+import { Badge } from '@/components/ui/badge';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { CustomFieldSetupItem } from '../../-services/get-custom-field-setup';
 import {
@@ -9,6 +10,11 @@ import {
 } from '../../-utils/getCampaignCustomFields';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
+import {
+    formatCustomFieldValue,
+    isMultiSelectType,
+    parseMultiSelectValue,
+} from '../../-utils/format-custom-field-value';
 
 // Details cell — opens the side view via SidebarTrigger, mirroring the
 // "Details" column used in manage-students and manage-contacts so the affordance
@@ -264,6 +270,16 @@ export const generateDynamicColumns = (
             // Determine cell styling based on field type
             const isNameFieldCell = isNameField(fieldKey, fieldName);
 
+            // Resolve the field's *content* type once per column (dropdown,
+            // multi_select, checkbox, file, …) so cell rendering can format
+            // the stored string for human display instead of dumping raw JSON.
+            const setupEntry =
+                lookup.get(fieldId) || lookup.get(fieldId.toLowerCase());
+            const apiMeta = fieldMetadataMap?.get(fieldId);
+            const fieldType =
+                apiMeta?.fieldType ?? setupEntry?.field_type ?? 'textfield';
+            const isMultiSelect = isMultiSelectType(fieldType);
+
             columns.push({
                 accessorKey: fieldId, // Use field ID as accessorKey to match custom_field_values
                 header: fieldName,
@@ -271,18 +287,12 @@ export const generateDynamicColumns = (
                 minSize: isNameFieldCell ? 180 : 150,
                 maxSize: isNameFieldCell ? 300 : 250,
                 cell: ({ row }) => {
-                    // Get value directly from row data using field ID
                     // Value can be null if the user doesn't have data for this field
-                    const value = row.original[fieldId];
-                    // Display null as '-' for better UX, but the data is stored as null
-                    const displayValue =
-                        value !== null &&
-                        value !== undefined &&
-                        value !== '' &&
-                        value !== '-' &&
-                        value !== 'N/A'
-                            ? String(value)
-                            : '-';
+                    const rawValue = row.original[fieldId];
+                    const valueAsString =
+                        rawValue === null || rawValue === undefined
+                            ? null
+                            : (rawValue as string);
                     const clickable = !!onRowClick && !!row.original._user_id;
                     // Augment the Name cell with a HOT/WARM/COLD lead-score badge
                     // when the lead system is on and a profile exists for this row's
@@ -292,6 +302,38 @@ export const generateDynamicColumns = (
                         isNameFieldCell && leadProfiles && userId
                             ? leadProfiles[userId]
                             : undefined;
+
+                    // Multi-select renders as a row of chips so several picks
+                    // read cleanly instead of as a JSON-encoded string.
+                    if (isMultiSelect) {
+                        const items = parseMultiSelectValue(valueAsString);
+                        return (
+                            <div
+                                className={`p-3 text-sm ${clickable ? 'cursor-pointer hover:text-primary-600' : ''}`}
+                                onClick={
+                                    clickable ? () => onRowClick!(row.original) : undefined
+                                }
+                            >
+                                {items.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                        {items.map((item, idx) => (
+                                            <Badge
+                                                key={`${item}-${idx}`}
+                                                variant="secondary"
+                                                className="bg-neutral-100 text-neutral-700 hover:bg-neutral-100"
+                                            >
+                                                {item}
+                                            </Badge>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <span className="text-neutral-500">-</span>
+                                )}
+                            </div>
+                        );
+                    }
+
+                    const displayValue = formatCustomFieldValue(valueAsString, fieldType);
                     return (
                         <div
                             className={`p-3 text-sm ${isNameFieldCell ? 'font-medium text-neutral-900' : 'text-neutral-700'} ${clickable ? 'cursor-pointer hover:text-primary-600' : ''}`}

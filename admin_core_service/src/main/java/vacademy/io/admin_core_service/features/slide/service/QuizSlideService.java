@@ -38,16 +38,16 @@ public class QuizSlideService {
     public String addOrUpdateQuizSlide(SlideDTO slideDTO, String chapterId, String packageSessionId, String moduleId,
             String subjectId, CustomUserDetails userDetails) {
         if (slideDTO.isNewSlide()) {
-            return addQuizSlide(slideDTO, chapterId);
+            return addQuizSlide(slideDTO, chapterId, userDetails);
         }
-        return updateQuizSlide(slideDTO, chapterId, packageSessionId, moduleId, subjectId);
+        return updateQuizSlide(slideDTO, chapterId, packageSessionId, moduleId, subjectId, userDetails);
     }
 
     public String addOrUpdateQuizSlideRequest(SlideDTO slideDTO, String chapterId, CustomUserDetails userDetails) {
-        return addQuizSlide(slideDTO, chapterId);
+        return addQuizSlide(slideDTO, chapterId, userDetails);
     }
 
-    public String addQuizSlide(SlideDTO slideDTO, String chapterId) {
+    public String addQuizSlide(SlideDTO slideDTO, String chapterId, CustomUserDetails user) {
         QuizSlide quizSlide = new QuizSlide(slideDTO.getQuizSlide());
 
         QuizSlide savedQuizSlide = quizSlideRepository.save(quizSlide);
@@ -61,13 +61,14 @@ public class QuizSlideService {
                 slideDTO.getDescription(),
                 slideDTO.getImageFileId(),
                 slideDTO.getSlideOrder(),
-                chapterId);
+                chapterId,
+                user);
 
         return slideId;
     }
 
     public String updateQuizSlide(SlideDTO slideDTO, String chapterId, String packageSessionId, String moduleId,
-            String subjectId) {
+            String subjectId, CustomUserDetails user) {
         QuizSlideDTO quizSlideDTO = slideDTO.getQuizSlide();
 
         QuizSlide quizSlide = quizSlideRepository.findById(quizSlideDTO.getId())
@@ -87,7 +88,8 @@ public class QuizSlideService {
                 chapterId,
                 packageSessionId,
                 moduleId,
-                subjectId);
+                subjectId,
+                user);
 
         return "success";
     }
@@ -103,27 +105,26 @@ public class QuizSlideService {
     }
 
     private void addOrUpdateQuestionsInBulk(QuizSlide quizSlide, List<QuizSlideQuestionDTO> quizSlideQuestionDTOs) {
-        if (quizSlideQuestionDTOs == null || quizSlideQuestionDTOs.isEmpty()) {
+        if (quizSlide.getQuestions() == null) {
             quizSlide.setQuestions(new ArrayList<>());
+        }
+
+        if (quizSlideQuestionDTOs == null || quizSlideQuestionDTOs.isEmpty()) {
+            quizSlide.getQuestions().clear();
             return;
         }
 
-        // Get existing questions map for efficient lookup
-        Map<String, QuizSlideQuestion> existingQuestionsMap = quizSlide.getQuestions() != null
-                ? quizSlide.getQuestions().stream()
-                        .collect(Collectors.toMap(QuizSlideQuestion::getId, Function.identity()))
-                : new HashMap<>();
+        Map<String, QuizSlideQuestion> existingQuestionsMap = quizSlide.getQuestions().stream()
+                .collect(Collectors.toMap(QuizSlideQuestion::getId, Function.identity()));
 
         List<QuizSlideQuestion> updatedQuestions = new ArrayList<>();
 
         for (QuizSlideQuestionDTO dto : quizSlideQuestionDTOs) {
             if (dto.getId() != null && existingQuestionsMap.containsKey(dto.getId())) {
-                // Update existing question
                 QuizSlideQuestion existingQuestion = existingQuestionsMap.get(dto.getId());
                 updateExistingQuestion(existingQuestion, dto);
                 updatedQuestions.add(existingQuestion);
             } else {
-                // Create new question
                 QuizSlideQuestion newQuestion = new QuizSlideQuestion(dto, quizSlide);
                 if (newQuestion.getId() == null) {
                     newQuestion.setId(UUID.randomUUID().toString());
@@ -132,7 +133,8 @@ public class QuizSlideService {
             }
         }
 
-        quizSlide.setQuestions(updatedQuestions);
+        quizSlide.getQuestions().clear();
+        quizSlide.getQuestions().addAll(updatedQuestions);
     }
 
     private void updateExistingQuestion(QuizSlideQuestion existingQuestion, QuizSlideQuestionDTO dto) {
@@ -203,27 +205,26 @@ public class QuizSlideService {
     }
 
     private void updateQuestionOptions(QuizSlideQuestion question, List<QuizSlideQuestionOptionDTO> optionDTOs) {
-        if (optionDTOs == null || optionDTOs.isEmpty()) {
+        if (question.getQuizSlideQuestionOptions() == null) {
             question.setQuizSlideQuestionOptions(new ArrayList<>());
+        }
+
+        if (optionDTOs == null || optionDTOs.isEmpty()) {
+            question.getQuizSlideQuestionOptions().clear();
             return;
         }
 
-        // Get existing options map for efficient lookup
-        Map<String, QuizSlideQuestionOption> existingOptionsMap = question.getQuizSlideQuestionOptions() != null
-                ? question.getQuizSlideQuestionOptions().stream()
-                        .collect(Collectors.toMap(QuizSlideQuestionOption::getId, Function.identity()))
-                : new HashMap<>();
+        Map<String, QuizSlideQuestionOption> existingOptionsMap = question.getQuizSlideQuestionOptions().stream()
+                .collect(Collectors.toMap(QuizSlideQuestionOption::getId, Function.identity()));
 
         List<QuizSlideQuestionOption> updatedOptions = new ArrayList<>();
 
         for (QuizSlideQuestionOptionDTO dto : optionDTOs) {
             if (dto.getId() != null && existingOptionsMap.containsKey(dto.getId())) {
-                // Update existing option
                 QuizSlideQuestionOption existingOption = existingOptionsMap.get(dto.getId());
                 updateExistingOption(existingOption, dto);
                 updatedOptions.add(existingOption);
             } else {
-                // Create new option
                 QuizSlideQuestionOption newOption = new QuizSlideQuestionOption(dto, question);
                 if (newOption.getId() == null) {
                     newOption.setId(UUID.randomUUID().toString());
@@ -232,7 +233,8 @@ public class QuizSlideService {
             }
         }
 
-        question.setQuizSlideQuestionOptions(updatedOptions);
+        question.getQuizSlideQuestionOptions().clear();
+        question.getQuizSlideQuestionOptions().addAll(updatedOptions);
     }
 
     private void updateExistingOption(QuizSlideQuestionOption existingOption, QuizSlideQuestionOptionDTO dto) {

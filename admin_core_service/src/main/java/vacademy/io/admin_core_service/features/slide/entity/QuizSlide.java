@@ -49,7 +49,7 @@ public class QuizSlide {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @OneToMany(mappedBy = "quizSlide", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "quizSlide", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<QuizSlideQuestion> questions;
 
     public QuizSlide(QuizSlideDTO quizSlideDTO) {

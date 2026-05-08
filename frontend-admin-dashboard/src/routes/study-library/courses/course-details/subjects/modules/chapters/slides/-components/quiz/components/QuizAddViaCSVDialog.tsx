@@ -37,7 +37,7 @@ const EXCEL_TEMPLATE_DATA = [
     ['Which planet is closest to the Sun?', 'MCQS', 'Venus', 'Mercury', 'Mars', 'Earth', 'B', 'Mercury is the closest planet to the Sun.'],
 ];
 
-const CORRECT_ANSWER_MAP: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+const OPTION_HEADER_REGEX = /^option_([a-z])$/;
 
 interface ParseError {
     row: number;
@@ -98,7 +98,52 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
         const questions: UploadQuestionPaperFormType['questions'] = [];
         const errors: ParseError[] = [];
 
-        // Skip header row (index 0)
+        if (rows.length === 0) {
+            return { questions, errors: [{ row: 0, message: 'File is empty.' }] };
+        }
+
+        const headerRow = rows[0]!.map((h) => h.trim().toLowerCase());
+        const headerIndex: Record<string, number> = {};
+        headerRow.forEach((h, i) => {
+            if (h && headerIndex[h] === undefined) headerIndex[h] = i;
+        });
+
+        const qTextIdx = headerIndex['question_text'];
+        const qTypeIdx = headerIndex['question_type'];
+        const correctIdx = headerIndex['correct_answer'];
+        const explIdx = headerIndex['explanation'];
+
+        const missing: string[] = [];
+        if (qTextIdx === undefined) missing.push('question_text');
+        if (qTypeIdx === undefined) missing.push('question_type');
+        if (correctIdx === undefined) missing.push('correct_answer');
+        if (missing.length > 0) {
+            return {
+                questions,
+                errors: [{ row: 1, message: `Missing required column(s): ${missing.join(', ')}.` }],
+            };
+        }
+
+        const optionColumns: { letter: string; index: number }[] = [];
+        headerRow.forEach((h, i) => {
+            const m = h.match(OPTION_HEADER_REGEX);
+            if (m) optionColumns.push({ letter: m[1]!.toUpperCase(), index: i });
+        });
+        optionColumns.sort((a, b) => a.letter.localeCompare(b.letter));
+
+        if (optionColumns.length === 0) {
+            return {
+                questions,
+                errors: [{ row: 1, message: 'No option columns found. Add option_a, option_b, ... at minimum.' }],
+            };
+        }
+
+        const validLetters = optionColumns.map((c) => c.letter);
+        const correctAnswerMap: Record<string, number> = {};
+        validLetters.forEach((letter, i) => {
+            correctAnswerMap[letter] = i;
+        });
+
         for (let i = 1; i < rows.length; i++) {
             const rowNum = i + 1; // 1-based for display
             const cols = rows[i]!;
@@ -106,19 +151,11 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
             // Skip fully empty rows
             if (cols.every((c) => !c)) continue;
 
-            if (cols.length < 7) {
-                errors.push({ row: rowNum, message: `Not enough columns (got ${cols.length}, need at least 7).` });
-                continue;
-            }
-
-            const questionText = (cols[0] || '').trim();
-            const questionType = (cols[1] || '').trim().toUpperCase();
-            const optA = (cols[2] || '').trim();
-            const optB = (cols[3] || '').trim();
-            const optC = (cols[4] || '').trim();
-            const optD = (cols[5] || '').trim();
-            const correctAnswer = (cols[6] || '').trim().toUpperCase();
-            const explanation = cols.slice(7).join(',').trim();
+            const questionText = (cols[qTextIdx!] || '').trim();
+            const questionType = (cols[qTypeIdx!] || '').trim().toUpperCase();
+            const correctAnswerRaw = (cols[correctIdx!] || '').trim();
+            const correctAnswer = correctAnswerRaw.toUpperCase();
+            const explanation = explIdx !== undefined ? (cols[explIdx] || '').trim() : '';
 
             if (!questionText) {
                 errors.push({ row: rowNum, message: 'question_text is empty.' });
@@ -128,22 +165,22 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
             if (questionType !== 'MCQS' && questionType !== 'TRUE_FALSE') {
                 errors.push({
                     row: rowNum,
-                    message: `Unsupported question_type "${(cols[1] || '').trim()}". Only MCQS and TRUE_FALSE are allowed.`,
+                    message: `Unsupported question_type "${(cols[qTypeIdx!] || '').trim()}". Only MCQS and TRUE_FALSE are allowed.`,
                 });
                 continue;
             }
 
             if (questionType === 'MCQS') {
-                const answerIndex = CORRECT_ANSWER_MAP[correctAnswer];
+                const answerIndex = correctAnswerMap[correctAnswer];
                 if (answerIndex === undefined) {
                     errors.push({
                         row: rowNum,
-                        message: `Invalid correct_answer "${(cols[6] || '').trim()}". Use A, B, C, or D.`,
+                        message: `Invalid correct_answer "${correctAnswerRaw}". Use ${validLetters.join(', ')}.`,
                     });
                     continue;
                 }
 
-                const rawOptions = [optA, optB, optC, optD];
+                const rawOptions = optionColumns.map((c) => (cols[c.index] || '').trim());
 
                 if (!rawOptions[answerIndex]) {
                     errors.push({
@@ -185,7 +222,7 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                 if (correctAnswer !== 'A' && correctAnswer !== 'B') {
                     errors.push({
                         row: rowNum,
-                        message: `Invalid correct_answer "${(cols[6] || '').trim()}" for TRUE_FALSE. Use A (True) or B (False).`,
+                        message: `Invalid correct_answer "${correctAnswerRaw}" for TRUE_FALSE. Use A (True) or B (False).`,
                     });
                     continue;
                 }
@@ -308,7 +345,7 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                             correct_answer, explanation
                         </code>
                         <p className="mt-2 text-neutral-400">
-                            correct_answer: A/B/C/D for MCQS · A (True) or B (False) for TRUE_FALSE
+                            For MCQS, add more options as needed (option_e, option_f, ...) — correct_answer must match an option letter (A, B, C, ...). For TRUE_FALSE, use A (True) or B (False).
                         </p>
                     </div>
 

@@ -73,7 +73,7 @@ public class QuizSlideQuestion {
     @Column(name = "negative_marking")
     private Double negativeMarking;
 
-    @OneToMany(mappedBy = "quizSlideQuestion", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "quizSlideQuestion", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<QuizSlideQuestionOption> quizSlideQuestionOptions;
 
     public QuizSlideQuestion(QuizSlideQuestionDTO dto, QuizSlide quizSlide) {

@@ -3,8 +3,12 @@ package vacademy.io.admin_core_service.features.timeline.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.timeline.entity.TimelineEvent;
+
+import java.util.List;
 
 @Repository
 public interface TimelineEventRepository extends JpaRepository<TimelineEvent, String> {
@@ -38,4 +42,45 @@ public interface TimelineEventRepository extends JpaRepository<TimelineEvent, St
          * Used by UserLeadProfileService to aggregate events across all audience responses.
          */
         long countByTypeAndTypeIdIn(String type, java.util.List<String> typeIds);
+
+        /**
+         * Top-N (most-recent) timeline events per student in a single query —
+         * uses a Postgres ROW_NUMBER window so we keep up to {@code limit}
+         * rows per student_user_id. Powers the "Activity & Notes" column +
+         * CSV export on the campaign-users table; we need a few recent
+         * entries (not just one) so the cell can show a small stack and the
+         * CSV can flatten them per-row.
+         */
+        @Query(value = """
+                        SELECT id, type, type_id, action_type, actor_type, actor_id,
+                               actor_name, title, description, metadata_json,
+                               is_pinned, student_user_id, created_at
+                        FROM (
+                            SELECT te.*,
+                                   ROW_NUMBER() OVER (
+                                       PARTITION BY te.student_user_id
+                                       ORDER BY te.created_at DESC
+                                   ) AS rn
+                            FROM timeline_event te
+                            WHERE te.student_user_id IN (:studentUserIds)
+                        ) ranked
+                        WHERE rn <= :perStudentLimit
+                        ORDER BY student_user_id, created_at DESC
+                        """, nativeQuery = true)
+        List<TimelineEvent> findRecentPerStudent(
+                        @Param("studentUserIds") List<String> studentUserIds,
+                        @Param("perStudentLimit") int perStudentLimit);
+
+        /**
+         * Per-student note count for a batch of users. Returns rows of
+         * [student_user_id, count] so the FE can render a count chip without
+         * issuing N separate count queries.
+         */
+        @Query(value = """
+                        SELECT student_user_id, COUNT(*)
+                        FROM timeline_event
+                        WHERE student_user_id IN (:studentUserIds)
+                        GROUP BY student_user_id
+                        """, nativeQuery = true)
+        List<Object[]> countByStudentUserIds(@Param("studentUserIds") List<String> studentUserIds);
 }

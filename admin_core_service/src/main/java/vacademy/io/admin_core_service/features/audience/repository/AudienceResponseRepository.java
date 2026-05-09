@@ -92,7 +92,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:searchQuery, '') = '' OR
                                    LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
                                    LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
-                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%'))
+                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%') OR
+                                   (COALESCE(:searchUserIdsCsv, '') != ''
+                                    AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (:minLeadScore IS NULL OR COALESCE(ls.raw_score, 0) >= :minLeadScore)
                               AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
                               AND (COALESCE(:leadTier, '') = '' OR
@@ -164,7 +166,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:searchQuery, '') = '' OR
                                    LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
                                    LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
-                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%'))
+                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%') OR
+                                   (COALESCE(:searchUserIdsCsv, '') != ''
+                                    AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (:minLeadScore IS NULL OR COALESCE(ls.raw_score, 0) >= :minLeadScore)
                               AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
                               AND (COALESCE(:leadTier, '') = '' OR
@@ -212,6 +216,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("submittedTo") Timestamp submittedTo,
                         @Param("excludeDuplicates") Boolean excludeDuplicates,
                         @Param("searchQuery") String searchQuery,
+                        @Param("searchUserIdsCsv") String searchUserIdsCsv,
                         @Param("minLeadScore") Integer minLeadScore,
                         @Param("maxLeadScore") Integer maxLeadScore,
                         @Param("leadTier") String leadTier,
@@ -265,7 +270,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:searchQuery, '') = '' OR
                                    LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
                                    LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
-                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%'))
+                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%') OR
+                                   (COALESCE(:searchUserIdsCsv, '') != ''
+                                    AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (COALESCE(:leadTier, '') = '' OR
                                    (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
                                    (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
@@ -307,7 +314,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:searchQuery, '') = '' OR
                                    LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
                                    LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
-                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%'))
+                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%') OR
+                                   (COALESCE(:searchUserIdsCsv, '') != ''
+                                    AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (COALESCE(:leadTier, '') = '' OR
                                    (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
                                    (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
@@ -334,6 +343,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("submittedFrom") Timestamp submittedFrom,
                         @Param("submittedTo") Timestamp submittedTo,
                         @Param("searchQuery") String searchQuery,
+                        @Param("searchUserIdsCsv") String searchUserIdsCsv,
                         @Param("leadTier") String leadTier,
                         @Param("assignedCounselorId") String assignedCounselorId,
                         @Param("allowedAudienceIdsCsv") String allowedAudienceIdsCsv,

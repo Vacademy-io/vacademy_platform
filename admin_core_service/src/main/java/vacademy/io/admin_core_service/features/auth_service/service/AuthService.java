@@ -74,6 +74,43 @@ public class AuthService {
         }
     }
 
+    /**
+     * Substring search against auth_service's users table (full_name / email /
+     * mobile_number). Returns user IDs only — caller can then filter its own
+     * tables on user_id IN (...).
+     *
+     * Returns an empty list on error so a transient auth-service blip degrades
+     * search to "no matches" rather than blowing up the caller.
+     */
+    public List<String> searchUserIdsByQuery(String query, String instituteId) {
+        if (query == null || query.isBlank()) return List.of();
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            String encodedQuery = java.net.URLEncoder.encode(query.trim(),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            StringBuilder path = new StringBuilder(AuthServiceRoutes.SEARCH_USER_IDS)
+                    .append("?query=").append(encodedQuery);
+            if (instituteId != null && !instituteId.isBlank()) {
+                path.append("&instituteId=").append(java.net.URLEncoder.encode(instituteId,
+                        java.nio.charset.StandardCharsets.UTF_8));
+            }
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    path.toString(),
+                    null);
+
+            if (response == null || response.getBody() == null) return List.of();
+            return objectMapper.readValue(response.getBody(), new TypeReference<List<String>>() {
+            });
+        } catch (Exception e) {
+            logger.warn("searchUserIdsByQuery failed for query='{}', instituteId='{}': {}",
+                    query, instituteId, e.getMessage());
+            return List.of();
+        }
+    }
+
     public UserDTO updateUser(UserDTO userDTO, String userId) {
         if (userDTO == null || userId == null) {
             throw new VacademyException("User details cannot be null");

@@ -1508,6 +1508,26 @@ public class AudienceService {
         // listing. Callers must opt into ONLY_CONVERTED or ALL to see them.
         String conversionStatusFilter = filterDTO.getConversionStatusFilter();
 
+        // Cross-service search expansion. Leads created via the simple submit flow
+        // store the user's name/email/mobile on the User row in auth_service, not
+        // on audience_response.parent_*. So a substring search like "cold" against
+        // ar.parent_* misses those users entirely. We resolve the gap by asking
+        // auth_service for matching user IDs first, then OR'ing them into the
+        // audience-response filter via :searchUserIdsCsv. Empty/blank search → null
+        // CSV → predicate behaves exactly as before for non-search queries.
+        String searchUserIdsCsv = null;
+        String rawSearch = filterDTO.getSearchQuery();
+        if (rawSearch != null && !rawSearch.isBlank()) {
+            try {
+                List<String> ids = authService.searchUserIdsByQuery(rawSearch, filterDTO.getInstituteId());
+                if (ids != null && !ids.isEmpty()) {
+                    searchUserIdsCsv = String.join(",", ids);
+                }
+            } catch (Exception e) {
+                logger.warn("auth-service user search failed for query='{}': {}", rawSearch, e.getMessage());
+            }
+        }
+
         // Cross-audience path: when no audienceId is supplied, return leads
         // across every campaign in the institute. Used by the "Recent Leads"
         // view.
@@ -1520,6 +1540,7 @@ public class AudienceService {
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
+                    searchUserIdsCsv,
                     filterDTO.getLeadTier(),
                     filterDTO.getAssignedCounselorId(),
                     allowedAudienceIdsCsv,
@@ -1541,6 +1562,7 @@ public class AudienceService {
                 filterDTO.getSubmittedToLocal(),
                 filterDTO.getExcludeDuplicates(),
                 filterDTO.getSearchQuery(),
+                searchUserIdsCsv,
                 filterDTO.getMinLeadScore(),
                 filterDTO.getMaxLeadScore(),
                 filterDTO.getLeadTier(),

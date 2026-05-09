@@ -546,6 +546,14 @@ export function BulkScheduleGrid() {
                 const totalDurationMinutes =
                     Number(row.durationHours || '0') * 60 +
                     Number(row.durationMinutes || '0');
+                // Bulk must match the single-class wire convention: send the
+                // user's wall-clock at the session's timezone, *labeled* as
+                // UTC ('Z'). The backend extracts meeting_date / start_time
+                // via Timestamp.toLocalDateTime() (no timezone awareness),
+                // so a real UTC instant for an IST wall-clock value would
+                // shift the stored date by the tz offset (e.g.
+                // 2026-05-10 00:45 IST → 2026-05-09 in the DB), and the
+                // search "today in session tz" filter would miss the row.
                 const startUtc = fromZonedTime(
                     `${row.startDate}T${row.startTime}:00`,
                     data.timeZone
@@ -553,8 +561,13 @@ export function BulkScheduleGrid() {
                 const endUtc = new Date(
                     startUtc.getTime() + totalDurationMinutes * 60_000
                 );
-                dto.start_time = startUtc.toISOString();
-                dto.last_entry_time = endUtc.toISOString();
+                const wireFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
+                dto.start_time = formatTZ(startUtc, wireFormat, {
+                    timeZone: data.timeZone,
+                });
+                dto.last_entry_time = formatTZ(endUtc, wireFormat, {
+                    timeZone: data.timeZone,
+                });
                 return dto;
             });
 

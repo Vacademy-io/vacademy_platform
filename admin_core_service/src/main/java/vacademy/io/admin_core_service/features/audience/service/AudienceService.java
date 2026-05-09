@@ -448,6 +448,25 @@ public class AudienceService {
                             audience.getId());
                 }
 
+                // 3b. Calculate initial lead score (real-time).
+                // Custom fields are saved first so the completeness factor sees them.
+                // Without this call no LeadScore row is ever created — campaign_count
+                // and best_score on UserLeadProfile would stay at 0 forever for every
+                // lead that comes through this endpoint.
+                try {
+                    leadScoringService.calculateAndSaveScore(
+                            savedResponse.getId(),
+                            savedResponse.getAudienceId(),
+                            instituteId,
+                            savedResponse.getSourceType(),
+                            savedResponse.getEnquiryId()
+                    );
+                } catch (Exception e) {
+                    logger.error("Failed to calculate initial lead score for response {}: {}",
+                            savedResponse.getId(), e.getMessage());
+                    // Non-blocking — lead is still saved even if scoring fails
+                }
+
                 // 4. Build custom field map for email
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
 
@@ -731,6 +750,23 @@ public class AudienceService {
                             requestDTO.getCustomFieldValues(),
                             audience.getInstituteId(),
                             audience.getId());
+                }
+
+                // 3b. Calculate initial lead score (real-time).
+                // Same fix as v1 submitLead — without this, no LeadScore row is created
+                // and the user's profile shows campaign_count=0, best_score=0.
+                try {
+                    leadScoringService.calculateAndSaveScore(
+                            savedResponse.getId(),
+                            savedResponse.getAudienceId(),
+                            instituteId,
+                            savedResponse.getSourceType(),
+                            savedResponse.getEnquiryId()
+                    );
+                } catch (Exception e) {
+                    logger.error("[V2] Failed to calculate initial lead score for response {}: {}",
+                            savedResponse.getId(), e.getMessage());
+                    // Non-blocking
                 }
 
                 // 4. Build custom field map for email (to pass to workflow)

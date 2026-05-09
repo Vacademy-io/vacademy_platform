@@ -43,7 +43,7 @@ const ALL_AUDIENCES_VALUE = '__ALL__';
 const ALL_TIERS_VALUE = '__ALL__';
 type LeadTier = 'HOT' | 'WARM' | 'COLD';
 type ConversionFilter = 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
-const SEARCH_DEBOUNCE_MS = 350;
+const SEARCH_DEBOUNCE_MS = 500;
 
 // Convert a date input value (yyyy-mm-dd) to an ISO timestamp at the start
 // or end of that day in the user's local timezone. Returned as plain ISO so
@@ -200,8 +200,7 @@ export const RecentLeadsPage = () => {
     // Conversion-state filter. Default hides leads who've been assigned to a
     // course (the backend marks them CONVERTED on enrollment) so this view
     // stays focused on still-actionable leads.
-    const [conversionFilter, setConversionFilter] =
-        useState<ConversionFilter>('EXCLUDE_CONVERTED');
+    const [conversionFilter, setConversionFilter] = useState<ConversionFilter>('EXCLUDE_CONVERTED');
 
     useEffect(() => {
         setNavHeading(<h1 className="text-lg">Recent Leads</h1>);
@@ -242,8 +241,7 @@ export const RecentLeadsPage = () => {
         queryFn: () =>
             fetchRecentLeads({
                 institute_id: instituteId ?? '',
-                audience_id:
-                    audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                audience_id: audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
                 submitted_from_local: startOfDayIso(appliedRange.from),
                 submitted_to_local: endOfDayIso(appliedRange.to),
                 search_query: appliedSearch || undefined,
@@ -300,179 +298,166 @@ export const RecentLeadsPage = () => {
 
     return (
         <StudentSidebarProvider>
-        <div className="flex w-full flex-col gap-4">
-            {/* Filter bar */}
-            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
-                <div className="flex min-w-[14rem] flex-1 flex-col gap-1">
-                    <Label htmlFor="recent-leads-search" className="text-xs text-neutral-600">
-                        Search
-                    </Label>
-                    <div className="relative">
-                        <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Input
-                            id="recent-leads-search"
-                            type="text"
-                            value={searchInput}
-                            onChange={(e) => setSearchInput(e.target.value)}
-                            placeholder="Name, email or phone"
-                            className="w-full pl-7"
-                            aria-label="Search leads by name, email or phone"
-                        />
+            <div className="flex w-full flex-col gap-4">
+                {/* Filter bar */}
+                <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                    <div className="flex min-w-[14rem] flex-1 flex-col gap-1">
+                        <Label htmlFor="recent-leads-search" className="text-xs text-neutral-600">
+                            Search
+                        </Label>
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                id="recent-leads-search"
+                                type="text"
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
+                                placeholder="Name, email or phone"
+                                className="w-full pl-7"
+                                aria-label="Search leads by name, email or phone"
+                            />
+                        </div>
                     </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="recent-leads-audience" className="text-xs text-neutral-600">
-                        Audience
-                    </Label>
-                    <div className="relative">
-                        <Megaphone className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Select value={audienceId} onValueChange={handleAudienceChange}>
-                            <SelectTrigger
-                                id="recent-leads-audience"
-                                className="w-56 pl-7"
-                            >
-                                <SelectValue placeholder="All audiences" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value={ALL_AUDIENCES_VALUE}>
-                                    All audiences
-                                </SelectItem>
-                                {audienceOptions.map((opt) => (
-                                    <SelectItem key={opt.id} value={opt.id}>
-                                        {opt.name}
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="recent-leads-audience" className="text-xs text-neutral-600">
+                            Audience
+                        </Label>
+                        <div className="relative">
+                            <Megaphone className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Select value={audienceId} onValueChange={handleAudienceChange}>
+                                <SelectTrigger id="recent-leads-audience" className="w-56 pl-7">
+                                    <SelectValue placeholder="All audiences" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={ALL_AUDIENCES_VALUE}>
+                                        All audiences
                                     </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                                    {audienceOptions.map((opt) => (
+                                        <SelectItem key={opt.id} value={opt.id}>
+                                            {opt.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="recent-leads-tier" className="text-xs text-neutral-600">
-                        Lead tier
-                    </Label>
-                    <div className="relative">
-                        <Flame className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Select value={tierFilter} onValueChange={handleTierChange}>
-                            <SelectTrigger
-                                id="recent-leads-tier"
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="recent-leads-tier" className="text-xs text-neutral-600">
+                            Lead tier
+                        </Label>
+                        <div className="relative">
+                            <Flame className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Select value={tierFilter} onValueChange={handleTierChange}>
+                                <SelectTrigger id="recent-leads-tier" className="w-44 pl-7">
+                                    <SelectValue placeholder="All tiers" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={ALL_TIERS_VALUE}>All tiers</SelectItem>
+                                    <SelectItem value={'HOT' satisfies LeadTier}>Hot</SelectItem>
+                                    <SelectItem value={'WARM' satisfies LeadTier}>Warm</SelectItem>
+                                    <SelectItem value={'COLD' satisfies LeadTier}>Cold</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label
+                            htmlFor="recent-leads-conversion"
+                            className="text-xs text-neutral-600"
+                        >
+                            Status
+                        </Label>
+                        <div className="relative">
+                            <CheckCircle2 className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Select value={conversionFilter} onValueChange={handleConversionChange}>
+                                <SelectTrigger id="recent-leads-conversion" className="w-48 pl-7">
+                                    <SelectValue placeholder="Active leads" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="EXCLUDE_CONVERTED">Active leads</SelectItem>
+                                    <SelectItem value="ONLY_CONVERTED">Converted only</SelectItem>
+                                    <SelectItem value="ALL">All</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="recent-leads-from" className="text-xs text-neutral-600">
+                            Submitted From
+                        </Label>
+                        <div className="relative">
+                            <Calendar className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                id="recent-leads-from"
+                                type="date"
+                                value={fromDate}
+                                onChange={(e) => setFromDate(e.target.value)}
                                 className="w-44 pl-7"
-                            >
-                                <SelectValue placeholder="All tiers" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value={ALL_TIERS_VALUE}>All tiers</SelectItem>
-                                <SelectItem value={'HOT' satisfies LeadTier}>Hot</SelectItem>
-                                <SelectItem value={'WARM' satisfies LeadTier}>Warm</SelectItem>
-                                <SelectItem value={'COLD' satisfies LeadTier}>Cold</SelectItem>
-                            </SelectContent>
-                        </Select>
+                            />
+                        </div>
                     </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label
-                        htmlFor="recent-leads-conversion"
-                        className="text-xs text-neutral-600"
-                    >
-                        Status
-                    </Label>
-                    <div className="relative">
-                        <CheckCircle2 className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Select value={conversionFilter} onValueChange={handleConversionChange}>
-                            <SelectTrigger
-                                id="recent-leads-conversion"
-                                className="w-48 pl-7"
-                            >
-                                <SelectValue placeholder="Active leads" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="EXCLUDE_CONVERTED">
-                                    Active leads
-                                </SelectItem>
-                                <SelectItem value="ONLY_CONVERTED">
-                                    Converted only
-                                </SelectItem>
-                                <SelectItem value="ALL">All</SelectItem>
-                            </SelectContent>
-                        </Select>
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="recent-leads-to" className="text-xs text-neutral-600">
+                            Submitted To
+                        </Label>
+                        <div className="relative">
+                            <Calendar className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                id="recent-leads-to"
+                                type="date"
+                                value={toDate}
+                                onChange={(e) => setToDate(e.target.value)}
+                                className="w-44 pl-7"
+                            />
+                        </div>
                     </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="recent-leads-from" className="text-xs text-neutral-600">
-                        Submitted From
-                    </Label>
-                    <div className="relative">
-                        <Calendar className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Input
-                            id="recent-leads-from"
-                            type="date"
-                            value={fromDate}
-                            onChange={(e) => setFromDate(e.target.value)}
-                            className="w-44 pl-7"
-                        />
-                    </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="recent-leads-to" className="text-xs text-neutral-600">
-                        Submitted To
-                    </Label>
-                    <div className="relative">
-                        <Calendar className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Input
-                            id="recent-leads-to"
-                            type="date"
-                            value={toDate}
-                            onChange={(e) => setToDate(e.target.value)}
-                            className="w-44 pl-7"
-                        />
-                    </div>
-                </div>
-                <div className="flex gap-2">
-                    <Button size="sm" onClick={handleApplyFilter}>
-                        Apply
-                    </Button>
-                    {isFilterActive && (
-                        <Button size="sm" variant="ghost" onClick={handleClearFilter}>
-                            Clear
+                    <div className="flex gap-2">
+                        <Button size="sm" onClick={handleApplyFilter}>
+                            Apply
                         </Button>
-                    )}
+                        {isFilterActive && (
+                            <Button size="sm" variant="ghost" onClick={handleClearFilter}>
+                                Clear
+                            </Button>
+                        )}
+                    </div>
+                    <div className="ml-auto text-xs text-neutral-500">
+                        {data ? `${data.totalElements} total` : ''}
+                    </div>
                 </div>
-                <div className="ml-auto text-xs text-neutral-500">
-                    {data ? `${data.totalElements} total` : ''}
-                </div>
-            </div>
 
-            {/* Table + side view: lives inside its own SidebarProvider so the
+                {/* Table + side view: lives inside its own SidebarProvider so the
                 Details icon can toggle the StudentSidebar without affecting
                 any outer sidebars. */}
-            <RecentLeadsTable data={data} isLoading={isLoading} error={error} />
+                <RecentLeadsTable data={data} isLoading={isLoading} error={error} />
 
-            {/* Pagination */}
-            {totalPages > 1 && (
-                <div className="flex items-center justify-end gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage((p) => Math.max(0, p - 1))}
-                        disabled={page === 0}
-                    >
-                        <ChevronLeft className="mr-1 size-4" />
-                        Previous
-                    </Button>
-                    <span className="text-xs text-neutral-600">
-                        Page {page + 1} of {totalPages}
-                    </span>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-                        disabled={page >= totalPages - 1}
-                    >
-                        Next
-                        <ChevronRight className="ml-1 size-4" />
-                    </Button>
-                </div>
-            )}
-        </div>
+                {/* Pagination */}
+                {totalPages > 1 && (
+                    <div className="flex items-center justify-end gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPage((p) => Math.max(0, p - 1))}
+                            disabled={page === 0}
+                        >
+                            <ChevronLeft className="mr-1 size-4" />
+                            Previous
+                        </Button>
+                        <span className="text-xs text-neutral-600">
+                            Page {page + 1} of {totalPages}
+                        </span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                            disabled={page >= totalPages - 1}
+                        >
+                            Next
+                            <ChevronRight className="ml-1 size-4" />
+                        </Button>
+                    </div>
+                )}
+            </div>
         </StudentSidebarProvider>
     );
 };
@@ -551,42 +536,44 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                                 const profile =
                                     showLeadScore && userId ? leadProfiles[userId] : undefined;
                                 return (
-                                <tr
-                                    key={lead.response_id ?? idx}
-                                    className="border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50"
-                                >
-                                    <td className="px-4 py-3">
-                                        <SidebarTrigger
-                                            onClick={() => handleSelectLead(lead)}
-                                            aria-label={`Open details for ${displayName(lead)}`}
-                                        >
-                                            <ArrowSquareOut className="size-5 cursor-pointer text-neutral-600" />
-                                        </SidebarTrigger>
-                                    </td>
-                                    <td className="px-4 py-3 font-medium text-neutral-900">
-                                        <div className="flex flex-col gap-0.5">
-                                            <span>{displayName(lead)}</span>
-                                            {profile && (
-                                                <LeadScoreBadge
-                                                    score={profile.best_score}
-                                                    size="sm"
-                                                />
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-4 py-3 text-neutral-700">
-                                        {displayEmail(lead)}
-                                    </td>
-                                    <td className="px-4 py-3 text-neutral-700">
-                                        {displayPhone(lead)}
-                                    </td>
-                                    <td className="px-4 py-3 text-neutral-700">
-                                        {displayAudience(lead)}
-                                    </td>
-                                    <td className="px-4 py-3 text-neutral-700">
-                                        {displaySubmittedAt(lead)}
-                                    </td>
-                                </tr>
+                                    <tr
+                                        key={lead.response_id ?? idx}
+                                        className="border-b border-neutral-100 last:border-b-0 hover:bg-neutral-50"
+                                    >
+                                        <td className="px-4 py-3">
+                                            <SidebarTrigger
+                                                onClick={() => handleSelectLead(lead)}
+                                                aria-label={`Open details for ${displayName(lead)}`}
+                                            >
+                                                <ArrowSquareOut className="size-5 cursor-pointer text-neutral-600" />
+                                            </SidebarTrigger>
+                                        </td>
+                                        <td className="px-4 py-3 font-medium text-neutral-900">
+                                            <div className="flex flex-col gap-0.5">
+                                                <span>{displayName(lead)}</span>
+                                                {profile &&
+                                                    profile.conversion_status !== 'CONVERTED' && (
+                                                        <LeadScoreBadge
+                                                            score={profile.best_score}
+                                                            tier={profile.lead_tier}
+                                                            size="sm"
+                                                        />
+                                                    )}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3 text-neutral-700">
+                                            {displayEmail(lead)}
+                                        </td>
+                                        <td className="px-4 py-3 text-neutral-700">
+                                            {displayPhone(lead)}
+                                        </td>
+                                        <td className="px-4 py-3 text-neutral-700">
+                                            {displayAudience(lead)}
+                                        </td>
+                                        <td className="px-4 py-3 text-neutral-700">
+                                            {displaySubmittedAt(lead)}
+                                        </td>
+                                    </tr>
                                 );
                             })}
                         </tbody>

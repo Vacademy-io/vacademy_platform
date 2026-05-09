@@ -38,4 +38,11 @@ public interface TimelineEventRepository extends JpaRepository<TimelineEvent, St
          * Used by UserLeadProfileService to aggregate events across all audience responses.
          */
         long countByTypeAndTypeIdIn(String type, java.util.List<String> typeIds);
+
+        /**
+         * Count timeline events tied to a student via cross-stage continuity.
+         * Notes/calls/meetings logged from the lead-profile drawer are stamped with
+         * student_user_id, so this is the source of truth for engagement on a user.
+         */
+        long countByStudentUserId(String studentUserId);
 }

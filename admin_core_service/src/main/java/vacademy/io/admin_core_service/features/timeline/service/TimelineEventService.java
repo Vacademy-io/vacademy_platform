@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventRequestDTO;
 import vacademy.io.admin_core_service.features.timeline.entity.TimelineEvent;
@@ -26,6 +27,9 @@ public class TimelineEventService {
 
         @Autowired
         private ObjectMapper objectMapper;
+
+        @Autowired
+        private UserLeadProfileService userLeadProfileService;
 
         /**
          * Internal method to log a timeline event from other services.
@@ -72,6 +76,8 @@ public class TimelineEventService {
 
                 timelineEventRepository.save(event);
                 logger.debug("Logged timeline event: {} on {}[{}]", actionType, type, typeId);
+
+                triggerLeadProfileRecompute(studentUserId);
         }
 
         /**
@@ -109,7 +115,28 @@ public class TimelineEventService {
                                 .build();
 
                 TimelineEvent savedEvent = timelineEventRepository.save(event);
+
+                triggerLeadProfileRecompute(savedEvent.getStudentUserId());
+
                 return mapToDTO(savedEvent);
+        }
+
+        /**
+         * Trigger an immediate lead-profile recompute for the student tied to a timeline event.
+         *
+         * Without this, total_timeline_events and the engagement component of best_score
+         * would only update when the 30-min batchRebuildProfiles job runs, making admin
+         * actions (notes, calls, meetings) feel disconnected from the score they affect.
+         *
+         * Best-effort — failures are logged but do not roll back the timeline event.
+         */
+        private void triggerLeadProfileRecompute(String studentUserId) {
+                if (studentUserId == null) return;
+                try {
+                        userLeadProfileService.recomputeForUser(studentUserId);
+                } catch (Exception e) {
+                        logger.warn("Failed to recompute lead profile for studentUserId={}", studentUserId, e);
+                }
         }
 
         /**

@@ -2,6 +2,8 @@ package vacademy.io.admin_core_service.features.audience.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +49,14 @@ public class UserLeadProfileService {
     private final LeadScoreRepository leadScoreRepository;
     private final LiveSessionLogsRepository liveSessionLogsRepository;
     private final TimelineEventRepository timelineEventRepository;
+
+    /**
+     * @Lazy breaks the cycle with LeadScoringService (which already injects this
+     * service). Spring proxies the bean so it's only resolved on first use.
+     */
+    @Autowired
+    @Lazy
+    private LeadScoringService leadScoringService;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Public API
@@ -105,6 +115,31 @@ public class UserLeadProfileService {
     }
 
     /**
+     * Auto-mark conversion on enrollment, but only if a lead profile already exists.
+     *
+     * Used by the enrollment flow so a user who came in as a lead (had a campaign
+     * submission, was contacted, etc.) is automatically removed from open-lead views
+     * once they enroll. Users who enroll directly without ever being a lead do not get
+     * a profile created — they were never tracked, so there's nothing to convert.
+     *
+     * Returns true if a profile existed and was marked converted; false otherwise.
+     */
+    @Transactional
+    public boolean markConvertedIfExists(String userId, String instituteId) {
+        if (userId == null || instituteId == null) return false;
+        return userLeadProfileRepository
+                .findByUserIdAndInstituteId(userId, instituteId)
+                .map(profile -> {
+                    profile.setConversionStatus("CONVERTED");
+                    profile.setConvertedAt(new Timestamp(System.currentTimeMillis()));
+                    profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
+                    userLeadProfileRepository.save(profile);
+                    return true;
+                })
+                .orElse(false);
+    }
+
+    /**
      * Mark a user's lead as CONVERTED. Freezes score updates.
      * Called by admin when manually marking as converted, or automatically on enrollment.
      */
@@ -150,8 +185,14 @@ public class UserLeadProfileService {
     }
 
     /**
-     * Manually set the lead tier (HOT, WARM, COLD) by overriding the best_score.
-     * HOT → score 90, WARM → score 60, COLD → score 20.
+     * Manually override the lead tier (HOT, WARM, COLD).
+     *
+     * Only sets lead_tier — best_score is left intact so the formula's output remains
+     * visible alongside the override. Frontends should resolve the active tier as
+     * "explicit lead_tier wins, else infer from best_score".
+     *
+     * Previously this method also wrote best_score = 20/60/90 which silently destroyed
+     * the formula output and made it impossible to tell why a profile was at 20.
      */
     @Transactional
     public UserLeadProfile updateLeadTier(String userId, String instituteId, String tier) {
@@ -162,18 +203,62 @@ public class UserLeadProfileService {
                         .instituteId(instituteId)
                         .build());
 
-        int score;
-        switch (tier.toUpperCase()) {
-            case "HOT":  score = 90; break;
-            case "WARM": score = 60; break;
-            default:     score = 20; break;
-        }
-        profile.setBestScore(score);
-        profile.setLeadTier(tier.toUpperCase());
+        String requested = tier.toUpperCase();
+        String scoreDerived = profile.computeTier();
+
+        // If the admin is requesting the tier the score would derive anyway, clear
+        // lead_tier instead of storing it. The frontend falls back to score-derived
+        // tier when lead_tier is null, so this acts as "reset override". It also
+        // lets users heal legacy stale lead_tier values (set by the old recompute
+        // path) by simply clicking the tier their score now lands in.
+        profile.setLeadTier(requested.equalsIgnoreCase(scoreDerived) ? null : requested);
         profile.setUpdatedAt(new Timestamp(System.currentTimeMillis()));
-        profile.setLastCalculatedAt(new Timestamp(System.currentTimeMillis()));
 
         return userLeadProfileRepository.save(profile);
+    }
+
+    /**
+     * Rebuild the profile for a user given only their userId.
+     * Looks up the institute from the existing profile (user_id is unique on user_lead_profile,
+     * so there is at most one). Used by event-driven triggers like timeline event inserts
+     * where the caller doesn't have the institute in hand.
+     *
+     * For every audience response the user owns, re-runs the full scoring formula so
+     * that newly-added timeline events flow into the engagement component. Without
+     * this, buildOrUpdateProfile would just re-aggregate the existing (stale)
+     * LeadScore.rawScore values and best_score would never move.
+     *
+     * Best-effort — no-op if no profile exists yet (the user has never been scored).
+     */
+    @Transactional
+    public void recomputeForUser(String userId) {
+        if (userId == null) return;
+        UserLeadProfile profile = userLeadProfileRepository.findByUserId(userId).orElse(null);
+        if (profile == null) return;
+
+        String instituteId = profile.getInstituteId();
+
+        List<AudienceResponse> responses =
+                audienceResponseRepository.findByUserIdOrStudentUserId(userId, userId);
+
+        boolean anyRecalculated = false;
+        for (AudienceResponse r : responses) {
+            try {
+                leadScoringService.recalculateScore(r.getId());
+                anyRecalculated = true;
+            } catch (Exception e) {
+                log.warn("Failed to recalculate LeadScore for response {} during user recompute",
+                        r.getId(), e);
+            }
+        }
+
+        // recalculateScore() ends with a buildOrUpdateProfile call (via calculateAndSaveScore),
+        // so when responses exist the profile is already up to date. If the user has no
+        // responses (e.g. captured outside the campaign flow), still update the profile
+        // directly so total_timeline_events reflects the new event.
+        if (!anyRecalculated) {
+            buildOrUpdateProfile(userId, instituteId);
+        }
     }
 
     /**
@@ -295,7 +380,10 @@ public class UserLeadProfileService {
 
         if (scores.isEmpty()) {
             profile.setBestScore(0);
-            profile.setLeadTier("COLD");
+            // Don't write lead_tier here. If an admin has explicitly set it (e.g. HOT
+            // for a known interested lead with no submissions yet), recompute should
+            // preserve that override. Frontend infers a tier from best_score when
+            // lead_tier is null.
             profile.setCampaignCount(0);
             return;
         }
@@ -308,7 +396,10 @@ public class UserLeadProfileService {
         if (best != null) {
             profile.setBestScore(best.getRawScore());
             profile.setBestScoreResponseId(best.getAudienceResponseId());
-            profile.setLeadTier(profile.computeTier());
+            // Do NOT setLeadTier here — keeping the explicit override (or null) lets the
+            // frontend treat "lead_tier present" as a manual override and fall back to
+            // best_score-derived tier when it's null. Previously every recompute would
+            // overwrite a manual HOT/WARM/COLD click within seconds.
 
             // Find source type of best response
             allResponses.stream()
@@ -337,19 +428,30 @@ public class UserLeadProfileService {
             String userId,
             List<LeadScore> scores) {
 
-        // Timeline events across all audience responses (type = "AUDIENCE_RESPONSE")
-        List<String> responseIds = scores.stream()
-                .map(LeadScore::getAudienceResponseId)
-                .collect(Collectors.toList());
+        // Timeline events for this user. Two sources contribute:
+        //  1. Cross-stage events (notes, calls, meetings, follow-ups) logged from the
+        //     lead-profile drawer — stamped with student_user_id = userId regardless of
+        //     the parent entity type (STUDENT / ENQUIRY / APPLICANT).
+        //  2. Events tied directly to an audience response (type = "AUDIENCE_RESPONSE")
+        //     for users with campaign submissions.
+        // Cross-stage events typically don't carry a type='AUDIENCE_RESPONSE' parent,
+        // so summing the two counts is safe in practice. If a future emitter sets both
+        // student_user_id AND attaches to an audience response, switch to a DISTINCT query.
+        try {
+            long crossStageCount = timelineEventRepository.countByStudentUserId(userId);
 
-        if (!responseIds.isEmpty()) {
-            try {
-                long eventCount = timelineEventRepository
+            long responseCount = 0;
+            List<String> responseIds = scores.stream()
+                    .map(LeadScore::getAudienceResponseId)
+                    .collect(Collectors.toList());
+            if (!responseIds.isEmpty()) {
+                responseCount = timelineEventRepository
                         .countByTypeAndTypeIdIn("AUDIENCE_RESPONSE", responseIds);
-                profile.setTotalTimelineEvents((int) eventCount);
-            } catch (Exception e) {
-                log.warn("Failed to count timeline events for userId={}", userId, e);
             }
+
+            profile.setTotalTimelineEvents((int) (crossStageCount + responseCount));
+        } catch (Exception e) {
+            log.warn("Failed to count timeline events for userId={}", userId, e);
         }
 
         // Demo attendance count (ATTENDANCE_RECORDED logs where userSourceId = userId)

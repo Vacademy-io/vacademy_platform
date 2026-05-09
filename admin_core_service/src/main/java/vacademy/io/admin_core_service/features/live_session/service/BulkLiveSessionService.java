@@ -110,7 +110,7 @@ public class BulkLiveSessionService {
                         .index(i)
                         .success(false)
                         .title(title)
-                        .error(ex.getMessage())
+                        .error(describeFailure(ex))
                         .build());
                 failed++;
             }
@@ -197,5 +197,25 @@ public class BulkLiveSessionService {
         copy.setDeletedFieldIds(template.getDeletedFieldIds());
         copy.setInstituteCustomFields(template.getInstituteCustomFields());
         return copy;
+    }
+
+    /**
+     * Build a non-null, human-readable error string for the response. Walks
+     * the exception cause chain so we don't end up with {@code null} when the
+     * top-level exception (e.g. NPE, some Spring wrappers) carries no message
+     * but its cause does. Falls back to the simple class name so the caller
+     * always has *something* actionable to display.
+     */
+    private String describeFailure(Throwable ex) {
+        Throwable cur = ex;
+        while (cur != null) {
+            String msg = cur.getMessage();
+            if (msg != null && !msg.isBlank()) {
+                if (cur == ex) return msg;
+                return ex.getClass().getSimpleName() + ": " + msg;
+            }
+            cur = cur.getCause();
+        }
+        return ex.getClass().getName();
     }
 }

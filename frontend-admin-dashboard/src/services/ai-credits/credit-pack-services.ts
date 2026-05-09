@@ -60,9 +60,11 @@ export async function purchaseCreditPack(
     instituteId: string,
     packId: string,
 ): Promise<CreditPackPurchaseResponse> {
+    // Snake_case body — matches the BE DTO's @JsonNaming(SnakeCaseStrategy)
+    // and the codebase-wide convention used by PaymentInitiationRequestDTO etc.
     const response = await authenticatedAxiosInstance.post<CreditPackPurchaseResponse>(
         `${API_BASE}/purchase`,
-        { instituteId, packId },
+        { institute_id: instituteId, pack_id: packId },
     );
     return response.data;
 }

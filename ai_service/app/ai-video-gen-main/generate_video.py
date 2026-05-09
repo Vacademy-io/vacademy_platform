@@ -1025,7 +1025,7 @@ def render_video_from_json(
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
         # ── Build version marker ── (bump this when deploying changes)
-        print(f"[RENDER-VERSION] generate_video.py build=2026-05-09-v33 (proxy-tl-wrapper-no-method-mutation, fps={fps})", flush=True)
+        print(f"[RENDER-VERSION] generate_video.py build=2026-05-09-v34 (gsap-gc-no-recurse-into-nested-timelines, fps={fps})", flush=True)
         # Wait for fonts to load before rendering frames
         try:
             page.evaluate("() => document.fonts.ready")
@@ -1061,7 +1061,32 @@ def render_video_from_json(
                 if (state.segmentChanged) {
                     try {
                         const cutoff = state.t - 1;
-                        const children = gsap.globalTimeline.getChildren(true, true, true);
+                        // CRITICAL: nested=false. The previous version used
+                        // getChildren(true, ...) which walks recursively into
+                        // master timelines added by shot scripts. For tweens
+                        // INSIDE a nested timeline, tween.endTime() returns the
+                        // timeline-LOCAL position (e.g., 6.6 for a tween at
+                        // tl-position 6.0 dur 0.6), NOT the absolute gtl time.
+                        // cutoff is in absolute gtl time (e.g., state.t - 1 =
+                        // 8.5 when state.t=9.5). 6.6 < 8.5 → killed before
+                        // firing. Result: every nested tween in shot scripts'
+                        // gsap.timeline().to(...) chains was getting killed
+                        // immediately on shot mount (segmentChanged=true), so
+                        // they never fired. Visual symptom: shot-1 EXECUTION
+                        // GAP stuck at scale 0.5 (the scale-2 tween was at
+                        // tl-position 6.0, killed); shot-2 entirely white
+                        // (every master-tl tween killed; only the immediate-
+                        // render fromVars from tl.fromTo applied, leaving
+                        // #shot-root at opacity:0); shot-22 flash-word words
+                        // stuck at opacity 1 from first .to but second .to
+                        // never fired. Free-standing gsap.to/fromTo etc.
+                        // (top-level gtl children) survived because their
+                        // endTime() IS absolute gtl time.
+                        // Walking only direct children fixes this — top-level
+                        // tween/timeline endTime is absolute. Killing a parent
+                        // timeline cascades to its internal tweens, which is
+                        // also fine for cleanup purposes.
+                        const children = gsap.globalTimeline.getChildren(false, true, true);
                         let _killed = 0;
                         for (const tw of children) {
                             try {

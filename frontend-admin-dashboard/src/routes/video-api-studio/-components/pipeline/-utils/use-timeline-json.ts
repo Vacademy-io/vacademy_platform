@@ -2,9 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import {
     parseTimelineThumbnails,
     pickBackgroundMusicTrack,
+    pickPalette,
     type SceneThumbnails,
     type TimelineAudioTrack,
     type TimelineJson,
+    type TimelinePalette,
 } from './parse-timeline-thumbnails';
 
 /**
@@ -61,4 +63,17 @@ export function useBackgroundMusicTrack(
         track: data ? pickBackgroundMusicTrack(data) : undefined,
         loading: isLoading,
     };
+}
+
+/**
+ * Style-guide palette extracted from the same cached timeline.json. Fed
+ * into `processHtmlContent` so iframe-embedded scene previews seed the
+ * same CSS variables the final-cut MP4 was rendered against.
+ */
+export function useTimelinePalette(
+    videoId: string | undefined,
+    timelineUrl: string | undefined
+): TimelinePalette | undefined {
+    const { data } = useTimelineJson(videoId, timelineUrl);
+    return data ? pickPalette(data) : undefined;
 }

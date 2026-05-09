@@ -22,9 +22,14 @@ import type {
 } from './-utils/derive-pipeline-state';
 import { buildPipelineGraph, type PipelineNodeData } from './-utils/build-pipeline-graph';
 import { applyDagreLayout } from './-utils/apply-dagre-layout';
-import { useBackgroundMusicTrack, useSceneThumbnails } from './-utils/use-timeline-json';
+import {
+    useBackgroundMusicTrack,
+    useSceneThumbnails,
+    useTimelinePalette,
+} from './-utils/use-timeline-json';
 import { useVideoStatus } from './-utils/use-video-status';
 import { ScenesHtmlContext } from './-utils/scenes-html-context';
+import { processHtmlContent } from '@/components/ai-video-player/html-processor';
 import { NodeDetailSheet, type DetailTarget } from './NodeDetailSheet';
 import { PitchNode } from './nodes/PitchNode';
 import { ResearchNode } from './nodes/ResearchNode';
@@ -105,6 +110,10 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
         state.videoId,
         state.artifactUrls.timeline
     );
+
+    // Style-guide palette — fed into processHtmlContent below so embedded
+    // iframes seed the same CSS variables the rendered MP4 used.
+    const palette = useTimelinePalette(state.videoId, state.artifactUrls.timeline);
 
     const enrichedState = useMemo<PipelineState>(() => {
         let working = state;
@@ -501,15 +510,21 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
     // the linear chain alone is already 6 nodes.
     const showMiniMap = nodes.length > 8;
 
-    // Side-channel: per-scene HTML. Memoized so ScenesHtmlContext consumers
-    // don't re-render unless the timeline JSON changed.
+    // Side-channel: per-scene HTML, fully processed via the same pipeline
+    // `AIContentPlayer` uses (libs + base styles + palette CSS variables +
+    // content-type-specific styles). Without this step the raw timeline
+    // entries render blank because they're fragments designed to live
+    // inside that scaffold. Memoized so context consumers don't churn
+    // unless the timeline JSON or palette changed.
     const htmlByIndex = useMemo(() => {
         const out: Record<number, string | undefined> = {};
         for (const [idx, t] of Object.entries(thumbnails)) {
-            out[Number(idx)] = t.html;
+            const raw = t.html;
+            if (!raw) continue;
+            out[Number(idx)] = processHtmlContent(raw, state.contentType, false, palette);
         }
         return out;
-    }, [thumbnails]);
+    }, [thumbnails, state.contentType, palette]);
 
     return (
         <ScenesHtmlContext.Provider value={htmlByIndex}>

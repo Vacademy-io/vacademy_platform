@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -29,12 +31,20 @@ public class CreditClient {
 
     private final RestTemplate restTemplate;
     private final String aiServiceUrl;
+    /**
+     * Service-to-service shared secret for /credits/v1/internal/* endpoints
+     * (credit pack purchase fulfillment). Empty string in dev disables the
+     * Python-side check via 503 — set INTERNAL_SERVICE_TOKEN in prod.
+     */
+    private final String internalServiceToken;
 
     public CreditClient(
             RestTemplate restTemplate,
-            @Value("${ai.service.url:http://localhost:8077}") String aiServiceUrl) {
+            @Value("${ai.service.url:http://localhost:8077}") String aiServiceUrl,
+            @Value("${ai.service.internal-token:}") String internalServiceToken) {
         this.restTemplate = restTemplate;
         this.aiServiceUrl = aiServiceUrl;
+        this.internalServiceToken = internalServiceToken;
     }
 
     /**
@@ -329,5 +339,132 @@ public class CreditClient {
             return currentBalance > 0.0;
         }
         return false;
+    }
+
+    // ========================================================================
+    // AI Credit Pack Purchase Fulfillment (called from PlatformRazorpayWebHookService
+    // after a Razorpay payment.captured / refund.processed event lands)
+    //
+    // These hit /credits/v1/internal/* endpoints which are gated by the
+    // X-Internal-Service-Token header (NOT by JWT/ROOT_ADMIN). Idempotency
+    // is handled on the Python side via the V243 partial UNIQUE index on
+    // credit_transactions.external_reference_id.
+    // ========================================================================
+
+    /**
+     * Grant credits to fulfill a successful Razorpay credit-pack payment.
+     *
+     * @param instituteId          buyer
+     * @param credits              amount granted
+     * @param razorpayPaymentId    Razorpay payment_id — used as the dedup key on
+     *                             credit_transactions.external_reference_id
+     * @param platformPaymentId    our platform_payment.id — populated on
+     *                             credit_transactions.reference_id for reverse lookup
+     * @param packCode             pack code snapshot (for the description), nullable
+     * @return parsed AI-service response, or {@code {success: false, message: ...}}
+     *         on error. Caller decides whether to retry via webhook reprocess.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> grantFromPayment(
+            String instituteId,
+            BigDecimal credits,
+            String razorpayPaymentId,
+            String platformPaymentId,
+            String packCode) {
+        try {
+            String url = aiServiceUrl + "/ai-service/credits/v1/internal/grant-from-payment";
+
+            HttpHeaders headers = buildInternalHeaders();
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("institute_id", instituteId);
+            body.put("amount", credits);
+            body.put("external_reference_id", razorpayPaymentId);
+            body.put("platform_payment_id", platformPaymentId);
+            body.put("pack_code", packCode);
+            body.put("description", "Credit pack purchase via Razorpay (" + (packCode != null ? packCode : "?") + ")");
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url, HttpMethod.POST, request,
+                    (Class<Map<String, Object>>) (Class<?>) Map.class);
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                Map<String, Object> respBody = response.getBody();
+                Boolean already = respBody == null ? null : (Boolean) respBody.get("already_processed");
+                log.info("Granted {} credits to institute {} (razorpay_payment_id={}, already_processed={})",
+                        credits, instituteId, razorpayPaymentId, already);
+                return respBody;
+            }
+            log.warn("grantFromPayment returned non-2xx for institute {}: {}",
+                    instituteId, response.getStatusCode());
+            return Map.of("success", false, "message", "AI service returned " + response.getStatusCode());
+
+        } catch (RestClientException e) {
+            log.error("grantFromPayment failed for institute {} payment_id {}: {}",
+                    instituteId, razorpayPaymentId, e.getMessage());
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    /**
+     * Reverse a credit pack purchase (full or partial refund).
+     *
+     * @param instituteId          buyer
+     * @param creditsToRefund      amount to deduct (can pro-rate for partial refund)
+     * @param razorpayRefundId     Razorpay refund_id — dedup key (distinct from
+     *                             the original payment_id, so it won't collide
+     *                             with the PURCHASE row in the unique index)
+     * @param platformPaymentId    our platform_payment.id
+     * @param packCode             pack code snapshot
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> refundFromPayment(
+            String instituteId,
+            BigDecimal creditsToRefund,
+            String razorpayRefundId,
+            String platformPaymentId,
+            String packCode) {
+        try {
+            String url = aiServiceUrl + "/ai-service/credits/v1/internal/refund-from-payment";
+
+            HttpHeaders headers = buildInternalHeaders();
+
+            Map<String, Object> body = new HashMap<>();
+            body.put("institute_id", instituteId);
+            body.put("amount", creditsToRefund);
+            body.put("external_reference_id", razorpayRefundId);
+            body.put("platform_payment_id", platformPaymentId);
+            body.put("pack_code", packCode);
+            body.put("description", "Refund for credit pack (" + (packCode != null ? packCode : "?") + ")");
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url, HttpMethod.POST, request,
+                    (Class<Map<String, Object>>) (Class<?>) Map.class);
+
+            if (response.getStatusCode().is2xxSuccessful()) {
+                log.info("Refunded {} credits from institute {} (razorpay_refund_id={})",
+                        creditsToRefund, instituteId, razorpayRefundId);
+                return response.getBody();
+            }
+            log.warn("refundFromPayment returned non-2xx for institute {}: {}",
+                    instituteId, response.getStatusCode());
+            return Map.of("success", false, "message", "AI service returned " + response.getStatusCode());
+
+        } catch (RestClientException e) {
+            log.error("refundFromPayment failed for institute {} refund_id {}: {}",
+                    instituteId, razorpayRefundId, e.getMessage());
+            return Map.of("success", false, "message", e.getMessage());
+        }
+    }
+
+    private HttpHeaders buildInternalHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        // Always send the header — Python side returns 401 if missing/wrong, or
+        // 503 if the server itself doesn't have INTERNAL_SERVICE_TOKEN configured.
+        headers.set("X-Internal-Service-Token", internalServiceToken == null ? "" : internalServiceToken);
+        return headers;
     }
 }

@@ -1825,16 +1825,32 @@ class VideoGenerationPipeline:
         # regardless of tier config. Stored on the instance so _generate_html_per_shot
         # can read it alongside self._tier_config.
         self._sound_effects_enabled = bool(sound_effects_enabled)
-        # Input video contexts from indexed source videos. List of dicts, each
-        # with keys: context, source_url, assets_urls, input_video_id, mode, etc.
-        # Backward compat: singular input_video_context is wrapped into a list.
+        # Input asset contexts from indexed sources. The fetcher in
+        # video_generation_service tags each entry with kind ∈ {video, image}.
+        # We split here so existing video-only code paths (transcript reading,
+        # SOURCE_CLIP placement, audio mixing) keep working unchanged — they
+        # only see video entries — while new image-aware code paths read
+        # _input_image_contexts. Domain selection considers both lists.
         if input_video_contexts:
-            self._input_video_contexts = input_video_contexts
+            _all_contexts = input_video_contexts
         elif input_video_context:
-            self._input_video_contexts = [input_video_context]
+            _all_contexts = [input_video_context]
+        else:
+            _all_contexts = None
+
+        if _all_contexts:
+            _videos = [c for c in _all_contexts if c.get("kind", "video") == "video"]
+            _images = [c for c in _all_contexts if c.get("kind") == "image"]
+            self._input_video_contexts = _videos or None
+            self._input_image_contexts = _images or None
+            # _input_asset_contexts is the union, ordered as the user picked
+            # them. Used by domain selection and planner context assembly.
+            self._input_asset_contexts = _all_contexts
         else:
             self._input_video_contexts = None
-        # Convenience: first context for backward-compat code paths
+            self._input_image_contexts = None
+            self._input_asset_contexts = None
+        # Convenience: first VIDEO context for backward-compat code paths
         self._input_video_context = (
             self._input_video_contexts[0] if self._input_video_contexts else None
         )
@@ -5107,7 +5123,10 @@ class VideoGenerationPipeline:
 
     # Skip these shot types entirely — they're built deterministically and
     # the visible content is constructed by-construction-correct.
-    _VISION_REVIEW_SKIP_SHOT_TYPES = frozenset({"KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP"})
+    # IMAGE_CLIP shows user-uploaded imagery — vision review treats off-brand
+    # photos as low-quality and would regenerate the HTML, losing the image
+    # URL injected by the IMAGE_CLIP post-processor (see L10334+).
+    _VISION_REVIEW_SKIP_SHOT_TYPES = frozenset({"KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP", "IMAGE_CLIP"})
 
     def _vision_review_emit_banner_once(self) -> None:
         """Emit a once-per-run banner showing the configured state of vision
@@ -5564,11 +5583,23 @@ class VideoGenerationPipeline:
         script_text = str(plan_data.get("script") or script_plan.get("script_text", "")).strip()
         beat_outline = plan_data.get("beat_outline", [])
         subject_domain = getattr(self, '_current_subject_domain', 'general')
-        # Override domain for input video modes so Director gets SOURCE_CLIP
-        if self._input_video_contexts:
-            # Use first video's mode as primary domain; mixed modes are fine
-            _iv_mode = self._input_video_contexts[0].get("mode", "podcast")
-            subject_domain = f"input_video_{_iv_mode}"
+        # Override domain for input asset modes so Director gets the right
+        # shot-type catalog (SOURCE_CLIP for videos, IMAGE_CLIP for images,
+        # both for mixed selections). When user picked only one kind, follow
+        # the first asset's mode for the most specific catalog. When mixed,
+        # use the synthetic 'input_mixed_assets' domain that registers both
+        # primary clip types — otherwise the secondary kind would be silently
+        # unusable to the Director.
+        if self._input_asset_contexts:
+            _has_video = bool(self._input_video_contexts)
+            _has_image = bool(self._input_image_contexts)
+            if _has_video and _has_image:
+                subject_domain = "input_mixed_assets"
+            else:
+                _ia_first = self._input_asset_contexts[0]
+                _ia_kind = _ia_first.get("kind", "video")
+                _ia_mode = _ia_first.get("mode", "podcast" if _ia_kind == "video" else "photo")
+                subject_domain = f"input_{_ia_kind}_{_ia_mode}"
             self._current_subject_domain = subject_domain
         _w = getattr(self, 'video_width', 1920)
         _h = getattr(self, 'video_height', 1080)
@@ -5797,6 +5828,91 @@ class VideoGenerationPipeline:
                 + _source_clip_rules
             )
             user_prompt = user_prompt + _source_video_block
+
+        # ── Input image context for Director ──────────────────────────
+        # Give the Director access to image captions, OCR, colors, and faces
+        # so it can plan IMAGE_CLIP shots with informed overlays. The image
+        # URL itself is in source_public_url — Director embeds it as <img src>
+        # in the IMAGE_CLIP HTML (no render-worker compositing).
+        if self._input_image_contexts:
+            _img_labels = "ABCDEFGHIJ"
+            _image_sections = []
+            for _iidx, _ictx in enumerate(self._input_image_contexts):
+                _label = _img_labels[_iidx] if _iidx < len(_img_labels) else str(_iidx)
+                _img_meta_blob = _ictx.get("context", {})  # parsed image_metadata.json
+                _img_meta = _img_meta_blob.get("meta", {})
+                _img_caption = _img_meta_blob.get("caption") or {}
+                _img_colors = _img_meta_blob.get("colors", {}).get("dominant", [])
+                _img_ocr_blocks = _img_meta_blob.get("ocr", {}).get("blocks", [])
+                _img_faces = _img_meta_blob.get("faces") or {}
+
+                _i_name = _ictx.get("name", f"Image {_label}")
+                _i_mode = _ictx.get("mode", "photo")
+                _i_url = _ictx.get("source_public_url") or _ictx.get("source_url", "")
+                _i_w = _img_meta.get("width", _ictx.get("width", 0))
+                _i_h = _img_meta.get("height", _ictx.get("height", 0))
+                _i_default_dur = _ictx.get("duration_seconds", 5.0)
+
+                _color_swatches = ", ".join(
+                    f"{c.get('hex', '#000')} ({int(c.get('weight', 0) * 100)}%)"
+                    for c in _img_colors[:5]
+                )
+                _ocr_lines = [
+                    f"  \"{b.get('text', '')}\" @ bbox_norm={b.get('bbox_norm', [])}"
+                    for b in _img_ocr_blocks[:15]
+                ]
+                _tags_line = ", ".join(_img_caption.get("tags", [])[:10])
+                _ui_elements = _img_caption.get("ui_elements") or []
+
+                _section = (
+                    f"\n### Image {_label}: \"{_i_name}\" ({_i_mode}, {_i_w}x{_i_h})\n"
+                    f"image_index: {_iidx}\n"
+                    f"source_public_url: {_i_url}\n"
+                    f"default_duration_s: {_i_default_dur}  "
+                    f"(use as IMAGE_CLIP duration unless narration warrants otherwise)\n"
+                )
+                if _img_caption.get("short"):
+                    _section += f"\nCaption: {_img_caption['short']}\n"
+                if _img_caption.get("long"):
+                    _section += f"Detail: {_img_caption['long']}\n"
+                if _tags_line:
+                    _section += f"Tags: {_tags_line}\n"
+                if _ui_elements:
+                    _section += f"UI elements visible: {', '.join(_ui_elements[:10])}\n"
+                if _color_swatches:
+                    _section += f"Dominant colors: {_color_swatches}\n"
+                if _ocr_lines:
+                    _section += "\nOCR text blocks (with normalized bboxes 0-1):\n" + "\n".join(_ocr_lines) + "\n"
+                if _img_faces.get("detected"):
+                    _free = _img_faces.get("free_regions", [])
+                    _section += (
+                        f"Face detected (count={_img_faces.get('face_count', 0)}). "
+                        f"Safe overlay zones: {', '.join(_free) or 'none'}\n"
+                    )
+
+                _image_sections.append(_section)
+
+            _image_clip_rules = (
+                "**IMAGE_CLIP RULES**:\n"
+                "- Use IMAGE_CLIP to display each user-uploaded image as a beat in the video.\n"
+                "- Each IMAGE_CLIP shot MUST include:\n"
+                "  - `image_index`: integer (0 = Image A, 1 = Image B, ...)\n"
+                "  - The HTML must embed `<img src='{source_public_url}'>` from the image's context.\n"
+                "- Pick caption text from the image's `Caption` and `Tags` fields above when relevant.\n"
+                "- For screenshots/diagrams: when overlaying annotations or callouts, use the OCR\n"
+                "  bbox_norm coordinates (0-1) to position arrows/boxes near the right text.\n"
+                "- For photos with detected faces: keep overlays in the listed safe zones so the\n"
+                "  subject is not obscured.\n"
+                "- Default durations: photo 4s, screenshot 6s, diagram 8s. Lengthen if the narration\n"
+                "  beat at this image needs more time.\n"
+            )
+            _source_image_block = (
+                "\n\n## SOURCE IMAGE CONTEXTS\n"
+                f"You have {len(self._input_image_contexts)} source image(s) available.\n"
+                + "".join(_image_sections) + "\n"
+                + _image_clip_rules
+            )
+            user_prompt = user_prompt + _source_image_block
 
         # Super Ultra: bias the Director toward motion-graphics shot types
         director_system = DIRECTOR_SYSTEM_PROMPT
@@ -7755,16 +7871,24 @@ class VideoGenerationPipeline:
                     f"[AvatarBatch] run={run.run_index} ♻️  fully cached "
                     f"({len(run.shot_indices)} shot(s)) — skipping"
                 )
+                # Mirror the legacy per-shot resume short-circuit at L8141 —
+                # write directly to the shot dict + artifact list, do NOT
+                # add to fal_results. Otherwise the post-fal loop would
+                # re-download / re-trim / re-upload the cached MP4 (correct
+                # but ~150-300ms × N shots of wasted work, plus a redundant
+                # S3 PUT for every cached run on every resume).
                 for idx in run.shot_indices:
                     cached = prior_artifacts[idx]
-                    all_results.append(AvatarShotResult(
-                        shot_index=idx,
-                        fal_request_id=cached.get("fal_request_id"),
-                        video_url=cached.get("avatar_video_url"),
-                        duration_s=float(cached.get("duration_s_actual") or cached.get("duration_s") or 0.0),
-                        model=host_model,
-                        quality=host_quality,
-                    ))
+                    if idx < len(shots) and cached.get("avatar_video_url"):
+                        shots[idx]["avatar_video_url"] = cached["avatar_video_url"]
+                        if cached.get("host_image_url"):
+                            shots[idx]["host_image_url"] = cached["host_image_url"]
+                        # Strip background-visual fields — host video IS
+                        # the background, the per-shot HTML LLM would
+                        # otherwise layer a stock image under it. Same
+                        # logic as the post-fal success path.
+                        shots[idx].pop("image_prompt", None)
+                        shots[idx].pop("video_query", None)
                     all_artifacts.append(cached)
                 continue
 
@@ -10216,6 +10340,58 @@ class VideoGenerationPipeline:
                             f'</div></div>'
                         )
                     entry["html"] = html
+
+            # IMAGE_CLIP: substitute the {{IMAGE_URL}} placeholder with the
+            # actual image URL OR inject a background <img> if the LLM forgot
+            # to include one. Mirrors SOURCE_CLIP's safety-net injection above —
+            # without this, the Director's HTML may render literal "{{IMAGE_URL}}"
+            # as a broken image src.
+            if shot_type == "IMAGE_CLIP" and html and self._input_image_contexts:
+                _img_idx_raw = shot.get("image_index", 0)
+                try:
+                    _img_idx = int(_img_idx_raw)
+                except (TypeError, ValueError):
+                    _img_idx = 0
+                # Bounds check — fall back to first image if out of range so
+                # we never silently emit a broken shot just because the LLM
+                # picked an invalid index.
+                if _img_idx < 0 or _img_idx >= len(self._input_image_contexts):
+                    print(
+                        f"   ⚠️ IMAGE_CLIP shot has invalid image_index={_img_idx_raw} "
+                        f"(have {len(self._input_image_contexts)} images); falling back to 0"
+                    )
+                    _img_idx = 0
+                _img_ctx = self._input_image_contexts[_img_idx]
+                _img_url = (
+                    _img_ctx.get("source_public_url")
+                    or _img_ctx.get("source_url", "")
+                )
+                entry["image_index"] = _img_idx
+                if _img_url:
+                    # Step 1: replace any literal placeholder the LLM left in.
+                    if "{{IMAGE_URL}}" in html:
+                        html = html.replace("{{IMAGE_URL}}", _img_url)
+                    # Step 2: if no <img> tag points at our URL, inject a
+                    # full-frame background <img> the same way SOURCE_CLIP
+                    # injects a background <video>. This is the safety net
+                    # for the case where the LLM forgot the image entirely.
+                    import re as _re_img
+                    if not _re_img.search(rf'<img\s[^>]*src=[\'"]{_re_img.escape(_img_url)}', html):
+                        _img_tag = (
+                            f'<img data-image-clip="true" '
+                            f'src="{_img_url}" '
+                            f'style="position:absolute;top:0;left:0;width:100%;height:100%;'
+                            f'object-fit:cover;z-index:0;pointer-events:none;" />'
+                        )
+                        html = (
+                            f'<div style="position:relative;width:100%;height:100%;overflow:hidden;background:#000;">'
+                            f'{_img_tag}'
+                            f'<div style="position:relative;z-index:1;width:100%;height:100%;">'
+                            f'{html}'
+                            f'</div></div>'
+                        )
+                    entry["html"] = html
+
             if "z" in data:
                 try:
                     entry["z"] = int(data["z"])
@@ -14014,6 +14190,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     timeline_entry["source_end"] = entry.get("source_end", 0)
                     timeline_entry["source_video_index"] = entry.get("source_video_index", 0)
                     timeline_entry["shot_type"] = "SOURCE_CLIP"
+                # IMAGE_CLIP: tag the timeline entry so future audio mixers,
+                # the render worker, or telemetry can identify image shots.
+                # The image URL is already embedded in the HTML by the
+                # post-Director injector, so no asset URL propagation is
+                # needed — only the shot_type + index for downstream.
+                elif entry.get("image_index") is not None:
+                    timeline_entry["image_index"] = entry["image_index"]
+                    timeline_entry["shot_type"] = "IMAGE_CLIP"
                     # Overlay-mode hint for the render worker: when an HTML overlay
                     # has translucent callouts on top of a full-canvas source video,
                     # the black-region heuristic can mis-classify the layout as

@@ -1196,16 +1196,28 @@ class VideoGenerationService:
                 loaded_contexts = []
                 source_video_urls = []
                 for idx, iv_record in enumerate(iv_records):
-                    if iv_record.status != "COMPLETED" or not iv_record.context_json_url:
-                        logger.warning(f"[VideoGenService] Input video {iv_record.id} skipped "
-                                       f"(status={iv_record.status})")
+                    # Polymorphic asset table: kind ∈ {video, image}. Old rows
+                    # default to 'video' since the column was backfilled there.
+                    iv_kind = getattr(iv_record, "kind", "video") or "video"
+
+                    # Pick the metadata-URL field that corresponds to the kind.
+                    if iv_kind == "image":
+                        metadata_url = iv_record.image_metadata_url
+                        local_filename = f"input_image_metadata_{idx}.json"
+                    else:
+                        metadata_url = iv_record.context_json_url
+                        local_filename = f"input_video_context_{idx}.json"
+
+                    if iv_record.status != "COMPLETED" or not metadata_url:
+                        logger.warning(f"[VideoGenService] Input asset {iv_record.id} skipped "
+                                       f"(kind={iv_kind}, status={iv_record.status})")
                         continue
 
-                    # Download video_context.json
-                    context_path = run_dir / f"input_video_context_{idx}.json"
+                    # Download the metadata JSON (image_metadata.json or video_context.json).
+                    context_path = run_dir / local_filename
                     if not context_path.exists():
                         context_path.parent.mkdir(parents=True, exist_ok=True)
-                        _ctx_url = iv_record.context_json_url
+                        _ctx_url = metadata_url
                         _downloaded = False
                         for _bkt in ["vacademy-media-storage", "vacademy-media-storage-public"]:
                             if _bkt in _ctx_url:
@@ -1225,31 +1237,57 @@ class VideoGenerationService:
                             resp.raise_for_status()
                             context_path.write_bytes(resp.content)
 
-                    # Resolve audio preference
-                    _audio_pref = input_video_audio
-                    if not _audio_pref:
-                        if len(input_video_ids) > 1:
-                            _audio_pref = "tts"  # multi-source always TTS
-                        else:
-                            _audio_pref = "original" if iv_record.mode == "podcast" else "tts"
-
                     _iv_assets = iv_record.assets_urls or {}
-                    ctx = {
-                        "index": idx,
-                        "context": _json.loads(context_path.read_text()),
-                        "source_url": iv_record.source_url,
-                        "source_public_url": _iv_assets.get("source_video", ""),
-                        "assets_urls": _iv_assets,
-                        "input_video_id": str(iv_record.id),
-                        "name": iv_record.name or f"Video {idx}",
-                        "duration_seconds": iv_record.duration_seconds,
-                        "mode": iv_record.mode,
-                        "audio_preference": _audio_pref,
-                    }
+
+                    if iv_kind == "image":
+                        # Mode-driven duration default: gives screenshots more
+                        # dwell time than photos so OCR + UI labels are readable;
+                        # diagrams need the longest beat to absorb structure.
+                        _IMG_DURATION_BY_MODE = {"photo": 4.0, "screenshot": 6.0, "diagram": 8.0}
+                        ctx = {
+                            "index": idx,
+                            "kind": "image",
+                            "context": _json.loads(context_path.read_text()),
+                            "source_url": iv_record.source_url,
+                            "source_public_url": _iv_assets.get("source_image", "") or iv_record.source_url,
+                            "assets_urls": _iv_assets,
+                            "input_video_id": str(iv_record.id),  # legacy field name kept
+                            "name": iv_record.name or f"Image {idx}",
+                            "duration_seconds": _IMG_DURATION_BY_MODE.get(iv_record.mode, 5.0),
+                            "mode": iv_record.mode,
+                            "width": iv_record.width,
+                            "height": iv_record.height,
+                            # Images have no audio track; force TTS narration.
+                            "audio_preference": "tts",
+                        }
+                        logger.info(f"[VideoGenService] Loaded input image [{idx}]: "
+                                    f"{iv_record.name} ({iv_record.width}x{iv_record.height}, "
+                                    f"mode={iv_record.mode}, default_duration={ctx['duration_seconds']}s)")
+                    else:
+                        # Resolve audio preference (video only)
+                        _audio_pref = input_video_audio
+                        if not _audio_pref:
+                            if len(input_video_ids) > 1:
+                                _audio_pref = "tts"
+                            else:
+                                _audio_pref = "original" if iv_record.mode == "podcast" else "tts"
+                        ctx = {
+                            "index": idx,
+                            "kind": "video",
+                            "context": _json.loads(context_path.read_text()),
+                            "source_url": iv_record.source_url,
+                            "source_public_url": _iv_assets.get("source_video", ""),
+                            "assets_urls": _iv_assets,
+                            "input_video_id": str(iv_record.id),
+                            "name": iv_record.name or f"Video {idx}",
+                            "duration_seconds": iv_record.duration_seconds,
+                            "mode": iv_record.mode,
+                            "audio_preference": _audio_pref,
+                        }
+                        source_video_urls.append(iv_record.source_url)
+                        logger.info(f"[VideoGenService] Loaded input video [{idx}]: "
+                                    f"{iv_record.name} ({iv_record.duration_seconds:.1f}s, mode={iv_record.mode})")
                     loaded_contexts.append(ctx)
-                    source_video_urls.append(iv_record.source_url)
-                    logger.info(f"[VideoGenService] Loaded input video [{idx}]: "
-                                f"{iv_record.name} ({iv_record.duration_seconds:.1f}s, mode={iv_record.mode})")
 
                 if loaded_contexts:
                     input_video_contexts = loaded_contexts

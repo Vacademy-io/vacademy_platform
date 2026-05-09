@@ -80,6 +80,19 @@ public class Institute {
     @Column(name = "city")
     private String city;
 
+    // V239 — AI credit pack purchase flow
+    /** Optional manual currency override; NULL = derive from {@link #country}. */
+    @Column(name = "currency", length = 3)
+    private String currency;
+
+    /** Buyer's 15-char Indian GSTIN, snapshotted onto invoices. */
+    @Column(name = "gstin", length = 15)
+    private String gstin;
+
+    /** 2-char numeric Indian state code ("29" Karnataka). Drives CGST/SGST vs IGST. */
+    @Column(name = "state_code", length = 2)
+    private String stateCode;
+
     @Column(name = "email")
     private String email;
 

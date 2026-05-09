@@ -1414,6 +1414,80 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
     },
 
     # ------------------------------------------------------------------
+    # IMAGE_CLIP — display an indexed source image full-frame with HTML
+    # overlays on top. Unlike SOURCE_CLIP, the image URL is embedded
+    # directly in the HTML (no render-worker compositing needed) — the
+    # planner reads source_public_url from the image asset context and
+    # places it as the background <img>.
+    # ------------------------------------------------------------------
+    "IMAGE_CLIP": {
+        "id": "IMAGE_CLIP",
+        "name": "Source Image Clip",
+        "category": "static",
+        "description": (
+            "Display a user-uploaded image full-frame with HTML overlays "
+            "(captions, lower thirds, callouts, annotations). Use for "
+            "presenting photographs, screenshots, diagrams, or any uploaded "
+            "still image as a beat in the generated video."
+        ),
+        "use_for": (
+            "Showing a photograph during narration about a person/place, "
+            "displaying a screenshot while explaining a UI, "
+            "presenting a diagram while walking through a concept."
+        ),
+        "requires_image": False,  # the image is supplied via the asset context, not requested
+        "requires_video": False,
+        # NOT included in 'general' — IMAGE_CLIP is only useful when an
+        # image asset is provided; without one, the {{IMAGE_URL}} placeholder
+        # has no real URL to substitute and the shot would render broken.
+        "preferred_domains": [
+            "input_image_photo", "input_image_screenshot", "input_image_diagram",
+            "input_mixed_assets",
+        ],
+        "html_template": (
+            "<!-- IMAGE_CLIP: full-frame image with HTML overlays.\n"
+            "     Replace {{IMAGE_URL}} with the source_public_url from the\n"
+            "     image asset context. Image renders as background; overlays\n"
+            "     stack on top with z-index. -->\n"
+            "<div style='width:100%; height:100%; position:relative; background:#000;'>\n"
+            "  <img src='{{IMAGE_URL}}'\n"
+            "       style='position:absolute; inset:0; width:100%; height:100%;\n"
+            "              object-fit:cover; z-index:0;' />\n"
+            "\n"
+            "  <!-- Optional dim layer for caption legibility -->\n"
+            "  <div style='position:absolute; inset:0; background:linear-gradient(\n"
+            "       180deg, transparent 50%, rgba(0,0,0,0.55) 100%); z-index:1;'></div>\n"
+            "\n"
+            "  <!-- Lower-third caption -->\n"
+            "  <div style='position:absolute; bottom:8%; left:5%; right:5%; z-index:2;\n"
+            "       background:rgba(0,0,0,0.7); padding:1.2rem 2rem; border-radius:0.5rem;\n"
+            "       border-left:4px solid var(--brand-accent);'>\n"
+            "    <div id='caption-text' style='font-family:Inter,sans-serif; font-size:1.8rem;\n"
+            "         color:#fff; font-weight:600; opacity:0; transform:translateY(10px);'>\n"
+            "      A timely caption goes here\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>\n"
+        ),
+        "script_block": (
+            "// Animate caption in\n"
+            "gsap.to('#caption-text', {opacity:1, y:0, duration:0.5, delay:0.3, ease:'power3.out'});\n"
+        ),
+        "guidelines": [
+            "Use the source_public_url from the asset context as the <img> src — "
+            "do NOT use data-img-prompt or data-video-query (the image is supplied).",
+            "Image fills the frame via object-fit:cover. Overlays render on top via z-index.",
+            "Keep overlays in the BOTTOM 30% of the screen so the image's subject stays visible.",
+            "Use semi-transparent dark backgrounds (rgba(0,0,0,0.7)) for caption readability.",
+            "Suggested elements: captions, lower thirds, name titles, OCR-derived callouts.",
+            "Default duration suggestions: photo 4s, screenshot 6s, diagram 8s. Override "
+            "via planner timing if narration warrants longer dwell.",
+            "For screenshots/diagrams: feel free to draw attention to OCR-detected regions "
+            "with annotation arrows or boxes positioned relative to the image's bbox_norm coords.",
+        ],
+    },
+
+    # ------------------------------------------------------------------
     # SOURCE_CLIP — play a clip from the indexed source video with
     # transparent HTML overlays on top (captions, lower thirds, callouts)
     # ------------------------------------------------------------------
@@ -1557,6 +1631,25 @@ DOMAIN_SHOT_TYPES: Dict[str, List[str]] = {
     # Input video modes — SOURCE_CLIP is the primary shot type
     "input_video_podcast": ["SOURCE_CLIP", "KINETIC_TITLE", "TEXT_DIAGRAM", "DATA_STORY", "LOWER_THIRD"],
     "input_video_demo": ["SOURCE_CLIP", "DEVICE_MOCKUP", "KINETIC_TITLE", "TEXT_DIAGRAM", "PROCESS_STEPS", "ANNOTATION_MAP", "LOWER_THIRD"],
+    # Input image modes — IMAGE_CLIP is the primary shot type. Each mode's
+    # secondary catalog matches what the image's metadata can support:
+    #   photo      → caption-driven storytelling (lower thirds, kinetic titles)
+    #   screenshot → UI walkthrough (annotation, process steps)
+    #   diagram    → concept exposition (text diagram, data story)
+    "input_image_photo": ["IMAGE_CLIP", "KINETIC_TITLE", "LOWER_THIRD", "TEXT_DIAGRAM"],
+    "input_image_screenshot": ["IMAGE_CLIP", "ANNOTATION_MAP", "PROCESS_STEPS", "LOWER_THIRD", "KINETIC_TITLE"],
+    "input_image_diagram": ["IMAGE_CLIP", "TEXT_DIAGRAM", "DATA_STORY", "KINETIC_TITLE", "LOWER_THIRD"],
+    # Mixed assets — user picked at least one video AND at least one image.
+    # Catalog is the union of the two primary clip types plus every shot
+    # type that appears in either input_video_demo or input_image_diagram —
+    # this preserves the secondary catalog options (DEVICE_MOCKUP, PROCESS_STEPS,
+    # DATA_STORY) that single-asset domains have, so mixed flows aren't a
+    # downgrade vs picking one kind alone.
+    "input_mixed_assets": [
+        "SOURCE_CLIP", "IMAGE_CLIP",
+        "KINETIC_TITLE", "TEXT_DIAGRAM", "LOWER_THIRD",
+        "DEVICE_MOCKUP", "PROCESS_STEPS", "ANNOTATION_MAP", "DATA_STORY",
+    ],
 }
 
 

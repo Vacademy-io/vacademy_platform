@@ -304,6 +304,19 @@ def _split_run_into_segments(
         _assign_shots_to_segment(seg, shot_indices, shots)
         return [seg]
 
+    # Pre-compute shot boundary times within this run — used to snap split
+    # points so we don't split mid-shot (which truncates the per-shot avatar
+    # by up to ~50% of its duration). Tested at audit time on a 100%-mode
+    # 4.5min video: without this snap, 11% of shots in long runs lost
+    # 0.5-2.1s of host video each.
+    _shot_boundaries: List[float] = []
+    for idx in shot_indices:
+        if idx < len(shots):
+            try:
+                _shot_boundaries.append(float(shots[idx].get("end_time", 0.0)))
+            except (TypeError, ValueError):
+                pass
+
     segments: List[HostSegment] = []
     cursor = run_start_s
     seg_idx = 0
@@ -341,6 +354,24 @@ def _split_run_into_segments(
         if split_s - cursor > audio_cap_s:
             split_s = cursor + audio_cap_s
             tier = "word"
+
+        # Shot-boundary snap — applied AFTER guardrails so we snap from the
+        # FINAL post-clamp split point. Prefer landing on a shot edge within
+        # ±2s. Avoids truncating the per-shot avatar MP4 at the split-back
+        # stage (without this, a shot with <50% in this seg gets dropped by
+        # `_assign_shots_to_segment`'s 50% threshold and loses up to ~50%
+        # of its duration). Bounded so it never exceeds cap.
+        if _shot_boundaries:
+            _snap_radius = 2.0
+            _candidates = [
+                b for b in _shot_boundaries
+                if cursor + 2.0 < b <= cursor + audio_cap_s
+                and abs(b - split_s) <= _snap_radius
+            ]
+            if _candidates:
+                _best = min(_candidates, key=lambda b: abs(b - split_s))
+                split_s = _best
+                tier = "shot_edge"
 
         seg = HostSegment(
             segment_index=seg_idx,

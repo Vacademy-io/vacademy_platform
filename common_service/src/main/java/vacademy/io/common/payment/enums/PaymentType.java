@@ -5,5 +5,6 @@ public enum PaymentType {
     RENEWAL,
     SCHOOL,
     APPLICATION_FEE,
+    AI_CREDIT_PACK,
 
 }

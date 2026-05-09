@@ -38,10 +38,24 @@ export interface TimelineAudioTrack {
     fadeOut?: number;
 }
 
+/**
+ * Style-guide palette pulled out of the LLM's design pass. `processHtmlContent`
+ * uses this to seed CSS variables (`--background-color`, `--primary-color`,
+ * etc.) so embedded iframes match the theme of the rendered video.
+ */
+export interface TimelinePalette {
+    background?: string;
+    text?: string;
+    text_secondary?: string;
+    primary?: string;
+    accent?: string;
+}
+
 export interface TimelineJson {
     entries?: TimelineEntry[];
     meta?: {
         audio_tracks?: TimelineAudioTrack[];
+        palette?: TimelinePalette;
         [key: string]: unknown;
     };
 }
@@ -98,6 +112,17 @@ export function parseTimelineThumbnails(
         out[idx] = { ...extractSceneThumbnails(entry.html), html: entry.html };
     });
     return out;
+}
+
+/**
+ * Pull the style-guide palette out of `meta.palette`. Used to seed
+ * `processHtmlContent` so embedded scene previews render with the same
+ * theme variables the final MP4 was rendered against.
+ */
+export function pickPalette(
+    timeline: TimelineJson | null | undefined
+): TimelinePalette | undefined {
+    return timeline?.meta?.palette;
 }
 
 /**

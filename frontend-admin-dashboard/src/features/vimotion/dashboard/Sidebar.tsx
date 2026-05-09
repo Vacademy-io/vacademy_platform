@@ -1,7 +1,9 @@
 import { useNavigate } from '@tanstack/react-router';
+import { forwardRef } from 'react';
 import { Clapperboard, FolderOpen, LogOut, Palette, Sparkles, UserSquare2, Wand2, Coins } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiCreditsQuery } from '@/services/ai-credits/get-ai-credits';
+import { AiCreditsPanel } from '@/components/common/ai-credits/AiCreditsPanel';
 import { removeCookiesAndLogout } from '@/lib/auth/sessionUtility';
 import { useStudioName } from './hooks/useStudioName';
 import { HelpMenu } from '../tour/HelpMenu';
@@ -79,7 +81,14 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
 
             {/* Credits + Help + Logout */}
             <div className="space-y-2 border-t border-neutral-100 p-3">
-                {credits.data && <CreditsCard data={credits.data} />}
+                {credits.data && (
+                    <AiCreditsPanel
+                        popoverSide="right"
+                        popoverAlign="end"
+                        popoverSideOffset={12}
+                        trigger={<CreditsCardTrigger data={credits.data} />}
+                    />
+                )}
                 <HelpMenu />
                 <button
                     type="button"
@@ -102,16 +111,25 @@ interface CreditsCardProps {
     };
 }
 
-function CreditsCard({ data }: CreditsCardProps) {
+const CreditsCardTrigger = forwardRef<
+    HTMLButtonElement,
+    CreditsCardProps & React.ButtonHTMLAttributes<HTMLButtonElement>
+>(({ data, className, ...rest }, ref) => {
     const balance = Number(data.current_balance) || 0;
     const total = Number(data.total_credits) || 0;
     const used = Math.max(0, total - balance);
     const usedPct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
 
     return (
-        <div
+        <button
+            ref={ref}
+            type="button"
             data-tour="vim-credits"
-            className="rounded-lg border border-neutral-200 bg-neutral-50/60 px-3 py-2.5"
+            className={cn(
+                'w-full rounded-lg border border-neutral-200 bg-neutral-50/60 px-3 py-2.5 text-left outline-none transition-colors hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-primary-500',
+                className
+            )}
+            {...rest}
         >
             <div className="flex items-center gap-1.5 text-xs font-medium text-neutral-600">
                 <Coins className="size-3.5 text-primary-500" />
@@ -135,9 +153,10 @@ function CreditsCard({ data }: CreditsCardProps) {
             {data.is_low_balance && (
                 <p className="mt-1.5 text-[11px] font-medium text-red-600">Low balance</p>
             )}
-        </div>
+        </button>
     );
-}
+});
+CreditsCardTrigger.displayName = 'CreditsCardTrigger';
 
 export function formatCredits(value: number): string {
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;

@@ -152,6 +152,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_token_expiry_minutes: int = 43200  # 30 days in minutes (matching Java 2592000000ms)
 
+    # Internal service-to-service auth.
+    # Used by admin_core_service when calling /credits/v1/internal/* endpoints
+    # (credit-pack purchase fulfillment from the Razorpay webhook handler).
+    # Compared in constant time inside require_internal_service_token().
+    # MUST be set in production; if unset, the internal endpoints reject all
+    # requests (no implicit fallback).
+    internal_service_token: Optional[str] = os.getenv("INTERNAL_SERVICE_TOKEN")
+
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
     def build_sqlalchemy_url(self) -> str:

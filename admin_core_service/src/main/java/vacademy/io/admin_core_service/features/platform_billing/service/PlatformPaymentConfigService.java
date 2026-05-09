@@ -104,10 +104,19 @@ public class PlatformPaymentConfigService {
     }
 
     /**
-     * Build the creds map in the exact shape consumed by RazorpayPaymentManager:
-     * {@code {apiKey, keyId, publishableKey, keySecret, webhookSecret}}. The
-     * manager's extractApiKey/extractKeySecret helpers accept either {@code apiKey}
-     * or {@code keyId} aliases — we populate both for safety.
+     * Build the creds map in the shape consumed by RazorpayPaymentManager.
+     *
+     * Important quirk in the existing manager
+     * ({@link vacademy.io.admin_core_service.features.payments.manager.RazorpayPaymentManager#extractPublishableKey}):
+     * the field literally named {@code publishableKey} is actually used as the
+     * Razorpay {@code key_secret} (it falls back to {@code keySecret} only when
+     * {@code publishableKey} is absent). The naming is legacy / misleading but
+     * we have to live with it — the institute-marketplace flow stores the
+     * SECRET under {@code publishableKey} too.
+     *
+     * For our flow we deliberately omit {@code publishableKey} and rely on the
+     * {@code keySecret} fallback, so the field names in our map match Razorpay's
+     * own terminology (key_id is public, key_secret is private).
      */
     public Map<String, Object> getRazorpayCredsMap() {
         if (cachedRazorpayCredsMap != null) {
@@ -115,9 +124,13 @@ public class PlatformPaymentConfigService {
         }
         PlatformPaymentConfig row = load();
         Map<String, Object> creds = new HashMap<>();
+        // Public — used as Razorpay key_id (sent back to FE for Checkout init too).
         creds.put("apiKey", row.getApiKey());
         creds.put("keyId", row.getApiKey());
-        creds.put("publishableKey", row.getApiKey());
+        // Private — RazorpayPaymentManager.extractPublishableKey() reads keySecret
+        // as the fallback, then uses it as the secret arg to `new RazorpayClient(keyId, keySecret)`.
+        // Do NOT also set publishableKey — that would short-circuit the fallback
+        // and (with apiKey value) cause Razorpay to reject the auth.
         creds.put("keySecret", encryption.decrypt(row.getKeySecretEncrypted()));
         creds.put("webhookSecret", encryption.decrypt(row.getWebhookSecretEncrypted()));
         cachedRazorpayCredsMap = creds;

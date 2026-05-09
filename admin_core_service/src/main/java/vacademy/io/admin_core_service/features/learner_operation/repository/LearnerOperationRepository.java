@@ -39,4 +39,27 @@ public interface LearnerOperationRepository extends JpaRepository<LearnerOperati
                         @Param("userId") String userId,
                         @Param("startDate") java.sql.Timestamp startDate,
                         @Param("endDate") java.sql.Timestamp endDate);
+
+        /**
+         * Returns the highest PERCENTAGE_PACKAGE_SESSION_COMPLETED value across all
+         * package_sessions of the given course for the given user. If the learner
+         * has no learner_operation rows for this course (e.g., not enrolled or
+         * never started), returns NULL.
+         *
+         * MAX is used (not SUM) so multi-enrollment learners see their best progress
+         * for the course, capped naturally at 100.
+         */
+        @Query(value = """
+                        SELECT MAX(CAST(lo.value AS DOUBLE PRECISION))
+                        FROM learner_operation lo
+                        JOIN package_session ps ON ps.id = lo.source_id
+                        WHERE ps.package_id = :courseId
+                          AND lo.user_id = :userId
+                          AND lo.source = 'PACKAGE_SESSION'
+                          AND lo.operation = 'PERCENTAGE_PACKAGE_SESSION_COMPLETED'
+                          AND lo.value ~ '^-?\\d+(\\.\\d+)?$'
+                        """, nativeQuery = true)
+        Double findMaxCoursePercentageForUser(
+                        @Param("courseId") String courseId,
+                        @Param("userId") String userId);
 }

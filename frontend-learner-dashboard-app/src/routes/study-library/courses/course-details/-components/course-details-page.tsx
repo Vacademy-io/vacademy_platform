@@ -1029,11 +1029,13 @@ export const CourseDetailsPage = () => {
           }>(key);
           return saved?.value;
         })();
+        // Backend (course-init) is authoritative — URL/localStorage are stale-prone
+        // fallbacks for cases where the backend response is unavailable.
         const percentageCompleted =
-          typeof pctFromQuery === "number" && !Number.isNaN(pctFromQuery)
-            ? pctFromQuery
-            : typeof pctFromCourse === "number"
-              ? pctFromCourse
+          typeof pctFromCourse === "number"
+            ? pctFromCourse
+            : typeof pctFromQuery === "number" && !Number.isNaN(pctFromQuery)
+              ? pctFromQuery
               : typeof pctFromLocal === "number"
                 ? pctFromLocal
                 : undefined;

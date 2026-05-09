@@ -372,11 +372,11 @@ export const StudentSidebar = ({
                             </div>
                         </div>
                     </div>
-                    {/* Audience-form responses card. Renders only when the
-                        side view was opened from a lead row (campaign-users
-                        / recent-leads) — manage-students rows don't carry the
-                        attached metadata so this is a no-op there. */}
-                    <LeadFormResponseCard />
+                    {/* Audience-form responses card — only on the Lead tab.
+                        Renders only when the side view was opened from a lead
+                        row (campaign-users / recent-leads); manage-students
+                        rows don't carry the attached metadata. */}
+                    {category === 'lead' && <LeadFormResponseCard />}
                     <ErrorBoundary>
                         {category === 'courses' && tabSettings?.coursesTab && (
                             <StudentCourses

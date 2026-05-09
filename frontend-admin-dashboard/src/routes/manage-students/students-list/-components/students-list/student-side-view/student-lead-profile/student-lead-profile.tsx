@@ -12,6 +12,7 @@ import {
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
+import { invalidateLeadCaches } from '@/hooks/use-invalidate-lead-caches';
 import { MyButton } from '@/components/design-system/button';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -409,7 +410,11 @@ function AddNoteForm({ userId }: { userId: string }) {
             toast.success('Note added');
             setNoteText('');
             setIsExpanded(false);
-            queryClient.invalidateQueries({ queryKey: ['cross-stage-timeline', userId] });
+            // Invalidate every lead-related cache so the new event count + recomputed
+            // best_score show up on the drawer card and across all tables that pull
+            // from ['lead-profiles-batch']. The backend recomputes synchronously on
+            // timeline insert, so a single round-trip is enough.
+            invalidateLeadCaches(queryClient, userId);
         },
         onError: () => toast.error('Failed to add note'),
     });
@@ -664,7 +669,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
         mutationFn: (status: string) => updateLeadStatus(userId, instituteId, status),
         onSuccess: (_data, status) => {
             toast.success(`Lead marked as ${status}`);
-            queryClient.invalidateQueries({ queryKey });
+            invalidateLeadCaches(queryClient, userId);
         },
         onError: () => toast.error('Failed to update lead status'),
     });
@@ -673,7 +678,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
         mutationFn: (tier: string) => updateLeadTier(userId, instituteId, tier),
         onSuccess: (_data, tier) => {
             toast.success(`Lead tier set to ${tier}`);
-            queryClient.invalidateQueries({ queryKey });
+            invalidateLeadCaches(queryClient, userId);
         },
         onError: () => toast.error('Failed to update lead tier'),
     });
@@ -715,7 +720,20 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                 <div className="flex items-center justify-between">
                     <div>
                         <p className="mb-1 text-xs text-muted-foreground">Lead Interest Score</p>
-                        <LeadScoreBadge score={profile.best_score} size="md" />
+                        <LeadScoreBadge
+                            score={profile.best_score}
+                            tier={profile.lead_tier}
+                            size="md"
+                        />
+                        {profile.last_calculated_at && (
+                            <p
+                                className="mt-1 text-[10px] text-neutral-400"
+                                title={new Date(profile.last_calculated_at).toLocaleString()}
+                            >
+                                Last calculated{' '}
+                                {format(new Date(profile.last_calculated_at), 'MMM d, h:mm a')}
+                            </p>
+                        )}
                     </div>
                     <span className={`rounded-full px-3 py-1 text-xs font-medium ${sClass}`}>
                         {sLabel}
@@ -890,7 +908,7 @@ export function StudentLeadProfile({ userId }: StudentLeadProfileProps) {
                     onOpenChange={setShowAssignCounselor}
                     userId={userId}
                     invalidateKeys={[queryKey]}
-                    onSuccess={() => queryClient.invalidateQueries({ queryKey })}
+                    onSuccess={() => invalidateLeadCaches(queryClient, userId)}
                 />
             )}
 

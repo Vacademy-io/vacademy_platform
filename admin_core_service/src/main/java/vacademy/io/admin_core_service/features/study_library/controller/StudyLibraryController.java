@@ -26,8 +26,9 @@ public class StudyLibraryController {
     @GetMapping("/course-init")
     public ResponseEntity<List<CourseDTOWithDetails>> initCourse(
             @RequestParam("courseId") String courseId,
-            @RequestParam("instituteId") String instituteId) {
-        return ResponseEntity.ok(studyLibraryService.getCourseInitDetails(courseId, instituteId));
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(studyLibraryService.getCourseInitDetails(courseId, instituteId, user));
     }
 
     @GetMapping("/modules-with-chapters")

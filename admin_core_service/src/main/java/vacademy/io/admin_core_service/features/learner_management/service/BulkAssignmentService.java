@@ -257,7 +257,30 @@ public class BulkAssignmentService {
             }
         }
 
-        // 6. Build summary
+        // 6. Auto-mark conversion for any user that successfully enrolled and already
+        // had a UserLeadProfile. Best-effort: failures must not affect the response.
+        // Skipped on dry-run since no real enrollment happened.
+        if (!dryRun && StringUtils.hasText(request.getInstituteId())) {
+            Set<String> convertedUserIds = new HashSet<>();
+            for (BulkAssignResultItemDTO r : results) {
+                if ("SUCCESS".equals(r.getStatus())
+                        && StringUtils.hasText(r.getUserId())
+                        && convertedUserIds.add(r.getUserId())) {
+                    try {
+                        boolean flipped = userLeadProfileService.markConvertedIfExists(
+                                r.getUserId(), request.getInstituteId());
+                        if (flipped) {
+                            log.info("Auto-marked lead as CONVERTED on bulk assign: userId={}, instituteId={}",
+                                    r.getUserId(), request.getInstituteId());
+                        }
+                    } catch (Exception e) {
+                        log.warn("Failed to auto-mark lead conversion for userId={}", r.getUserId(), e);
+                    }
+                }
+            }
+        }
+
+        // 7. Build summary
         return buildResponse(dryRun, results);
     }
 

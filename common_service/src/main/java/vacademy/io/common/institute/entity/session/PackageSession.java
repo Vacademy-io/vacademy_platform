@@ -86,6 +86,23 @@ public class PackageSession {
     @Column(name = "parent_id")
     private String parentId;
 
+    /**
+     * Content-copy lineage (audit). Set by the wizard-time copy-content flow.
+     * - "VALUE"     => the content tree under this batch was deep-cloned from another batch.
+     * - "REFERENCE" => the content tree under this batch is shared (by mapping rows) with another batch.
+     * - null        => batch was not seeded via copy-content (the default).
+     */
+    @Column(name = "content_copied_by")
+    private String contentCopiedBy;
+
+    /**
+     * Source package_session.id this batch's content was seeded from. Null when
+     * {@link #contentCopiedBy} is null. Not a foreign key — kept as a plain id
+     * so the audit trail survives deletion of the source batch.
+     */
+    @Column(name = "content_copied_from_package_session_id")
+    private String contentCopiedFromPackageSessionId;
+
     @Version
     private Long version;
 

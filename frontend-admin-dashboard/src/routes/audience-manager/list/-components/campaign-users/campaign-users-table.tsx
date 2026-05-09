@@ -16,6 +16,7 @@ import {
     Search,
     Flame,
     CheckCircle2,
+    ArrowUpDown,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -66,8 +67,30 @@ const generateKeyFromName = (name: string): string =>
 // Sentinel for "any value" / "all tiers" — shadcn `<Select>` rejects empty
 // strings as item values, so we use a marker and translate on the way out.
 const ALL_VALUE = '__ALL__';
-const SEARCH_DEBOUNCE_MS = 350;
+const SEARCH_DEBOUNCE_MS = 500;
 type ConversionFilter = 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+
+// Sort options. Values map to the backend's LeadFilterDTO sort_by + sort_direction.
+// Backend supports SUBMITTED_AT, LEAD_SCORE, PARENT_NAME — exposed here as the
+// two most useful for the campaign-users table.
+type SortOption =
+    | 'SUBMITTED_AT_DESC'
+    | 'SUBMITTED_AT_ASC'
+    | 'LEAD_SCORE_DESC'
+    | 'LEAD_SCORE_ASC';
+const DEFAULT_SORT: SortOption = 'SUBMITTED_AT_DESC';
+const SORT_LABELS: Record<SortOption, string> = {
+    SUBMITTED_AT_DESC: 'Newest first',
+    SUBMITTED_AT_ASC: 'Oldest first',
+    LEAD_SCORE_DESC: 'Lead score (high → low)',
+    LEAD_SCORE_ASC: 'Lead score (low → high)',
+};
+const splitSort = (s: SortOption): { sortBy: string; sortDirection: 'ASC' | 'DESC' } => {
+    if (s === 'SUBMITTED_AT_ASC') return { sortBy: 'SUBMITTED_AT', sortDirection: 'ASC' };
+    if (s === 'LEAD_SCORE_DESC') return { sortBy: 'LEAD_SCORE', sortDirection: 'DESC' };
+    if (s === 'LEAD_SCORE_ASC') return { sortBy: 'LEAD_SCORE', sortDirection: 'ASC' };
+    return { sortBy: 'SUBMITTED_AT', sortDirection: 'DESC' };
+};
 
 interface DropdownFilterField {
     id: string;
@@ -85,15 +108,25 @@ const extractDropdownFilterFields = (rawFields: any[]): DropdownFilterField[] =>
     return rawFields
         .map((entry: any): DropdownFilterField | null => {
             const cf = entry?.custom_field || entry || {};
-            const id =
-                cf.id ||
-                entry?.id ||
-                entry?._id ||
-                entry?.field_id ||
-                cf.custom_field_id;
-            const type = (cf.fieldType || cf.field_type || cf.type || entry?.field_type || entry?.type || '').toString().toLowerCase();
-            const name = cf.fieldName || cf.field_name || cf.name || entry?.field_name || entry?.name || '';
-            const rawOptions = cf.options || entry?.options || cf.dropdown_options || entry?.dropdown_options || [];
+            const id = cf.id || entry?.id || entry?._id || entry?.field_id || cf.custom_field_id;
+            const type = (
+                cf.fieldType ||
+                cf.field_type ||
+                cf.type ||
+                entry?.field_type ||
+                entry?.type ||
+                ''
+            )
+                .toString()
+                .toLowerCase();
+            const name =
+                cf.fieldName || cf.field_name || cf.name || entry?.field_name || entry?.name || '';
+            const rawOptions =
+                cf.options ||
+                entry?.options ||
+                cf.dropdown_options ||
+                entry?.dropdown_options ||
+                [];
 
             if (!id || !name) return null;
             if (!type.includes('dropdown') && !type.includes('select')) return null;
@@ -178,8 +211,11 @@ export const CampaignUsersTable = ({
     // Conversion-state filter. Default hides leads who've been assigned to a
     // course (the backend marks them CONVERTED on enrollment), so the active
     // list stays focused on still-actionable leads.
-    const [conversionFilter, setConversionFilter] =
-        useState<ConversionFilter>('EXCLUDE_CONVERTED');
+    const [conversionFilter, setConversionFilter] = useState<ConversionFilter>('EXCLUDE_CONVERTED');
+
+    // Sort selector — defaults to newest submissions first.
+    const [sortOption, setSortOption] = useState<SortOption>(DEFAULT_SORT);
+
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const bulkImportCustomFields = useMemo(
@@ -200,6 +236,7 @@ export const CampaignUsersTable = ({
         setToDate('');
         setAppliedRange({ from: '', to: '' });
         setConversionFilter('EXCLUDE_CONVERTED');
+        setSortOption(DEFAULT_SORT);
         console.log('🔄 [CampaignUsersTable] Campaign changed, resetting page to 0');
     }, [campaignId]);
 
@@ -272,18 +309,18 @@ export const CampaignUsersTable = ({
         const customFieldFilters = Object.entries(cfFilters)
             .filter(([, v]) => !!v)
             .map(([field_id, value]) => ({ field_id, value }));
+        const { sortBy, sortDirection } = splitSort(sortOption);
         return {
             audience_id: campaignId,
             page,
             size: pageSize,
-            sort_by: 'submitted_at_local',
-            sort_direction: 'DESC',
+            sort_by: sortBy,
+            sort_direction: sortDirection,
             submitted_from_local: startOfDayIso(appliedRange.from),
             submitted_to_local: endOfDayIso(appliedRange.to),
             search_query: appliedSearch || undefined,
             lead_tier: tierFilter === ALL_VALUE ? undefined : tierFilter,
-            custom_field_filters:
-                customFieldFilters.length > 0 ? customFieldFilters : undefined,
+            custom_field_filters: customFieldFilters.length > 0 ? customFieldFilters : undefined,
             conversion_status_filter: conversionFilter,
         };
     }, [
@@ -295,6 +332,7 @@ export const CampaignUsersTable = ({
         tierFilter,
         cfFilters,
         conversionFilter,
+        sortOption,
     ]);
 
     const handleApplyDateFilter = () => {
@@ -335,6 +373,7 @@ export const CampaignUsersTable = ({
         setTierFilter(ALL_VALUE);
         setCfFilters({});
         setConversionFilter('EXCLUDE_CONVERTED');
+        setSortOption(DEFAULT_SORT);
         setPage(0);
     };
 
@@ -343,12 +382,18 @@ export const CampaignUsersTable = ({
         setConversionFilter(value as ConversionFilter);
     };
 
+    const handleSortChange = (value: string) => {
+        setPage(0);
+        setSortOption(value as SortOption);
+    };
+
     const isAnyFilterActive =
         isDateFilterActive ||
         !!appliedSearch ||
         tierFilter !== ALL_VALUE ||
         Object.values(cfFilters).some((v) => !!v) ||
-        conversionFilter !== 'EXCLUDE_CONVERTED';
+        conversionFilter !== 'EXCLUDE_CONVERTED' ||
+        sortOption !== DEFAULT_SORT;
 
     const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
 
@@ -627,8 +672,7 @@ export const CampaignUsersTable = ({
                     if (cfMapEntry?.name) name = cfMapEntry.name;
 
                     const setupEntry =
-                        customFieldMap.get(fieldId) ||
-                        customFieldMap.get(fieldId.toLowerCase());
+                        customFieldMap.get(fieldId) || customFieldMap.get(fieldId.toLowerCase());
                     if (setupEntry?.field_name) name = setupEntry.field_name;
                     if (setupEntry?.field_type) type = setupEntry.field_type;
 
@@ -1013,9 +1057,10 @@ export const CampaignUsersTable = ({
     }
 
     // Only short-circuit to the dedicated empty page when there's no data AND
-    // the user hasn't applied a date filter — otherwise we want the filter bar
-    // to stay visible so they can adjust or clear it.
-    if ((!tableData || tableData.content.length === 0) && !isDateFilterActive) {
+    // no filters are applied. If the user has any filter or sort active, keep
+    // the header + filter bar visible so they can clear/adjust without losing
+    // their place.
+    if ((!tableData || tableData.content.length === 0) && !isAnyFilterActive) {
         return (
             <div className="flex h-[70vh] w-full flex-col items-center justify-center gap-2">
                 <EmptyInvitePage />
@@ -1092,10 +1137,7 @@ export const CampaignUsersTable = ({
                 {/* Filter bar — search, tier, dropdown fields, dates */}
                 <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
                     <div className="flex min-w-[14rem] flex-1 flex-col gap-1">
-                        <Label
-                            htmlFor="campaign-users-search"
-                            className="text-xs text-neutral-600"
-                        >
+                        <Label htmlFor="campaign-users-search" className="text-xs text-neutral-600">
                             Search
                         </Label>
                         <div className="relative">
@@ -1112,10 +1154,7 @@ export const CampaignUsersTable = ({
                         </div>
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label
-                            htmlFor="campaign-users-tier"
-                            className="text-xs text-neutral-600"
-                        >
+                        <Label htmlFor="campaign-users-tier" className="text-xs text-neutral-600">
                             Lead tier
                         </Label>
                         <div className="relative">
@@ -1142,24 +1181,34 @@ export const CampaignUsersTable = ({
                         </Label>
                         <div className="relative">
                             <CheckCircle2 className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                            <Select
-                                value={conversionFilter}
-                                onValueChange={handleConversionChange}
-                            >
-                                <SelectTrigger
-                                    id="campaign-users-conversion"
-                                    className="w-48 pl-7"
-                                >
+                            <Select value={conversionFilter} onValueChange={handleConversionChange}>
+                                <SelectTrigger id="campaign-users-conversion" className="w-48 pl-7">
                                     <SelectValue placeholder="Active leads" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="EXCLUDE_CONVERTED">
-                                        Active leads
-                                    </SelectItem>
-                                    <SelectItem value="ONLY_CONVERTED">
-                                        Converted only
-                                    </SelectItem>
+                                    <SelectItem value="EXCLUDE_CONVERTED">Active leads</SelectItem>
+                                    <SelectItem value="ONLY_CONVERTED">Converted only</SelectItem>
                                     <SelectItem value="ALL">All</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="campaign-users-sort" className="text-xs text-neutral-600">
+                            Sort by
+                        </Label>
+                        <div className="relative">
+                            <ArrowUpDown className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Select value={sortOption} onValueChange={handleSortChange}>
+                                <SelectTrigger id="campaign-users-sort" className="w-56 pl-7">
+                                    <SelectValue placeholder="Sort by" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {(Object.keys(SORT_LABELS) as SortOption[]).map((opt) => (
+                                        <SelectItem key={opt} value={opt}>
+                                            {SORT_LABELS[opt]}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -1185,9 +1234,7 @@ export const CampaignUsersTable = ({
                                         <SelectValue placeholder={`All ${field.name}`} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value={ALL_VALUE}>
-                                            All {field.name}
-                                        </SelectItem>
+                                        <SelectItem value={ALL_VALUE}>All {field.name}</SelectItem>
                                         {field.options.map((opt) => (
                                             <SelectItem key={opt} value={opt}>
                                                 {opt}
@@ -1199,10 +1246,7 @@ export const CampaignUsersTable = ({
                         );
                     })}
                     <div className="flex flex-col gap-1">
-                        <Label
-                            htmlFor="campaign-users-from"
-                            className="text-xs text-neutral-600"
-                        >
+                        <Label htmlFor="campaign-users-from" className="text-xs text-neutral-600">
                             Submitted From
                         </Label>
                         <div className="relative">
@@ -1217,10 +1261,7 @@ export const CampaignUsersTable = ({
                         </div>
                     </div>
                     <div className="flex flex-col gap-1">
-                        <Label
-                            htmlFor="campaign-users-to"
-                            className="text-xs text-neutral-600"
-                        >
+                        <Label htmlFor="campaign-users-to" className="text-xs text-neutral-600">
                             Submitted To
                         </Label>
                         <div className="relative">
@@ -1239,11 +1280,7 @@ export const CampaignUsersTable = ({
                             Apply
                         </Button>
                         {isAnyFilterActive && (
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={handleClearAllFilters}
-                            >
+                            <Button size="sm" variant="ghost" onClick={handleClearAllFilters}>
                                 Clear
                             </Button>
                         )}
@@ -1260,10 +1297,17 @@ export const CampaignUsersTable = ({
                         currentPage={page}
                     />
                 ) : (
-                    <div className="flex flex-col items-center gap-2 rounded-lg border border-neutral-200 bg-white py-12 shadow-sm">
+                    <div className="flex flex-col items-center gap-3 rounded-lg border border-neutral-200 bg-white py-12 shadow-sm">
                         <p className="text-sm text-neutral-500">
-                            No responses found in the selected date range.
+                            {isAnyFilterActive
+                                ? 'No responses match the current filters.'
+                                : 'No responses yet for this campaign.'}
                         </p>
+                        {isAnyFilterActive && (
+                            <Button size="sm" variant="ghost" onClick={handleClearAllFilters}>
+                                Clear filters
+                            </Button>
+                        )}
                     </div>
                 )}
 

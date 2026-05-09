@@ -80,8 +80,7 @@ export function AddResponsePage() {
         return raw
             .map((field: any) => {
                 const customField = field.custom_field || field;
-                const configStr =
-                    customField.config || field.config || '';
+                const configStr = customField.config || field.config || '';
 
                 let options: string[] | undefined;
                 let fileConfig: { allowedFileTypes?: string[]; maxSizeMB?: number } | undefined;
@@ -111,15 +110,25 @@ export function AddResponsePage() {
                                 defaultFromConfig = String(parsed.defaultValue);
                             }
                             // Legacy: comma-separated options wrapped in object
-                            if (!options && (parsed.coommaSepartedOptions || parsed.commaSeparatedOptions)) {
-                                const csv = parsed.coommaSepartedOptions || parsed.commaSeparatedOptions;
-                                options = csv.split(',').map((v: string) => v.trim()).filter(Boolean);
+                            if (
+                                !options &&
+                                (parsed.coommaSepartedOptions || parsed.commaSeparatedOptions)
+                            ) {
+                                const csv =
+                                    parsed.coommaSepartedOptions || parsed.commaSeparatedOptions;
+                                options = csv
+                                    .split(',')
+                                    .map((v: string) => v.trim())
+                                    .filter(Boolean);
                             }
                         }
                     } catch {
                         // Not JSON — treat as plain comma-separated string (legacy format)
                         if (configStr.includes(',')) {
-                            options = configStr.split(',').map((v: string) => v.trim()).filter(Boolean);
+                            options = configStr
+                                .split(',')
+                                .map((v: string) => v.trim())
+                                .filter(Boolean);
                         }
                     }
                 }
@@ -131,7 +140,10 @@ export function AddResponsePage() {
                     fieldKey:
                         customField.fieldKey || customField.field_key || field.field_key || '',
                     fieldType:
-                        customField.fieldType || customField.field_type || field.field_type || 'TEXT',
+                        customField.fieldType ||
+                        customField.field_type ||
+                        field.field_type ||
+                        'TEXT',
                     isMandatory: customField.isMandatory ?? field.isMandatory ?? true,
                     defaultValue:
                         customField.defaultValue || field.defaultValue || defaultFromConfig || '',
@@ -267,7 +279,7 @@ export function AddResponsePage() {
 
             const payload: SubmitLeadRequest = {
                 audience_id: search.campaignId,
-                source_type: 'AUDIENCE_CAMPAIGN',
+                source_type: 'WALK_IN',
                 source_id: search.campaignId,
                 custom_field_values: formValues,
                 user_dto: {

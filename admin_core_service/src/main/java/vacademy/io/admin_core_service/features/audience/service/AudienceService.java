@@ -448,6 +448,25 @@ public class AudienceService {
                             audience.getId());
                 }
 
+                // 3b. Calculate initial lead score (real-time).
+                // Custom fields are saved first so the completeness factor sees them.
+                // Without this call no LeadScore row is ever created — campaign_count
+                // and best_score on UserLeadProfile would stay at 0 forever for every
+                // lead that comes through this endpoint.
+                try {
+                    leadScoringService.calculateAndSaveScore(
+                            savedResponse.getId(),
+                            savedResponse.getAudienceId(),
+                            instituteId,
+                            savedResponse.getSourceType(),
+                            savedResponse.getEnquiryId()
+                    );
+                } catch (Exception e) {
+                    logger.error("Failed to calculate initial lead score for response {}: {}",
+                            savedResponse.getId(), e.getMessage());
+                    // Non-blocking — lead is still saved even if scoring fails
+                }
+
                 // 4. Build custom field map for email
                 Map<String, String> customFieldsForEmail = buildCustomFieldMapForEmail(savedResponse.getId());
 
@@ -731,6 +750,23 @@ public class AudienceService {
                             requestDTO.getCustomFieldValues(),
                             audience.getInstituteId(),
                             audience.getId());
+                }
+
+                // 3b. Calculate initial lead score (real-time).
+                // Same fix as v1 submitLead — without this, no LeadScore row is created
+                // and the user's profile shows campaign_count=0, best_score=0.
+                try {
+                    leadScoringService.calculateAndSaveScore(
+                            savedResponse.getId(),
+                            savedResponse.getAudienceId(),
+                            instituteId,
+                            savedResponse.getSourceType(),
+                            savedResponse.getEnquiryId()
+                    );
+                } catch (Exception e) {
+                    logger.error("[V2] Failed to calculate initial lead score for response {}: {}",
+                            savedResponse.getId(), e.getMessage());
+                    // Non-blocking
                 }
 
                 // 4. Build custom field map for email (to pass to workflow)
@@ -1472,6 +1508,26 @@ public class AudienceService {
         // listing. Callers must opt into ONLY_CONVERTED or ALL to see them.
         String conversionStatusFilter = filterDTO.getConversionStatusFilter();
 
+        // Cross-service search expansion. Leads created via the simple submit flow
+        // store the user's name/email/mobile on the User row in auth_service, not
+        // on audience_response.parent_*. So a substring search like "cold" against
+        // ar.parent_* misses those users entirely. We resolve the gap by asking
+        // auth_service for matching user IDs first, then OR'ing them into the
+        // audience-response filter via :searchUserIdsCsv. Empty/blank search → null
+        // CSV → predicate behaves exactly as before for non-search queries.
+        String searchUserIdsCsv = null;
+        String rawSearch = filterDTO.getSearchQuery();
+        if (rawSearch != null && !rawSearch.isBlank()) {
+            try {
+                List<String> ids = authService.searchUserIdsByQuery(rawSearch, filterDTO.getInstituteId());
+                if (ids != null && !ids.isEmpty()) {
+                    searchUserIdsCsv = String.join(",", ids);
+                }
+            } catch (Exception e) {
+                logger.warn("auth-service user search failed for query='{}': {}", rawSearch, e.getMessage());
+            }
+        }
+
         // Cross-audience path: when no audienceId is supplied, return leads
         // across every campaign in the institute. Used by the "Recent Leads"
         // view.
@@ -1484,6 +1540,7 @@ public class AudienceService {
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
+                    searchUserIdsCsv,
                     filterDTO.getLeadTier(),
                     filterDTO.getAssignedCounselorId(),
                     allowedAudienceIdsCsv,
@@ -1505,6 +1562,7 @@ public class AudienceService {
                 filterDTO.getSubmittedToLocal(),
                 filterDTO.getExcludeDuplicates(),
                 filterDTO.getSearchQuery(),
+                searchUserIdsCsv,
                 filterDTO.getMinLeadScore(),
                 filterDTO.getMaxLeadScore(),
                 filterDTO.getLeadTier(),

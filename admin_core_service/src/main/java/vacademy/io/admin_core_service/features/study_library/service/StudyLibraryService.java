@@ -19,6 +19,7 @@ import vacademy.io.admin_core_service.features.course.dto.CourseDTO;
 import vacademy.io.admin_core_service.features.course.dto.CourseDTOWithDetails;
 import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.learner_operation.repository.LearnerOperationRepository;
 import vacademy.io.admin_core_service.features.level.repository.LevelRepository;
 import vacademy.io.admin_core_service.features.module.dto.ModuleDTO;
 import vacademy.io.admin_core_service.features.module.repository.ModuleChapterMappingRepository;
@@ -89,6 +90,9 @@ public class StudyLibraryService {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private LearnerOperationRepository learnerOperationRepository;
 
     @Autowired
     private PackageInstituteRepository packageInstituteRepository;
@@ -542,6 +546,11 @@ public class StudyLibraryService {
 
     @Transactional
     public List<CourseDTOWithDetails> getCourseInitDetails(String courseId, String instituteId) {
+        return getCourseInitDetails(courseId, instituteId, null);
+    }
+
+    public List<CourseDTOWithDetails> getCourseInitDetails(String courseId, String instituteId,
+            CustomUserDetails user) {
         if (Objects.isNull(courseId)) {
             throw new VacademyException("Please provide courseId");
         }
@@ -572,7 +581,21 @@ public class StudyLibraryService {
         }
 
         // Reuse the common method with a single package
-        return buildCourseDTOWithDetailsForPackages(List.of(packageEntity), instituteId);
+        List<CourseDTOWithDetails> result = buildCourseDTOWithDetailsForPackages(List.of(packageEntity), instituteId);
+
+        // Stamp user-scoped percentage_completed when an authenticated user is present.
+        // Skipped for the open/unauthenticated path so the public catalog response
+        // stays user-agnostic.
+        if (user != null && user.getUserId() != null) {
+            for (CourseDTOWithDetails dto : result) {
+                if (dto.getCourse() != null) {
+                    Double pct = learnerOperationRepository.findMaxCoursePercentageForUser(courseId, user.getUserId());
+                    dto.getCourse().setPercentageCompleted(pct);
+                }
+            }
+        }
+
+        return result;
     }
 
 }

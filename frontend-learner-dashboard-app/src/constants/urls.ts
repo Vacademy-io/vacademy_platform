@@ -22,7 +22,7 @@ export const GET_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/packages/
 /** @deprecated Use GET_COURSE_INIT instead - this fetches ALL courses */
 export const GET_ALL_COURSE_DETAILS = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/init`;
 /** New scalable endpoint - fetches single course by courseId */
-export const GET_COURSE_INIT = `${BASE_URL}/admin-core-service/open/v1/learner-study-library/course-init`;
+export const GET_COURSE_INIT = `${BASE_URL}/admin-core-service/v1/study-library/course-init`;
 export const HOLISTIC_INSTITUTE_ID =
   import.meta.env.VITE_HOLISTIC_INSTITUTE_ID ||
   "bd9f2362-84d1-4e01-9762-a5196f9bac80";

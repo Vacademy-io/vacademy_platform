@@ -1,12 +1,16 @@
 package vacademy.io.admin_core_service.features.course.controller;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
+import vacademy.io.admin_core_service.features.course.dto.CopyCourseContentRequest;
+import vacademy.io.admin_core_service.features.course.dto.CopyCourseContentResponse;
 import vacademy.io.admin_core_service.features.course.dto.CourseBatchDTO;
 import vacademy.io.admin_core_service.features.course.dto.bulk.BulkAddCourseRequestDTO;
 import vacademy.io.admin_core_service.features.course.dto.bulk.BulkAddCourseResponseDTO;
 import vacademy.io.admin_core_service.features.course.service.BulkCourseService;
+import vacademy.io.admin_core_service.features.course.service.CourseContentCopyService;
 import vacademy.io.admin_core_service.features.course.service.CourseService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.PackageDTO;
@@ -19,6 +23,7 @@ import java.util.List;
 public class CourseController {
     private final CourseService courseService;
     private final BulkCourseService bulkCourseService;
+    private final CourseContentCopyService courseContentCopyService;
 
     @PostMapping("/add-course/{instituteId}")
     public String addCourse(@RequestBody AddCourseDTO addCourseDTO, @PathVariable("instituteId") String instituteId,
@@ -69,5 +74,27 @@ public class CourseController {
     @GetMapping("/{courseId}/batches")
     public List<CourseBatchDTO> getBatchesForCourse(@PathVariable("courseId") String courseId) {
         return courseService.getBatchesForCourse(courseId);
+    }
+
+    /**
+     * Deep-clone the content tree (Subject -> Module -> Chapter -> Slide + slide
+     * source content) of one institute batch into one or more target batches of
+     * the calling user's freshly-created course.
+     *
+     * Source and target courses must share the same course_depth (enforced).
+     * Drip-condition prerequisite ids inside the cloned subtree are remapped
+     * to the new ids; ids that fall outside the copy scope are dropped and
+     * surfaced as warnings on the response.
+     */
+    @PostMapping("/copy-content")
+    public ResponseEntity<CopyCourseContentResponse> copyCourseContent(
+            @RequestBody CopyCourseContentRequest request,
+            @RequestAttribute("user") CustomUserDetails userDetails) {
+        CopyCourseContentResponse result = courseContentCopyService.copy(
+                request.getSourcePackageSessionId(),
+                request.getTargetPackageSessionIds(),
+                request.getMode(),
+                userDetails == null ? null : userDetails.getUserId());
+        return ResponseEntity.ok(result);
     }
 }

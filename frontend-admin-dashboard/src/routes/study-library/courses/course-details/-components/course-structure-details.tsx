@@ -618,7 +618,20 @@ export const CourseStructureDetails = ({
             toast.error('Failed to import content into this batch.');
         }
     };
-    const canCopyContent = canEditStructure && !!batchPackageSessionId;
+    // Visibility rule for the "Import Content" button:
+    //  1. user can edit structure (admin or own draft course)
+    //  2. a target batch is actually selected
+    //  3. slide-count query has returned (we don't flash the button before the
+    //     count lands and then yank it away once we discover the batch is full)
+    //  4. the batch is empty — populated batches hide the button entirely.
+    //     Importing into a batch that already has content is an untested path
+    //     that mixes auto-seeded structure with imported structure; keeping it
+    //     out of the UI removes the foot-gun until that flow is hardened.
+    const canCopyContent =
+        canEditStructure &&
+        !!batchPackageSessionId &&
+        slidesCountQuery.isSuccess &&
+        !targetBatchHasContent;
 
     const useSlidesByChapterMutation = () => {
         return useMutation({

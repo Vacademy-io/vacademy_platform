@@ -131,6 +131,12 @@ public class CourseContentCopyService {
         boolean reference = isReferenceMode(mode);
         String auditMode = reference ? "REFERENCE" : "VALUE";
         for (PackageSession tgtPs : targetPss) {
+            // Wipe out the wizard-seeded empty DEFAULT subject/module/chapter
+            // chain BEFORE importing, so the imported content doesn't appear
+            // alongside an empty placeholder (which manifests in the UI as
+            // duplicate "Add Chapter" / "Add Module" buttons under each tree).
+            cleanupEmptyDefaultStructure(tgtPs);
+
             if (reference) {
                 referenceInto(sourcePs, tgtPs, response);
             } else {
@@ -143,6 +149,76 @@ public class CourseContentCopyService {
             packageSessionRepository.save(tgtPs);
         }
         return response;
+    }
+
+    /**
+     * Remove the wizard-seeded "DEFAULT" subject/module/chapter chain from a
+     * target batch when it carries zero slides — i.e. it's still the placeholder
+     * created by `add-course-form.handleStep2Submit`'s default-seeding branch
+     * and the user hasn't added any real content under it yet.
+     *
+     * Scope is strictly per-target: only the SubjectPackageSession mapping for
+     * this `tgtPs` is removed, plus the `chapter_package_session_mapping` rows
+     * under it for this `tgtPs`. Subject / Module / Chapter rows themselves stay
+     * intact so any other batch sharing them is unaffected.
+     *
+     * If the user has added even one slide under the DEFAULT chain, cleanup is
+     * skipped — we never delete user-touched content.
+     */
+    private void cleanupEmptyDefaultStructure(PackageSession tgtPs) {
+        List<Subject> subjects = subjectPackageSessionRepository
+                .findDistinctSubjectsByPackageSessionId(tgtPs.getId());
+
+        for (Subject subj : subjects) {
+            String name = subj.getSubjectName();
+            if (name == null || !"DEFAULT".equalsIgnoreCase(name.trim())) continue;
+
+            if (subjectHasAnyActiveSlidesInBatch(subj.getId(), tgtPs.getId())) {
+                // User added slides under DEFAULT. Don't touch.
+                continue;
+            }
+
+            // Soft-delete chapter mappings for this target only (not the chapter rows).
+            List<Module> modules = subjectModuleMappingRepository
+                    .findModulesBySubjectIdAndPackageSessionId(subj.getId(), tgtPs.getId());
+            for (Module mod : modules) {
+                List<Chapter> chapters = moduleChapterMappingRepository
+                        .findChaptersByModuleIdAndStatusNotDeleted(mod.getId(), tgtPs.getId());
+                for (Chapter ch : chapters) {
+                    Optional<ChapterPackageSessionMapping> mapping = chapterPackageSessionMappingRepository
+                            .findByChapterIdAndPackageSessionIdAndStatusNotDeleted(
+                                    ch.getId(), tgtPs.getId());
+                    mapping.ifPresent(m -> {
+                        m.setStatus("DELETED");
+                        chapterPackageSessionMappingRepository.save(m);
+                    });
+                }
+            }
+
+            // Drop the SubjectPackageSession row for this target. The Subject
+            // row itself stays in case it's referenced elsewhere (defensive).
+            subjectPackageSessionRepository
+                    .findBySubjectIdAndPackageSessionId(subj.getId(), tgtPs.getId())
+                    .ifPresent(subjectPackageSessionRepository::delete);
+        }
+    }
+
+    private boolean subjectHasAnyActiveSlidesInBatch(String subjectId, String packageSessionId) {
+        List<Module> modules = subjectModuleMappingRepository
+                .findModulesBySubjectIdAndPackageSessionId(subjectId, packageSessionId);
+        for (Module mod : modules) {
+            List<Chapter> chapters = moduleChapterMappingRepository
+                    .findChaptersByModuleIdAndStatusNotDeleted(mod.getId(), packageSessionId);
+            for (Chapter ch : chapters) {
+                List<ChapterToSlides> links = chapterToSlidesRepository.findByChapterId(ch.getId());
+                for (ChapterToSlides link : links) {
+                    if (link.getStatus() == null || !"DELETED".equalsIgnoreCase(link.getStatus())) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     /**

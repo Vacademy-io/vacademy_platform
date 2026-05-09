@@ -3,7 +3,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
     VideoCamera,
-    Lightning,
     ChatTeardrop,
     ArrowsClockwise,
     CursorClick,
@@ -114,11 +113,9 @@ export default function LiveSessionSettings() {
     const reset = () => setSettings(initial);
 
     const save = async () => {
-        // Guard: at least one schedule mode must remain enabled.
-        if (!settings.singleScheduleEnabled && !settings.bulkScheduleEnabled) {
-            toast.error('At least one of "Single Class" or "Bulk Schedule" must be enabled.');
-            return;
-        }
+        // Single/Bulk schedule entry-point visibility is now configured
+        // per-role under Display Settings, so the institute-wide guard is
+        // no longer needed here.
         // Guard: at least one platform must remain allowed.
         const anyPlatform = Object.values(settings.allowedPlatforms).some(Boolean);
         if (!anyPlatform) {
@@ -279,52 +276,6 @@ export default function LiveSessionSettings() {
                             );
                         })}
                     </div>
-                </CardContent>
-            </Card>
-
-            {/* Scheduling modes */}
-            <Card className="border-neutral-200 shadow-none">
-                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
-                    <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
-                        <Lightning size={18} />
-                    </div>
-                    <div className="flex-1">
-                        <CardTitle className="text-base">Scheduling Modes</CardTitle>
-                        <CardDescription>
-                            Pick which entry points show up in the schedule page header.
-                        </CardDescription>
-                    </div>
-                </CardHeader>
-                <CardContent className="border-t border-neutral-100 p-5">
-                    <SettingRow
-                        title="Single Class scheduling"
-                        description="The default flow for creating one class at a time."
-                        checked={settings.singleScheduleEnabled}
-                        onChange={(v) => togglePrimitive('singleScheduleEnabled', v)}
-                        disabled={
-                            settings.singleScheduleEnabled && !settings.bulkScheduleEnabled
-                        }
-                        disabledReason={
-                            settings.singleScheduleEnabled && !settings.bulkScheduleEnabled
-                                ? 'Cannot disable — at least one mode must remain enabled.'
-                                : undefined
-                        }
-                    />
-                    <Separator />
-                    <SettingRow
-                        title="Bulk Schedule"
-                        description="Spreadsheet-style grid for creating many independent classes at once."
-                        checked={settings.bulkScheduleEnabled}
-                        onChange={(v) => togglePrimitive('bulkScheduleEnabled', v)}
-                        disabled={
-                            settings.bulkScheduleEnabled && !settings.singleScheduleEnabled
-                        }
-                        disabledReason={
-                            settings.bulkScheduleEnabled && !settings.singleScheduleEnabled
-                                ? 'Cannot disable — at least one mode must remain enabled.'
-                                : undefined
-                        }
-                    />
                 </CardContent>
             </Card>
 

@@ -40,6 +40,17 @@ public class InstituteAccessValidator {
             throw new VacademyException("Institute ID is required");
         }
 
+        // Root users (platform superadmins) can act on behalf of any institute.
+        // This mirrors SuperAdminAuthUtil.requireSuperAdmin and is the same
+        // bypass used by SuperAdminCreditController for the credit-grant flow.
+        // Without this, JWT-only callers (no clientId header so the JPA roles
+        // relationship isn't hydrated by JwtAuthFilter) get falsely rejected
+        // with "user has no institute associations" even when the JWT clearly
+        // says is_root_user=true.
+        if (user.isRootUser()) {
+            return;
+        }
+
         Set<UserRole> roles = user.getRoles();
         if (roles == null || roles.isEmpty()) {
             throw new VacademyException("Access denied: user has no institute associations");

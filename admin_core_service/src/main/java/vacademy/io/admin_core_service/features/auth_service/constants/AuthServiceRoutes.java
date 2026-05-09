@@ -22,6 +22,14 @@ public class AuthServiceRoutes {
     public static final String AUTOSUGGEST_USERS = "/auth-service/internal/user/autosuggest-users";
 
     /**
+     * Substring search on full_name / email / mobile_number, optionally scoped to
+     * an institute. Returns user IDs only. Used by the leads search bar to
+     * pre-fetch matching users from auth_service so admin_core can OR them
+     * against ar.user_id in its own audience_response query.
+     */
+    public static final String SEARCH_USER_IDS = "/auth-service/internal/user/search-ids";
+
+    /**
      * Returns users with a given role for a specific institute.
      * Query params: instituteId, roleName.
      * Used by the doubt-notification cascade to fall back to ADMIN users when no faculty is mapped.

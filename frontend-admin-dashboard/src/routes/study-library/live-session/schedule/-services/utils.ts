@@ -1,6 +1,7 @@
 import {
     CREATE_LIVE_SESSION_STEP_1,
     CREATE_LIVE_SESSION_STEP_2,
+    CREATE_LIVE_SESSION_BULK,
     GET_LIVE_SESSIONS,
     DELETE_LIVE_SESSION,
     CREATE_PROVIDER_MEETING
@@ -8,6 +9,44 @@ import {
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { LiveSessionStep1RequestDTO, LiveSessionStep2RequestDTO } from '../../-constants/helper';
+
+export interface BulkLiveSessionRequest {
+    sessions: LiveSessionStep1RequestDTO[];
+    step2_template?: LiveSessionStep2RequestDTO;
+    /**
+     * Per-row step-2 payloads aligned with {@link sessions}. Takes precedence
+     * over {@link step2_template} when present. Length must match `sessions`.
+     */
+    step2_per_row?: LiveSessionStep2RequestDTO[];
+}
+
+export interface BulkLiveSessionRowResult {
+    index: number;
+    success: boolean;
+    session_id?: string;
+    title?: string;
+    error?: string;
+    step2_applied: boolean;
+}
+
+export interface BulkLiveSessionResponse {
+    total_requested: number;
+    total_created: number;
+    total_failed: number;
+    results: BulkLiveSessionRowResult[];
+}
+
+export const createLiveSessionsBulk = async (
+    data: BulkLiveSessionRequest
+): Promise<BulkLiveSessionResponse> => {
+    const response = await authenticatedAxiosInstance.post(CREATE_LIVE_SESSION_BULK, data, {
+        headers: {
+            Accept: '*/*',
+            'Content-Type': 'application/json',
+        },
+    });
+    return response.data;
+};
 
 export interface GetLiveSessionsRequest {
     instituteId?: string;
@@ -73,8 +112,19 @@ export const createLiveSessionStep1 = async (data: LiveSessionStep1RequestDTO) =
     return response.data;
 };
 
-export const createLiveSessionStep2 = async (data: LiveSessionStep2RequestDTO) => {
-    const response = await authenticatedAxiosInstance.post(CREATE_LIVE_SESSION_STEP_2, data, {
+/**
+ * Creates the step-2 (participants/access/notifications) record for a session.
+ * Defaults to {@link CREATE_LIVE_SESSION_STEP_2} (staging in dev) but can
+ * accept a `urlOverride` so the bulk fan-out can target the same backend
+ * the bulk endpoint hit (e.g. `localhost:8072`) — otherwise step 2 calls
+ * would 404 against staging when the sessions live on a different server.
+ */
+export const createLiveSessionStep2 = async (
+    data: LiveSessionStep2RequestDTO,
+    urlOverride?: string
+) => {
+    const url = urlOverride ?? CREATE_LIVE_SESSION_STEP_2;
+    const response = await authenticatedAxiosInstance.post(url, data, {
         headers: {
             Accept: '*/*',
             'Content-Type': 'application/json',

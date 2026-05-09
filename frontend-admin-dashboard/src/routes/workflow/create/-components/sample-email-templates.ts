@@ -31,16 +31,24 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   welcome_enrolled_student: {
     name: 'Welcome - New Student',
     subject: 'Welcome {{fullName}}! Your enrollment is confirmed',
-    variables: ['fullName', 'email', 'instituteName'],
+    variables: ['fullName', 'username', 'password', 'email', 'instituteName'],
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
   <div style="text-align:center;padding:24px 0">
     <h1 style="color:#2563eb;margin:0">Welcome Aboard!</h1>
   </div>
   <h2 style="color:#1a1a1a">Hi {{fullName}},</h2>
   <p style="color:#444;line-height:1.6">Congratulations! Your enrollment has been confirmed. We're excited to have you with us.</p>
+
+  <div style="background:#f0f9ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px 20px;margin:20px 0">
+    <p style="margin:0 0 10px 0;color:#1e40af;font-weight:600;font-size:14px">Your login credentials</p>
+    <p style="margin:4px 0;color:#1e293b;font-size:14px"><strong>Username:</strong> {{username}}</p>
+    <p style="margin:4px 0;color:#1e293b;font-size:14px"><strong>Password:</strong> {{password}}</p>
+    <p style="margin:10px 0 0 0;color:#64748b;font-size:12px">Please change your password after first login.</p>
+  </div>
+
   <p style="color:#444;line-height:1.6">Here's what to do next:</p>
   <ul style="color:#444;line-height:1.8">
-    <li>Log in to your student dashboard</li>
+    <li>Log in to your student dashboard with the credentials above</li>
     <li>Complete your profile</li>
     <li>Explore your courses and materials</li>
   </ul>

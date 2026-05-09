@@ -31,6 +31,7 @@ import type {
     StudentSideViewTabId,
     LearnerManagementSettings,
 } from '@/types/display-settings';
+import { DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS } from '@/types/display-settings';
 
 const COURSE_CREATION_DEFAULTS: CourseCreationSettings = {
     showCreateCourseWithAI: false,
@@ -141,6 +142,7 @@ const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowPortalAccess: true,
     allowViewPassword: true,
     allowSendResetPasswordMail: true,
+    showApprovalToggle: false,
 };
 
 const LEARNER_MANAGEMENT_OPTIONS: Array<{
@@ -162,6 +164,11 @@ const LEARNER_MANAGEMENT_OPTIONS: Array<{
         key: 'allowSendResetPasswordMail',
         label: 'Allow Sending Reset Password Mail',
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowSendResetPasswordMail,
+    },
+    {
+        key: 'showApprovalToggle',
+        label: 'Show Approval Requests toggle on Learners list',
+        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.showApprovalToggle,
     },
 ];
 
@@ -1704,6 +1711,68 @@ export default function TeacherDisplaySettings() {
                             />
                         </div>
                     ))}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Live Class Scheduling</CardTitle>
+                    <CardDescription>
+                        Choose which scheduling entry points show up for this role. Both are
+                        on by default. Disabling a mode here hides it for this role even when
+                        the institute-level Live Session setting allows it.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div>
+                            <div className="text-sm font-medium">Single Class scheduling</div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                                The default flow for creating one class at a time.
+                            </div>
+                        </div>
+                        <Switch
+                            checked={
+                                settings.liveClassScheduling?.singleScheduleEnabled ??
+                                DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS.singleScheduleEnabled
+                            }
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    liveClassScheduling: {
+                                        ...DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS,
+                                        ...prev.liveClassScheduling,
+                                        singleScheduleEnabled: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div>
+                            <div className="text-sm font-medium">Bulk Schedule</div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                                Spreadsheet-style grid for creating many independent classes
+                                in one go.
+                            </div>
+                        </div>
+                        <Switch
+                            checked={
+                                settings.liveClassScheduling?.bulkScheduleEnabled ??
+                                DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS.bulkScheduleEnabled
+                            }
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    liveClassScheduling: {
+                                        ...DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS,
+                                        ...prev.liveClassScheduling,
+                                        bulkScheduleEnabled: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                 </CardContent>
             </Card>
 

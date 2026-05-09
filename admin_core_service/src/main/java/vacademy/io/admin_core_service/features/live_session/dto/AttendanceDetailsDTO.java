@@ -21,6 +21,7 @@ public class AttendanceDetailsDTO {
     private String attendanceDetails;
     private LocalDateTime attendanceTimestamp;
     private Boolean dailyAttendance;
+    private Integer durationMinutes;
     // Getters & setters
 }
 

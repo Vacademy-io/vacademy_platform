@@ -112,6 +112,7 @@ export const enum SettingsTabs {
     Tnc = 'tnc',
     Integrations = 'integrations',
     DoubtManagement = 'doubtManagement',
+    LiveSession = 'liveSession',
 }
 
 export const DAYS_IN_MONTH = 30;

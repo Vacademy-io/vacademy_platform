@@ -13,9 +13,19 @@ import {
     UserPlus,
     MessageSquare,
     Calendar,
+    Search,
+    Flame,
+    CheckCircle2,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { useNavigate } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCampaignUsers } from '../../-hooks/useCampaignUsers';
@@ -41,7 +51,10 @@ import { StudentSidebarProvider } from '@/routes/manage-students/students-list/-
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { StudentTable } from '@/types/student-table-types';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
-import { useLeadProfiles } from '@/hooks/use-lead-profiles';
+import { useLeadProfiles, fetchBatchProfiles } from '@/hooks/use-lead-profiles';
+import { useLatestNotesBatch, fetchLatestNotesBatch } from '@/hooks/use-latest-notes-batch';
+import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
+import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 
 // Helper function to generate key from name
 const generateKeyFromName = (name: string): string =>
@@ -49,6 +62,64 @@ const generateKeyFromName = (name: string): string =>
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '_')
         .replace(/^_+|_+$/g, '');
+
+// Sentinel for "any value" / "all tiers" — shadcn `<Select>` rejects empty
+// strings as item values, so we use a marker and translate on the way out.
+const ALL_VALUE = '__ALL__';
+const SEARCH_DEBOUNCE_MS = 350;
+type ConversionFilter = 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+
+interface DropdownFilterField {
+    id: string;
+    name: string;
+    options: string[];
+}
+
+// Extract dropdown-type custom fields with their option values from the
+// campaign config. Defensive about both shapes the backend serializes
+// (`{ custom_field: { ... } }` wrapper vs flat) and a few `options` formats
+// (string[], { id, value }[], { value }[]).
+const extractDropdownFilterFields = (rawFields: any[]): DropdownFilterField[] => {
+    if (!Array.isArray(rawFields) || rawFields.length === 0) return [];
+
+    return rawFields
+        .map((entry: any): DropdownFilterField | null => {
+            const cf = entry?.custom_field || entry || {};
+            const id =
+                cf.id ||
+                entry?.id ||
+                entry?._id ||
+                entry?.field_id ||
+                cf.custom_field_id;
+            const type = (cf.fieldType || cf.field_type || cf.type || entry?.field_type || entry?.type || '').toString().toLowerCase();
+            const name = cf.fieldName || cf.field_name || cf.name || entry?.field_name || entry?.name || '';
+            const rawOptions = cf.options || entry?.options || cf.dropdown_options || entry?.dropdown_options || [];
+
+            if (!id || !name) return null;
+            if (!type.includes('dropdown') && !type.includes('select')) return null;
+            if (!Array.isArray(rawOptions) || rawOptions.length === 0) return null;
+
+            const options = rawOptions
+                .map((o: any) => {
+                    if (o == null) return '';
+                    if (typeof o === 'string') return o;
+                    return o.value ?? o.label ?? o.name ?? '';
+                })
+                .filter((v: string) => typeof v === 'string' && v.length > 0);
+            if (options.length === 0) return null;
+            // Deduplicate while preserving first-seen order.
+            const seen = new Set<string>();
+            const dedup: string[] = [];
+            for (const v of options) {
+                if (!seen.has(v)) {
+                    seen.add(v);
+                    dedup.push(v);
+                }
+            }
+            return { id, name, options: dedup };
+        })
+        .filter((x): x is DropdownFilterField => !!x);
+};
 
 interface CampaignUsersTableProps {
     campaignId: string;
@@ -81,6 +152,34 @@ export const CampaignUsersTable = ({
         to: '',
     });
     const isDateFilterActive = !!appliedRange.from || !!appliedRange.to;
+
+    // Substring search across name / email / phone — debounced so typing
+    // doesn't fire a query on every keystroke.
+    const [searchInput, setSearchInput] = useState('');
+    const [appliedSearch, setAppliedSearch] = useState('');
+    useEffect(() => {
+        const trimmed = searchInput.trim();
+        if (trimmed === appliedSearch) return;
+        const timer = window.setTimeout(() => {
+            setAppliedSearch(trimmed);
+            setPage(0);
+        }, SEARCH_DEBOUNCE_MS);
+        return () => window.clearTimeout(timer);
+    }, [searchInput, appliedSearch]);
+
+    // Lead tier filter — applied immediately (discrete select).
+    const [tierFilter, setTierFilter] = useState<string>(ALL_VALUE);
+
+    // Per-campaign dropdown filters: maps custom_field_id → selected option
+    // value. Each dropdown narrows the result set with AND semantics on the
+    // backend.
+    const [cfFilters, setCfFilters] = useState<Record<string, string>>({});
+
+    // Conversion-state filter. Default hides leads who've been assigned to a
+    // course (the backend marks them CONVERTED on enrollment), so the active
+    // list stays focused on still-actionable leads.
+    const [conversionFilter, setConversionFilter] =
+        useState<ConversionFilter>('EXCLUDE_CONVERTED');
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const bulkImportCustomFields = useMemo(
@@ -91,6 +190,16 @@ export const CampaignUsersTable = ({
     // Reset page when campaign changes
     useEffect(() => {
         setPage(0);
+        // Drop campaign-specific filter state on switch — dropdown options
+        // are unique to a campaign so carrying them over would 0 out the list.
+        setCfFilters({});
+        setTierFilter(ALL_VALUE);
+        setSearchInput('');
+        setAppliedSearch('');
+        setFromDate('');
+        setToDate('');
+        setAppliedRange({ from: '', to: '' });
+        setConversionFilter('EXCLUDE_CONVERTED');
         console.log('🔄 [CampaignUsersTable] Campaign changed, resetting page to 0');
     }, [campaignId]);
 
@@ -141,6 +250,12 @@ export const CampaignUsersTable = ({
         return map;
     }, [customFieldSetup]);
 
+    // Dropdown-type custom fields surface as filter Selects above the table.
+    const dropdownFilterFields = useMemo(
+        () => extractDropdownFilterFields(customFields),
+        [customFields]
+    );
+
     const leadsPayload = useMemo(() => {
         // Convert yyyy-mm-dd input values to ISO timestamps spanning the full
         // local day, matching the format the backend's `LeadFilterDTO` parses.
@@ -154,6 +269,9 @@ export const CampaignUsersTable = ({
             const d = new Date(`${date}T23:59:59.999`);
             return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
         };
+        const customFieldFilters = Object.entries(cfFilters)
+            .filter(([, v]) => !!v)
+            .map(([field_id, value]) => ({ field_id, value }));
         return {
             audience_id: campaignId,
             page,
@@ -162,8 +280,22 @@ export const CampaignUsersTable = ({
             sort_direction: 'DESC',
             submitted_from_local: startOfDayIso(appliedRange.from),
             submitted_to_local: endOfDayIso(appliedRange.to),
+            search_query: appliedSearch || undefined,
+            lead_tier: tierFilter === ALL_VALUE ? undefined : tierFilter,
+            custom_field_filters:
+                customFieldFilters.length > 0 ? customFieldFilters : undefined,
+            conversion_status_filter: conversionFilter,
         };
-    }, [campaignId, page, pageSize, appliedRange]);
+    }, [
+        campaignId,
+        page,
+        pageSize,
+        appliedRange,
+        appliedSearch,
+        tierFilter,
+        cfFilters,
+        conversionFilter,
+    ]);
 
     const handleApplyDateFilter = () => {
         setPage(0);
@@ -175,6 +307,48 @@ export const CampaignUsersTable = ({
         setPage(0);
         setAppliedRange({ from: '', to: '' });
     };
+
+    const handleTierChange = (value: string) => {
+        setPage(0);
+        setTierFilter(value);
+    };
+
+    const handleCfFilterChange = (fieldId: string, value: string) => {
+        setPage(0);
+        setCfFilters((prev) => {
+            const next = { ...prev };
+            if (value === ALL_VALUE) {
+                delete next[fieldId];
+            } else {
+                next[fieldId] = value;
+            }
+            return next;
+        });
+    };
+
+    const handleClearAllFilters = () => {
+        setFromDate('');
+        setToDate('');
+        setAppliedRange({ from: '', to: '' });
+        setSearchInput('');
+        setAppliedSearch('');
+        setTierFilter(ALL_VALUE);
+        setCfFilters({});
+        setConversionFilter('EXCLUDE_CONVERTED');
+        setPage(0);
+    };
+
+    const handleConversionChange = (value: string) => {
+        setPage(0);
+        setConversionFilter(value as ConversionFilter);
+    };
+
+    const isAnyFilterActive =
+        isDateFilterActive ||
+        !!appliedSearch ||
+        tierFilter !== ALL_VALUE ||
+        Object.values(cfFilters).some((v) => !!v) ||
+        conversionFilter !== 'EXCLUDE_CONVERTED';
 
     const { data: usersResponse, isLoading, error } = useCampaignUsers(leadsPayload);
 
@@ -297,6 +471,32 @@ export const CampaignUsersTable = ({
     const { profiles: leadProfiles } = useLeadProfiles(leadUserIds, showLeadScore);
     const profilesForColumns = showLeadScore ? leadProfiles : undefined;
 
+    // Counsellor + Notes columns rely on lead profile data (counselor name) and
+    // a batch-fetched latest-note summary. Both queries skip themselves when
+    // the lead system is off, so the table degrades gracefully.
+    const counsellorProfiles = useLeadProfiles(leadUserIds, !leadSettings.isLoading && leadSettings.enabled);
+    const { notesByUserId } = useLatestNotesBatch(
+        leadUserIds,
+        !leadSettings.isLoading && leadSettings.enabled
+    );
+    const showLeadOps = !leadSettings.isLoading && leadSettings.enabled;
+
+    // Open-state for the two dialogs anchored at the table level so a single
+    // mount handles every row's "Assign / Add Note" click.
+    const [noteTarget, setNoteTarget] = useState<{ userId: string; userName: string } | null>(
+        null
+    );
+    const [counsellorTarget, setCounsellorTarget] = useState<
+        { userId: string; userName: string } | null
+    >(null);
+
+    const handleAddNote = useCallback((userId: string, userName: string) => {
+        setNoteTarget({ userId, userName });
+    }, []);
+    const handleAssignCounsellor = useCallback((userId: string, userName: string) => {
+        setCounsellorTarget({ userId, userName });
+    }, []);
+
     const buildColumns = useCallback(
         (
             onRowClick?: (row: CampaignUserTable) => void,
@@ -330,7 +530,10 @@ export const CampaignUsersTable = ({
                     fieldMetadataMap,
                     onRowClick,
                     onSelectRow,
-                    profilesForColumns
+                    profilesForColumns ?? counsellorProfiles.profiles,
+                    showLeadOps ? notesByUserId : undefined,
+                    showLeadOps ? handleAddNote : undefined,
+                    showLeadOps ? handleAssignCounsellor : undefined
                 );
             }
 
@@ -344,7 +547,10 @@ export const CampaignUsersTable = ({
                 fieldMetadataMap,
                 onRowClick,
                 onSelectRow,
-                profilesForColumns
+                profilesForColumns ?? counsellorProfiles.profiles,
+                showLeadOps ? notesByUserId : undefined,
+                showLeadOps ? handleAddNote : undefined,
+                showLeadOps ? handleAssignCounsellor : undefined
             );
         },
         [
@@ -355,6 +561,11 @@ export const CampaignUsersTable = ({
             campaignFieldsMap,
             fieldMetadataMap,
             profilesForColumns,
+            counsellorProfiles.profiles,
+            notesByUserId,
+            showLeadOps,
+            handleAddNote,
+            handleAssignCounsellor,
         ]
     );
 
@@ -394,7 +605,40 @@ export const CampaignUsersTable = ({
                     _user_id: (user as any).id || lead.user_id || null,
                     _user: user,
                     _custom_field_values: (lead as any).custom_field_values || {},
+                    _audience_campaign_name: (lead as any).campaign_name || null,
                 };
+
+                // Enriched per-field response data (with type metadata) so the
+                // side-view's LeadFormResponseCard can render dropdown answers
+                // as plain text and multi-select / file answers correctly.
+                const responseFields: Array<{
+                    id: string;
+                    name: string;
+                    type: string;
+                    rawValue: string | null;
+                }> = [];
+                Object.entries(customValues).forEach(([fieldId, rawVal]) => {
+                    const value = rawVal == null ? null : String(rawVal);
+                    if (value === null || value === '') return;
+                    let name = fieldId;
+                    let type = 'textfield';
+
+                    const cfMapEntry = campaignFieldsMap.get(fieldId);
+                    if (cfMapEntry?.name) name = cfMapEntry.name;
+
+                    const setupEntry =
+                        customFieldMap.get(fieldId) ||
+                        customFieldMap.get(fieldId.toLowerCase());
+                    if (setupEntry?.field_name) name = setupEntry.field_name;
+                    if (setupEntry?.field_type) type = setupEntry.field_type;
+
+                    const apiMeta = fieldMetadataMap.get(fieldId);
+                    if (apiMeta?.fieldName) name = apiMeta.fieldName;
+                    if (apiMeta?.fieldType) type = apiMeta.fieldType;
+
+                    responseFields.push({ id: fieldId, name, type, rawValue: value });
+                });
+                rowData._response_fields = responseFields;
 
                 allFieldIdsFromAllUsers.forEach((fieldId) => {
                     // Virtual fields are already set in rowData above — skip them
@@ -526,6 +770,41 @@ export const CampaignUsersTable = ({
                 return;
             }
 
+            // Batch-resolve counsellor + latest-note data for the full export
+            // set so the CSV mirrors what the table shows. We fetch only when
+            // the lead system is enabled (otherwise the columns degrade to —).
+            const exportUserIds = Array.from(
+                new Set(
+                    response.content
+                        .map((lead: any) => lead.user?.id || lead.user_id || '')
+                        .filter((id: string): id is string => !!id)
+                )
+            );
+            let exportProfiles: Record<string, { assigned_counselor_name?: string | null }> = {};
+            let exportNotes: Record<
+                string,
+                {
+                    recent: Array<{
+                        title?: string;
+                        description?: string | null;
+                        created_at?: string;
+                        actor_name?: string | null;
+                    }>;
+                    count: number;
+                }
+            > = {};
+            if (showLeadOps && exportUserIds.length > 0) {
+                try {
+                    [exportProfiles, exportNotes] = await Promise.all([
+                        fetchBatchProfiles(exportUserIds),
+                        fetchLatestNotesBatch(exportUserIds),
+                    ]);
+                } catch (e) {
+                    // Non-fatal — export proceeds with empty counsellor/note columns.
+                    console.warn('Failed to enrich CSV with counsellor/notes', e);
+                }
+            }
+
             const allFieldIds = new Set<string>();
             customFields.forEach((field: any) => {
                 const fieldId = field.custom_field?.id || field.id || field._id || field.field_id;
@@ -580,6 +859,16 @@ export const CampaignUsersTable = ({
                 fieldIdToHeaderNameMap[fieldId] = headerName;
                 csvHeaders.push(headerName);
             });
+
+            // Mirror the table's added columns at the end of the CSV. Notes
+            // collapse into one multi-line cell. The leading label is the
+            // event's own type (Note / Call Log / Follow Up / Meeting / etc.),
+            // not a hard-coded "Notes":
+            //   1. {Type} - {description}
+            //      updatedby - {actor}
+            //      date - {date}
+            //   2. {Type} - ...
+            csvHeaders.push('Counsellor', 'Activity & Notes', 'Notes Count');
 
             const csvRows = response.content.map((lead) => {
                 const user = lead.user || {};
@@ -651,6 +940,35 @@ export const CampaignUsersTable = ({
                     }
                     row.push(safeString(value));
                 });
+
+                // Counsellor + Notes — mirror the table's two extra columns.
+                const userIdForLookup =
+                    (user as any).id || (lead as any).user_id || '';
+                const counsellorName = userIdForLookup
+                    ? exportProfiles[userIdForLookup]?.assigned_counselor_name ?? ''
+                    : '';
+                const noteSummary = userIdForLookup ? exportNotes[userIdForLookup] : undefined;
+                const recent = noteSummary?.recent ?? [];
+                const notesBlock = recent
+                    .map((n, idx) => {
+                        // Label comes from the event itself (Note / Call Log /
+                        // Follow Up / Meeting) so the CSV faithfully mirrors
+                        // what the side view shows for each entry.
+                        const label = n.title?.trim() || 'Note';
+                        const body = n.description?.trim() || '';
+                        const date = n.created_at
+                            ? convertToLocalDateTime(n.created_at)
+                            : '';
+                        return [
+                            `${idx + 1}. ${label} - ${body}`,
+                            `   updatedby - ${n.actor_name || ''}`,
+                            `   date - ${date}`,
+                        ].join('\n');
+                    })
+                    .join('\n\n');
+                row.push(safeString(counsellorName));
+                row.push(safeString(notesBlock));
+                row.push(safeString(noteSummary?.count ?? 0));
                 return row.join(',');
             });
 
@@ -771,8 +1089,115 @@ export const CampaignUsersTable = ({
                     </div>
                 )}
 
-                {/* Submitted-on date filter */}
+                {/* Filter bar — search, tier, dropdown fields, dates */}
                 <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3 shadow-sm">
+                    <div className="flex min-w-[14rem] flex-1 flex-col gap-1">
+                        <Label
+                            htmlFor="campaign-users-search"
+                            className="text-xs text-neutral-600"
+                        >
+                            Search
+                        </Label>
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                id="campaign-users-search"
+                                type="text"
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
+                                placeholder="Name, email or phone"
+                                className="w-full pl-7"
+                                aria-label="Search leads by name, email or phone"
+                            />
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label
+                            htmlFor="campaign-users-tier"
+                            className="text-xs text-neutral-600"
+                        >
+                            Lead tier
+                        </Label>
+                        <div className="relative">
+                            <Flame className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Select value={tierFilter} onValueChange={handleTierChange}>
+                                <SelectTrigger id="campaign-users-tier" className="w-44 pl-7">
+                                    <SelectValue placeholder="All tiers" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={ALL_VALUE}>All tiers</SelectItem>
+                                    <SelectItem value="HOT">Hot</SelectItem>
+                                    <SelectItem value="WARM">Warm</SelectItem>
+                                    <SelectItem value="COLD">Cold</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label
+                            htmlFor="campaign-users-conversion"
+                            className="text-xs text-neutral-600"
+                        >
+                            Status
+                        </Label>
+                        <div className="relative">
+                            <CheckCircle2 className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Select
+                                value={conversionFilter}
+                                onValueChange={handleConversionChange}
+                            >
+                                <SelectTrigger
+                                    id="campaign-users-conversion"
+                                    className="w-48 pl-7"
+                                >
+                                    <SelectValue placeholder="Active leads" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="EXCLUDE_CONVERTED">
+                                        Active leads
+                                    </SelectItem>
+                                    <SelectItem value="ONLY_CONVERTED">
+                                        Converted only
+                                    </SelectItem>
+                                    <SelectItem value="ALL">All</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    {dropdownFilterFields.map((field) => {
+                        const value = cfFilters[field.id] ?? ALL_VALUE;
+                        return (
+                            <div className="flex flex-col gap-1" key={field.id}>
+                                <Label
+                                    htmlFor={`campaign-users-cf-${field.id}`}
+                                    className="text-xs text-neutral-600"
+                                >
+                                    {field.name}
+                                </Label>
+                                <Select
+                                    value={value}
+                                    onValueChange={(v) => handleCfFilterChange(field.id, v)}
+                                >
+                                    <SelectTrigger
+                                        id={`campaign-users-cf-${field.id}`}
+                                        className="w-44"
+                                    >
+                                        <SelectValue placeholder={`All ${field.name}`} />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value={ALL_VALUE}>
+                                            All {field.name}
+                                        </SelectItem>
+                                        {field.options.map((opt) => (
+                                            <SelectItem key={opt} value={opt}>
+                                                {opt}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        );
+                    })}
                     <div className="flex flex-col gap-1">
                         <Label
                             htmlFor="campaign-users-from"
@@ -813,11 +1238,11 @@ export const CampaignUsersTable = ({
                         <Button size="sm" onClick={handleApplyDateFilter}>
                             Apply
                         </Button>
-                        {isDateFilterActive && (
+                        {isAnyFilterActive && (
                             <Button
                                 size="sm"
                                 variant="ghost"
-                                onClick={handleClearDateFilter}
+                                onClick={handleClearAllFilters}
                             >
                                 Clear
                             </Button>
@@ -900,6 +1325,25 @@ export const CampaignUsersTable = ({
                     customFields={bulkImportCustomFields}
                     leadCount={tableData?.total_elements || 0}
                 />
+
+                {noteTarget && (
+                    <AddLeadNoteDialog
+                        open={!!noteTarget}
+                        onOpenChange={(o) => !o && setNoteTarget(null)}
+                        userId={noteTarget.userId}
+                        userName={noteTarget.userName}
+                    />
+                )}
+
+                {counsellorTarget && (
+                    <AssignCounselorToLeadDialog
+                        open={!!counsellorTarget}
+                        onOpenChange={(o) => !o && setCounsellorTarget(null)}
+                        userId={counsellorTarget.userId}
+                        userName={counsellorTarget.userName}
+                        invalidateKeys={[['lead-profiles-batch']]}
+                    />
+                )}
             </div>
         </StudentSidebarProvider>
     );
@@ -907,6 +1351,8 @@ export const CampaignUsersTable = ({
 
 // Map a lead row from the campaign-users table to a partial StudentTable so the
 // shared StudentSidebar can render its tabs against this audience respondent.
+// Underscore-prefixed extras (`_response_fields`, `_audience_campaign_name`)
+// are attached for the LeadFormResponseCard to read from the side view.
 const mapLeadToStudent = (row: CampaignUserTable): StudentTable => {
     const u = row._user ?? {};
     const customFields: Record<string, string | null> = {};
@@ -914,7 +1360,7 @@ const mapLeadToStudent = (row: CampaignUserTable): StudentTable => {
     for (const [k, v] of Object.entries(cfv)) {
         customFields[k] = v == null ? null : String(v);
     }
-    return {
+    const result: StudentTable = {
         id: u.id || row._user_id || row.id,
         user_id: u.id || row._user_id || row.id,
         full_name: (row.full_name as string) || u.full_name || '',
@@ -954,6 +1400,12 @@ const mapLeadToStudent = (row: CampaignUserTable): StudentTable => {
         payment_status: '',
         custom_fields: customFields,
     };
+    // Attach the side-view extras via a loose cast — these aren't part of the
+    // canonical StudentTable shape, only read by LeadFormResponseCard.
+    (result as unknown as Record<string, unknown>)._response_fields = row._response_fields;
+    (result as unknown as Record<string, unknown>)._audience_campaign_name =
+        row._audience_campaign_name;
+    return result;
 };
 
 interface CampaignUsersTableBodyProps {

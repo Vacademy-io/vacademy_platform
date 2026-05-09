@@ -21,7 +21,9 @@ export interface LeadProfileSummary {
     assigned_counselor_name?: string | null;
 }
 
-async function fetchBatchProfiles(userIds: string[]): Promise<Record<string, LeadProfileSummary>> {
+export async function fetchBatchProfiles(
+    userIds: string[]
+): Promise<Record<string, LeadProfileSummary>> {
     if (!userIds.length) return {};
     const response = await authenticatedAxiosInstance({
         method: 'POST',

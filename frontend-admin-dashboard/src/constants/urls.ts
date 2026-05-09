@@ -84,6 +84,7 @@ export const UPDATE_LEAD_TIER = `${BASE_URL}/admin-core-service/v1/audience/user
 export const ASSIGN_COUNSELOR_TO_LEAD = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile/assign-counselor`;
 export const GET_USER_AUDIENCES = `${BASE_URL}/admin-core-service/v1/audience/user-audiences`;
 export const GET_CROSS_STAGE_TIMELINE = `${BASE_URL}/admin-core-service/timeline/v1/student`;
+export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/latest-notes-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;
@@ -405,6 +406,7 @@ export const DUPLICATE_STUDY_MATERIAL_FROM_SESSION = `${BASE_URL}/admin-core-ser
 // Live sessions
 export const CREATE_LIVE_SESSION_STEP_1 = `${BASE_URL}/admin-core-service/live-sessions/v1/create/step1`;
 export const CREATE_LIVE_SESSION_STEP_2 = `${BASE_URL}/admin-core-service/live-sessions/v1/create/step2`;
+export const CREATE_LIVE_SESSION_BULK = `${BASE_URL}/admin-core-service/live-sessions/v1/create/bulk`;
 export const GET_LIVE_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/live`;
 export const DELETE_LIVE_SESSION = `${BASE_URL}/admin-core-service/live-sessions/v1/delete`;
 export const GET_UPCOMING_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/upcoming`;
@@ -494,6 +496,8 @@ export const REFERRAL_UPDATE = (referralOptionId: string) =>
 export const REFERRAL_DELETE = `${BASE_URL}/admin-core-service/v1/referral-option`;
 
 export const GET_INSITITUTE_SETTINGS = `${BASE_URL}/admin-core-service/institute/setting/v1/get`;
+export const SAVE_INSTITUTE_SETTING = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
+export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/institute/setting/v1/data`;
 export const UPDATE_CUSTOM_FIELD_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/custom-field/create-or-update`;
 export const GET_CUSTOM_FIELD_LIST_WITH_USAGE = `${BASE_URL}/admin-core-service/institute/v1/custom-field/list-with-usage`;
 // Message Templates

@@ -162,6 +162,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         allowPortalAccess: true,
         allowViewPassword: true,
         allowSendResetPasswordMail: true,
+        showApprovalToggle: true,
     },
     postLoginRedirectRoute: '/dashboard',
 };

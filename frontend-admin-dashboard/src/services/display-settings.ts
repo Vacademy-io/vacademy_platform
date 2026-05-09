@@ -445,6 +445,7 @@ function mergeDisplayWithDefaults(
         allowPortalAccess: true,
         allowViewPassword: true,
         allowSendResetPasswordMail: true,
+        showApprovalToggle: false,
     };
     // Learner Management ...
     merged.learnerManagement = {
@@ -457,6 +458,23 @@ function mergeDisplayWithDefaults(
         allowSendResetPasswordMail:
             incoming?.learnerManagement?.allowSendResetPasswordMail ??
             defLearnerManagement.allowSendResetPasswordMail,
+        showApprovalToggle:
+            incoming?.learnerManagement?.showApprovalToggle ??
+            defLearnerManagement.showApprovalToggle,
+    };
+
+    // Live class scheduling (role-level overlay on top of institute-level
+    // Live Session Settings). Both flags default ON so existing roles aren't
+    // suddenly locked out of either flow.
+    merged.liveClassScheduling = {
+        bulkScheduleEnabled:
+            incoming?.liveClassScheduling?.bulkScheduleEnabled ??
+            defaults.liveClassScheduling?.bulkScheduleEnabled ??
+            true,
+        singleScheduleEnabled:
+            incoming?.liveClassScheduling?.singleScheduleEnabled ??
+            defaults.liveClassScheduling?.singleScheduleEnabled ??
+            true,
     };
 
     // Sidebar Categories

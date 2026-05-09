@@ -32,4 +32,12 @@ public class LearnerOperationService {
     private Optional<LearnerOperation> findByUserIdSourceAndSourceIdAndOperation(String userId, String source, String sourceId, String operation) {
         return learnerOperationRepository.findByUserIdAndSourceAndSourceIdAndOperation(userId, source, sourceId, operation);
     }
+
+    public Optional<Double> findDoubleValueByUserIdSourceAndSourceIdAndOperation(
+            String userId, String source, String sourceId, String operation) {
+        return findByUserIdSourceAndSourceIdAndOperation(userId, source, sourceId, operation)
+                .map(LearnerOperation::getValue)
+                .filter(v -> v != null && v.matches("^-?\\d+(\\.\\d+)?$"))
+                .map(Double::parseDouble);
+    }
 }

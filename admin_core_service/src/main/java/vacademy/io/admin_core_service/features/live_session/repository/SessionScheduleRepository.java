@@ -459,4 +459,43 @@ public interface SessionScheduleRepository extends JpaRepository<SessionSchedule
             """, nativeQuery = true)
     List<SessionSchedule> findAllWithRecordings();
 
+    /**
+     * Returns schedules whose end (meeting_date + last_entry_time, interpreted in
+     * the session's timezone) fell strictly within {@code (now - lookbackMinutes,
+     * now]} — i.e. candidates for the LIVE_SESSION_END workflow trigger.
+     * Comparison is done on wall-clock time in the session timezone, mirroring
+     * the pattern in {@code findEarliestScheduleIdBySessionId}.
+     *
+     * <p>Called from {@code LiveSessionNotificationProcessor#processDueNotifications}
+     * (cadence: every 5 min via Quartz). The lookback window MUST equal the
+     * cadence and the lower bound MUST be exclusive — otherwise consecutive
+     * ticks' windows overlap and the same class fires twice. The workflow
+     * engine's default idempotency strategy is UUID (see
+     * WorkflowBuilderService:217), which generates a fresh key per call and
+     * does NOT dedupe duplicate fires, so we cannot rely on it as a backstop.
+     *
+     * <p>The {@code meeting_date BETWEEN current_date - 1 AND current_date + 1}
+     * pre-filter is a performance guardrail: the timezone-aware comparison on
+     * {@code (meeting_date + last_entry_time)} can't use any index, so without
+     * pre-filtering the planner sequential-scans every row in
+     * {@code session_schedules}. Bounding by {@code meeting_date} (typically
+     * indexed) limits the scan to today's rows even on a large multi-tenant
+     * table. The +/-1 day window is wide enough to cover every IANA timezone
+     * (Hawaii UTC-10 to Kiribati UTC+14, total span 24h).
+     */
+    @Query(value = """
+                SELECT ss.* FROM session_schedules ss
+                JOIN live_session s ON ss.session_id = s.id
+                WHERE ss.meeting_date BETWEEN (CURRENT_DATE - INTERVAL '1 day') AND (CURRENT_DATE + INTERVAL '1 day')
+                  AND ss.last_entry_time IS NOT NULL
+                  AND COALESCE(ss.status, '') <> 'DELETED'
+                  AND COALESCE(s.status, '') <> 'DELETED'
+                  AND CAST((ss.meeting_date + ss.last_entry_time) AS TIMESTAMP)
+                          > (CAST(CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS TIMESTAMP)
+                                - (INTERVAL '1 minute' * :lookbackMinutes))
+                  AND CAST((ss.meeting_date + ss.last_entry_time) AS TIMESTAMP)
+                          <= CAST(CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS TIMESTAMP)
+            """, nativeQuery = true)
+    List<SessionSchedule> findEndedInLastMinutes(@Param("lookbackMinutes") int lookbackMinutes);
+
 }

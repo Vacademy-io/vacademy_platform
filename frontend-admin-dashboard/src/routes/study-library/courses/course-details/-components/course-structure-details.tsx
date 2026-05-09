@@ -2,8 +2,8 @@ import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getInstituteId } from '@/constants/helper';
 // class-study-material.tsx
 import { useRouter } from '@tanstack/react-router';
-import { useMutation } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
 import { SubjectType, useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useStudyLibraryContext } from '@/providers/study-library/init-study-library-provider';
@@ -48,6 +48,7 @@ import {
     DotsThree,
     Info,
     DotsSixVertical,
+    Copy,
 } from 'phosphor-react';
 import {
     DropdownMenu,
@@ -107,6 +108,12 @@ import { AddChapterForm } from '../subjects/modules/chapters/-components/chapter
 import { MyDialog } from '@/components/design-system/dialog';
 import Planning from '../subjects/-components/planning';
 import Activity from '../subjects/-components/activity';
+import {
+    CopyContentDialog,
+    type CopyContentSelection,
+} from '@/components/common/study-library/add-course/add-course-steps/CopyContentDialog';
+import { useCopyCourseContent } from '@/services/study-library/course-operations/copy-course-content';
+import { handleGetSlideCountDetails } from '../-services/get-slides-count';
 
 // Map between DisplaySettings ids and UI tab values
 const mapDisplayIdToUiValue = (id: CourseDetailsTabId): string => {
@@ -538,6 +545,80 @@ export const CourseStructureDetails = ({
     const packageSessionIds = contentPackageSessionId;
     // Batch-oriented tabs (Teacher/Learner/Assessment/Planning/Activity) also use the same id.
     const batchPackageSessionId = contentPackageSessionId;
+
+    // ---- Import Content (per-batch) -----------------------------------------
+    // Lets the admin seed the currently-viewed batch's content from any other
+    // batch in the institute. Target = batchPackageSessionId. Mode (VALUE /
+    // REFERENCE) is picked in the dialog. REFERENCE mode is locked off when the
+    // target batch already has slides — see COPY_COURSE_CONTENT_IMPLEMENTATION.md.
+    const [showCopyContentDialog, setShowCopyContentDialog] = useState(false);
+    const copyCourseContentMutation = useCopyCourseContent();
+
+    // Slide count for the current batch — drives the "has existing content?"
+    // signal. Same query key as course-details-page's slideCountQuery, so we
+    // hit React Query's cache without firing an extra request. Loaded eagerly
+    // (not gated on dialog open) so the dialog has the answer the moment it
+    // mounts; otherwise REFERENCE briefly shows enabled before flipping off.
+    const slidesCountQuery = useQuery({
+        ...handleGetSlideCountDetails(batchPackageSessionId ?? ''),
+        enabled: !!batchPackageSessionId,
+    });
+    const targetBatchHasContent = useMemo(() => {
+        // Backend projection uses @JsonNaming(SnakeCaseStrategy) so the JSON
+        // payload is snake_case: { source_type, slide_count, total_read_time_minutes }.
+        // Reading camelCase here previously made every row look like 0 slides
+        // and REFERENCE mode was never locked off.
+        const data = slidesCountQuery.data as
+            | Array<{ slide_count?: number; source_type?: string }>
+            | undefined;
+        if (!Array.isArray(data) || data.length === 0) return false;
+        return data.some((row) => (row?.slide_count ?? 0) > 0);
+    }, [slidesCountQuery.data]);
+
+    const handleCopyContentConfirm = async (selection: CopyContentSelection) => {
+        setShowCopyContentDialog(false);
+        if (!batchPackageSessionId) {
+            toast.error('No batch selected — pick a session/level first.');
+            return;
+        }
+        if (selection.sourcePackageSessionId === batchPackageSessionId) {
+            toast.error('Source and target batch are the same — pick a different batch.');
+            return;
+        }
+        // Defense-in-depth: if the dialog let REFERENCE through despite the
+        // target having content, refuse on the parent side too.
+        if (selection.mode === 'REFERENCE' && targetBatchHasContent) {
+            toast.error(
+                'This batch already has content. Reference-import would mix shared and existing content; please use Import by value (deep clone) instead.'
+            );
+            return;
+        }
+        try {
+            const result = await copyCourseContentMutation.mutateAsync({
+                sourcePackageSessionId: selection.sourcePackageSessionId,
+                targetPackageSessionIds: [batchPackageSessionId],
+                mode: selection.mode,
+            });
+            const summary = `${result.copiedSubjects} subject(s), ${result.copiedModules} module(s), ${result.copiedChapters} chapter(s), ${result.copiedSlides} slide(s)`;
+            const modeLabel =
+                selection.mode === 'REFERENCE' ? 'imported by reference' : 'imported';
+            if (
+                selection.mode === 'VALUE' &&
+                result.warnings &&
+                result.warnings.length > 0
+            ) {
+                toast.warning(
+                    `Content ${modeLabel} (${summary}). ${result.warnings.length} drip-condition warning(s).`
+                );
+            } else {
+                toast.success(`Content ${modeLabel} (${summary}).`);
+            }
+        } catch (err) {
+            console.error('Import content failed:', err);
+            toast.error('Failed to import content into this batch.');
+        }
+    };
+    const canCopyContent = canEditStructure && !!batchPackageSessionId;
 
     const useSlidesByChapterMutation = () => {
         return useMutation({
@@ -1299,25 +1380,40 @@ export const CourseStructureDetails = ({
                 <div className="sticky top-0 z-10 mb-3 border-b border-gray-200 bg-white px-6 py-3">
                     <div className="flex items-center justify-between">
                         <h3 className="text-sm font-medium text-gray-700">Course Structure</h3>
-                        {!readOnly && totalExpandable > 0 && (
-                            <MyButton
-                                buttonType="secondary"
-                                onClick={isAllExpanded ? collapseAll : expandAll}
-                                className="flex items-center gap-1.5 !px-3 !py-1 text-xs"
-                            >
-                                {isAllExpanded ? (
-                                    <>
-                                        <ArrowsIn size={14} weight="bold" />
-                                        Collapse All
-                                    </>
-                                ) : (
-                                    <>
-                                        <ArrowsOut size={14} weight="bold" />
-                                        Expand All
-                                    </>
-                                )}
-                            </MyButton>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {!readOnly && canCopyContent && (
+                                <MyButton
+                                    buttonType="secondary"
+                                    onClick={() => setShowCopyContentDialog(true)}
+                                    className="flex items-center gap-1.5 !px-3 !py-1 text-xs"
+                                    disable={copyCourseContentMutation.isPending}
+                                >
+                                    <Copy size={14} weight="bold" />
+                                    {copyCourseContentMutation.isPending
+                                        ? 'Importing…'
+                                        : 'Import Content'}
+                                </MyButton>
+                            )}
+                            {!readOnly && totalExpandable > 0 && (
+                                <MyButton
+                                    buttonType="secondary"
+                                    onClick={isAllExpanded ? collapseAll : expandAll}
+                                    className="flex items-center gap-1.5 !px-3 !py-1 text-xs"
+                                >
+                                    {isAllExpanded ? (
+                                        <>
+                                            <ArrowsIn size={14} weight="bold" />
+                                            Collapse All
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ArrowsOut size={14} weight="bold" />
+                                            Expand All
+                                        </>
+                                    )}
+                                </MyButton>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -3303,10 +3399,29 @@ export const CourseStructureDetails = ({
         [TabType.CONTENT_STRUCTURE]: (
             <div className="p-6 py-2">
                 <div className="mb-4">
-                    <h3 className="mb-2 text-lg font-semibold text-gray-800">Content Structure</h3>
-                    <p className="text-sm text-gray-600">
-                        Navigate through your course content using folders
-                    </p>
+                    <div className="flex items-start justify-between">
+                        <div>
+                            <h3 className="mb-2 text-lg font-semibold text-gray-800">
+                                Content Structure
+                            </h3>
+                            <p className="text-sm text-gray-600">
+                                Navigate through your course content using folders
+                            </p>
+                        </div>
+                        {canCopyContent && (
+                            <MyButton
+                                buttonType="secondary"
+                                onClick={() => setShowCopyContentDialog(true)}
+                                className="flex items-center gap-1.5 !px-3 !py-1 text-xs"
+                                disable={copyCourseContentMutation.isPending}
+                            >
+                                <Copy size={14} weight="bold" />
+                                {copyCourseContentMutation.isPending
+                                    ? 'Importing…'
+                                    : 'Import Content'}
+                            </MyButton>
+                        )}
+                    </div>
 
                     {/* Breadcrumb Navigation */}
                     {navigationBreadcrumb.length > 0 && (
@@ -4428,6 +4543,17 @@ export const CourseStructureDetails = ({
                     </div>
                 </TabsContent>
             </Tabs>
+
+            {/* Import Content from another batch (mode picker + source picker).
+                When the target batch already has slides, REFERENCE is locked off
+                (would mix shared and existing content); only VALUE is allowed. */}
+            <CopyContentDialog
+                open={showCopyContentDialog}
+                onOpenChange={setShowCopyContentDialog}
+                targetCourseDepth={courseStructure}
+                targetBatchHasContent={targetBatchHasContent}
+                onConfirm={handleCopyContentConfirm}
+            />
 
             {/* Edit Dialogs */}
             {/* Subject Edit Dialog */}

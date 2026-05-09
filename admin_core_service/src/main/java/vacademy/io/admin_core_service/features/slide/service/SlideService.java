@@ -638,6 +638,16 @@ public class SlideService {
     }
 
     /**
+     * Public delegate around the type-aware slide-source copy. Used by content-copy
+     * orchestrators that walk the tree themselves and need to deep-clone the
+     * polymorphic source row (DocumentSlide / VideoSlide / QuizSlide / ...).
+     * Returns the new source_id to assign on the new Slide row.
+     */
+    public String copySlideSourceForSlide(Slide oldSlide) {
+        return copySlideSourceByType(oldSlide);
+    }
+
+    /**
      * Copy slide source content based on slide type
      */
     private String copySlideSourceByType(Slide oldSlide) {

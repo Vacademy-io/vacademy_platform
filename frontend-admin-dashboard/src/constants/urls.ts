@@ -240,6 +240,7 @@ export const ADD_COURSE = `${BASE_URL}/admin-core-service/course/v1/add-course`;
 export const BULK_ADD_COURSES = `${BASE_URL}/admin-core-service/course/v1/bulk-add-courses`;
 export const DELETE_COURSE = `${BASE_URL}/admin-core-service/course/v1/delete-courses`;
 export const UPDATE_COURSE = `${BASE_URL}/admin-core-service/course/v1/update-course-details`;
+export const COPY_COURSE_CONTENT = `${BASE_URL}/admin-core-service/course/v1/copy-content`;
 
 // Teacher Course Approval Workflow URLs
 export const TEACHER_MY_COURSES = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/my-courses/detailed/v2`;

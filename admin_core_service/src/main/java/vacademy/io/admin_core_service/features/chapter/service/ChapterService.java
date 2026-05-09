@@ -198,21 +198,53 @@ public class ChapterService {
             Integer chapterOrder) {
         // Parse the incoming comma-separated IDs into a Set
         Set<String> incomingIds = new HashSet<>(Arrays.asList(commaSeparatedPackageSessionIds.split(",")));
+        incomingIds.removeIf(id -> id == null || id.isBlank());
 
         // Fetch existing mappings from the database
         List<ChapterPackageSessionMapping> existingMappings = chapterPackageSessionMappingRepository
                 .findByChapter(chapter);
 
-        // Extract existing package session IDs
-        Set<String> existingIds = existingMappings.stream()
-                .map(mapping -> mapping.getPackageSession().getId())
+        // -----------------------------------------------------------------
+        // Scope the destructive part of this update to the SAME course as the
+        // incoming package_sessions. When this chapter is shared with another
+        // course (REFERENCE-mode copy), its mapping rows in that other course
+        // must NOT be auto-soft-deleted just because they're missing from the
+        // incoming list — the incoming list only describes what the calling
+        // course wants. A user editing the chapter from course Y has no
+        // authority to detach it from course X's batches.
+        //
+        // Pre-fix behaviour (when chapter was shared X+Y):
+        //   existingIds = {X1, X2, Y1, Y2}, incomingIds = {Y1, Y2}
+        //   idsToRemove = {X1, X2}  -> X's mappings silently deleted
+        //
+        // Post-fix behaviour:
+        //   scopedExistingIds = {Y1, Y2} (only mappings under the calling
+        //   course Y are eligible for prune); X's mappings stay intact.
+        // -----------------------------------------------------------------
+        Set<String> callingCourseIds = new HashSet<>();
+        if (!incomingIds.isEmpty()) {
+            List<PackageSession> incomingPackageSessions = packageSessionRepository.findAllById(incomingIds);
+            for (PackageSession ps : incomingPackageSessions) {
+                if (ps != null && ps.getPackageEntity() != null && ps.getPackageEntity().getId() != null) {
+                    callingCourseIds.add(ps.getPackageEntity().getId());
+                }
+            }
+        }
+
+        Set<String> scopedExistingIds = existingMappings.stream()
+                .filter(m -> {
+                    PackageSession ps = m.getPackageSession();
+                    if (ps == null || ps.getPackageEntity() == null) return false;
+                    return callingCourseIds.contains(ps.getPackageEntity().getId());
+                })
+                .map(m -> m.getPackageSession().getId())
                 .collect(Collectors.toSet());
 
-        // Determine IDs to add and remove
+        // Determine IDs to add and remove (within the scoped set only)
         Set<String> idsToAdd = new HashSet<>(incomingIds);
-        idsToAdd.removeAll(existingIds);
+        idsToAdd.removeAll(scopedExistingIds);
 
-        Set<String> idsToRemove = new HashSet<>(existingIds);
+        Set<String> idsToRemove = new HashSet<>(scopedExistingIds);
         idsToRemove.removeAll(incomingIds);
 
         // Add new mappings
@@ -224,7 +256,7 @@ public class ChapterService {
             chapterPackageSessionMappingRepository.save(newMapping);
         }
 
-        // Remove obsolete mappings
+        // Remove obsolete mappings (only within the calling course)
         for (String packageSessionId : idsToRemove) {
             ChapterPackageSessionMapping mappingToRemove = existingMappings.stream()
                     .filter(mapping -> mapping.getPackageSession().getId().equals(packageSessionId))

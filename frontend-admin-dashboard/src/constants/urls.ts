@@ -70,11 +70,11 @@ export const VIMOTION_AVATAR_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/vimotion/v1/avatars/${id}`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
 export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/certificate/update-setting`;
-export const AUDIENCE_CAMPAIGN = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/audience/campaign`;
-export const AUDIENCE_CAMPAIGNS_LIST = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/audience/campaigns`;
-export const GET_CAMPAIGN_USERS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/audience/leads`;
+export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
+export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
+export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
 export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
-    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/audience/lead/${responseId}`;
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
 export const GET_USER_LEAD_PROFILE = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile`;
 export const GET_USER_LEAD_PROFILES_BATCH = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profiles/batch`;
@@ -88,10 +88,10 @@ export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;
-export const BULK_SUBMIT_AUDIENCE_LEAD = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/open/v1/audience/lead/bulk-submit`;
+export const BULK_SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit`;
 export const BULK_SUBMIT_APPLICATION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/applicant/bulk-apply`;
 export const BULK_SUBMIT_ADMISSION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/admission/bulk-submit-with-admission`;
-export const GET_CUSTOM_FIELD_SETUP = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/common/custom-fields/setup`;
+export const GET_CUSTOM_FIELD_SETUP = `${BASE_URL}/admin-core-service/common/custom-fields/setup`;
 
 // Field Mapping
 export const FIELD_MAPPING_BASE_URL = `${BASE_URL}/admin-core-service/common/field-mapping`;
@@ -300,11 +300,8 @@ export const GET_COURSE_DETAILS = `${BASE_URL}/admin-core-service/packages/v1/pa
 export const UPDATE_COURSE_BY_ID = `${BASE_URL}/admin-core-service/course/v1/update-course`;
 export const GET_LEARNER_PACKAGES_BY_USER_ID = `${BASE_URL}/admin-core-service/learner-packages/v1/search-by-user-id`;
 
-// Bulk Assign / De-assign (V3 Learner Management)
-// LOCAL: pointed at local admin_core_service to test auto-convert-on-enrollment.
-// Revert by replacing LOCAL_ADMIN_CORE_BASE → BASE_URL.
-export const BULK_ASSIGN_LEARNERS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v3/learner-management/assign`;
-export const BULK_DEASSIGN_LEARNERS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v3/learner-management/deassign`;
+export const BULK_ASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/assign`;
+export const BULK_DEASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/deassign`;
 export const GET_DEFAULT_INVITE = (instituteId: string, packageSessionId: string) =>
     `${BASE_URL}/admin-core-service/v1/enroll-invite/default/${instituteId}/${packageSessionId}`;
 
@@ -555,10 +552,7 @@ export const GET_MY_SYSTEM_FILES = `${BASE_URL}/admin-core-service/system-files/
 export const GET_LEARNER_PORTAL_ACCESS = `${BASE_URL}/admin-core-service/admin/learner-portal/v1/access`;
 export const SEND_LEARNER_RESET_PASSWORD = `${BASE_URL}/admin-core-service/admin/learner-portal/v1/send-cred`;
 
-// Enrollment & User Plan Actions
-// LOCAL: pointed at local admin_core_service to test auto-convert-on-enrollment.
-// Revert by replacing LOCAL_ADMIN_CORE_BASE → BASE_URL.
-export const ENROLL_LEARNER_V2 = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v2/learner/enroll`;
+export const ENROLL_LEARNER_V2 = `${BASE_URL}/admin-core-service/v2/learner/enroll`;
 export const CANCEL_USER_PLAN = (user_plan_id: string) =>
     `${BASE_URL}/admin-core-service/v1/user-plan/${user_plan_id}/cancel`;
 

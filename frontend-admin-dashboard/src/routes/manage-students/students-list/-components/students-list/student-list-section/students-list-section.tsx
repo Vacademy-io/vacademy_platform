@@ -331,6 +331,9 @@ export const StudentsListSection = () => {
                                                                                 score={
                                                                                     profile.best_score
                                                                                 }
+                                                                                tier={
+                                                                                    profile.lead_tier
+                                                                                }
                                                                                 size="sm"
                                                                             />
                                                                         )}

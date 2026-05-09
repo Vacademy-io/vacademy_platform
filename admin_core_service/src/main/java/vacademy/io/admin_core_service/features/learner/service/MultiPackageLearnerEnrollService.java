@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.learner.dto.v2.LearnerPackageSessionEnrollmentItemDTO;
 import vacademy.io.admin_core_service.features.learner.dto.v2.MultiPackageLearnerEnrollRequestDTO;
+import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollRequestDTO;
 import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
@@ -39,6 +40,9 @@ public class MultiPackageLearnerEnrollService {
 
     @Autowired
     private AuthService authService;
+
+    @Autowired
+    private UserLeadProfileService userLeadProfileService;
 
     @Transactional
     public LearnerEnrollResponseDTO enrollMultiPackage(MultiPackageLearnerEnrollRequestDTO request) {
@@ -213,6 +217,22 @@ public class MultiPackageLearnerEnrollService {
         if (!childPaymentLogIds.isEmpty()) {
             log.info("Linking {} child payment logs to main log {}", childPaymentLogIds.size(), mainPaymentLogId);
             paymentLogService.addChildLogsToPayment(mainPaymentLogId, childPaymentLogIds);
+        }
+
+        // 4. Auto-mark conversion if this user came in as a lead.
+        // Best-effort: failures here must not roll back the enrollment.
+        try {
+            String enrolledUserId = enrolledUser != null ? enrolledUser.getId() : null;
+            String instituteId = request.getInstituteId();
+            if (StringUtils.hasText(enrolledUserId) && StringUtils.hasText(instituteId)) {
+                boolean converted = userLeadProfileService.markConvertedIfExists(enrolledUserId, instituteId);
+                if (converted) {
+                    log.info("Auto-marked lead as CONVERTED on enrollment: userId={}, instituteId={}",
+                            enrolledUserId, instituteId);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to auto-mark lead conversion after enrollment", e);
         }
 
         return mainResponse;

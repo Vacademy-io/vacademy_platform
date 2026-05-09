@@ -168,12 +168,16 @@ export const getContactColumns = (
         ),
         cell: ({ row }) => {
             const score = showLeadScore ? row.original.lead_score : undefined;
+            const tier = showLeadScore ? row.original.lead_tier : undefined;
             const isConverted = row.original.lead_conversion_status === 'CONVERTED';
+            const hasLeadSignal = score != null || (tier != null && tier !== '');
             return (
                 <div className="flex flex-col gap-0.5">
                     <CreateClickableCell row={row} columnId="user.full_name" />
                     <div className="flex flex-wrap gap-1">
-                        {score != null && !isConverted && <LeadScoreBadge score={score} size="sm" />}
+                        {hasLeadSignal && !isConverted && (
+                            <LeadScoreBadge score={score} tier={tier} size="sm" />
+                        )}
                         <DuplicateBadge isDuplicate={row.original.is_duplicate} />
                     </div>
                 </div>
@@ -272,8 +276,9 @@ export const getContactColumns = (
                               </span>
                           );
                       }
-                      if (score != null) {
-                          return <LeadScoreBadge score={score} size="sm" />;
+                      const tier = row.original.lead_tier;
+                      if (score != null || (tier != null && tier !== '')) {
+                          return <LeadScoreBadge score={score} tier={tier} size="sm" />;
                       }
                       return <span className="text-xs text-neutral-400">—</span>;
                   },

@@ -345,9 +345,10 @@ export const generateDynamicColumns = (
                         >
                             <div className="flex flex-col gap-0.5">
                                 <span>{displayValue}</span>
-                                {leadProfile && (
+                                {leadProfile && leadProfile.conversion_status !== 'CONVERTED' && (
                                     <LeadScoreBadge
                                         score={leadProfile.best_score}
+                                        tier={leadProfile.lead_tier}
                                         size="sm"
                                     />
                                 )}

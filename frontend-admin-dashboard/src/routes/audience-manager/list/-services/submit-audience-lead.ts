@@ -1,6 +1,8 @@
-import { BASE_URL } from '@/constants/urls';
+import { LOCAL_ADMIN_CORE_BASE } from '@/constants/urls';
 
-export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
+// LOCAL: lead submit endpoint pointed at local admin_core_service for testing.
+// Revert by importing BASE_URL and using it instead of LOCAL_ADMIN_CORE_BASE.
+export const SUBMIT_AUDIENCE_LEAD_URL = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/open/v1/audience/lead/submit`;
 
 export interface SubmitLeadUserDto {
     id?: string;

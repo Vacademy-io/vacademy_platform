@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService;
 import vacademy.io.admin_core_service.features.timeline.dto.StudentLatestNoteDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventDTO;
 import vacademy.io.admin_core_service.features.timeline.dto.TimelineEventRequestDTO;
@@ -33,6 +34,9 @@ public class TimelineEventService {
         @Autowired
         private ObjectMapper objectMapper;
 
+        @Autowired
+        private UserLeadProfileService userLeadProfileService;
+
         /**
          * Internal method to log a timeline event from other services.
          * studentUserId is optional — pass null for non-student-linked events.
@@ -42,11 +46,12 @@ public class TimelineEventService {
                         String actorType, String actorId, String actorName,
                         String title, String description, Object metadata) {
                 logEvent(type, typeId, actionType, actorType, actorId, actorName,
-                        title, description, metadata, null);
+                                title, description, metadata, null);
         }
 
         /**
-         * Internal method to log a timeline event with optional student user ID for cross-stage continuity.
+         * Internal method to log a timeline event with optional student user ID for
+         * cross-stage continuity.
          */
         @Transactional
         public void logEvent(String type, String typeId, String actionType,
@@ -78,6 +83,8 @@ public class TimelineEventService {
 
                 timelineEventRepository.save(event);
                 logger.debug("Logged timeline event: {} on {}[{}]", actionType, type, typeId);
+
+                triggerLeadProfileRecompute(studentUserId);
         }
 
         /**
@@ -115,7 +122,32 @@ public class TimelineEventService {
                                 .build();
 
                 TimelineEvent savedEvent = timelineEventRepository.save(event);
+
+                triggerLeadProfileRecompute(savedEvent.getStudentUserId());
+
                 return mapToDTO(savedEvent);
+        }
+
+        /**
+         * Trigger an immediate lead-profile recompute for the student tied to a
+         * timeline event.
+         *
+         * Without this, total_timeline_events and the engagement component of
+         * best_score
+         * would only update when the 30-min batchRebuildProfiles job runs, making admin
+         * actions (notes, calls, meetings) feel disconnected from the score they
+         * affect.
+         *
+         * Best-effort — failures are logged but do not roll back the timeline event.
+         */
+        private void triggerLeadProfileRecompute(String studentUserId) {
+                if (studentUserId == null)
+                        return;
+                try {
+                        userLeadProfileService.recomputeForUser(studentUserId);
+                } catch (Exception e) {
+                        logger.warn("Failed to recompute lead profile for studentUserId={}", studentUserId, e);
+                }
         }
 
         /**
@@ -139,7 +171,8 @@ public class TimelineEventService {
         }
 
         /**
-         * Fetch ALL timeline events for a student across all stages (cross-stage notes).
+         * Fetch ALL timeline events for a student across all stages (cross-stage
+         * notes).
          * Pinned notes appear first.
          */
         @Transactional(readOnly = true)
@@ -149,8 +182,10 @@ public class TimelineEventService {
                 return events.map(this::mapToDTO);
         }
 
-        /** Per-student cap for the recent-notes batch — small enough to stay
-         * cheap, large enough to cover the table preview + the CSV export. */
+        /**
+         * Per-student cap for the recent-notes batch — small enough to stay
+         * cheap, large enough to cover the table preview + the CSV export.
+         */
         private static final int RECENT_NOTES_PER_STUDENT = 5;
 
         /**
@@ -171,7 +206,8 @@ public class TimelineEventService {
                                 .findRecentPerStudent(studentUserIds, RECENT_NOTES_PER_STUDENT);
                 Map<String, List<TimelineEventDTO>> recentByUser = new HashMap<>();
                 for (TimelineEvent e : recentEvents) {
-                        if (e.getStudentUserId() == null) continue;
+                        if (e.getStudentUserId() == null)
+                                continue;
                         recentByUser
                                         .computeIfAbsent(e.getStudentUserId(), k -> new ArrayList<>())
                                         .add(mapToDTO(e));

@@ -52,7 +52,7 @@ const ALL_AUDIENCES_VALUE = '__ALL__';
 const ALL_TIERS_VALUE = '__ALL__';
 type LeadTier = 'HOT' | 'WARM' | 'COLD';
 type ConversionFilter = 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
-const SEARCH_DEBOUNCE_MS = 350;
+const SEARCH_DEBOUNCE_MS = 500;
 
 // Convert a date input value (yyyy-mm-dd) to an ISO timestamp at the start
 // or end of that day in the user's local timezone. Returned as plain ISO so
@@ -209,8 +209,7 @@ export const RecentLeadsPage = () => {
     // Conversion-state filter. Default hides leads who've been assigned to a
     // course (the backend marks them CONVERTED on enrollment) so this view
     // stays focused on still-actionable leads.
-    const [conversionFilter, setConversionFilter] =
-        useState<ConversionFilter>('EXCLUDE_CONVERTED');
+    const [conversionFilter, setConversionFilter] = useState<ConversionFilter>('EXCLUDE_CONVERTED');
 
     useEffect(() => {
         setNavHeading(<h1 className="text-lg">Recent Leads</h1>);
@@ -251,8 +250,7 @@ export const RecentLeadsPage = () => {
         queryFn: () =>
             fetchRecentLeads({
                 institute_id: instituteId ?? '',
-                audience_id:
-                    audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                audience_id: audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
                 submitted_from_local: startOfDayIso(appliedRange.from),
                 submitted_to_local: endOfDayIso(appliedRange.to),
                 search_query: appliedSearch || undefined,
@@ -312,8 +310,7 @@ export const RecentLeadsPage = () => {
     // the same one the table calls; React Query caches it so this isn't a
     // duplicate fetch.
     const exportLeadSettings = useLeadSettings();
-    const exportShowLeadOps =
-        !exportLeadSettings.isLoading && exportLeadSettings.enabled;
+    const exportShowLeadOps = !exportLeadSettings.isLoading && exportLeadSettings.enabled;
 
     const [isExporting, setIsExporting] = useState(false);
     const EXPORT_PAGE_SIZE = 200;
@@ -328,13 +325,11 @@ export const RecentLeadsPage = () => {
             while (!last) {
                 const resp = await fetchRecentLeads({
                     institute_id: instituteId,
-                    audience_id:
-                        audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
+                    audience_id: audienceId === ALL_AUDIENCES_VALUE ? undefined : audienceId,
                     submitted_from_local: startOfDayIso(appliedRange.from),
                     submitted_to_local: endOfDayIso(appliedRange.to),
                     search_query: appliedSearch || undefined,
-                    lead_tier:
-                        tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
+                    lead_tier: tierFilter === ALL_TIERS_VALUE ? undefined : tierFilter,
                     conversion_status_filter: conversionFilter,
                     page: pageNo,
                     size: EXPORT_PAGE_SIZE,
@@ -362,14 +357,10 @@ export const RecentLeadsPage = () => {
             const [profiles, notes] = await Promise.all([
                 exportShowLeadOps
                     ? fetchBatchProfiles(userIds)
-                    : Promise.resolve(
-                          {} as Awaited<ReturnType<typeof fetchBatchProfiles>>
-                      ),
+                    : Promise.resolve({} as Awaited<ReturnType<typeof fetchBatchProfiles>>),
                 exportShowLeadOps
                     ? fetchLatestNotesBatch(userIds)
-                    : Promise.resolve(
-                          {} as Awaited<ReturnType<typeof fetchLatestNotesBatch>>
-                      ),
+                    : Promise.resolve({} as Awaited<ReturnType<typeof fetchLatestNotesBatch>>),
             ]);
 
             // CSV layout mirrors the Lead List export
@@ -420,9 +411,7 @@ export const RecentLeadsPage = () => {
                         .map((n, idx) => {
                             const label = n.title?.trim() || 'Note';
                             const body = n.description?.trim() || '';
-                            const date = n.created_at
-                                ? convertToLocalDateTime(n.created_at)
-                                : '';
+                            const date = n.created_at ? convertToLocalDateTime(n.created_at) : '';
                             return [
                                 `${idx + 1}. ${label} - ${body}`,
                                 `   updatedby - ${n.actor_name || ''}`,
@@ -443,10 +432,7 @@ export const RecentLeadsPage = () => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.setAttribute(
-                'download',
-                `recent_leads_${format(new Date(), 'yyyy-MM-dd')}.csv`
-            );
+            link.setAttribute('download', `recent_leads_${format(new Date(), 'yyyy-MM-dd')}.csv`);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -462,141 +448,132 @@ export const RecentLeadsPage = () => {
 
     return (
         <StudentSidebarProvider>
-        <div className="flex w-full flex-col gap-4">
-            {/* Filter bar */}
-            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
-                <div className="flex min-w-[14rem] flex-1 flex-col gap-1">
-                    <Label htmlFor="recent-leads-search" className="text-xs text-neutral-600">
-                        Search
-                    </Label>
-                    <div className="relative">
-                        <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Input
-                            id="recent-leads-search"
-                            type="text"
-                            value={searchInput}
-                            onChange={(e) => setSearchInput(e.target.value)}
-                            placeholder="Name, email or phone"
-                            className="w-full pl-7"
-                            aria-label="Search leads by name, email or phone"
-                        />
+            <div className="flex w-full flex-col gap-4">
+                {/* Filter bar */}
+                <div className="flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+                    <div className="flex min-w-[14rem] flex-1 flex-col gap-1">
+                        <Label htmlFor="recent-leads-search" className="text-xs text-neutral-600">
+                            Search
+                        </Label>
+                        <div className="relative">
+                            <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                id="recent-leads-search"
+                                type="text"
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
+                                placeholder="Name, email or phone"
+                                className="w-full pl-7"
+                                aria-label="Search leads by name, email or phone"
+                            />
+                        </div>
                     </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="recent-leads-audience" className="text-xs text-neutral-600">
-                        Audience
-                    </Label>
-                    <div className="relative">
-                        <Megaphone className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Select value={audienceId} onValueChange={handleAudienceChange}>
-                            <SelectTrigger
-                                id="recent-leads-audience"
-                                className="w-56 pl-7"
-                            >
-                                <SelectValue placeholder="All audiences" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value={ALL_AUDIENCES_VALUE}>
-                                    All audiences
-                                </SelectItem>
-                                {audienceOptions.map((opt) => (
-                                    <SelectItem key={opt.id} value={opt.id}>
-                                        {opt.name}
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="recent-leads-audience" className="text-xs text-neutral-600">
+                            Audience
+                        </Label>
+                        <div className="relative">
+                            <Megaphone className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Select value={audienceId} onValueChange={handleAudienceChange}>
+                                <SelectTrigger id="recent-leads-audience" className="w-56 pl-7">
+                                    <SelectValue placeholder="All audiences" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={ALL_AUDIENCES_VALUE}>
+                                        All audiences
                                     </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                                    {audienceOptions.map((opt) => (
+                                        <SelectItem key={opt.id} value={opt.id}>
+                                            {opt.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="recent-leads-tier" className="text-xs text-neutral-600">
-                        Lead tier
-                    </Label>
-                    <div className="relative">
-                        <Flame className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Select value={tierFilter} onValueChange={handleTierChange}>
-                            <SelectTrigger
-                                id="recent-leads-tier"
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="recent-leads-tier" className="text-xs text-neutral-600">
+                            Lead tier
+                        </Label>
+                        <div className="relative">
+                            <Flame className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Select value={tierFilter} onValueChange={handleTierChange}>
+                                <SelectTrigger id="recent-leads-tier" className="w-44 pl-7">
+                                    <SelectValue placeholder="All tiers" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value={ALL_TIERS_VALUE}>All tiers</SelectItem>
+                                    <SelectItem value={'HOT' satisfies LeadTier}>Hot</SelectItem>
+                                    <SelectItem value={'WARM' satisfies LeadTier}>Warm</SelectItem>
+                                    <SelectItem value={'COLD' satisfies LeadTier}>Cold</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label
+                            htmlFor="recent-leads-conversion"
+                            className="text-xs text-neutral-600"
+                        >
+                            Status
+                        </Label>
+                        <div className="relative">
+                            <CheckCircle2 className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Select value={conversionFilter} onValueChange={handleConversionChange}>
+                                <SelectTrigger id="recent-leads-conversion" className="w-48 pl-7">
+                                    <SelectValue placeholder="Active leads" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="EXCLUDE_CONVERTED">Active leads</SelectItem>
+                                    <SelectItem value="ONLY_CONVERTED">Converted only</SelectItem>
+                                    <SelectItem value="ALL">All</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="recent-leads-from" className="text-xs text-neutral-600">
+                            Submitted From
+                        </Label>
+                        <div className="relative">
+                            <Calendar className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                id="recent-leads-from"
+                                type="date"
+                                value={fromDate}
+                                onChange={(e) => setFromDate(e.target.value)}
                                 className="w-44 pl-7"
-                            >
-                                <SelectValue placeholder="All tiers" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value={ALL_TIERS_VALUE}>All tiers</SelectItem>
-                                <SelectItem value={'HOT' satisfies LeadTier}>Hot</SelectItem>
-                                <SelectItem value={'WARM' satisfies LeadTier}>Warm</SelectItem>
-                                <SelectItem value={'COLD' satisfies LeadTier}>Cold</SelectItem>
-                            </SelectContent>
-                        </Select>
+                            />
+                        </div>
                     </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label
-                        htmlFor="recent-leads-conversion"
-                        className="text-xs text-neutral-600"
-                    >
-                        Status
-                    </Label>
-                    <div className="relative">
-                        <CheckCircle2 className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Select value={conversionFilter} onValueChange={handleConversionChange}>
-                            <SelectTrigger
-                                id="recent-leads-conversion"
-                                className="w-48 pl-7"
-                            >
-                                <SelectValue placeholder="Active leads" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="EXCLUDE_CONVERTED">
-                                    Active leads
-                                </SelectItem>
-                                <SelectItem value="ONLY_CONVERTED">
-                                    Converted only
-                                </SelectItem>
-                                <SelectItem value="ALL">All</SelectItem>
-                            </SelectContent>
-                        </Select>
+                    <div className="flex flex-col gap-1">
+                        <Label htmlFor="recent-leads-to" className="text-xs text-neutral-600">
+                            Submitted To
+                        </Label>
+                        <div className="relative">
+                            <Calendar className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                id="recent-leads-to"
+                                type="date"
+                                value={toDate}
+                                onChange={(e) => setToDate(e.target.value)}
+                                className="w-44 pl-7"
+                            />
+                        </div>
                     </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="recent-leads-from" className="text-xs text-neutral-600">
-                        Submitted From
-                    </Label>
-                    <div className="relative">
-                        <Calendar className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Input
-                            id="recent-leads-from"
-                            type="date"
-                            value={fromDate}
-                            onChange={(e) => setFromDate(e.target.value)}
-                            className="w-44 pl-7"
-                        />
-                    </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <Label htmlFor="recent-leads-to" className="text-xs text-neutral-600">
-                        Submitted To
-                    </Label>
-                    <div className="relative">
-                        <Calendar className="absolute left-2 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
-                        <Input
-                            id="recent-leads-to"
-                            type="date"
-                            value={toDate}
-                            onChange={(e) => setToDate(e.target.value)}
-                            className="w-44 pl-7"
-                        />
-                    </div>
-                </div>
-                <div className="flex gap-2">
-                    <Button size="sm" onClick={handleApplyFilter}>
-                        Apply
-                    </Button>
-                    {isFilterActive && (
-                        <Button size="sm" variant="ghost" onClick={handleClearFilter}>
-                            Clear
+                    <div className="flex gap-2">
+                        <Button size="sm" onClick={handleApplyFilter}>
+                            Apply
                         </Button>
-                    )}
+                        {isFilterActive && (
+                            <Button size="sm" variant="ghost" onClick={handleClearFilter}>
+                                Clear
+                            </Button>
+                        )}
+                    </div>
+                    <div className="ml-auto text-xs text-neutral-500">
+                        {data ? `${data.totalElements} total` : ''}
+                    </div>
                 </div>
                 <div className="ml-auto flex items-center gap-3">
                     <span className="text-xs text-neutral-500">
@@ -613,10 +590,6 @@ export const RecentLeadsPage = () => {
                     </Button>
                 </div>
             </div>
-
-            {/* Table + side view: lives inside its own SidebarProvider so the
-                Details icon can toggle the StudentSidebar without affecting
-                any outer sidebars. */}
             <RecentLeadsTable data={data} isLoading={isLoading} error={error} />
 
             {/* Pagination */}
@@ -645,7 +618,6 @@ export const RecentLeadsPage = () => {
                     </Button>
                 </div>
             )}
-        </div>
         </StudentSidebarProvider>
     );
 };
@@ -687,12 +659,11 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
     const { notesByUserId } = useLatestNotesBatch(leadUserIds, showLeadOps);
 
     // Dialog state lives at the table level so a single mount serves every row.
-    const [noteTarget, setNoteTarget] = useState<{ userId: string; userName: string } | null>(
-        null
-    );
-    const [counsellorTarget, setCounsellorTarget] = useState<
-        { userId: string; userName: string } | null
-    >(null);
+    const [noteTarget, setNoteTarget] = useState<{ userId: string; userName: string } | null>(null);
+    const [counsellorTarget, setCounsellorTarget] = useState<{
+        userId: string;
+        userName: string;
+    } | null>(null);
 
     const handleSelectLead = useCallback(
         (lead: RecentLeadDetail) => {
@@ -736,9 +707,7 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                     return (
                         <div className="flex flex-col gap-0.5 p-3 font-medium text-neutral-900">
                             <span>{displayName(lead)}</span>
-                            {profile && (
-                                <LeadScoreBadge score={profile.best_score} size="sm" />
-                            )}
+                            {profile && <LeadScoreBadge score={profile.best_score} size="sm" />}
                         </div>
                     );
                 },
@@ -750,9 +719,7 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                 minSize: 200,
                 maxSize: 320,
                 cell: ({ row }) => (
-                    <div className="p-3 text-sm text-neutral-700">
-                        {displayEmail(row.original)}
-                    </div>
+                    <div className="p-3 text-sm text-neutral-700">{displayEmail(row.original)}</div>
                 ),
             },
             {
@@ -762,9 +729,7 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                 minSize: 140,
                 maxSize: 200,
                 cell: ({ row }) => (
-                    <div className="p-3 text-sm text-neutral-700">
-                        {displayPhone(row.original)}
-                    </div>
+                    <div className="p-3 text-sm text-neutral-700">{displayPhone(row.original)}</div>
                 ),
             },
             {
@@ -792,8 +757,9 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                     const lead = row.original;
                     const userId = lead.user?.id || lead.user_id || '';
                     const leadName = displayName(lead);
-                    const counsellorName =
-                        userId ? counsellorProfiles[userId]?.assigned_counselor_name ?? null : null;
+                    const counsellorName = userId
+                        ? counsellorProfiles[userId]?.assigned_counselor_name ?? null
+                        : null;
                     if (!userId) {
                         return <div className="p-3 text-sm text-neutral-400">—</div>;
                     }
@@ -889,9 +855,6 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
         handleSelectLead,
     ]);
 
-    // Adapt the page response to MyTable's TableData<T> shape — the recent
-    // leads endpoint returns just `content` + `totalElements`, so we synthesize
-    // the rest from the page params it shares with the rest of the app.
     const tableData = useMemo(() => {
         if (!data) return undefined;
         return {

@@ -64,7 +64,7 @@ import { transformFormToDTOStep1, transformFormToDTOStep2 } from '../../-constan
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { sessionFormSchema } from '../-schema/schema';
 import { RecurringType, SessionPlatform, SessionType } from '../../-constants/enums';
-import { createLiveSessionsBulk } from '../-services/utils';
+import { createLiveSessionsBulk, createLiveSessionStep2 } from '../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { SectionCard } from './SectionCard';
 import { useSuspenseQuery } from '@tanstack/react-query';
@@ -637,18 +637,74 @@ export function BulkScheduleGrid() {
             );
 
             // The backend reports per-row step2 outcomes via `step2_applied`.
-            // Anything where step1 succeeded but step2 didn't is collected
-            // for the result dialog. Most common cause: the backend hasn't
-            // been rebuilt with the new step2_per_row field, so it silently
-            // ignored the payload. Surface a clearer diagnostic.
+            // When the deployed admin_core_service is older than the
+            // step2_per_row contract (or step2 silently no-oped), every row
+            // comes back with `step2_applied: false` and participants/access
+            // never get applied. Fall back to the same per-session step-2
+            // endpoint the single-class flow uses — that path is stable
+            // across all backend versions, so we can recover transparently.
             const sentStep2 = step2PerRow.length > 0;
+            const needsFallback = response.results.filter(
+                (r) =>
+                    r.success &&
+                    r.session_id &&
+                    !r.step2_applied &&
+                    sentStep2 &&
+                    step2PerRow[r.index]
+            );
+
+            const fallbackFailures: { index: number; reason: string }[] = [];
+            if (needsFallback.length > 0) {
+                await Promise.all(
+                    needsFallback.map(async (r) => {
+                        const payload = {
+                            ...step2PerRow[r.index]!,
+                            session_id: r.session_id as string,
+                        };
+                        try {
+                            await createLiveSessionStep2(payload);
+                        } catch (err) {
+                            console.error(
+                                `Bulk fallback step2 failed for sessionId=${r.session_id}`,
+                                err
+                            );
+                            const message =
+                                (err as { response?: { data?: { message?: string } }; message?: string })
+                                    ?.response?.data?.message ??
+                                (err as { message?: string })?.message ??
+                                'unknown error';
+                            fallbackFailures.push({
+                                index: r.index,
+                                reason: message,
+                            });
+                        }
+                    })
+                );
+            }
+
+            const fallbackFailedIndices = new Set(
+                fallbackFailures.map((f) => f.index)
+            );
+            // Rows that didn't recover via fallback OR rows where step1 itself
+            // failed are real failures the user needs to see. Rows that the
+            // server reported as step2_applied=false but did NOT have a
+            // step-2 payload to send (selectedLevels empty) aren't failures
+            // — that's a user choice.
             const step2Failures = response.results
-                .filter((r) => r.success && r.session_id && !r.step2_applied)
+                .filter(
+                    (r) =>
+                        r.success &&
+                        r.session_id &&
+                        !r.step2_applied &&
+                        sentStep2 &&
+                        step2PerRow[r.index] &&
+                        fallbackFailedIndices.has(r.index)
+                )
                 .map((r) => ({
                     rowIndex: r.index,
-                    reason: sentStep2
-                        ? 'Backend received the request but did not apply participants/access. Likely the local backend is running an older build without step2_per_row support — rebuild & restart it. Otherwise check server logs for "Bulk row N step2 FAILED".'
-                        : 'No step-2 payload was sent for this row.',
+                    reason:
+                        fallbackFailures.find((f) => f.index === r.index)?.reason ??
+                        'unknown error',
                 }));
 
             const failures = response.results
@@ -2122,8 +2178,37 @@ export function BulkScheduleGrid() {
                                                           totalMins % 60
                                                       }m`
                                                     : `${totalMins}m`;
-                                            const batchCount = (row.selectedLevels ?? [])
-                                                .length;
+                                            const rowLevels = row.selectedLevels ?? [];
+                                            const batchLabels = rowLevels.map((sl) => {
+                                                const course = courses?.find(
+                                                    (c) =>
+                                                        c.courseId === sl.courseId &&
+                                                        c.sessionId === sl.sessionId
+                                                );
+                                                const sessionEntry = sessionList.find(
+                                                    (s) => s.id === sl.sessionId
+                                                );
+                                                const levelName = course?.levels
+                                                    .find((l) => l.id === sl.levelId)
+                                                    ?.name?.trim();
+                                                const courseName =
+                                                    course?.courseName?.trim() || 'Course';
+                                                const sessionName = sessionEntry?.name?.trim();
+                                                const levelIsGeneric =
+                                                    !levelName ||
+                                                    levelName.toLowerCase() === 'default';
+                                                const pill = levelIsGeneric
+                                                    ? courseName
+                                                    : `${courseName} · ${levelName}`;
+                                                const tooltip = [
+                                                    courseName,
+                                                    sessionName,
+                                                    levelName,
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join(' / ');
+                                                return { pill, tooltip };
+                                            });
                                             const formattedDate = (() => {
                                                 if (!row.startDate) return '—';
                                                 try {
@@ -2184,23 +2269,24 @@ export function BulkScheduleGrid() {
                                                             '—'
                                                         )}
                                                     </TableCell>
-                                                    <TableCell>
-                                                        <span
-                                                            className={cn(
-                                                                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
-                                                                batchCount > 0
-                                                                    ? 'bg-primary-100 text-primary-700'
-                                                                    : 'bg-neutral-100 text-neutral-500'
-                                                            )}
-                                                        >
-                                                            {batchCount === 0
-                                                                ? 'No batches'
-                                                                : `${batchCount} batch${
-                                                                      batchCount === 1
-                                                                          ? ''
-                                                                          : 'es'
-                                                                  }`}
-                                                        </span>
+                                                    <TableCell className="max-w-[260px]">
+                                                        {batchLabels.length === 0 ? (
+                                                            <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500">
+                                                                No batches
+                                                            </span>
+                                                        ) : (
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {batchLabels.map((b, i) => (
+                                                                    <span
+                                                                        key={`${rowLevels[i]!.courseId}-${rowLevels[i]!.sessionId}-${rowLevels[i]!.levelId}`}
+                                                                        title={b.tooltip}
+                                                                        className="inline-flex max-w-[180px] items-center truncate rounded-full bg-primary-100 px-2 py-0.5 text-[11px] font-medium text-primary-700"
+                                                                    >
+                                                                        {b.pill}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </TableCell>
                                                 </TableRow>
                                             );

@@ -96,7 +96,7 @@ export const handleGetCourseInit = ({
     return {
         queryKey: ["GET_COURSE_INIT", courseId, instituteId],
         queryFn: () => getCourseInitData({ courseId, instituteId }),
-        staleTime: 60 * 60 * 1000,
+        staleTime: 60_000,
         enabled: Boolean(courseId && instituteId),
     };
 };

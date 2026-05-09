@@ -549,11 +549,21 @@ public class LearnerTrackingAsyncService {
         // ==== Private Helper for Percentage Operations ====
 
         /**
-         * Saves percentage operation with specific rules:
+         * Saves a percentage operation with these rules:
          * 1. If value is null, do nothing.
          * 2. If value > 100, save as 100.
-         * 3. If an existing percentage is already >= the new value, do nothing.
-         *    Re-visiting a slide must never decrease previously-recorded progress.
+         * 3. Monotonic guard at SLIDE level only: never lower a previously-recorded
+         *    slide percentage. A learner re-opening a PDF (or scrubbing back in a
+         *    video) must not see their per-slide progress drop because of a stale
+         *    re-computation.
+         *
+         *    The guard is intentionally NOT applied at rollup levels (CHAPTER,
+         *    MODULE, SUBJECT, PACKAGE_SESSION). Rollups are aggregates over
+         *    potentially-changing structure (new slides added to a chapter, new
+         *    chapters added to a module, etc.). If we kept rollups monotonic, any
+         *    content edit that legitimately lowers an aggregate would permanently
+         *    freeze the old higher value, and the displayed course % would diverge
+         *    from the actual chapter/module math forever.
          */
         private void addOrUpdatePercentageOperation(String userId, String source, String sourceId, String operation,
                         Double value) {
@@ -564,11 +574,14 @@ public class LearnerTrackingAsyncService {
                         value = 100.0;
                 }
 
-                Double existing = learnerOperationService
-                                .findDoubleValueByUserIdSourceAndSourceIdAndOperation(userId, source, sourceId, operation)
-                                .orElse(null);
-                if (existing != null && existing >= value) {
-                        return;
+                if (LearnerOperationSourceEnum.SLIDE.name().equals(source)) {
+                        Double existing = learnerOperationService
+                                        .findDoubleValueByUserIdSourceAndSourceIdAndOperation(userId, source, sourceId,
+                                                        operation)
+                                        .orElse(null);
+                        if (existing != null && existing >= value) {
+                                return;
+                        }
                 }
 
                 learnerOperationService.addOrUpdateOperation(userId, source, sourceId, operation,

@@ -218,7 +218,7 @@ export const useSlides = (chapterId: string) => {
       
       return response.data;
     },
-    staleTime: 3600000,
+    staleTime: 60_000,
   });
 
   return {

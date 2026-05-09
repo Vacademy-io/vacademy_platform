@@ -18,7 +18,7 @@ export const handleFetchModulesWithChapters = (subjectId: string, packageSession
     return {
         queryKey: ['MODULES_WITH_CHAPTERS', subjectId, packageSessionId],
         queryFn: () => fetchModulesWithChapters(subjectId, packageSessionId),
-        staleTime: 60 * 60 * 1000,
+        staleTime: 60_000,
     };
 };
 
@@ -31,7 +31,7 @@ export const useModulesWithChaptersQuery = (subjectId: string, packageSessionId:
             setModulesData(data);
             return data;
         },
-        staleTime: 3600000,
+        staleTime: 60_000,
         enabled: !!subjectId && !!packageSessionId,
         refetchOnMount: 'always',
     });

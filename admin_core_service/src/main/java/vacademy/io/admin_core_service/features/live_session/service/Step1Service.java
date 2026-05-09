@@ -19,7 +19,6 @@ import java.sql.Date;
 import java.sql.Time;
 import java.time.LocalDate;
 import java.time.LocalTime;
-import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -408,17 +407,12 @@ public class Step1Service {
         if (currentSchedules.size() != 1) return;
 
         SessionSchedule sch = currentSchedules.get(0);
-        String tz = session.getTimezone() != null && !session.getTimezone().isEmpty()
-                ? session.getTimezone()
-                : "Asia/Kolkata";
-        ZoneId zone;
-        try {
-            zone = ZoneId.of(tz);
-        } catch (Exception e) {
-            zone = ZoneId.of("Asia/Kolkata");
-        }
 
-        ZonedDateTime startZdt = request.getStartTime().toInstant().atZone(zone);
+        // session.startTime / lastEntryTime hold the user's wall-clock value;
+        // extract using the same .atZone(UTC) pattern used elsewhere in this
+        // file (see handleAddedSchedules date extraction). The previous code
+        // shifted by the session timezone, double-converting the value.
+        ZonedDateTime startZdt = request.getStartTime().toInstant().atZone(ZoneOffset.UTC);
         Date newMeetingDate = Date.valueOf(startZdt.toLocalDate());
         Time newStartTime = Time.valueOf(startZdt.toLocalTime());
 
@@ -432,7 +426,7 @@ public class Step1Service {
             changed = true;
         }
         if (request.getLastEntryTime() != null) {
-            ZonedDateTime endZdt = request.getLastEntryTime().toInstant().atZone(zone);
+            ZonedDateTime endZdt = request.getLastEntryTime().toInstant().atZone(ZoneOffset.UTC);
             Time newLastEntryTime = Time.valueOf(endZdt.toLocalTime());
             if (!newLastEntryTime.equals(sch.getLastEntryTime())) {
                 sch.setLastEntryTime(newLastEntryTime);

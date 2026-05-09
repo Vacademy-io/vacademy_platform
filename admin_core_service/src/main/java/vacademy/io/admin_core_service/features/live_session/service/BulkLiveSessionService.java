@@ -2,7 +2,11 @@ package vacademy.io.admin_core_service.features.live_session.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.live_session.dto.BulkLiveSessionRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.BulkLiveSessionResponseDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO;
@@ -22,6 +26,18 @@ public class BulkLiveSessionService {
     private final Step1Service step1Service;
     private final Step2Service step2Service;
     private final LiveSessionWorkflowAsyncHelper workflowAsyncHelper;
+
+    /**
+     * Self-reference used to invoke {@link #createOneAtomically} through the
+     * Spring proxy so the {@code @Transactional} annotation actually takes
+     * effect — calling {@code this.createOneAtomically(...)} would bypass the
+     * proxy and the per-row transaction would never start.
+     * {@code @Lazy} avoids the self-bean-definition cycle that would otherwise
+     * trip Spring at startup.
+     */
+    @Autowired
+    @Lazy
+    private BulkLiveSessionService self;
 
     public BulkLiveSessionResponseDTO createBulk(BulkLiveSessionRequestDTO request,
                                                  CustomUserDetails user) {
@@ -55,53 +71,35 @@ public class BulkLiveSessionService {
         int created = 0;
         int failed = 0;
 
-        // Per-row try/catch on purpose — partial failures must not roll back rows
-        // that already succeeded; the caller surfaces failures back to the user.
+        // Per-row try/catch on purpose — partial failures must not roll back
+        // rows that already succeeded. Each row runs in its OWN transaction
+        // (REQUIRES_NEW inside createOneAtomically), so a step2 failure
+        // rolls back that row's session+schedules instead of leaving a
+        // half-applied DRAFT in the DB. The caller surfaces failures back
+        // to the user.
         for (int i = 0; i < sessions.size(); i++) {
             LiveSessionStep1RequestDTO row = sessions.get(i);
             String title = row != null ? row.getTitle() : null;
 
+            // Resolve which step-2 payload (if any) to apply to this row:
+            // per-row entry > shared template > nothing.
+            LiveSessionStep2RequestDTO perRowStep2 = null;
+            if (step2PerRow != null) {
+                perRowStep2 = step2PerRow.get(i);
+            } else if (step2Template != null) {
+                perRowStep2 = step2Template;
+            }
+
             try {
-                // Skip the synchronous workflow trigger — we'll fire it async
-                // for every successfully-created session below.
-                LiveSession saved = step1Service.step1AddService(row, user, false);
-                String sessionId = saved.getId();
-
-                // Resolve which step-2 payload (if any) to apply to this row:
-                // per-row entry > shared template > nothing.
-                LiveSessionStep2RequestDTO step2ForRow = null;
-                if (step2PerRow != null) {
-                    LiveSessionStep2RequestDTO perRowEntry = step2PerRow.get(i);
-                    if (perRowEntry != null) {
-                        step2ForRow = cloneTemplateForSession(perRowEntry, sessionId);
-                    }
-                } else if (step2Template != null) {
-                    step2ForRow = cloneTemplateForSession(step2Template, sessionId);
-                }
-
-                boolean step2Applied = false;
-                if (step2ForRow != null) {
-                    try {
-                        step2Service.step2AddService(step2ForRow, user);
-                        step2Applied = true;
-                        log.info("Bulk row {} step2 applied for sessionId={}", i, sessionId);
-                    } catch (Exception step2Ex) {
-                        log.warn(
-                                "Bulk row {} step2 FAILED for sessionId={}: {}",
-                                i, sessionId, step2Ex.getMessage(), step2Ex);
-                    }
-                } else {
-                    log.info(
-                            "Bulk row {} step2 SKIPPED (no per-row payload and no template) for sessionId={}",
-                            i, sessionId);
-                }
+                LiveSession saved = self.createOneAtomically(row, perRowStep2, user);
+                boolean step2Applied = perRowStep2 != null;
 
                 sessionsToFireWorkflow.add(saved);
-                instituteIdsForWorkflow.add(row.getInstituteId());
+                instituteIdsForWorkflow.add(saved.getInstituteId());
                 results.add(BulkLiveSessionResponseDTO.RowResult.builder()
                         .index(i)
                         .success(true)
-                        .sessionId(sessionId)
+                        .sessionId(saved.getId())
                         .title(title)
                         .step2Applied(step2Applied)
                         .build());
@@ -136,6 +134,36 @@ public class BulkLiveSessionService {
                 .totalFailed(failed)
                 .results(results)
                 .build();
+    }
+
+    /**
+     * Runs step1 + step2 for a single row inside its OWN transaction. If
+     * step2 throws, the framework rolls back the row's session and schedules
+     * — no orphan DRAFT is left behind, and the caller sees the real
+     * exception message instead of a misleading "created but step2 not
+     * applied" outcome.
+     *
+     * Must be called via the {@link #self} proxy (not {@code this.}) for the
+     * {@code @Transactional} annotation to be honoured.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public LiveSession createOneAtomically(LiveSessionStep1RequestDTO row,
+                                           LiveSessionStep2RequestDTO perRowStep2,
+                                           CustomUserDetails user) {
+        // Skip the synchronous workflow trigger — the caller fires it
+        // asynchronously after the bulk request finishes.
+        LiveSession saved = step1Service.step1AddService(row, user, false);
+        if (perRowStep2 != null) {
+            LiveSessionStep2RequestDTO step2ForRow =
+                    cloneTemplateForSession(perRowStep2, saved.getId());
+            step2Service.step2AddService(step2ForRow, user);
+            log.info("Bulk row step2 applied for sessionId={}", saved.getId());
+        } else {
+            log.info(
+                    "Bulk row step2 SKIPPED (no per-row payload and no template) for sessionId={}",
+                    saved.getId());
+        }
+        return saved;
     }
 
     /**

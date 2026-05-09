@@ -64,7 +64,7 @@ import { transformFormToDTOStep1, transformFormToDTOStep2 } from '../../-constan
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { sessionFormSchema } from '../-schema/schema';
 import { RecurringType, SessionPlatform, SessionType } from '../../-constants/enums';
-import { createLiveSessionsBulk, createLiveSessionStep2 } from '../-services/utils';
+import { createLiveSessionsBulk } from '../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { SectionCard } from './SectionCard';
 import { useSuspenseQuery } from '@tanstack/react-query';
@@ -636,87 +636,14 @@ export function BulkScheduleGrid() {
                 (r) => r.session_id as string
             );
 
-            // The backend reports per-row step2 outcomes via `step2_applied`.
-            // When the deployed admin_core_service is older than the
-            // step2_per_row contract (or step2 silently no-oped), every row
-            // comes back with `step2_applied: false` and participants/access
-            // never get applied. Fall back to the same per-session step-2
-            // endpoint the single-class flow uses — that path is stable
-            // across all backend versions, so we can recover transparently.
-            const sentStep2 = step2PerRow.length > 0;
-            const needsFallback = response.results.filter(
-                (r) =>
-                    r.success &&
-                    r.session_id &&
-                    !r.step2_applied &&
-                    sentStep2 &&
-                    step2PerRow[r.index]
-            );
-
-            const fallbackFailures: { index: number; reason: string }[] = [];
-            if (needsFallback.length > 0) {
-                await Promise.all(
-                    needsFallback.map(async (r) => {
-                        const payload = {
-                            ...step2PerRow[r.index]!,
-                            session_id: r.session_id as string,
-                        };
-                        try {
-                            await createLiveSessionStep2(payload);
-                        } catch (err) {
-                            console.error(
-                                `Bulk fallback step2 failed for sessionId=${r.session_id}`,
-                                err
-                            );
-                            const message =
-                                (err as { response?: { data?: { message?: string } }; message?: string })
-                                    ?.response?.data?.message ??
-                                (err as { message?: string })?.message ??
-                                'unknown error';
-                            fallbackFailures.push({
-                                index: r.index,
-                                reason: message,
-                            });
-                        }
-                    })
-                );
-            }
-
-            const fallbackFailedIndices = new Set(
-                fallbackFailures.map((f) => f.index)
-            );
-            // Rows that didn't recover via fallback OR rows where step1 itself
-            // failed are real failures the user needs to see. Rows that the
-            // server reported as step2_applied=false but did NOT have a
-            // step-2 payload to send (selectedLevels empty) aren't failures
-            // — that's a user choice.
-            const step2Failures = response.results
-                .filter(
-                    (r) =>
-                        r.success &&
-                        r.session_id &&
-                        !r.step2_applied &&
-                        sentStep2 &&
-                        step2PerRow[r.index] &&
-                        fallbackFailedIndices.has(r.index)
-                )
-                .map((r) => ({
-                    rowIndex: r.index,
-                    reason:
-                        fallbackFailures.find((f) => f.index === r.index)?.reason ??
-                        'unknown error',
-                }));
-
+            // The bulk endpoint reports per-row outcomes via `success` /
+            // `error` (step1+step2 are atomic on the server now — a step2
+            // failure rolls back the row's session and surfaces the real
+            // error message). All we need to do here is render whatever the
+            // server returned.
             const failures = response.results
                 .filter((r) => !r.success)
-                .map((r) => ({ index: r.index, title: r.title, error: r.error }))
-                .concat(
-                    step2Failures.map((f) => ({
-                        index: f.rowIndex,
-                        title: data.rows[f.rowIndex]?.title,
-                        error: `Participants/access apply failed: ${f.reason}`,
-                    }))
-                );
+                .map((r) => ({ index: r.index, title: r.title, error: r.error }));
 
             if (createdIds.length > 0) {
                 // Clear any leftover bulk state — step 2 is no longer part of

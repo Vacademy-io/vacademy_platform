@@ -28,7 +28,13 @@ export type PipelineNodeKind =
     | 'scene'
     | 'talent'
     | 'score'
-    | 'finalCut';
+    | 'finalCut'
+    /**
+     * Decorative-only — synthesized by `PipelineFlow` after positioning
+     * the talent / score branch row. Renders the dashed "B-roll lanes"
+     * container; never produced by `buildPipelineGraph`.
+     */
+    | 'brollLane';
 
 /** Data the React Flow runtime hands to the custom node component. The node
  *  reads its own slot off `state`; scene nodes also use `sceneIndex` to
@@ -74,6 +80,10 @@ export const NODE_SIZES: Record<PipelineNodeKind, { width: number; height: numbe
     talent: { width: 260, height: 160 },
     score: { width: 260, height: 150 },
     finalCut: { width: 480, height: 280 },
+    // Sized dynamically per-run by PipelineFlow. The default here is
+    // the smallest sensible footprint so dagre never reserves space for
+    // a lane it doesn't actually render.
+    brollLane: { width: 0, height: 0 },
 };
 
 function pushEdge(edges: Edge[], src: string, tgt: string, animated: boolean, id?: string): void {

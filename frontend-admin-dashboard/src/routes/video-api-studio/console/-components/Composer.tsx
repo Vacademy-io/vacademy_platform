@@ -167,32 +167,34 @@ export function Composer({
     const refreshInputVideos = useRef<() => void>();
     refreshInputVideos.current = () => {
         if (!apiKey) return;
-        import('../../-services/input-video').then(({ listInputVideos }) => {
-            listInputVideos(apiKey)
-                .then((videos) => {
-                    const toItem = (v: {
+        import('../../-services/input-asset').then(({ listInputAssets }) => {
+            listInputAssets(apiKey)
+                .then((assets) => {
+                    const toItem = (a: {
                         id: string;
                         name: string;
+                        kind: 'video' | 'image';
                         mode: string;
                         duration_seconds: number | null;
                         status: string;
                         progress: number;
                     }) => ({
-                        id: v.id,
-                        name: v.name,
-                        mode: v.mode,
-                        duration_seconds: v.duration_seconds,
-                        status: v.status,
-                        progress: v.progress,
+                        id: a.id,
+                        name: a.name,
+                        kind: a.kind,
+                        mode: a.mode,
+                        duration_seconds: a.duration_seconds,
+                        status: a.status,
+                        progress: a.progress,
                     });
-                    setIndexedVideos(videos.filter((v) => v.status === 'COMPLETED').map(toItem));
+                    setIndexedVideos(assets.filter((a) => a.status === 'COMPLETED').map(toItem));
                     setProcessingVideos(
-                        videos
+                        assets
                             .filter(
-                                (v) =>
-                                    v.status === 'QUEUED' ||
-                                    v.status === 'PROCESSING' ||
-                                    v.status === 'PENDING'
+                                (a) =>
+                                    a.status === 'QUEUED' ||
+                                    a.status === 'PROCESSING' ||
+                                    a.status === 'PENDING'
                             )
                             .map(toItem)
                     );
@@ -214,13 +216,13 @@ export function Composer({
         return () => clearInterval(timer);
     }, [processingVideos.length]);
 
-    // Auto-add newly completed videos to the selection (up to 5 max).
+    // Auto-add newly completed assets to the selection (up to 10 max).
     useEffect(() => {
         const currentIds = new Set(indexedVideos.map((v) => v.id));
         for (const id of currentIds) {
             if (!prevCompletedIds.current.has(id) && prevCompletedIds.current.size > 0) {
                 onSelectedInputVideoIdsChange((prev) => {
-                    if (prev.includes(id) || prev.length >= 5) return prev;
+                    if (prev.includes(id) || prev.length >= 10) return prev;
                     const next = [...prev, id];
                     // Multi-source auto-forces TTS — original audio is single-clip only.
                     if (next.length > 1) onInputVideoAudioChange('tts');

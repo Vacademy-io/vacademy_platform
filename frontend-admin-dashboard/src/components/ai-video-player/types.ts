@@ -357,7 +357,7 @@ export const DEFAULT_CAPTION_SETTINGS: CaptionSettings = {
     position: 'bottom',
     fontSize: 'medium',
     style: 'phrase',
-    backgroundOpacity: 0.75,
+    backgroundOpacity: 0.6,
     textColor: '#ffffff',
     highlightColor: '#fbbf24', // Amber/yellow for current word
 };

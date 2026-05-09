@@ -5,6 +5,7 @@ import { VideoConsoleWorkspace } from '@/routes/video-api-studio/-components/Vid
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { RecentTab } from './RecentTab';
+import { AssetsTab } from './AssetsTab';
 import { AvatarsTab } from './AvatarsTab';
 import { BrandKitsTab } from './BrandKitsTab';
 import { OnboardingBanner } from './OnboardingBanner';
@@ -116,6 +117,7 @@ function DashboardShell() {
                         <div className="mx-auto max-w-5xl space-y-6">
                             <OnboardingBanner />
                             {tab === 'recent' && <RecentTab />}
+                            {tab === 'assets' && <AssetsTab />}
                             {tab === 'avatars' && <AvatarsTab />}
                             {tab === 'brand-kits' && <BrandKitsTab />}
                         </div>

@@ -38,9 +38,14 @@ class IndexService:
         input_video_id: str,
         source_url: str,
         mode: str,
+        kind: str = "video",
         callback_url: Optional[str] = None,
     ) -> str:
         """Submit an index job to the render worker. Returns job_id.
+
+        `kind` selects the pipeline branch on the worker:
+          video → transcript/visuals (modes: 'podcast', 'demo')
+          image → caption/ocr/face/colors (modes: 'photo', 'screenshot', 'diagram')
 
         Raises:
             RuntimeError: if submission fails or server is at capacity.
@@ -49,6 +54,7 @@ class IndexService:
             "input_video_id": input_video_id,
             "source_url": source_url,
             "mode": mode,
+            "kind": kind,
         }
         if callback_url:
             payload["callback_url"] = callback_url

@@ -51,6 +51,12 @@ export interface SceneThumbnails {
     imageUrl?: string;
     /** First `<video src>` in the entry — used as a moving thumbnail when present. */
     videoUrl?: string;
+    /**
+     * Full rendered HTML for the shot. Surfaced so the pipeline view can
+     * embed an iframe-based preview that's playable for text-driven scenes
+     * (no image/video) and gives a richer side-sheet preview for everything else.
+     */
+    html?: string;
 }
 
 /**
@@ -89,7 +95,7 @@ export function parseTimelineThumbnails(
     const out: Record<number, SceneThumbnails> = {};
     timeline.entries.forEach((entry, position) => {
         const idx = typeof entry.index === 'number' ? entry.index : position;
-        out[idx] = extractSceneThumbnails(entry.html);
+        out[idx] = { ...extractSceneThumbnails(entry.html), html: entry.html };
     });
     return out;
 }

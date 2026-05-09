@@ -47,10 +47,15 @@ class ScreenshotWorker:
                 return
             from playwright.async_api import async_playwright
             self._playwright = await async_playwright().start()
+            # Use Google Chrome (channel="chrome") not Playwright's bundled
+            # Chromium — the Docker image only installs Chrome (for H.264/AAC
+            # proprietary codecs that bundled Chromium lacks). Without this,
+            # launch fails with "Executable doesn't exist at .../headless_shell".
             self._browser = await self._playwright.chromium.launch(
+                channel="chrome",
                 args=["--no-sandbox", "--disable-dev-shm-usage"],
             )
-            logger.info("ScreenshotWorker: Chromium launched")
+            logger.info("ScreenshotWorker: Chrome launched (channel=chrome)")
 
     async def close(self):
         if self._browser is not None:
@@ -114,12 +119,31 @@ class ScreenshotWorker:
             except Exception:
                 logger.warning("ScreenshotWorker: gsap not present after 10s — proceeding anyway")
 
+            # Install the shadow-DOM dispatcher (window.__updateSnippets etc.).
+            # This is the SAME JS the production renderer installs in
+            # generate_video.py:_prepare_page — without it, __updateSnippets
+            # is undefined and our shot HTML never gets injected (tests caught
+            # this: every screenshot returned a blank harness, no defects flagged).
+            from dispatcher_install_js import get_dispatcher_install_js
+            await page.evaluate(get_dispatcher_install_js(libs=""))
+
+            # Sanity check the install — without it, the shot HTML silently
+            # fails to render and the reviewer would pass-through blanks.
+            try:
+                await page.wait_for_function(
+                    "() => typeof window.__updateSnippets === 'function'",
+                    timeout=5_000,
+                )
+            except Exception as exc:
+                logger.error(f"ScreenshotWorker: __updateSnippets failed to install — {exc}")
+                raise
+
             # Inject the shot using the same dispatcher the renderer uses. inTime=0
             # means tween delays inside the shot HTML compose against globalTimeline=0,
             # which is exactly what we want for screenshot timestamps that are
             # shot-relative seconds.
             await page.evaluate(
-                "async (entries) => { if (window.__updateSnippets) await window.__updateSnippets(entries); }",
+                "async (entries) => { await window.__updateSnippets(entries); }",
                 [{"id": "screenshot-shot", "html": html, "inTime": 0}],
             )
 
@@ -184,6 +208,205 @@ class ScreenshotWorker:
                 pass
 
         return results
+
+
+    async def record_shot_mp4(
+        self,
+        *,
+        html: str,
+        width: int,
+        height: int,
+        duration_seconds: float,
+        fps: int = 25,
+        background: str = "#0a0e27",
+        shot_type: Optional[str] = None,
+    ) -> bytes:
+        """Render `html` in the harness for `duration_seconds` and return an MP4.
+
+        Captures every frame at `fps`, then ffmpeg-assembles into H.264 MP4
+        (no audio). Same harness/seek pattern as the production /jobs path,
+        so visual fidelity matches what the full-video render would produce
+        for this shot — useful for iterating on a single shot's HTML
+        without paying the cost of a full video re-render.
+        """
+        if not html or not html.strip():
+            raise ValueError("html is required")
+        if width <= 0 or height <= 0:
+            raise ValueError("width and height must be positive")
+        if duration_seconds <= 0 or duration_seconds > 60:
+            raise ValueError("duration_seconds must be in (0, 60]")
+        if fps not in (15, 20, 25, 30, 60):
+            raise ValueError("fps must be one of: 15, 20, 25, 30, 60")
+
+        import shutil
+        import subprocess
+        import tempfile
+        import time as _time
+        from render_harness import build_harness_html  # type: ignore
+        from dispatcher_install_js import get_dispatcher_install_js  # type: ignore
+        from shot_preprocess import preprocess_shot_html  # type: ignore
+
+        if shutil.which("ffmpeg") is None:
+            raise RuntimeError("ffmpeg not installed on render worker")
+
+        await self._ensure_browser()
+
+        total_frames = int(round(duration_seconds * fps))
+        harness_html = build_harness_html(background)
+
+        # Apply the same HTML preprocessing the production /jobs path runs —
+        # vx-timescale extraction, stage-drift / GSAP CDN strip, vx-shot
+        # CSS-to-GSAP conversion. Returns (cleaned_html, timescale); we attach
+        # the timescale to the timeline entry so the dispatcher creates a
+        # per-shot child timeline at the right scale (Fix-2 architecture).
+        html, _shot_timescale = preprocess_shot_html(html, shot_type=shot_type)
+
+        workdir = Path(tempfile.mkdtemp(prefix="shot_preview_"))
+        frames_dir = workdir / "frames"
+        frames_dir.mkdir()
+
+        context = await self._browser.new_context(
+            viewport={"width": width, "height": height},
+            device_scale_factor=1,
+        )
+        page = await context.new_page()
+        try:
+            await page.set_content(harness_html, wait_until="domcontentloaded")
+            try:
+                await page.wait_for_function(
+                    "() => typeof window.gsap === 'object' && window.gsap !== null",
+                    timeout=10_000,
+                )
+            except Exception:
+                logger.warning("record_shot_mp4: gsap not present after 10s — proceeding anyway")
+
+            # Install the SAME dispatcher that production /jobs uses — shared
+            # via dispatcher_install_js.get_dispatcher_install_js so byte-for-byte
+            # the JS is identical. Without this, window.__updateSnippets doesn't
+            # exist and the shot never gets injected (resulting in a black MP4).
+            # `libs` is empty because the preview path doesn't render the
+            # character-mouth overlay (audio-driven, not relevant for a static
+            # shot preview).
+            await page.evaluate(get_dispatcher_install_js(""))
+
+            # Inject the shot using the same dispatcher entry point the
+            # production renderer uses. Pass an entry shaped like a timeline
+            # entry: id + html + inTime + x/y/w/h cover the full host sizing
+            # path inside __updateSnippets, so the host fills the viewport.
+            # `timescale` is forwarded only when the shot had a vx-timescale
+            # tag — the dispatcher creates a per-shot child timeline at that
+            # scale, identical to production /jobs behavior.
+            _entry = {
+                "id": "preview-shot",
+                "html": html,
+                "inTime": 0,
+                "x": 0,
+                "y": 0,
+                "w": width,
+                "h": height,
+                "z": 1,
+            }
+            if abs(_shot_timescale - 1.0) > 1e-6:
+                _entry["timescale"] = _shot_timescale
+            await page.evaluate(
+                """async (entries) => { await window.__updateSnippets(entries); }""",
+                [_entry],
+            )
+
+            # Stylesheet + fonts wait — same sequence the production renderer
+            # runs after a segment change. Without this, early frames render
+            # with fallback fonts.
+            try:
+                await page.evaluate(
+                    """async () => {
+                        const links = [];
+                        document.querySelectorAll('[id^="snippet-"],[id^="segment-"],[id^="shot-"],[id="preview-shot"]').forEach(host => {
+                            const root = host.shadowRoot;
+                            if (!root) return;
+                            root.querySelectorAll('link[rel="stylesheet"]').forEach(l => links.push(l));
+                        });
+                        document.head.querySelectorAll('link[rel="stylesheet"]').forEach(l => links.push(l));
+                        const waits = links.map(l => {
+                            try { if (l.sheet) return Promise.resolve(); } catch (e) {}
+                            return new Promise(resolve => {
+                                let done = false;
+                                const finish = () => { if (!done) { done = true; resolve(); } };
+                                l.addEventListener('load', finish, { once: true });
+                                l.addEventListener('error', finish, { once: true });
+                                setTimeout(finish, 3000);
+                            });
+                        });
+                        await Promise.all(waits);
+                    }"""
+                )
+            except Exception as exc:
+                logger.debug(f"stylesheet wait failed (non-fatal): {exc}")
+            try:
+                await page.evaluate("() => document.fonts.ready")
+            except Exception:
+                pass
+
+            # Per-frame seek + screenshot.
+            capture_start = _time.monotonic()
+            for i in range(total_frames):
+                t = i / float(fps)
+                await page.evaluate(
+                    """(t) => {
+                        try { if (window.gsap) gsap.globalTimeline.totalTime(t); } catch (e) {}
+                        try { if (window._animeSeek) window._animeSeek(t); } catch (e) {}
+                    }""",
+                    t,
+                )
+                await page.evaluate(
+                    "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
+                )
+                frame_path = frames_dir / f"frame_{i:06d}.jpg"
+                await page.screenshot(
+                    path=str(frame_path),
+                    type="jpeg",
+                    quality=92,
+                    full_page=False,
+                )
+            capture_ms = int((_time.monotonic() - capture_start) * 1000)
+            logger.info(
+                f"record_shot_mp4: captured {total_frames} frames in {capture_ms}ms "
+                f"({total_frames * 1000 // max(capture_ms, 1)} fps capture)"
+            )
+
+            # ffmpeg-assemble. Single thread, veryfast preset — encode time
+            # is dominated by the per-frame screenshot loop above so encode
+            # tuning here is moot. yuv420p for QuickTime / browser playback.
+            output_path = workdir / "output.mp4"
+            ffmpeg_cmd = [
+                "ffmpeg", "-y",
+                "-framerate", str(fps),
+                "-i", str(frames_dir / "frame_%06d.jpg"),
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",
+                "-preset", "veryfast",
+                "-crf", "20",
+                str(output_path),
+            ]
+            encode_start = _time.monotonic()
+            result = subprocess.run(
+                ffmpeg_cmd, capture_output=True, timeout=120,
+            )
+            encode_ms = int((_time.monotonic() - encode_start) * 1000)
+            if result.returncode != 0 or not output_path.exists():
+                stderr = result.stderr.decode("utf-8", errors="replace")[-1500:]
+                raise RuntimeError(f"ffmpeg failed (rc={result.returncode}): {stderr}")
+            logger.info(f"record_shot_mp4: encoded MP4 in {encode_ms}ms")
+
+            return output_path.read_bytes()
+        finally:
+            try:
+                await context.close()
+            except Exception:
+                pass
+            try:
+                shutil.rmtree(workdir, ignore_errors=True)
+            except Exception:
+                pass
 
 
 # Module-level singleton — reused across requests in main.py

@@ -1,10 +1,11 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { NodeProps } from 'reactflow';
 import { Camera, Loader2 } from 'lucide-react';
 import { Handle, Position } from 'reactflow';
 import type { PipelineNodeData } from '../-utils/build-pipeline-graph';
 import type { NodeState, SceneSlot } from '../-utils/derive-pipeline-state';
 import { NODE_SIZES } from '../-utils/build-pipeline-graph';
+import { useSceneHtml } from '../-utils/scenes-html-context';
 
 /**
  * One scene in the production. Smaller and more numerous than the linear
@@ -52,9 +53,46 @@ const STATE_VISUAL: Record<
     },
 };
 
+/**
+ * Defers iframe mounting until the SceneNode scrolls within ~200px of the
+ * browser viewport. On a 30-shot run this trades a 30-iframe initial paint
+ * for "iframes mount as you pan/scroll the pipeline into view". Once a
+ * given node has been visible we keep the iframe mounted (no flicker on
+ * pan-away-then-back).
+ *
+ * Note: IntersectionObserver fires off geometric position vs the document
+ * viewport, not the React Flow viewport. Panning the React Flow surface
+ * still translates the SceneNode in document coords, so IO does see those
+ * events. The main wins are: (a) tab/route hidden, (b) initial mount when
+ * the editor is below-the-fold, (c) deeply zoomed-out runs where most
+ * scenes are technically off-screen.
+ */
+function useFirstVisible<T extends HTMLElement>(): [React.MutableRefObject<T | null>, boolean] {
+    const ref = useRef<T | null>(null);
+    const [seen, setSeen] = useState(false);
+    useEffect(() => {
+        const el = ref.current;
+        if (!el || seen) return;
+        const io = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((e) => e.isIntersecting)) {
+                    setSeen(true);
+                    io.disconnect();
+                }
+            },
+            { rootMargin: '200px' }
+        );
+        io.observe(el);
+        return () => io.disconnect();
+    }, [seen]);
+    return [ref, seen];
+}
+
 function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
     const idx = data.sceneIndex ?? -1;
     const scene: SceneSlot | undefined = data.state.scenes[idx];
+    const html = useSceneHtml(idx);
+    const [thumbRef, thumbVisible] = useFirstVisible<HTMLDivElement>();
     if (!scene) return null;
     const visual = STATE_VISUAL[scene.state];
     const sceneNumber = String(scene.index + 1).padStart(2, '0');
@@ -115,8 +153,13 @@ function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
 
             {/* Thumbnail (when timeline.json is loaded) — falls back to a
                 placeholder camera icon while parsing or when no media is in
-                the scene HTML (pure-text shots). */}
-            <div className="relative aspect-video w-full bg-gray-100">
+                the scene HTML (pure-text shots). For text-driven shots we
+                embed the raw HTML in a sandboxed iframe so the text /
+                animation is visible directly in the pipeline view. */}
+            <div
+                ref={thumbRef}
+                className="relative aspect-video w-full overflow-hidden bg-gray-100"
+            >
                 {scene.videoUrl ? (
                     <video
                         src={scene.videoUrl}
@@ -132,6 +175,24 @@ function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
                         loading="lazy"
                         className="size-full object-cover"
                     />
+                ) : html && thumbVisible ? (
+                    // Render the shot HTML at its native 1920×1080 design
+                    // surface and scale-to-fit. `pointer-events-none` lets
+                    // clicks bubble to the React Flow node click handler.
+                    // Scale is `NODE_SIZES.scene.width / 1920` so the
+                    // 16:9 thumbnail box is exactly filled.
+                    <iframe
+                        title={`Scene ${sceneNumber} HTML preview`}
+                        srcDoc={html}
+                        sandbox="allow-scripts allow-same-origin"
+                        loading="lazy"
+                        className="pointer-events-none absolute left-0 top-0 origin-top-left border-0 bg-white"
+                        style={{
+                            width: 1920,
+                            height: 1080,
+                            transform: `scale(${NODE_SIZES.scene.width / 1920})`,
+                        }}
+                    />
                 ) : (
                     <div className="flex size-full items-center justify-center">
                         <Camera className="size-5 text-gray-300" />
@@ -139,7 +200,7 @@ function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
                 )}
                 {!hasThumb && scene.state === 'wrapped' && (
                     <div className="absolute bottom-1 right-1 rounded bg-black/40 px-1 py-0.5 text-[8px] text-white">
-                        text scene
+                        {html ? 'html scene' : 'text scene'}
                     </div>
                 )}
             </div>

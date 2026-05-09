@@ -19,17 +19,24 @@ from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "v1"
+# Bumped from "v1" → "v2" because (a) the default model changed to
+# Gemini 2.5 Pro and (b) a TEXT_WRAP_BREAK rubric item was added. Rows in
+# vision_review_cases carry this version so engineers can compare hit rates
+# across rubric revisions.
+PROMPT_VERSION = "v2"
 
-# Cost per million tokens for the default reviewer model. Conservative defaults
-# matching OpenRouter's published rates for google/gemini-2.5-flash; bump if
-# the rate card changes. Used only for telemetry — does not gate behavior.
-_DEFAULT_INPUT_COST_PER_M = 0.075   # USD per 1M input tokens (incl. image tokens)
-_DEFAULT_OUTPUT_COST_PER_M = 0.30   # USD per 1M output tokens
+# Cost per million tokens. Defaults match OpenRouter's published rates for
+# google/gemini-2.5-pro; bump if the rate card changes. Used only for
+# telemetry — does not gate behaviour. (Flash was ~17× cheaper but
+# measurably weaker at fine text/layout inspection; we eat the cost to
+# catch the defects users actually see.)
+_DEFAULT_INPUT_COST_PER_M = 1.25    # USD per 1M input tokens (incl. image tokens)
+_DEFAULT_OUTPUT_COST_PER_M = 5.00   # USD per 1M output tokens
 
 ISSUE_CODES = frozenset({
     # Generic
     "LEGIBILITY",
+    "TEXT_WRAP_BREAK",       # NEW v2 — word splits mid-token, or single word wraps across two lines
     "HIERARCHY",
     "PALETTE",
     "FRAMING",
@@ -62,6 +69,19 @@ CHECKLIST (apply in order):
    - Every visible text element must be readable at this resolution.
    - Contrast must be sufficient (rough WCAG-AA — 4.5:1 for body text, 3:1 for large headlines).
    - Block (severity 3) if any visible text is illegible (tiny, low-contrast, or visually behind another element).
+
+1b. TEXT_WRAP_BREAK  (DISTINCT from LEGIBILITY — text is readable, but laid out wrong)
+   - Inspect every line of every text element CAREFULLY, especially headlines.
+   - Block (severity 3, code TEXT_WRAP_BREAK) if ANY of these is true:
+       (a) A single word is split across two lines (e.g. "UNDERSTAND-" on line 1, "ING" on line 2 — mid-word break).
+       (b) A single short word sits alone on its own line because the line above ran out of room.
+       (c) A two-word headline wraps so that one word is on each line when the design clearly intended a single line.
+       (d) A line ends with a partial word and the rest is clipped off the canvas edge.
+   - This is the most common defect we see in production. Be aggressive about flagging it.
+   - Suggestion field MUST give a concrete CSS fix, e.g.:
+       "Add max-width:88% and word-break:keep-all to the headline container."
+       "Reduce font-size from Xrem to Yrem so the headline fits on one line."
+       "Add hyphens:none to prevent the renderer from breaking 'PHOTOSYNTHESIS' across lines."
 
 2. HIERARCHY
    - The eye should land on the most important element first.
@@ -118,9 +138,9 @@ HOST-SHOT MODE — applies only when host_present=true in the user prompt
 USER-AUTHORED 'TEXT ONLY' MODE — applies only when user_authored_no_imagery=true
    - Flag (severity 3, code IRRELEVANT_MEDIA) if any image, photograph, or human figure appears.
 
-ISSUE CODES (use ONLY these, exact spelling): LEGIBILITY, HIERARCHY, PALETTE, FRAMING, LAYOUT,
-NO_MOTION, RESIDUAL, IRRELEVANT_MEDIA, SYNC_DRIFT, HOST_FACE_COUNT, TEXT_ON_FACE, TEXT_CLIPPED,
-HOST_LAYOUT_MISMATCH, HOST_IDENTITY_DRIFT.
+ISSUE CODES (use ONLY these, exact spelling): LEGIBILITY, TEXT_WRAP_BREAK, HIERARCHY, PALETTE,
+FRAMING, LAYOUT, NO_MOTION, RESIDUAL, IRRELEVANT_MEDIA, SYNC_DRIFT, HOST_FACE_COUNT, TEXT_ON_FACE,
+TEXT_CLIPPED, HOST_LAYOUT_MISMATCH, HOST_IDENTITY_DRIFT.
 
 OUTPUT — return ONLY a JSON object, no markdown fences, no commentary:
 {{
@@ -297,8 +317,12 @@ def review_shot(
     llm_chat: Callable[..., Any],
     host_meta: Optional[Dict[str, Any]] = None,
     palette: Optional[Dict[str, Any]] = None,
-    model: str = "google/gemini-2.5-flash",
-    max_tokens: int = 600,
+    model: str = "google/gemini-2.5-pro",
+    # Pro on OpenRouter consumes tokens on internal reasoning before emitting
+    # JSON. With a verbose rubric, 1200 was occasionally truncated. Output
+    # cost on 2400 tokens at $5/M is ~$0.012 per shot — small on top of the
+    # input-token cost which dominates with 3 PNGs.
+    max_tokens: int = 2400,
     temperature: float = 0.0,
     input_cost_per_m: float = _DEFAULT_INPUT_COST_PER_M,
     output_cost_per_m: float = _DEFAULT_OUTPUT_COST_PER_M,

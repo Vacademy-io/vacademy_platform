@@ -146,7 +146,7 @@ export const AIContentPlayer: React.FC<AIContentPlayerProps> = ({
     const [isChaptersOpen, setIsChaptersOpen] = useState(false);
 
     // MCQ quiz state
-    const [questionsEnabled, setQuestionsEnabled] = useState(true);
+    const [questionsEnabled, setQuestionsEnabled] = useState(false);
     const [activeQuestion, setActiveQuestion] = useState<MCQQuestion | null>(null);
     const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
     const answeredQuestionsRef = useRef<Set<number>>(new Set());

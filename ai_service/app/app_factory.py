@@ -27,7 +27,7 @@ from .routers.learning_analytics import router as learning_analytics_router
 from .routers.mathpix import router as mathpix_router
 from .routers.knowledge_base import router as knowledge_base_router
 from .routers.voice_agent import router as voice_agent_router
-from .routers.input_video import router as input_video_router
+from .routers.input_asset import router as input_asset_router
 from .routers.transcription import router as transcription_router
 from .routers.brand_kit_scrape import router as brand_kit_scrape_router
 
@@ -97,7 +97,21 @@ def create_app() -> FastAPI:
     app.include_router(mathpix_router, prefix=settings.api_base_path)
     app.include_router(knowledge_base_router, prefix=settings.api_base_path)
     app.include_router(voice_agent_router, prefix=settings.api_base_path)
-    app.include_router(input_video_router, prefix=settings.api_base_path)
+    # Primary path: /input-asset/* — handles both video and image kinds.
+    app.include_router(
+        input_asset_router,
+        prefix=f"{settings.api_base_path}/input-asset",
+    )
+    # Legacy alias: /input-video/* — kept so existing FE clients keep working
+    # until they migrate. Hidden from OpenAPI to avoid duplicate routes in
+    # Swagger. The same handlers serve both paths; image rows surface in
+    # /input-video/list responses, but pre-migration UIs simply render them
+    # as unrecognized cards.
+    app.include_router(
+        input_asset_router,
+        prefix=f"{settings.api_base_path}/input-video",
+        include_in_schema=False,
+    )
     app.include_router(transcription_router, prefix=settings.api_base_path)
     app.include_router(brand_kit_scrape_router, prefix=settings.api_base_path)
 

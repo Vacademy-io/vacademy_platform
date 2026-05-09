@@ -19,3 +19,7 @@ numpy>=1.24.0
 scipy>=1.11.0
 openai>=1.0.0
 protobuf>=3.20,<5
+
+# -- Image indexing pipeline --
+Pillow>=10.0.0
+rembg>=2.0.50

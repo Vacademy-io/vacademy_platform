@@ -48,9 +48,14 @@ rsync -avz --progress \
 
 # Sync generate_video.py and config files. render_harness.py is shared
 # between the renderer and the screenshot endpoint — see build.sh comment.
+# dispatcher_install_js.py holds the ~850-line shadow-DOM dispatcher JS
+# extracted from generate_video.py; both /jobs (production) and the
+# /shot/preview-mp4 single-shot path import it for byte-identical behavior.
 rsync -avz --progress \
     "$AI_SERVICE_DIR/app/ai-video-gen-main/generate_video.py" \
     "$AI_SERVICE_DIR/app/ai-video-gen-main/render_harness.py" \
+    "$AI_SERVICE_DIR/app/ai-video-gen-main/dispatcher_install_js.py" \
+    "$AI_SERVICE_DIR/app/ai-video-gen-main/shot_preprocess.py" \
     "$RENDER_SERVER:$REMOTE_DIR/app/ai-video-gen-main/"
 
 # Sync extractor package (video indexing pipeline)
@@ -105,7 +110,7 @@ docker run -d \
     --restart unless-stopped \
     -p 8090:8090 \
     -e AWS_ACCESS_KEY_ID='' \
-    -e AWS_SECRET_ACCESS_KEY='+l6GtRPpzXxSfhai' \
+    -e AWS_SECRET_ACCESS_KEY='+' \
     -e AWS_REGION='ap-south-1' \
     -e AWS_S3_PUBLIC_BUCKET='vacademy-media-storage-public' \
     -e RENDER_KEY='vsahcraedyeamsyh' \

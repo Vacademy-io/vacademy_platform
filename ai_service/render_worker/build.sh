@@ -25,9 +25,19 @@ cp "$SCRIPT_DIR/Dockerfile" "$BUILD_DIR/"
 # Copy the video generation pipeline (generate_video.py + config + assets).
 # render_harness.py is shared between the renderer and the screenshot endpoint
 # so the vision reviewer sees the same DOM the MP4 will produce.
+# dispatcher_install_js.py holds the ~850-line shadow-DOM dispatcher JS
+# imported by both generate_video.py (production /jobs render) and
+# screenshot_worker.py (single-shot /shot/preview-mp4 path) so they install
+# byte-identical state on the page.
 mkdir -p "$BUILD_DIR/ai-video-gen-main"
 cp "$AI_SERVICE_DIR/app/ai-video-gen-main/generate_video.py" "$BUILD_DIR/ai-video-gen-main/"
 cp "$AI_SERVICE_DIR/app/ai-video-gen-main/render_harness.py" "$BUILD_DIR/ai-video-gen-main/"
+cp "$AI_SERVICE_DIR/app/ai-video-gen-main/dispatcher_install_js.py" "$BUILD_DIR/ai-video-gen-main/"
+# shot_preprocess.py: shared HTML preprocessing (vx-timescale rewrite,
+# stage-drift / GSAP CDN strip, vx-shot CSS-to-GSAP conversion). Imported
+# by both worker.py (production /jobs) and screenshot_worker.py (the
+# /shot/preview-mp4 single-shot path) so preview matches production exactly.
+cp "$AI_SERVICE_DIR/app/ai-video-gen-main/shot_preprocess.py" "$BUILD_DIR/ai-video-gen-main/"
 cp "$AI_SERVICE_DIR/app/ai-video-gen-main/video_options.json" "$BUILD_DIR/ai-video-gen-main/" 2>/dev/null || true
 cp "$AI_SERVICE_DIR/app/ai-video-gen-main/captions_settings.json" "$BUILD_DIR/ai-video-gen-main/" 2>/dev/null || true
 cp "$AI_SERVICE_DIR/app/ai-video-gen-main/branding.json" "$BUILD_DIR/ai-video-gen-main/" 2>/dev/null || true

@@ -11,16 +11,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Callable
 
-import boto3
-from botocore.exceptions import ClientError
-from urllib.request import Request, urlopen
+from ._s3 import S3Helper
 
 from .audio import (
     analyze_prosody,
@@ -54,56 +51,6 @@ from .spatial import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# S3 helper (same pattern as worker.py, decoupled)
-# ---------------------------------------------------------------------------
-
-class _S3Helper:
-    def __init__(self):
-        self._s3 = boto3.client(
-            "s3",
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-            region_name=os.environ.get("AWS_REGION", "ap-south-1"),
-        )
-        self.bucket = os.environ.get("AWS_S3_PUBLIC_BUCKET", "vacademy-media-storage-public")
-
-    def download(self, url: str, local_path: Path) -> None:
-        local_path.parent.mkdir(parents=True, exist_ok=True)
-        if self.bucket and self.bucket in url:
-            try:
-                parts = url.split(f"{self.bucket}.s3.amazonaws.com/")
-                if len(parts) == 2:
-                    self._s3.download_file(self.bucket, parts[1], str(local_path))
-                    return
-            except (ClientError, Exception):
-                pass
-        # Fallback HTTP
-        try:
-            # Try non-public bucket too
-            for bucket_name in ["vacademy-media-storage", self.bucket]:
-                if bucket_name in url:
-                    try:
-                        parts = url.split(f"{bucket_name}.s3.amazonaws.com/")
-                        if len(parts) == 2:
-                            self._s3.download_file(bucket_name, parts[1], str(local_path))
-                            return
-                    except Exception:
-                        continue
-            req = Request(url, headers={"User-Agent": "VacademyIndexer/1.0"})
-            with urlopen(req, timeout=300) as resp:
-                local_path.write_bytes(resp.read())
-        except Exception as e:
-            raise RuntimeError(f"Failed to download {url}: {e}")
-
-    def upload(self, local_path: Path, s3_key: str, content_type: str = "application/octet-stream") -> str:
-        self._s3.upload_file(
-            str(local_path), self.bucket, s3_key,
-            ExtraArgs={"ContentType": content_type},
-        )
-        return f"https://{self.bucket}.s3.amazonaws.com/{s3_key}"
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +107,7 @@ def run_index_pipeline(
         }
     """
     work_dir = Path(tempfile.mkdtemp(prefix=f"index_{input_video_id}_"))
-    s3 = _S3Helper()
+    s3 = S3Helper()
     s3_base = f"ai-input-videos/{input_video_id}"
 
     try:

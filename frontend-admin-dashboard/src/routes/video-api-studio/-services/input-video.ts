@@ -71,9 +71,15 @@ export async function createInputVideo(
     return resp.json();
 }
 
-/** List all input videos for the institute (newest first). */
+/** List all input videos for the institute (newest first).
+ *
+ * Filter explicitly to kind=video. The backend route is now polymorphic
+ * (videos + images) and the legacy /input-video/* alias serves the same
+ * handler — without this filter, image rows would leak into UIs (like
+ * InputVideosPage) that don't know how to render them.
+ */
 export async function listInputVideos(apiKey: string): Promise<InputVideoRecord[]> {
-    const resp = await fetch(`${BASE}/list`, {
+    const resp = await fetch(`${BASE}/list?kind=video`, {
         method: 'GET',
         headers: headers(apiKey),
     });

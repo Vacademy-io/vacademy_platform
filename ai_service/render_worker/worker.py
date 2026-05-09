@@ -286,9 +286,11 @@ class RenderWorker:
                 except Exception:
                     base_settings = {}
                 if caption_font_size is not None:
-                    # Scale font size proportionally to native render width (always 1920 or 1080)
-                    scale = render_width / 1920.0
-                    base_settings["font_size"] = int(caption_font_size * scale)
+                    # Pass-through: generate_video.py applies canvas-relative
+                    # scaling (width/1920) to font_size on every render path
+                    # — pre-scaling here would compound to (width/1920)² on
+                    # portrait and silently shrink captions to ~1% of frame.
+                    base_settings["font_size"] = int(caption_font_size)
                 if caption_text_color is not None:
                     base_settings["font_color"] = caption_text_color
                 if caption_bg_color is not None or caption_bg_opacity is not None:
@@ -303,13 +305,6 @@ class RenderWorker:
                     base_settings["background_color"] = f"rgba({r},{g},{b},{alpha})"
                 if caption_position is not None:
                     base_settings["position"] = caption_position
-                    # Update box.y for position
-                    box = base_settings.get("box", {})
-                    if caption_position == "top":
-                        box["y"] = int(render_height * 0.03)
-                    else:
-                        box["y"] = int(render_height * 0.85)
-                    base_settings["box"] = box
                 override_path = work_dir / "captions_settings_override.json"
                 override_path.write_text(json.dumps(base_settings, indent=2))
                 _captions_settings_path = override_path
@@ -317,159 +312,52 @@ class RenderWorker:
 
             # First, compute total frames by doing a dry-run parse of timeline + audio
             import json as _json
-            import re as _re
+            import sys as _sys
+            from pathlib import Path as _Path
             tl_data = _json.loads(timeline_path.read_text())
             if isinstance(tl_data, dict) and "entries" in tl_data:
                 tl_entries = tl_data["entries"]
             else:
                 tl_entries = tl_data
 
-            # Strip <video data-source-clip> tags from SOURCE_CLIP entries so
-            # Playwright doesn't render the video (the compositor handles it).
-            # Without this, the video appears twice: once from Playwright and
-            # once from the compositor.
-            _video_tag_re = _re.compile(
-                r'<video\b[^>]*data-source-clip[^>]*>(?:</video>)?',
-                _re.IGNORECASE,
-            )
+            # All shot-HTML preprocessing now lives in the shared helper —
+            # see app/ai-video-gen-main/shot_preprocess.py. Both this path
+            # (production /jobs) and the single-shot preview path (in
+            # screenshot_worker.record_shot_mp4) call it so a shot rendered
+            # via /shot/preview-mp4 looks identical to the same shot inside
+            # a full /jobs render.
+            _harness_dir = _Path(__file__).parent / "ai-video-gen-main"
+            if str(_harness_dir) not in _sys.path:
+                _sys.path.insert(0, str(_harness_dir))
+            from shot_preprocess import preprocess_shot_html, PREPROCESS_BUILD
+
+            # Build identifier — proves the new shared preprocessor (with
+            # timescale rewrite) is actually running this render, vs. a
+            # stale image. Search container logs for this exact line to
+            # verify a full /jobs render uses the latest preprocessor.
+            logger.info(f"[shot-preprocess] build={PREPROCESS_BUILD} entries={len(tl_entries)}")
+
             _modified_tl = False
             for _entry in tl_entries:
-                if _entry.get("shot_type") == "SOURCE_CLIP" and "html" in _entry:
-                    _orig = _entry["html"]
-                    _stripped = _video_tag_re.sub("", _orig)
-                    if _stripped != _orig:
-                        _entry["html"] = _stripped
-                        _modified_tl = True
-            # Strip LLM-generated stage-drift camera animations from ALL entries.
-            # The LLM adds gsap.fromTo('.stage-drift', ...) which creates a slow
-            # zoom/pan that looks smooth in FE (60fps real-time) but choppy in
-            # render (screenshot-based GSAP seeking). Disabling it makes render stable.
-            _drift_re = _re.compile(
-                r"gsap\.fromTo\(\s*['\"]\.stage-drift['\"].*?\);",
-                _re.DOTALL,
-            )
-            # Strip FE-injected `<script data-vx-timescale=...>gsap.globalTimeline.timeScale(...)`
-            # tags. The video editor injects these so its per-shot iframe (own GSAP instance)
-            # compresses/expands animations to fit a user-edited duration. In the renderer ALL
-            # shots share window.gsap.globalTimeline, so this call poisons the timeline:
-            # already-registered tweens get retroactively misaligned and never fire within
-            # the shot's active window.
-            _timescale_re = _re.compile(
-                r'<script\s[^>]*\bdata-vx-timescale="[^"]*"[^>]*>[\s\S]*?</script>',
-                _re.IGNORECASE,
-            )
-            # Strip LLM-generated `<script src="...gsap*.js">` CDN loaders. The render
-            # harness already loads GSAP 3.12.5 globally; when the renderer dynamically
-            # inserts the shot's <script src=> into shadow DOM, the browser fetches and
-            # executes a SECOND gsap which overwrites window.gsap with a fresh instance.
-            # Every tween already registered against the harness's gsap is orphaned, and
-            # the renderer's per-frame `gsap.globalTimeline.totalTime(state.t)` scrubs an
-            # empty timeline. Symptom: shots from that point onward freeze on their initial
-            # static HTML state (no opacity tweens, no transforms).
-            _gsap_cdn_re = _re.compile(
-                r'<script\s[^>]*\bsrc="[^"]*\bgsap[^"]*\.js[^"]*"[^>]*>\s*</script>',
-                _re.IGNORECASE,
-            )
-            # Convert `animation:vx-...` CSS shorthand on `<div data-vx-shot="1" ...>`
-            # wrappers into GSAP-driven tweens that the renderer's per-frame scrub controls.
-            #
-            # The video editor injects these via buildTransitionCss() (see
-            # frontend-admin-dashboard/.../utils/transitions.ts) to drive in/out
-            # fade/slide/zoom transitions. CSS keyframe animations advance at WALL-CLOCK
-            # time, but the renderer captures frames serially at variable per-frame cost
-            # (50-200ms each), so the wall clock outruns the render's scrub clock — the
-            # CSS animation completes long before the scrub reaches the shot's exit and
-            # the shot renders blank.
-            #
-            # We parse the animation shorthand, strip it from the wrapper's inline style,
-            # and emit a `<script>` whose tweens are equivalent to the original keyframes
-            # but registered on `gsap.globalTimeline` — the renderer scrubs that timeline
-            # via `globalTimeline.totalTime(state.t)` so the transitions play frame-accurate.
-            _vx_shot_open_re = _re.compile(
-                r'(<div\s+data-vx-shot="[^"]*"\s+style=")([^"]*)("\s*>)',
-                _re.IGNORECASE,
-            )
-            _anim_prop_re = _re.compile(r'animation\s*:[^;]*;?', _re.IGNORECASE)
-            _vx_anim_token_re = _re.compile(
-                r'(vx-(?:fade|slide-[lrud]|zoom-in|zoom-out)-(?:in|out))\s+'
-                r'([\d.]+)s\s+(\S+?)\s+([-\d.]+)s\s+both',
-                _re.IGNORECASE,
-            )
-            # Per-type from-state (CSS-keyframe "unit=0"). The to-state is identity for all.
-            _vx_state0 = {
-                'fade':     {'opacity': 0},
-                'slide-l':  {'opacity': 0, 'xPercent': -100},
-                'slide-r':  {'opacity': 0, 'xPercent': 100},
-                'slide-u':  {'opacity': 0, 'yPercent': -100},
-                'slide-d':  {'opacity': 0, 'yPercent': 100},
-                'zoom-in':  {'opacity': 0, 'scale': 0.6},
-                'zoom-out': {'opacity': 0, 'scale': 1.4},
-            }
-            _vx_state1 = {'opacity': 1, 'xPercent': 0, 'yPercent': 0, 'scale': 1}
-            _css_to_gsap_ease = {
-                'ease':        'power2.inOut',
-                'linear':      'none',
-                'ease-in':     'power2.in',
-                'ease-out':    'power2.out',
-                'ease-in-out': 'power2.inOut',
-            }
-
-            def _vars_to_js(d):
-                return '{' + ','.join(f'{k}:{v}' for k, v in d.items()) + '}'
-
-            def _convert_vx_wrapper(_html):
-                def _repl(m):
-                    opening, style, closing = m.group(1), m.group(2), m.group(3)
-                    am = _anim_prop_re.search(style)
-                    if not am:
-                        return m.group(0)
-                    anim_value = am.group(0).split(':', 1)[1].rstrip(';').strip()
-                    new_style = _anim_prop_re.sub('', style).strip(';').strip()
-                    tweens_js = []
-                    for tok in _vx_anim_token_re.finditer(anim_value):
-                        name, dur, easing, delay = tok.group(1), float(tok.group(2)), tok.group(3), float(tok.group(4))
-                        if name.endswith('-in'):
-                            type_, direction = name[3:-3], 'in'
-                        elif name.endswith('-out'):
-                            type_, direction = name[3:-4], 'out'
-                        else:
-                            continue
-                        if type_ not in _vx_state0:
-                            continue
-                        s0 = _vx_state0[type_]
-                        # Only include identity-axis keys that actually changed (avoid
-                        # GSAP wiping the user's baked transform along the unchanged axis).
-                        s1 = {k: _vx_state1[k] for k in s0.keys()}
-                        from_v, to_v = (s0, s1) if direction == 'in' else (s1, s0)
-                        ease = _css_to_gsap_ease.get(easing.lower(), 'power2.inOut')
-                        to_with_meta = dict(to_v)
-                        to_with_meta['duration'] = dur
-                        to_with_meta['delay'] = delay
-                        to_with_meta['ease'] = f'"{ease}"'
-                        tweens_js.append(
-                            f'gsap.fromTo(__vxw,{_vars_to_js(from_v)},{_vars_to_js(to_with_meta)});'
-                        )
-                    if not tweens_js:
-                        return f'{opening}{new_style}{closing}'
-                    script = (
-                        '<script data-vx-render-transition="1">'
-                        'var __vxw=scope.querySelector(\'[data-vx-shot="1"]\');'
-                        'if(__vxw){' + ''.join(tweens_js) + '}'
-                        '</script>'
-                    )
-                    return f'{opening}{new_style}{closing}{script}'
-                return _vx_shot_open_re.sub(_repl, _html)
-
-            for _entry in tl_entries:
-                if "html" in _entry:
-                    _orig = _entry["html"]
-                    _cleaned = _drift_re.sub("", _orig)
-                    _cleaned = _timescale_re.sub("", _cleaned)
-                    _cleaned = _gsap_cdn_re.sub("", _cleaned)
-                    _cleaned = _convert_vx_wrapper(_cleaned)
-                    if _cleaned != _orig:
-                        _entry["html"] = _cleaned
-                        _modified_tl = True
+                if "html" not in _entry:
+                    continue
+                _orig = _entry["html"]
+                _cleaned, _ts = preprocess_shot_html(
+                    _orig,
+                    shot_type=_entry.get("shot_type"),
+                    shot_id=_entry.get("id"),
+                )
+                if _cleaned != _orig:
+                    _entry["html"] = _cleaned
+                    _modified_tl = True
+                # Attach the extracted vx-timescale to the entry so the
+                # dispatcher's __updateSnippets can read e.timescale and
+                # create a per-shot child timeline. Skip the field when ≈1
+                # to keep the wire payload small for shots without a
+                # FE-editor duration adjustment.
+                if abs(_ts - 1.0) > 1e-6:
+                    _entry["timescale"] = _ts
+                    _modified_tl = True
 
             from moviepy import AudioFileClip as _AFC
             _audio_dur = _AFC(str(audio_path)).duration

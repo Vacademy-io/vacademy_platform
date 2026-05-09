@@ -32,6 +32,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -47,6 +49,95 @@ _DEFAULT_POLL_TIMEOUT_S = 30.0
 _DEFAULT_RENDER_DEADLINE_S = 600.0   # 10 min hard ceiling per shot
 _DEFAULT_POLL_INTERVAL_S = 5.0
 _DEFAULT_CONCURRENCY = 4
+
+
+# ---------------------------------------------------------------------------
+# Per-model audio duration caps (PR 1)
+# ---------------------------------------------------------------------------
+# fal.ai rejects oversize audio with a moderation_error on submit. Each model
+# has its own ceiling and they are NOT documented in any one place — values
+# below are confirmed empirically (Kling v2 standard rejected at 63.7s with
+# "exceeds maximum allowed duration of 40s" on prod run output(24).mp4) or
+# from fal's per-model docs.
+#
+# Models not in the table get cap=0.0 → no preflight enforcement (fal stays
+# the gate). Add entries here as we wire new models.
+MODEL_AUDIO_CAP_S: Dict[str, float] = {
+    "fal-ai/kling-video/ai-avatar/v2/standard": 40.0,
+    "fal-ai/kling-video/ai-avatar/v2/pro":      40.0,
+    "veed/fabric-1.0":                          60.0,
+}
+# Subtract from the model cap before enforcing. fal's gate is inclusive and
+# slight ffprobe/encoder rounding (≤ 0.5s) has burned us before.
+AUDIO_CAP_SAFETY_MARGIN_S: float = 2.0
+
+
+def get_audio_cap_s(model_id: str) -> float:
+    """Effective audio cap for `model_id` (incl. safety margin), or 0.0 if unknown.
+
+    0.0 means "no preflight enforcement" — let fal be the gate. Callers
+    should treat 0.0 as a signal to skip the preflight, not as "cap=0".
+    """
+    raw = MODEL_AUDIO_CAP_S.get(model_id, 0.0)
+    if raw <= 0:
+        return 0.0
+    return max(0.0, raw - AUDIO_CAP_SAFETY_MARGIN_S)
+
+
+def _ffprobe_duration_s(audio_url: str, *, timeout_s: float = 15.0) -> Optional[float]:
+    """Return audio duration in seconds via ffprobe, or None if probe fails.
+
+    Fail-soft by design: if ffprobe is missing, the URL is unreachable, or
+    parsing fails, we return None and let fal be the gate. We never want the
+    preflight itself to be a new failure source.
+
+    Honors `FFPROBE_PATH` env var (mirrors how automation_pipeline finds
+    ffmpeg via FFMPEG_PATH).
+    """
+    ffprobe_path = os.environ.get("FFPROBE_PATH") or "ffprobe"
+    cmd = [
+        ffprobe_path,
+        "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        audio_url,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        logger.warning(f"[FalAvatar] ffprobe preflight unavailable ({e}) — skipping cap check")
+        return None
+    if r.returncode != 0:
+        logger.warning(
+            f"[FalAvatar] ffprobe returned {r.returncode} for {audio_url} — "
+            f"skipping cap check (stderr: {(r.stderr or '').strip()[:200]})"
+        )
+        return None
+    try:
+        return float(r.stdout.strip())
+    except (ValueError, AttributeError):
+        return None
+
+
+class AudioCapExceeded(RuntimeError):
+    """Raised by submit() when audio duration would trip the model's fal cap.
+
+    Carries structured fields so the caller (AvatarBatch) can distinguish this
+    from a submit-time HTTP/network failure and handle it deterministically
+    (split the run further, fall back to host_present=false, etc.) without
+    parsing error strings.
+    """
+    def __init__(self, *, model: str, audio_duration_s: float, cap_s: float):
+        self.model = model
+        self.audio_duration_s = float(audio_duration_s)
+        self.cap_s = float(cap_s)
+        super().__init__(
+            f"Audio duration {self.audio_duration_s:.1f}s exceeds effective cap "
+            f"{self.cap_s:.1f}s for model {model!r} (raw cap "
+            f"{MODEL_AUDIO_CAP_S.get(model, 0.0):.1f}s minus "
+            f"{AUDIO_CAP_SAFETY_MARGIN_S:.1f}s safety margin). "
+            f"Pre-slice the audio before calling fal."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +356,23 @@ class FalAvatarClient:
             external_avatar_id=external_avatar_id,
         )
         endpoint = _resolve_endpoint_model(provider, model)
+
+        # Preflight: ffprobe the audio and reject before the fal call if it
+        # would trip the model's documented cap. Saves a wasted submit and
+        # gives the caller a typed exception (AudioCapExceeded) to dispatch
+        # on instead of having to parse fal's moderation_error string. If the
+        # model isn't in the cap table, get_audio_cap_s returns 0.0 and we
+        # skip — fal stays the gate as before.
+        cap_s = get_audio_cap_s(endpoint)
+        if cap_s > 0 and audio_url:
+            dur = _ffprobe_duration_s(audio_url)
+            if dur is not None and dur > cap_s:
+                raise AudioCapExceeded(
+                    model=endpoint,
+                    audio_duration_s=dur,
+                    cap_s=cap_s,
+                )
+
         url = f"{_FAL_QUEUE_BASE}/{endpoint}"
         async with httpx.AsyncClient(timeout=_DEFAULT_SUBMIT_TIMEOUT_S) as client:
             resp = await client.post(url, headers=self._headers, json=payload)
@@ -351,6 +459,20 @@ class FalAvatarClient:
                     external_avatar_id=external_avatar_id,
                 )
                 result.fal_request_id = submission.request_id
+            except AudioCapExceeded as e:
+                # Preflight rejected this shot — never hit fal. Distinct from a
+                # submit-time HTTP/network failure: the caller (AvatarBatch /
+                # run-based renderer in PR 2) splits the run further or falls
+                # back to host_present=false. Marking the stage explicitly lets
+                # downstream code branch without parsing error strings.
+                result.error = str(e)
+                result.error_stage = "audio_cap"
+                result.elapsed_s = time.time() - t0
+                logger.warning(
+                    f"[FalAvatar] shot={shot_index} preflight cap exceeded: "
+                    f"{e.audio_duration_s:.1f}s > {e.cap_s:.1f}s ({e.model})"
+                )
+                return result
             except Exception as e:
                 result.error = str(e)
                 result.error_stage = "submit"

@@ -24,6 +24,7 @@ import { buildPipelineGraph, type PipelineNodeData } from './-utils/build-pipeli
 import { applyDagreLayout } from './-utils/apply-dagre-layout';
 import { useBackgroundMusicTrack, useSceneThumbnails } from './-utils/use-timeline-json';
 import { useVideoStatus } from './-utils/use-video-status';
+import { ScenesHtmlContext } from './-utils/scenes-html-context';
 import { NodeDetailSheet, type DetailTarget } from './NodeDetailSheet';
 import { PitchNode } from './nodes/PitchNode';
 import { ResearchNode } from './nodes/ResearchNode';
@@ -35,6 +36,7 @@ import { SceneNode } from './nodes/SceneNode';
 import { TalentNode } from './nodes/TalentNode';
 import { ScoreNode } from './nodes/ScoreNode';
 import { FinalCutNode } from './nodes/FinalCutNode';
+import { BrollLaneNode } from './nodes/BrollLaneNode';
 
 /**
  * Map of `nodeType` → component. Defined module-scope (not inside the
@@ -52,6 +54,7 @@ const NODE_TYPES: NodeTypes = {
     talent: TalentNode,
     score: ScoreNode,
     finalCut: FinalCutNode,
+    brollLane: BrollLaneNode,
 };
 
 interface PipelineFlowProps {
@@ -303,7 +306,10 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
     const handleNodeClick = useCallback(
         (_event: React.MouseEvent, node: Node<PipelineNodeData>) => {
             const kind = node.data?.kind;
-            if (!kind || kind === 'finalCut') return;
+            // brollLane is a visual-only wrapper — `selectable:false` on
+            // the node already suppresses RF clicks, but guard explicitly
+            // in case RF semantics shift in a future upgrade.
+            if (!kind || kind === 'finalCut' || kind === 'brollLane') return;
             if (kind === 'scene') {
                 // Always return inside this branch so the narrowed `kind`
                 // below is guaranteed not to be 'scene'.
@@ -418,6 +424,53 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
                         n.position = { x: bx, y: branchY };
                         bx += w + branchSpacing;
                     });
+
+                    // Wrap the branch row in a dashed "B-roll lanes"
+                    // container so the fan-out from Storyboard / fan-in
+                    // to FinalCut reads as a deliberate group rather than
+                    // two free-floating nodes. Sized off the actual
+                    // positioned branch geometry (not the unstyled defaults)
+                    // and rendered with a low zIndex so branch clicks still
+                    // hit the underlying TalentNode / ScoreNode.
+                    const present = branches.filter((n): n is NonNullable<typeof n> => !!n);
+                    const xs = present.map((n) => n.position.x);
+                    const rights = present.map(
+                        (n) => n.position.x + (built.nodeSizeOverrides[n.id]?.width ?? branchNodeW)
+                    );
+                    const ys = present.map((n) => n.position.y);
+                    const bottoms = present.map(
+                        (n) => n.position.y + (built.nodeSizeOverrides[n.id]?.height ?? 140)
+                    );
+                    const PAD = 24;
+                    const laneX = Math.min(...xs) - PAD;
+                    const laneY = Math.min(...ys) - PAD;
+                    const laneW = Math.max(...rights) - Math.min(...xs) + PAD * 2;
+                    const laneH = Math.max(...bottoms) - Math.min(...ys) + PAD * 2;
+                    // Insert FIRST so the rendered DOM order keeps the
+                    // lane behind the branch cards as a fallback for
+                    // browsers that ignore the zIndex on transformed
+                    // children. zIndex on the React Flow node style is
+                    // additionally honored by RF's stacking context.
+                    positioned.unshift({
+                        id: 'broll-lane',
+                        type: 'brollLane',
+                        position: { x: laneX, y: laneY },
+                        data: {
+                            kind: 'brollLane',
+                            // The lane is purely visual; it doesn't read
+                            // PipelineState. PipelineNodeData requires a
+                            // `state` field, so fall through with the
+                            // current state to satisfy the type without
+                            // an extra cast at the consumer.
+                            state: enrichedState,
+                            width: laneW,
+                            height: laneH,
+                        } as unknown as PipelineNodeData & { width: number; height: number },
+                        selectable: false,
+                        draggable: false,
+                        focusable: false,
+                        style: { zIndex: -1 },
+                    });
                 }
             }
         }
@@ -448,8 +501,18 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
     // the linear chain alone is already 6 nodes.
     const showMiniMap = nodes.length > 8;
 
+    // Side-channel: per-scene HTML. Memoized so ScenesHtmlContext consumers
+    // don't re-render unless the timeline JSON changed.
+    const htmlByIndex = useMemo(() => {
+        const out: Record<number, string | undefined> = {};
+        for (const [idx, t] of Object.entries(thumbnails)) {
+            out[Number(idx)] = t.html;
+        }
+        return out;
+    }, [thumbnails]);
+
     return (
-        <>
+        <ScenesHtmlContext.Provider value={htmlByIndex}>
             {/* Suppress React Flow's default `.selected` outline. We render
                 our own state-driven ring on `<BaseNodeShell>` / `<SceneNode>`,
                 and a default box-shadow ring on top would double up.
@@ -502,7 +565,7 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
                 onOpenChange={handleSheetOpenChange}
                 apiKey={apiKey}
             />
-        </>
+        </ScenesHtmlContext.Provider>
     );
 }
 

@@ -4,7 +4,18 @@
 > Out of scope: the bulk admin CSV-issuance tool at `/certificate-generation/student-data` (separate page, separate use case).
 >
 > **Audit date:** 2026-05-08
+> **Last updated:** 2026-05-09 — see "Update note" below.
 > **Audience:** engineers planning the next iteration of the certificate feature.
+
+## Update note (2026-05-09) — rollup percentages can now legitimately drop
+
+The progress-tracking cascade was changed today (branch `fix/progress-tracking-staleness`): the B9 monotonic guard in `LearnerTrackingAsyncService.addOrUpdatePercentageOperation` was scoped to slide-level writes only. Chapter / module / subject / **package_session** percentages now overwrite freely on every cascade run, so they reflect current course structure (slides added/removed, chapters re-published, etc.) instead of being frozen at a previous high-water mark.
+
+**Implication for this doc / for the cert flow:**
+
+- The frontend threshold gate at `course-details-page.tsx:1066-1077` — `if (percentageCompleted >= threshold) generate(...)` — used to be effectively one-way once crossed: the underlying `PERCENTAGE_PACKAGE_SESSION_COMPLETED` row was monotonic, so a learner who crossed the threshold once stayed eligible. After today, the same row can legitimately drop below threshold if course content is edited. With the current idempotency check (`if SSIGM.automatedCompletionCertificateFileId is set, return cached file`), an already-issued cert is preserved — no regression for learners who already received one. **But** if Bucket B (auto-trigger from cascade) is implemented later, the trigger logic needs to be deliberate about "should we issue a cert when crossing threshold for the first time, even though the learner may dip below threshold later?" — otherwise content edits could cause spurious second-issuance attempts or, worse, retract eligibility that was previously granted.
+- §13's "Threshold rounding semantics" subsection grows in importance: the gate is now a fresh comparison every time, not a one-time crossing. Decide explicitly whether the gate is `>=` or `> threshold - epsilon`, and whether crossing-down should ever revoke a cert.
+- §13's "Idempotency under re-enrollment" remains correct as written; the rollup change doesn't affect SSIGM lifecycle, only the % stored in `learner_operation`.
 
 ---
 

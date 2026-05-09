@@ -33,6 +33,8 @@ import vacademy.io.admin_core_service.features.live_session.service.TimezoneSett
 import vacademy.io.admin_core_service.features.live_session.service.GetSessionByIdService;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionNotificationConfig;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionNotificationConfigRepository;
+import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
@@ -58,8 +60,20 @@ public class LiveSessionNotificationProcessor {
     private final InstituteStudentRepository studentRepository;
     private final LiveSessionNotificationConfigRepository notificationConfigRepository;
     private final LiveClassTemplateService liveClassTemplateService;
+    private final WorkflowTriggerService workflowTriggerService;
     @Autowired
     private SessionScheduleRepository scheduleRepository;
+
+    /**
+     * Look-back window for the LIVE_SESSION_END dispatch. MUST equal the
+     * Quartz cadence (5 min). The repository query uses a half-open interval
+     * (now - 5m, now] so consecutive ticks' windows are non-overlapping —
+     * each ended class falls into exactly one tick's window. We cannot use a
+     * wider window because the workflow engine's default idempotency strategy
+     * is UUID (per-call random key, no dedupe), so any overlap would fire the
+     * workflow twice for the same class.
+     */
+    private static final int LIVE_SESSION_END_LOOKBACK_MINUTES = 5;
 
 
     @Transactional
@@ -70,6 +84,17 @@ public class LiveSessionNotificationProcessor {
         LocalDateTime windowEnd = now.plusMinutes(5);
         System.out.println("current time (UTC): " + now);
         System.out.println("Current time on server is "+now);
+
+        // Dispatch LIVE_SESSION_END workflow trigger for any class whose end fell
+        // in the look-back window. Folded into this processor (instead of a
+        // separate scheduler) so a single Quartz tick handles all live-session
+        // periodic work. Wrapped so a workflow failure can't poison the existing
+        // reminder dispatch below.
+        try {
+            dispatchEndedLiveSessionWorkflows();
+        } catch (Exception e) {
+            System.out.println("LIVE_SESSION_END dispatch failed (continuing with reminders): " + e.getMessage());
+        }
 
         // 1) Mark past-due PENDING notifications as EXPIRED (no send)
         List<ScheduleNotification> pastDue = scheduleNotificationRepository.findPastDue(now.minusMinutes(2));
@@ -160,6 +185,50 @@ public class LiveSessionNotificationProcessor {
             } catch (Exception ex) {
                 scheduleNotificationRepository.releaseClaim(sn.getId(), NotificationStatusEnum.PENDING.name());
                 System.out.println("Skip failure tracking per requirements; keep PENDING to retry next run"+ex);
+            }
+        }
+    }
+
+    /**
+     * Fires the LIVE_SESSION_END workflow trigger for every schedule whose end
+     * (meeting_date + last_entry_time, in session timezone) fell within the
+     * look-back window. The workflow engine de-dupes per (trigger, scheduleId)
+     * via the unique constraint on workflow_execution, so re-firing across
+     * consecutive ticks is safe — only the first wins.
+     *
+     * <p>Per-row try/catch so a single bad schedule (or workflow failure) can't
+     * stop the rest of the dispatch.
+     */
+    private void dispatchEndedLiveSessionWorkflows() {
+        List<SessionSchedule> ended = sessionScheduleRepository.findEndedInLastMinutes(LIVE_SESSION_END_LOOKBACK_MINUTES);
+        if (ended == null || ended.isEmpty()) return;
+        System.out.println("LIVE_SESSION_END dispatch: " + ended.size() + " schedule(s) ended in last "
+                + LIVE_SESSION_END_LOOKBACK_MINUTES + " minutes");
+
+        for (SessionSchedule schedule : ended) {
+            try {
+                Optional<LiveSession> sessionOpt = liveSessionRepository.findById(schedule.getSessionId());
+                if (sessionOpt.isEmpty()) continue;
+                LiveSession session = sessionOpt.get();
+
+                Map<String, Object> ctx = new HashMap<>();
+                ctx.put("liveSession", session);
+                ctx.put("sessionId", session.getId());
+                ctx.put("scheduleId", schedule.getId());
+                ctx.put("instituteId", session.getInstituteId());
+                ctx.put("sessionTitle", session.getTitle());
+                ctx.put("meetingDate", schedule.getMeetingDate());
+                ctx.put("startTime", schedule.getStartTime());
+                ctx.put("endTime", schedule.getLastEntryTime());
+
+                workflowTriggerService.handleTriggerEvents(
+                        WorkflowTriggerEvent.LIVE_SESSION_END.name(),
+                        schedule.getId(),
+                        session.getInstituteId(),
+                        ctx);
+            } catch (Exception e) {
+                System.out.println("LIVE_SESSION_END dispatch skipped scheduleId="
+                        + schedule.getId() + " due to: " + e.getMessage());
             }
         }
     }

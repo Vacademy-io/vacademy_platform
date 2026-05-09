@@ -127,18 +127,29 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         }
     }, [syncAudioTrackingData]);
 
-    // Initialize Interval Sync
+    // Initialize Interval Sync — cadence = min(audio duration, 60s) so short
+    // audios sync at their own length and the worst-case unsynced window is
+    // bounded by audio length, not by a fixed 15s.
     useEffect(() => {
+        const periodMs = Math.max(
+            1000,
+            Math.min(
+                Number.isFinite(duration) && duration > 0
+                    ? Math.round(duration * 1000)
+                    : 60000,
+                60000
+            )
+        );
         syncIntervalRef.current = setInterval(() => {
             if (isPlaying) {
                 debouncedSync();
             }
-        }, 15000);
-        
+        }, periodMs);
+
         return () => {
             if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
         };
-    }, [debouncedSync, isPlaying]);
+    }, [debouncedSync, isPlaying, duration]);
 
     // Sync on unmount
     useEffect(() => {
@@ -260,7 +271,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
             saveCurrentSegment(audioRef.current.currentTime);
         }
         setIsPlaying(false);
-        debouncedSync();
+        // Bypass the 10s debounce on natural end so the learner sees 100%
+        // immediately — debouncedSync() can drop this call if a periodic
+        // sync just fired moments before, leaving the final segment unsynced.
+        syncAudioTrackingData().catch(console.error);
     };
 
     const formatTime = (time: number) => {

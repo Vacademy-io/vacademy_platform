@@ -1160,6 +1160,76 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
     // Template #25: Onboarding drip REMOVED — uses multi-day delays which require
     // the Quartz resume job (currently disabled). Will be re-added when persistent
     // delay is enabled. For now, create separate scheduled workflows for Day 3 and Day 7.
+
+    // ─── 26. Live class ended: post-class email to present & absent students ───
+    // VERIFIED: backend prebuilt query fetch_live_session_attendance returns
+    //   { presentStudents: [{email, fullName, sessionTitle, instituteName, ...}],
+    //     absentStudents: [...] }
+    // Each item is a Map with `email` ✓, so SEND_EMAIL handler iterates correctly.
+    // Every key on each item auto-becomes a placeholder via the per-item enrichment
+    // in SendEmailNodeHandler — no templateVars mapping needed. Placeholders
+    // available in the chosen email template:
+    //   {{fullName}}  {{name}}  {{sessionTitle}}  {{instituteName}}
+    //   {{date}}  {{time}}  {{attendanceStatus}}  {{mobileNumber}}
+    {
+        id: 'live_session_end_recap',
+        name: 'Post-class email to present & absent students',
+        description: 'When any live class in your institute ends, send one email to students who attended and a different one to students who missed it.',
+        icon: '📨',
+        triggerEvents: ['LIVE_SESSION_END'],
+        workflowType: 'EVENT_DRIVEN',
+        questions: [
+            {
+                id: 'presentTemplate',
+                label: 'Email template for students who attended',
+                helpText: 'Sent to learners marked PRESENT in the class.',
+                type: 'template_select',
+                required: true,
+            },
+            {
+                id: 'absentTemplate',
+                label: 'Email template for students who missed it',
+                helpText: 'Sent to learners marked ABSENT in the class.',
+                type: 'template_select',
+                required: true,
+            },
+        ],
+        generateWorkflow: (answers, triggerEvent) => {
+            const triggerNode = makeNode('TRIGGER', 'Trigger: Live class ended', {
+                triggerEvent: triggerEvent ?? 'LIVE_SESSION_END',
+            }, 250, 50, true);
+
+            const queryNode = makeNode('QUERY', 'Fetch attendance', {
+                prebuiltKey: 'fetch_live_session_attendance',
+                params: {
+                    sessionId: "#ctx['sessionId']",
+                    scheduleId: "#ctx['scheduleId']",
+                },
+            }, 250, 230);
+
+            const presentEmailNode = makeNode('SEND_EMAIL', `Send to present: ${answers.presentTemplate}`, {
+                templateName: answers.presentTemplate as string,
+                on: "#ctx['presentStudents']",
+                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+            }, 50, 410);
+
+            const absentEmailNode = makeNode('SEND_EMAIL', `Send to absent: ${answers.absentTemplate}`, {
+                templateName: answers.absentTemplate as string,
+                on: "#ctx['absentStudents']",
+                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+            }, 450, 410);
+
+            return {
+                nodes: [triggerNode, queryNode, presentEmailNode, absentEmailNode],
+                edges: [
+                    makeEdge(triggerNode.id, queryNode.id),
+                    makeEdge(queryNode.id, presentEmailNode.id, 'present'),
+                    makeEdge(queryNode.id, absentEmailNode.id, 'absent'),
+                ],
+                workflowDescription: 'Post-class recap emails to present and absent students for every live class in the institute.',
+            };
+        },
+    },
 ];
 
 /** Get templates matching a trigger event (or scheduled) */

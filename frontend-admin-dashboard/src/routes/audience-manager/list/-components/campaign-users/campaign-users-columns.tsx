@@ -1,6 +1,6 @@
 import { ColumnDef, Row } from '@tanstack/react-table';
-import { Trash2 } from 'lucide-react';
-import { ArrowSquareOut } from '@phosphor-icons/react';
+import { Trash2, UserPlus, Plus } from 'lucide-react';
+import { ArrowSquareOut, NotePencil } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { CustomFieldSetupItem } from '../../-services/get-custom-field-setup';
@@ -10,6 +10,7 @@ import {
 } from '../../-utils/getCampaignCustomFields';
 import { LeadScoreBadge } from '@/components/shared/lead-score-badge';
 import type { LeadProfileSummary } from '@/hooks/use-lead-profiles';
+import type { LatestNoteSummary } from '@/hooks/use-latest-notes-batch';
 import {
     formatCustomFieldValue,
     isMultiSelectType,
@@ -126,7 +127,10 @@ export const generateDynamicColumns = (
     fieldMetadataMap?: Map<string, { fieldName?: string; fieldKey?: string; fieldType?: string }>,
     onRowClick?: (row: CampaignUserTable) => void,
     onSelectRow?: (row: CampaignUserTable) => void,
-    leadProfiles?: Record<string, LeadProfileSummary>
+    leadProfiles?: Record<string, LeadProfileSummary>,
+    latestNotes?: Record<string, LatestNoteSummary>,
+    onAddNote?: (userId: string, userName: string) => void,
+    onAssignCounsellor?: (userId: string, userName: string) => void
 ): ColumnDef<CampaignUserTable>[] => {
     // When a select-row callback is provided, render a "Details" column first —
     // matching manage-students and manage-contacts so the side-view affordance is
@@ -356,6 +360,170 @@ export const generateDynamicColumns = (
         });
     } catch (error) {
         console.error('❌ Error generating dynamic columns:', error);
+    }
+
+    // Counsellor column — uses the batched LeadProfileSummary so we don't
+    // re-fetch counselor info per row. When unassigned, render an "Assign"
+    // affordance that opens AssignCounselorToLeadDialog at the table level.
+    if (onAssignCounsellor) {
+        columns.push({
+            id: 'counsellor',
+            header: 'Counsellor',
+            size: 200,
+            minSize: 160,
+            maxSize: 240,
+            cell: ({ row }) => {
+                const userId = row.original._user_id;
+                const userName =
+                    (row.original.full_name as string) ||
+                    row.original._user?.full_name ||
+                    '';
+                const profile = userId && leadProfiles ? leadProfiles[userId] : undefined;
+                const counselorName = profile?.assigned_counselor_name;
+                if (!userId) {
+                    return <div className="p-3 text-sm text-neutral-400">—</div>;
+                }
+                if (counselorName) {
+                    return (
+                        <div className="flex items-center justify-between gap-2 p-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-100 text-[11px] font-semibold text-primary-700">
+                                    {counselorName[0]?.toUpperCase()}
+                                </div>
+                                <span className="truncate text-sm text-neutral-800">
+                                    {counselorName}
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onAssignCounsellor(userId, userName);
+                                }}
+                                className="shrink-0 text-[11px] text-neutral-400 hover:text-primary-600"
+                            >
+                                Reassign
+                            </button>
+                        </div>
+                    );
+                }
+                return (
+                    <div className="p-3">
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onAssignCounsellor(userId, userName);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-md border border-dashed border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-primary-300 hover:text-primary-600"
+                        >
+                            <UserPlus className="size-3.5" />
+                            Assign
+                        </button>
+                    </div>
+                );
+            },
+        });
+    }
+
+    // Activity & Notes column — shows up to 5 most-recent cross-stage events
+    // stacked compactly (title, truncated description, date, actor) and a
+    // small Add button. Empty state offers a single "Add Note" affordance.
+    if (onAddNote) {
+        columns.push({
+            id: 'activity_notes',
+            header: 'Activity & Notes',
+            size: 320,
+            minSize: 260,
+            maxSize: 420,
+            cell: ({ row }) => {
+                const userId = row.original._user_id;
+                const userName =
+                    (row.original.full_name as string) ||
+                    row.original._user?.full_name ||
+                    '';
+                const summary = userId && latestNotes ? latestNotes[userId] : undefined;
+                if (!userId) {
+                    return <div className="p-3 text-sm text-neutral-400">—</div>;
+                }
+                const recent = summary?.recent ?? [];
+                if (recent.length === 0) {
+                    return (
+                        <div className="p-3">
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onAddNote(userId, userName);
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md border border-dashed border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-primary-300 hover:text-primary-600"
+                            >
+                                <Plus className="size-3.5" />
+                                Add Note
+                            </button>
+                        </div>
+                    );
+                }
+                const overflow = (summary?.count ?? recent.length) - recent.length;
+                return (
+                    <div className="flex items-start justify-between gap-2 p-2">
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                            {recent.map((n) => {
+                                const desc = n.description?.trim();
+                                const ts = n.created_at
+                                    ? new Date(n.created_at).toLocaleDateString('en-IN', {
+                                          day: '2-digit',
+                                          month: 'short',
+                                          year: '2-digit',
+                                      })
+                                    : '';
+                                return (
+                                    <div
+                                        key={n.id}
+                                        className="rounded-md bg-neutral-50 px-2 py-1.5"
+                                    >
+                                        <div className="flex items-center gap-1.5">
+                                            <NotePencil
+                                                weight="fill"
+                                                className="size-3 text-neutral-500"
+                                            />
+                                            <span className="truncate text-xs font-medium text-neutral-800">
+                                                {n.title}
+                                            </span>
+                                        </div>
+                                        {desc && (
+                                            <p className="mt-0.5 line-clamp-2 text-[11px] text-neutral-600">
+                                                {desc}
+                                            </p>
+                                        )}
+                                        <p className="mt-0.5 text-[10px] text-neutral-400">
+                                            {ts}
+                                            {n.actor_name ? ` · by ${n.actor_name}` : ''}
+                                        </p>
+                                    </div>
+                                );
+                            })}
+                            {overflow > 0 && (
+                                <p className="text-[10px] text-neutral-400">
+                                    +{overflow} more
+                                </p>
+                            )}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onAddNote(userId, userName);
+                            }}
+                            title="Add note"
+                            className="shrink-0 rounded-md p-1 text-neutral-400 hover:bg-neutral-100 hover:text-primary-600"
+                        >
+                            <Plus className="size-3.5" />
+                        </button>
+                    </div>
+                );
+            },
+        });
     }
 
     // Add "Submitted On" column at the end

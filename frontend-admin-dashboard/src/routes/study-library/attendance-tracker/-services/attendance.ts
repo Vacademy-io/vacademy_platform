@@ -26,6 +26,7 @@ export interface SessionType {
     attendanceStatus: string | null;
     attendanceDetails: string | null;
     attendanceTimestamp: string | null;
+    durationMinutes: number | null;
 }
 
 export interface ContentType {

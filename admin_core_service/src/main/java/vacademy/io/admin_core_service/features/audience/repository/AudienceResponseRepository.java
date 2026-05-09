@@ -99,7 +99,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
                                    (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
                                    (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
-                              AND (COALESCE(:assignedCounselorId, '') = '' OR lu.user_id = :assignedCounselorId)
+                              AND (COALESCE(:assignedCounselorId, '') = ''
+                                   OR lu.user_id = :assignedCounselorId
+                                   OR ulp.assigned_counselor_id = :assignedCounselorId)
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE OR lu.user_id IS NULL)
                               AND (
                                 (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
@@ -169,7 +171,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
                                    (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
                                    (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
-                              AND (COALESCE(:assignedCounselorId, '') = '' OR lu.user_id = :assignedCounselorId)
+                              AND (COALESCE(:assignedCounselorId, '') = ''
+                                   OR lu.user_id = :assignedCounselorId
+                                   OR ulp.assigned_counselor_id = :assignedCounselorId)
                               AND (:isUnassigned IS NULL OR :isUnassigned = FALSE OR lu.user_id IS NULL)
                               AND (
                                 (COALESCE(:overallStatusStr, '') = '' AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT'))
@@ -266,7 +270,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
                                    (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
                                    (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
-                              AND (COALESCE(:assignedCounselorId, '') = '' OR lu.user_id = :assignedCounselorId)
+                              AND (COALESCE(:assignedCounselorId, '') = ''
+                                   OR lu.user_id = :assignedCounselorId
+                                   OR ulp.assigned_counselor_id = :assignedCounselorId)
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
@@ -306,7 +312,9 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
                                    (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
                                    (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
-                              AND (COALESCE(:assignedCounselorId, '') = '' OR lu.user_id = :assignedCounselorId)
+                              AND (COALESCE(:assignedCounselorId, '') = ''
+                                   OR lu.user_id = :assignedCounselorId
+                                   OR ulp.assigned_counselor_id = :assignedCounselorId)
                               AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
                               AND (
                                 COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'

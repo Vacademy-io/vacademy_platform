@@ -1,21 +1,21 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { Helmet } from 'react-helmet';
 import { useEffect } from 'react';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { CaretLeft } from '@phosphor-icons/react';
-import { Loader2 } from 'lucide-react';
-import ScheduleStep1 from '../-components/scheduleStep1';
-import { useNavigate } from '@tanstack/react-router';
+import ScheduleBulkPage from '../-components/scheduleBulkPage';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
-export const Route = createFileRoute('/study-library/live-session/schedule/step1/')({
+import { Loader2 } from 'lucide-react';
+
+export const Route = createFileRoute('/study-library/live-session/schedule/bulk/')({
     component: RouteComponent,
 });
 
 function RouteComponent() {
     const { setNavHeading } = useNavHeadingStore();
-    const { clearSessionId, clearStep1Data, isEdit } = useLiveSessionStore();
+    const { clearSessionId, clearStep1Data, clearBulkSessionIds } = useLiveSessionStore();
     const navigate = useNavigate();
     const { settings, isLoading } = useLiveSessionSettings();
 
@@ -25,40 +25,33 @@ function RouteComponent() {
                 onClick={() => navigate({ to: '/study-library/live-session' })}
                 className="cursor-pointer"
             />
-            <div>Schedule Live Sessions</div>
+            <div>Bulk Schedule Live Sessions</div>
         </div>
     );
 
     useEffect(() => {
         setNavHeading(heading);
-        // Only clear data if not in edit mode
-        if (!isEdit) {
-            clearSessionId();
-            clearStep1Data();
-        }
-    }, [isEdit, setNavHeading, clearSessionId, clearStep1Data]);
+        // Bulk flow always starts fresh — no edit mode for bulk.
+        clearSessionId();
+        clearStep1Data();
+        clearBulkSessionIds();
+    }, [setNavHeading, clearSessionId, clearStep1Data, clearBulkSessionIds]);
 
-    // Route-level guard for new (non-edit) sessions: if single-class
-    // scheduling is disabled (institute or role), redirect to bulk if
-    // available, otherwise back to the list. Edit mode always renders so
-    // existing sessions can be modified regardless of the toggle.
+    // Route-level guard: if bulk scheduling is disabled (institute setting OR
+    // role-level display setting), bounce admins away from the URL even if
+    // they typed it directly. Single-class flow is the natural fallback;
+    // if THAT is also disabled, send them back to the live-session list.
     useEffect(() => {
-        if (isLoading || isEdit) return;
-        if (settings.singleScheduleEnabled) return;
+        if (isLoading) return;
+        if (settings.bulkScheduleEnabled) return;
         navigate({
-            to: settings.bulkScheduleEnabled
-                ? '/study-library/live-session/schedule/bulk'
+            to: settings.singleScheduleEnabled
+                ? '/study-library/live-session/schedule/step1'
                 : '/study-library/live-session',
         });
-    }, [
-        isLoading,
-        isEdit,
-        settings.singleScheduleEnabled,
-        settings.bulkScheduleEnabled,
-        navigate,
-    ]);
+    }, [isLoading, settings.bulkScheduleEnabled, settings.singleScheduleEnabled, navigate]);
 
-    if (isLoading || (!isEdit && !settings.singleScheduleEnabled)) {
+    if (isLoading || !settings.bulkScheduleEnabled) {
         return (
             <LayoutContainer>
                 <div className="flex h-64 items-center justify-center">
@@ -71,13 +64,13 @@ function RouteComponent() {
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Schedule</title>
+                <title>Bulk Schedule</title>
                 <meta
                     name="description"
-                    content="This page helpls you schedule the live session for the institute"
+                    content="Schedule many live sessions at once in a single sheet."
                 />
             </Helmet>
-            <ScheduleStep1 />
+            <ScheduleBulkPage />
         </LayoutContainer>
     );
 }

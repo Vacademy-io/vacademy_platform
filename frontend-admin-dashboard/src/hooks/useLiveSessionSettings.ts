@@ -42,10 +42,12 @@ const resolveRoleKey = (): string => {
 
 /**
  * Reads the institute-level LiveSessionSettings document AND the current
- * role's display-settings document, then AND-merges the bulk / single
- * scheduling flags so a role-level "off" wins even if the institute-level is
- * "on". Existing flags (allowedPlatforms, feedback, etc.) come straight from
- * the institute setting.
+ * role's display-settings document. Bulk / single scheduling visibility is
+ * driven entirely by the per-role display settings now (the institute-wide
+ * "Scheduling Modes" toggles were retired in favour of role-scoped control),
+ * so we ignore the persisted institute-level flags for those two fields and
+ * read role-level values directly. Other flags (allowedPlatforms, feedback,
+ * etc.) still come straight from the institute setting.
  *
  * Always returns a fully-shaped settings object — defaults are applied client
  * side so callers never have to null-check individual flags. Use the loaded
@@ -73,11 +75,13 @@ export const useLiveSessionSettings = (): {
 
     const settings: LiveSessionSettings = {
         ...base,
-        // AND-merge: a feature must be enabled at BOTH levels to be available.
-        bulkScheduleEnabled:
-            base.bulkScheduleEnabled && roleScheduling.bulkScheduleEnabled,
-        singleScheduleEnabled:
-            base.singleScheduleEnabled && roleScheduling.singleScheduleEnabled,
+        // Role-level is the single source of truth for entry-point visibility.
+        // We deliberately do not AND with `base.{single,bulk}ScheduleEnabled`
+        // any more, because the institute-wide UI for those toggles was
+        // removed — an institute that previously turned them off would
+        // otherwise be stuck off forever.
+        bulkScheduleEnabled: roleScheduling.bulkScheduleEnabled,
+        singleScheduleEnabled: roleScheduling.singleScheduleEnabled,
     };
 
     return {

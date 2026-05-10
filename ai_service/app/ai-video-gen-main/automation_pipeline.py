@@ -5381,7 +5381,10 @@ class VideoGenerationPipeline:
 
         # Severity-3 → fire one corrective regen, then re-screenshot + re-review.
         if review.get("severity_max", 0) >= 3 and review.get("issues"):
-            corrective = self._build_vision_corrective_prompt(review.get("issues") or [])
+            corrective = self._build_vision_corrective_prompt(
+                review.get("issues") or [],
+                html=html,
+            )
             try:
                 raw2, usage2 = self.html_client.chat(
                     messages=[
@@ -5402,6 +5405,12 @@ class VideoGenerationPipeline:
 
                 if html2:
                     candidate = self._sanitize_html_content(html2)
+                    # Compute the shot's runtime to scale the entry-animation clamp.
+                    try:
+                        _shot_dur = max(0.5, float(shot.get("end_time", 0) or 0) - float(shot.get("start_time", 0) or 0))
+                    except (TypeError, ValueError):
+                        _shot_dur = 4.0
+                    candidate = self._clamp_entry_animations(candidate, _shot_dur)
                     # Stash the regen candidate up-front — even if we end up
                     # shipping the original, the case bank shows what the
                     # corrective regen attempted. Critical for prompt-tuning.
@@ -5466,27 +5475,167 @@ class VideoGenerationPipeline:
 
         return record
 
-    def _build_vision_corrective_prompt(self, issues: List[Dict[str, Any]]) -> str:
+    def _build_vision_corrective_prompt(
+        self,
+        issues: List[Dict[str, Any]],
+        html: str = "",
+    ) -> str:
         """Compose the corrective user message for the regen LLM call. Each
-        sev-3 issue contributes its description + the reviewer's suggestion."""
+        sev-3 issue contributes its description + the reviewer's suggestion.
+
+        When the reviewer flagged ``IRRELEVANT_MEDIA``, the corrective prompt
+        also tells the LLM to **escalate the image source** (e.g. switch from
+        AI generation to Serper Web search, or to an article screenshot). The
+        previous version asked the LLM to regenerate without changing source —
+        which produced equally-irrelevant images on retry. ddnews.gov.in test
+        run shipped 7 IRRELEVANT_MEDIA shots because the regen path produced
+        "no better" results. The escalation closes that loop.
+        """
         lines = [
             "Your previous shot HTML had visible quality issues that block shipping.",
             "Issues identified by the vision reviewer:",
         ]
-        for it in issues:
-            if int(it.get("severity") or 0) < 3:
-                continue
+        sev3 = [it for it in issues if int(it.get("severity") or 0) >= 3]
+        for it in sev3:
             lines.append(f"- [{it.get('code', '?')}] {it.get('description', '')}".rstrip())
             sug = (it.get("suggestion") or "").strip()
             if sug:
                 lines.append(f"  → {sug}")
         lines.append("")
+
+        # ── Source-escalation guidance for IRRELEVANT_MEDIA ──
+        # Detect what data-img-source the previous attempt used so we can tell
+        # the LLM to *change* it. If the current shot already used `web` and
+        # still got flagged, we tell it to refine the query or fall back to
+        # stock; if `generate`, we push it toward web/stock; if `stock`, we
+        # push toward web. The LLM gets concrete options based on what the
+        # pipeline can actually serve.
+        has_irrelevant = any(
+            (it.get("code") or "").upper() == "IRRELEVANT_MEDIA" for it in sev3
+        )
+        if has_irrelevant:
+            current_sources = self._extract_img_sources_from_html(html)
+            serper_ok = bool(
+                getattr(self, '_serper_service', None)
+                and getattr(self._serper_service, 'is_available', False)
+            )
+            entities = getattr(self, '_named_entities_cache', None) or []
+            article_screenshots: List[Dict[str, Any]] = []
+            ref_ctx = getattr(self, '_reference_context', None)
+            if isinstance(ref_ctx, dict):
+                _sa = ref_ctx.get('scrape_artifacts') or {}
+                _files = _sa.get('files_captured') if isinstance(_sa, dict) else None
+                if isinstance(_files, list):
+                    article_screenshots = [
+                        f for f in _files
+                        if isinstance(f, dict) and (f.get('id') or '').strip()
+                    ]
+
+            esc_lines: List[str] = [
+                "**SOURCE ESCALATION REQUIRED** — the previous image was off-topic. "
+                "Do NOT regenerate with the same `data-img-source` value. Switch the "
+                "source to something that gives a contextually correct image:"
+            ]
+            if "web" in current_sources:
+                esc_lines.append(
+                    "- Your previous attempt used `data-img-source=\"web\"` — the search "
+                    "query was probably too generic. Refine `data-img-query` with the "
+                    "EXACT named entity + a disambiguator (year, role, location). If still "
+                    "off, switch to `data-img-source=\"stock\"`."
+                )
+            elif "generate" in current_sources or not current_sources:
+                if article_screenshots:
+                    _ids = ", ".join(f"`{f.get('id')}`" for f in article_screenshots[:6])
+                    esc_lines.append(
+                        f"- Prefer `<img data-img-source=\"article_screenshot\" "
+                        f"data-screenshot-id=\"<id>\">` using one of: {_ids}. The vision "
+                        f"reviewer caught your AI-generated image as off-topic; an actual "
+                        f"article screenshot is guaranteed on-topic."
+                    )
+                if serper_ok:
+                    if entities:
+                        _eg = next(
+                            (e.get('suggested_query') for e in entities[:3]
+                             if isinstance(e, dict) and e.get('suggested_query')),
+                            None,
+                        )
+                        eg = f' (e.g. data-img-query="{_eg}")' if _eg else ""
+                        esc_lines.append(
+                            "- Switch `<img data-img-source=\"web\" "
+                            "data-img-query=\"<entity-friendly query>\">`" + eg + ". "
+                            "Google Image search returns real news photos of the named "
+                            "entities in this video — do not stay on AI generation, "
+                            "which produced the off-topic result you were just flagged for."
+                        )
+                    else:
+                        esc_lines.append(
+                            "- Switch `<img data-img-source=\"web\" "
+                            "data-img-query=\"<concrete subject + topical keywords>\">` "
+                            "for a real photo via Google Image search."
+                        )
+                esc_lines.append(
+                    "- Failing the above, switch to `<img data-img-source=\"stock\" "
+                    "data-img-prompt=\"<topical scene description>\">` (Pexels/Pixabay)."
+                )
+            elif "stock" in current_sources:
+                if serper_ok:
+                    esc_lines.append(
+                        "- Switch to `<img data-img-source=\"web\" "
+                        "data-img-query=\"<entity-friendly query>\">` for a real news "
+                        "photo. Stock libraries lack the specific subjects this beat needs."
+                    )
+                else:
+                    esc_lines.append(
+                        "- Refine the `data-img-prompt` with much more specific keywords. "
+                        "Generic stock returned an off-topic image."
+                    )
+            elif "article_screenshot" in current_sources:
+                # Already on article screenshots and STILL irrelevant — likely
+                # the wrong screenshot id was chosen. Suggest switching id or
+                # falling back to web.
+                if article_screenshots:
+                    _ids = ", ".join(f"`{f.get('id')}`" for f in article_screenshots[:6])
+                    esc_lines.append(
+                        f"- The article-screenshot id you chose didn't fit. Try a "
+                        f"different one: {_ids}."
+                    )
+                if serper_ok:
+                    esc_lines.append(
+                        "- Or switch to `<img data-img-source=\"web\" "
+                        "data-img-query=\"<entity-friendly query>\">`."
+                    )
+            else:
+                # No img tag detected (might be a video shot or unknown source).
+                if article_screenshots or serper_ok:
+                    esc_lines.append(
+                        "- Add an `<img>` with a concrete source: prefer "
+                        "`data-img-source=\"article_screenshot\"` if available, else "
+                        "`data-img-source=\"web\"` for real photos."
+                    )
+
+            lines.extend(esc_lines)
+            lines.append("")
+
         lines.append(
             "Regenerate the shot HTML to address each issue specifically. Keep "
             "the shot pack tokens (palette, fonts, spacing) and the narration "
             "unchanged. Return only the JSON shot object."
         )
         return "\n".join(lines)
+
+    @staticmethod
+    def _extract_img_sources_from_html(html: str) -> set:
+        """Return the set of distinct `data-img-source` values seen on <img>
+        tags in `html`. Empty set when no `<img data-img-source=...>` exists.
+
+        Used by the vision-regen escalation logic to decide which source the
+        LLM should switch TO based on what it used last attempt.
+        """
+        if not html or not isinstance(html, str):
+            return set()
+        return {m.lower() for m in re.findall(
+            r'<img[^>]+data-img-source=["\']([^"\']+)["\']', html
+        )}
 
     def _build_director_reference_image_block(self) -> List[Dict[str, Any]]:
         """Return OpenRouter-vision content parts for any user-uploaded reference images.
@@ -10749,6 +10898,7 @@ class VideoGenerationPipeline:
                 return [], usage
 
             html = self._sanitize_html_content(html)
+            html = self._clamp_entry_animations(html, duration)
 
             # ── Skill composer (ultra / super_ultra) ──
             # Scan for <skill data-skill-id=... data-params=...> tags the LLM may
@@ -10881,6 +11031,7 @@ class VideoGenerationPipeline:
                         html2 = data2.get("html", "")
                         if html2:
                             _candidate = self._sanitize_html_content(html2)
+                            _candidate = self._clamp_entry_animations(_candidate, duration)
                             if usage2:
                                 usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)
                                 usage["completion_tokens"] = usage.get("completion_tokens", 0) + usage2.get("completion_tokens", 0)
@@ -11828,6 +11979,80 @@ class VideoGenerationPipeline:
             f'</div>'
             f'<script>\n{triggers_js}\n</script>'
         )
+
+    @staticmethod
+    def _clamp_entry_animations(html: str, shot_duration_s: float) -> str:
+        """Clamp GSAP entry-animation `delay:` and `duration:` to a shot-aware
+        budget so short shots don't waste their first 1–3 seconds in pure black.
+
+        The original BBC and ddnews.gov.in renders had 6–9% of total runtime
+        as black-screen because LLMs frequently wrote tweens like
+        ``gsap.to('#hero', {opacity:1, delay:1.0, duration:1.5})`` on
+        IMAGE_HERO / KINETIC_TITLE shots that were only 3.5–6.5s long. The
+        viewer saw 1–3s of opaque black before the visual faded in.
+
+        Clamp budget by shot duration:
+          - shot ≤3s: max delay 0.20, max duration 0.50
+          - shot ≤5s: max delay 0.40, max duration 0.80
+          - shot ≤7s: max delay 0.70, max duration 1.20
+          - longer shots: not clamped (long zooms / Ken Burns are intentional)
+
+        Implementation: regex pass over the HTML/JS body, matching
+        ``delay:N.N`` and ``duration:N.N`` literals (with optional whitespace
+        and a quoted-string guard) and rewriting the numeric value when it
+        exceeds the budget. Preserves the surrounding formatting.
+
+        SAFE for all GSAP variants — `gsap.to`, `gsap.fromTo`, `gsap.timeline`,
+        `tl.to`, `tl.from` — because they all use the same ``delay:`` /
+        ``duration:`` keys inside the tween-vars object literal.
+
+        UNSAFE inside string literals (e.g. a CSS ``transition: opacity 1.5s``
+        attribute), but those are uncommon in LLM-generated shot HTML and the
+        regex requires a JSON-like ``key:value`` shape, which CSS transitions
+        don't have (CSS uses ``s`` suffix and no colon-key prefix).
+        """
+        if not html or not isinstance(html, str):
+            return html
+        try:
+            dur = float(shot_duration_s)
+        except (TypeError, ValueError):
+            return html
+        if dur <= 0:
+            return html
+        if dur > 7.0:
+            return html  # long shots: trust the LLM's choreography
+
+        if dur <= 3.0:
+            max_delay, max_duration = 0.20, 0.50
+        elif dur <= 5.0:
+            max_delay, max_duration = 0.40, 0.80
+        else:
+            max_delay, max_duration = 0.70, 1.20
+
+        # Match `delay: 1.5,` or `delay:1` etc. The lookbehind avoids
+        # matching CSS strings like `transitionDelay`. We require the key to
+        # be the literal `delay` (case-sensitive) preceded by `{`, `,`, or
+        # whitespace — i.e. inside an object literal.
+        delay_pat = re.compile(r'(?P<pre>[\{\s,])delay\s*:\s*(?P<val>\d+(?:\.\d+)?)')
+        dur_pat = re.compile(r'(?P<pre>[\{\s,])duration\s*:\s*(?P<val>\d+(?:\.\d+)?)')
+
+        def _clamp_factory(cap: float):
+            def _replace(m: re.Match) -> str:
+                try:
+                    cur = float(m.group('val'))
+                except (TypeError, ValueError):
+                    return m.group(0)
+                if cur > cap:
+                    pre = m.group('pre')
+                    # Preserve the matched key name so we don't mix up delay/duration.
+                    key = m.group(0).split(':', 1)[0].lstrip('{,\n\r\t ')
+                    return f"{pre}{key}: {cap}"
+                return m.group(0)
+            return _replace
+
+        out = delay_pat.sub(_clamp_factory(max_delay), html)
+        out = dur_pat.sub(_clamp_factory(max_duration), out)
+        return out
 
     @staticmethod
     def _sanitize_html_content(html: str) -> str:

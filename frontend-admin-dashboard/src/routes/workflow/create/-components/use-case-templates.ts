@@ -21,6 +21,15 @@ export interface WizardQuestion {
     defaultValue?: string | number;
     /** Only show this question if another answer matches */
     showIf?: { questionId: string; values: string[] };
+    /**
+     * Optional override for which entry in SAMPLE_TEMPLATES to offer as a
+     * "Use sample" button alongside this template_select question. Defaults to
+     * the use-case template's id. Set explicitly when a single use-case has
+     * multiple template_select questions that need DIFFERENT pre-built samples
+     * (e.g., LIVE_SESSION_END recap → one sample for present, one for absent).
+     * Only meaningful for type === 'template_select'.
+     */
+    sampleTemplateKey?: string;
 }
 
 export interface UseCaseTemplate {
@@ -1185,6 +1194,7 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 helpText: 'Sent to learners marked PRESENT in the class.',
                 type: 'template_select',
                 required: true,
+                sampleTemplateKey: 'live_session_recap_present',
             },
             {
                 id: 'absentTemplate',
@@ -1192,6 +1202,7 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 helpText: 'Sent to learners marked ABSENT in the class.',
                 type: 'template_select',
                 required: true,
+                sampleTemplateKey: 'live_session_recap_absent',
             },
         ],
         generateWorkflow: (answers, triggerEvent) => {

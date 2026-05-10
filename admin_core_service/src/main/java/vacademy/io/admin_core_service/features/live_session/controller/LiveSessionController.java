@@ -54,7 +54,10 @@ public class LiveSessionController {
             @RequestAttribute("user") CustomUserDetails user) {
 
 
-        return ResponseEntity.ok(getLiveSessionService.deleteLiveSessions(request.getIds(), request.getType()));
+        return ResponseEntity.ok(getLiveSessionService.deleteLiveSessions(
+                request.getIds(),
+                request.getType(),
+                request.getNotifyStudents()));
     }
 
 }

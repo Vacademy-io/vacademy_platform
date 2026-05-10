@@ -7,6 +7,8 @@ import {
     ArrowsClockwise,
     CursorClick,
     Globe,
+    ClipboardText,
+    Article,
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
@@ -311,6 +313,60 @@ export default function LiveSessionSettings() {
                                 ? 'Disabled because Recurring weekly schedule is off.'
                                 : undefined
                         }
+                    />
+                </CardContent>
+            </Card>
+
+            {/* Daily attendance default */}
+            <Card className="border-neutral-200 shadow-none">
+                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
+                    <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                        <ClipboardText size={18} />
+                    </div>
+                    <div className="flex-1">
+                        <CardTitle className="text-base">Recurring Attendance Default</CardTitle>
+                        <CardDescription>
+                            Pre-fills the per-session "Daily attendance" toggle on every newly
+                            added session in a recurring schedule. Admins can still flip it per
+                            session.
+                        </CardDescription>
+                    </div>
+                </CardHeader>
+                <CardContent className="border-t border-neutral-100 p-5">
+                    <SettingRow
+                        title="Count daily attendance by default"
+                        description="When on, new sessions inside a recurring class start with daily attendance counting enabled."
+                        checked={settings.defaultDailyAttendanceCounting}
+                        onChange={(v) => togglePrimitive('defaultDailyAttendanceCounting', v)}
+                        disabled={!settings.recurringEnabled}
+                        disabledReason={
+                            !settings.recurringEnabled
+                                ? 'Disabled because Recurring weekly schedule is off.'
+                                : undefined
+                        }
+                    />
+                </CardContent>
+            </Card>
+
+            {/* Description visibility */}
+            <Card className="border-neutral-200 shadow-none">
+                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
+                    <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                        <Article size={18} />
+                    </div>
+                    <div className="flex-1">
+                        <CardTitle className="text-base">Class Description</CardTitle>
+                        <CardDescription>
+                            Whether admins can attach a rich-text description to a live class.
+                        </CardDescription>
+                    </div>
+                </CardHeader>
+                <CardContent className="border-t border-neutral-100 p-5">
+                    <SettingRow
+                        title="Show description field"
+                        description="Hides the Description editor in single-class scheduling, the bulk default-description card, and the per-row description column. Existing descriptions on saved classes aren't deleted."
+                        checked={settings.descriptionEnabled}
+                        onChange={(v) => togglePrimitive('descriptionEnabled', v)}
                     />
                 </CardContent>
             </Card>

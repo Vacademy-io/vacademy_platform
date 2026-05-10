@@ -4,7 +4,7 @@ import {
     CREATE_LIVE_SESSION_BULK,
     GET_LIVE_SESSIONS,
     DELETE_LIVE_SESSION,
-    CREATE_PROVIDER_MEETING
+    CREATE_PROVIDER_MEETING,
     // GET_LIVE_SESSIONS,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
@@ -168,21 +168,18 @@ export const getLiveSessions = async (instituteId: string) => {
     return response.data;
 };
 
-export const deleteLiveSession = async (ids: string[], type: string) => {
+export const deleteLiveSession = async (ids: string[], type: string, notifyStudents?: boolean) => {
     try {
-        const response = await authenticatedAxiosInstance.post(
-            DELETE_LIVE_SESSION,
-            {
-                ids,
-                type,
+        const body: { ids: string[]; type: string; notifyStudents?: boolean } = { ids, type };
+        if (notifyStudents !== undefined) {
+            body.notifyStudents = notifyStudents;
+        }
+        const response = await authenticatedAxiosInstance.post(DELETE_LIVE_SESSION, body, {
+            headers: {
+                Accept: '*/*',
+                'Content-Type': 'application/json',
             },
-            {
-                headers: {
-                    Accept: '*/*',
-                    'Content-Type': 'application/json',
-                },
-            }
-        );
+        });
         return response.data;
     } catch (error) {
         console.error('Error deleting live session:', error);

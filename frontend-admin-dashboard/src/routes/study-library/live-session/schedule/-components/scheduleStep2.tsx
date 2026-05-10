@@ -49,6 +49,11 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { LiveSessionParticipantsTab } from './LiveSessionParticipantsTab';
 import { SectionCard } from './SectionCard';
 import {
+    LiveSessionPreviewDialog,
+    type PreviewSessionRow,
+    type PreviewRecurrenceBanner,
+} from './LiveSessionPreviewDialog';
+import {
     LockKey,
     UsersThree,
     Article,
@@ -91,6 +96,7 @@ export default function ScheduleStep2() {
     const [addCustomFieldDialog, setAddCustomFieldDialog] = useState<boolean>(false);
     const queryClient = useQueryClient();
     const [previewDialog, setPreviewDialog] = useState<boolean>(false);
+    const [previewOpen, setPreviewOpen] = useState<boolean>(false);
     const { sessionId, step1Data } = useLiveSessionStore();
     const isEditState = useLiveSessionStore((state) => state.isEdit);
     const { sessionDetails } = useSessionDetailsStore();
@@ -635,11 +641,93 @@ export default function ScheduleStep2() {
         });
     };
 
+    const previewSelectedLevels = watch('selectedLevels');
+    const isWeeklyRecurring =
+        (step1Data?.meetingType as string | undefined) === 'weekly' &&
+        !!step1Data?.recurringSchedule?.length;
+    const dayShort: Record<string, string> = {
+        monday: 'Mon',
+        tuesday: 'Tue',
+        wednesday: 'Wed',
+        thursday: 'Thu',
+        friday: 'Fri',
+        saturday: 'Sat',
+        sunday: 'Sun',
+    };
+    const recurrenceUntilLabel = step1Data?.endDate
+        ? (() => {
+              try {
+                  return new Date(step1Data.endDate).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                  });
+              } catch {
+                  return step1Data.endDate;
+              }
+          })()
+        : undefined;
+
+    let previewSessions: PreviewSessionRow[] = [];
+    let previewRecurrenceBanner: PreviewRecurrenceBanner | undefined;
+
+    if (isWeeklyRecurring && step1Data?.recurringSchedule) {
+        const selectedDays: string[] = [];
+        const rows: PreviewSessionRow[] = [];
+        for (const day of step1Data.recurringSchedule) {
+            if (!day?.isSelect) continue;
+            const dayName = dayShort[day.day] ?? day.day;
+            selectedDays.push(dayName);
+            for (const s of day.sessions ?? []) {
+                rows.push({
+                    title: day.default_class_name?.trim() || step1Data?.title,
+                    subject: step1Data?.subject,
+                    whenLabel: dayName,
+                    whenSubLabel: s.startTime || '—',
+                    durationHours: s.durationHours ?? step1Data?.durationHours,
+                    durationMinutes: s.durationMinutes ?? step1Data?.durationMinutes,
+                    link: s.link || day.default_class_link || step1Data?.defaultLink,
+                    platform: step1Data?.sessionPlatform,
+                    selectedLevels: previewSelectedLevels,
+                });
+            }
+        }
+        if (rows.length > 0) {
+            previewSessions = rows;
+            previewRecurrenceBanner = {
+                pattern: 'Recurring weekly',
+                days: selectedDays,
+                until: recurrenceUntilLabel ? `Until ${recurrenceUntilLabel}` : undefined,
+                totalLabel: `${rows.length} slot${rows.length === 1 ? '' : 's'}/week`,
+            };
+        }
+    }
+
+    if (previewSessions.length === 0) {
+        const rawStartTime = step1Data?.startTime ?? '';
+        const [datePart, timePart] = rawStartTime.includes('T')
+            ? rawStartTime.split('T')
+            : ['', rawStartTime];
+        previewSessions = [
+            {
+                title: step1Data?.title,
+                subject: step1Data?.subject,
+                startDate: datePart,
+                startTime: timePart,
+                durationHours: step1Data?.durationHours,
+                durationMinutes: step1Data?.durationMinutes,
+                link: step1Data?.defaultLink,
+                platform: step1Data?.sessionPlatform,
+                selectedLevels: previewSelectedLevels,
+            },
+        ];
+    }
+
     return (
         <>
             <FormProvider {...form}>
                 <form
-                    onSubmit={handleSubmit(onSubmitClick, onError)}
+                    onSubmit={handleSubmit(() => setPreviewOpen(true), onError)}
                     className="flex flex-col gap-5"
                 >
                     <div className="sticky top-0 z-[9] -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:-mx-0 sm:px-0">
@@ -664,15 +752,19 @@ export default function ScheduleStep2() {
                             </div>
                         </div>
                         <MyButton
-                            type="submit"
+                            type="button"
                             scale="large"
                             buttonType="primary"
                             disable={isSubmitting}
+                            onClick={handleSubmit(
+                                () => setPreviewOpen(true),
+                                onError
+                            )}
                         >
                             {isSubmitting ? (
                                 <Loader2 className="animate-spin text-white" />
                             ) : (
-                                'Create'
+                                'Preview & create'
                             )}
                         </MyButton>
                     </div>
@@ -1277,6 +1369,39 @@ export default function ScheduleStep2() {
                         </MyButton>
                     </div>
                 </MyDialog>
+                <LiveSessionPreviewDialog
+                    open={previewOpen}
+                    onOpenChange={setPreviewOpen}
+                    submitting={isSubmitting}
+                    onConfirm={async () => {
+                        await handleSubmit(onSubmitClick, onError)();
+                        setPreviewOpen(false);
+                    }}
+                    timeZone={step1Data?.timeZone}
+                    accessType={accessType}
+                    sessionFeatures={{
+                        enableWaitingRoom: step1Data?.enableWaitingRoom,
+                        waitingRoomMinutes: step1Data?.openWaitingRoomBefore,
+                        allowRewind: step1Data?.allowRewind,
+                        allowPause: step1Data?.allowPause,
+                        enableFeedback: step1Data?.feedbackEnabled,
+                        recordSession: step1Data?.bbbRecord,
+                    }}
+                    notifications={{
+                        notifyBy: watch('notifyBy'),
+                        notifySettings: {
+                            onCreate: watch('notifySettings.onCreate'),
+                            beforeLiveTime: watch('notifySettings.beforeLiveTime'),
+                            onLive: watch('notifySettings.onLive'),
+                            onAttendance: watch('notifySettings.onAttendance'),
+                        },
+                    }}
+                    sessions={previewSessions}
+                    recurrenceBanner={previewRecurrenceBanner}
+                    topLevelDescription={step1Data?.description}
+                    courses={courses ?? []}
+                    sessionList={sessionList}
+                />
             </FormProvider>
             {/* Add Custom Field Dialog is now embedded inline via SharedAddCustomFieldDialog */}
         </>

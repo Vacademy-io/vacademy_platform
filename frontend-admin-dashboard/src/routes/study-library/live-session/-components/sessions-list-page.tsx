@@ -13,6 +13,7 @@ import { SessionSearchRequest } from '../-services/utils';
 import PreviousSessionCard from './previous-session-card';
 import DraftSessionCard from './draft-session-card';
 import { useSessionDetailsStore } from '../-store/useSessionDetailsStore';
+import { useLiveSessionListStateStore } from '../-store/useLiveSessionListStateStore';
 import { useLiveSessionStore } from '../schedule/-store/sessionIdstore';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { CaretDown, VideoCameraSlash, Clock } from '@phosphor-icons/react';
@@ -46,8 +47,12 @@ export default function SessionListPage() {
     const tokenData = getTokenDecodedData(accessToken);
     const INSTITUTE_ID = (tokenData && Object.keys(tokenData.authorities)[0]) || '';
 
-    // Tab state
-    const [selectedTab, setSelectedTab] = useState<SessionStatus>(SessionStatus.LIVE);
+    // Tab state — initial value comes from the in-memory list-state store so
+    // pressing browser back from a class detail returns the admin to the same
+    // tab they left from. A hard refresh resets the store and lands on Live.
+    const [selectedTab, setSelectedTab] = useState<SessionStatus>(
+        () => useLiveSessionListStateStore.getState().selectedTab
+    );
 
     // Filter state
     const [searchQuery, setSearchQuery] = useState<string>('');
@@ -82,7 +87,17 @@ export default function SessionListPage() {
 
     // Pagination state - server-side
     const ITEMS_PER_PAGE = 10;
-    const [currentPage, setCurrentPage] = useState(0);
+    const [currentPage, setCurrentPage] = useState(
+        () => useLiveSessionListStateStore.getState().currentPage
+    );
+
+    // Sync tab + page back to the in-memory store on every change so a back
+    // navigation from the detail page can restore the same view.
+    useEffect(() => {
+        useLiveSessionListStateStore
+            .getState()
+            .setListState({ selectedTab, currentPage });
+    }, [selectedTab, currentPage]);
 
     // Build search request based on current filters and tab
     const searchRequest: SessionSearchRequest = useMemo(() => {

@@ -444,26 +444,33 @@ public class GetLiveSessionService {
     }
 
     public String deleteLiveSessions(List<String> ids, String type) {
+        return deleteLiveSessions(ids, type, null);
+    }
+
+    public String deleteLiveSessions(List<String> ids, String type, Boolean notifyStudents) {
         if (ids == null || ids.isEmpty()) {
             return "Id can't be empty";
         }
 
+        // Notify by default (legacy behavior). Suppress only when caller explicitly opts out.
+        boolean shouldNotify = !Boolean.FALSE.equals(notifyStudents);
+
         if (Objects.equals(type, "session")) {
             String sessionId = ids.get(0);
-            
+
             // Get session details before deletion for notification
             String instituteId = sessionRepository.findById(sessionId)
                     .map(session -> session.getInstituteId())
                     .orElse(null);
-            
+
             // Get all schedule IDs for this session before deletion
             List<String> scheduleIds = scheduleRepository.findScheduleIdsBySessionId(sessionId, NotificationStatusEnum.DELETED.name());
-            
+
             // Send delete notification for all schedules before deletion
-            if (instituteId != null && !scheduleIds.isEmpty()) {
+            if (shouldNotify && instituteId != null && !scheduleIds.isEmpty()) {
                 notificationProcessor.sendDeleteNotificationForSchedules(scheduleIds, instituteId);
             }
-            
+
             sessionRepository.softDeleteLiveSessionById(sessionId);
             scheduleRepository.softDeleteScheduleBySessionId(sessionId);
             // Disable all notifications for this session
@@ -485,7 +492,7 @@ public class GetLiveSessionService {
 
                 if (activeSchedules == 1) {
                     // Session will be deleted, so notify for session deletion
-                    if (instituteId != null) {
+                    if (shouldNotify && instituteId != null) {
                         notificationProcessor.sendDeleteNotification(sessionId, instituteId);
                     }
                     scheduleRepository.softDeleteScheduleByIdIn(List.of(scheduleId));
@@ -500,7 +507,9 @@ public class GetLiveSessionService {
 
             // Send notifications for individual schedule deletions
             if (!scheduleIdsToNotify.isEmpty() && instituteId != null) {
-                notificationProcessor.sendDeleteNotificationForSchedules(scheduleIdsToNotify, instituteId);
+                if (shouldNotify) {
+                    notificationProcessor.sendDeleteNotificationForSchedules(scheduleIdsToNotify, instituteId);
+                }
                 // Disable notifications for the deleted schedules
                 scheduleNotificationRepository.disableNotificationsByScheduleIds(scheduleIdsToNotify, NotificationStatusEnum.DISABLED.name());
             }

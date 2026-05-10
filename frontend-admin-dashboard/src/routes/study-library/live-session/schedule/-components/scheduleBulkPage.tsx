@@ -14,6 +14,10 @@ export default function ScheduleBulkPage() {
                 <p className="text-xs text-neutral-500">
                     Add many independent classes at once. Each row creates one session.
                 </p>
+                <p className="mt-1 text-xs text-neutral-500">
+                    Note: recurring classes can&apos;t be created here — use the single-class flow
+                    for recurring schedules.
+                </p>
             </div>
             <BulkScheduleGrid />
         </div>

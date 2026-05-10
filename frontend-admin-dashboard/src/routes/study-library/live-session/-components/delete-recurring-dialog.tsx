@@ -110,6 +110,7 @@ export default function DeleteRecurringDialog({
     type Choice = 'single' | 'following' | 'manual';
     const [choice, setChoice] = useState<Choice>('single');
     const [loading, setLoading] = useState(false);
+    const [notifyStudents, setNotifyStudents] = useState(false);
     const queryClient = useQueryClient();
 
     // State for manual selection
@@ -127,6 +128,7 @@ export default function DeleteRecurringDialog({
             setChoice('single');
             setSelectedDates(new Set());
             setSessionDetails(null);
+            setNotifyStudents(false);
 
             // Fetch schedule details to generate dates
             const fetchDetails = async () => {
@@ -156,7 +158,7 @@ export default function DeleteRecurringDialog({
 
         setLoading(true);
         try {
-            await deleteLiveSession([sessionId], choice);
+            await deleteLiveSession([sessionId], choice, notifyStudents);
             await queryClient.invalidateQueries({ queryKey: ['liveSessions'] });
             await queryClient.invalidateQueries({ queryKey: ['upcomingSessions'] });
             await queryClient.invalidateQueries({ queryKey: ['pastSessions'] });
@@ -229,6 +231,25 @@ export default function DeleteRecurringDialog({
                         </div>
                     </div>
                 )}
+
+                <label className="flex items-start gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm">
+                    <Checkbox
+                        checked={notifyStudents}
+                        onCheckedChange={(v) => setNotifyStudents(!!v)}
+                        disabled={loading}
+                        className={`mt-0.5 size-4 rounded-sm border-2 shadow-none ${
+                            notifyStudents ? 'border-none bg-primary-500 text-white' : ''
+                        }`}
+                    />
+                    <span>
+                        <span className="font-medium text-neutral-800">
+                            Notify learners about the cancellation
+                        </span>
+                        <span className="block text-xs text-neutral-500">
+                            When unchecked, no cancellation email is sent to enrolled learners.
+                        </span>
+                    </span>
+                </label>
 
                 <div className="flex justify-end gap-4 border-t pt-2">
                     <MyButton

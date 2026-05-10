@@ -120,6 +120,12 @@ export const bulkSharedOptionsSchema = z.object({
      * per row when they're creating many of the same kind of class.
      */
     defaultPlatform: z.string().default('other'),
+    /**
+     * Default description (HTML) applied to rows whose description is blank
+     * when the admin clicks "Apply to empty rows". Each row keeps an editable
+     * description override (`bulkSessionRowSchema.description`).
+     */
+    defaultDescription: z.string().optional(),
 });
 
 export const bulkSessionFormSchema = z.object({

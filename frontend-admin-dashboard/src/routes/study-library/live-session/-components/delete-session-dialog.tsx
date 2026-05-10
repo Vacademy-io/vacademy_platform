@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { MyRadioButton } from '@/components/design-system/radio';
+import { Checkbox } from '@/components/ui/checkbox';
 import { deleteLiveSession } from '../schedule/-services/utils';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -25,6 +26,7 @@ export default function DeleteSessionDialog({
 }: DeleteSessionDialogProps) {
     const [isDeleting, setIsDeleting] = useState(false);
     const [selectedOption, setSelectedOption] = useState<'session' | 'schedule'>('schedule');
+    const [notifyStudents, setNotifyStudents] = useState(false);
     const queryClient = useQueryClient();
 
     // Reset state when dialog opens
@@ -32,6 +34,7 @@ export default function DeleteSessionDialog({
         if (open) {
             setSelectedOption('schedule');
             setIsDeleting(false);
+            setNotifyStudents(false);
         }
     }, [open]);
 
@@ -48,7 +51,7 @@ export default function DeleteSessionDialog({
                 ids = [scheduleId || sessionId];
             }
 
-            await deleteLiveSession(ids, selectedOption);
+            await deleteLiveSession(ids, selectedOption, notifyStudents);
 
             // Invalidate relevant queries
             await queryClient.invalidateQueries({ queryKey: ['liveSessions'] });
@@ -88,66 +91,64 @@ export default function DeleteSessionDialog({
         >
             <div className="flex flex-col gap-4 p-4">
                 {isRecurring ? (
-                    <>
-                        <div className="text-lg">
-                            This is a recurring session. What would you like to delete?
-                        </div>
-                        <MyRadioButton
-                            name="delete-option"
-                            value={selectedOption}
-                            onChange={(val) => setSelectedOption(val as 'session' | 'schedule')}
-                            options={[
-                                { label: 'Delete only this schedule', value: 'schedule' },
-                                {
-                                    label: 'Delete entire session (all schedules)',
-                                    value: 'session',
-                                },
-                            ]}
-                            className="flex flex-col gap-3"
-                            disabled={isDeleting}
-                        />
-                        <div className="flex justify-end gap-4 border-t pt-4">
-                            <MyButton
-                                type="button"
-                                buttonType="secondary"
-                                onClick={handleCancel}
-                                disabled={isDeleting}
-                            >
-                                Cancel
-                            </MyButton>
-                            <MyButton
-                                type="button"
-                                buttonType="primary"
-                                onClick={handleDelete}
-                                disabled={isDeleting}
-                            >
-                                {isDeleting ? 'Deleting...' : 'Delete'}
-                            </MyButton>
-                        </div>
-                    </>
+                    <div className="text-lg">
+                        This is a recurring session. What would you like to delete?
+                    </div>
                 ) : (
-                    <>
-                        <div className="text-lg">Are you sure you want to delete this session?</div>
-                        <div className="flex flex-row items-center justify-between gap-4">
-                            <MyButton
-                                type="button"
-                                buttonType="secondary"
-                                onClick={handleCancel}
-                                disabled={isDeleting}
-                            >
-                                Cancel
-                            </MyButton>
-                            <MyButton
-                                type="button"
-                                buttonType="primary"
-                                onClick={handleDelete}
-                                disabled={isDeleting}
-                            >
-                                {isDeleting ? 'Deleting...' : 'Delete'}
-                            </MyButton>
-                        </div>
-                    </>
+                    <div className="text-lg">Are you sure you want to delete this session?</div>
                 )}
+                {isRecurring && (
+                    <MyRadioButton
+                        name="delete-option"
+                        value={selectedOption}
+                        onChange={(val) => setSelectedOption(val as 'session' | 'schedule')}
+                        options={[
+                            { label: 'Delete only this schedule', value: 'schedule' },
+                            {
+                                label: 'Delete entire session (all schedules)',
+                                value: 'session',
+                            },
+                        ]}
+                        className="flex flex-col gap-3"
+                        disabled={isDeleting}
+                    />
+                )}
+                <label className="flex items-start gap-2 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm">
+                    <Checkbox
+                        checked={notifyStudents}
+                        onCheckedChange={(v) => setNotifyStudents(!!v)}
+                        disabled={isDeleting}
+                        className={`mt-0.5 size-4 rounded-sm border-2 shadow-none ${
+                            notifyStudents ? 'border-none bg-primary-500 text-white' : ''
+                        }`}
+                    />
+                    <span>
+                        <span className="font-medium text-neutral-800">
+                            Notify learners about the cancellation
+                        </span>
+                        <span className="block text-xs text-neutral-500">
+                            When unchecked, no cancellation email is sent to enrolled learners.
+                        </span>
+                    </span>
+                </label>
+                <div className="flex justify-end gap-4 border-t pt-4">
+                    <MyButton
+                        type="button"
+                        buttonType="secondary"
+                        onClick={handleCancel}
+                        disabled={isDeleting}
+                    >
+                        Cancel
+                    </MyButton>
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        onClick={handleDelete}
+                        disabled={isDeleting}
+                    >
+                        {isDeleting ? 'Deleting...' : 'Delete'}
+                    </MyButton>
+                </div>
             </div>
         </MyDialog>
     );

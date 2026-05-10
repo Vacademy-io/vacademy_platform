@@ -67,6 +67,8 @@ import { RecurringType, SessionPlatform, SessionType } from '../../-constants/en
 import { createLiveSessionsBulk } from '../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { SectionCard } from './SectionCard';
+import { LiveSessionPreviewDialog } from './LiveSessionPreviewDialog';
+import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
 import { useFilterDataForAssesment } from '@/routes/assessment/assessment-list/-utils.ts/useFiltersData';
@@ -78,6 +80,7 @@ import {
 } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { MyRadioButton } from '@/components/design-system/radio';
+import { MyButton } from '@/components/design-system/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { LockKey, BellRinging, UsersThree as UsersThreeIcon } from '@phosphor-icons/react';
 import { AccessType } from '../../-constants/enums';
@@ -249,6 +252,7 @@ export function BulkScheduleGrid() {
                 webcamsOnlyForModerator: false,
                 guestPolicy: 'ALWAYS_ACCEPT' as const,
                 defaultPlatform: 'other',
+                defaultDescription: '',
             },
             accessType: AccessType.PRIVATE,
             notifyBy: {
@@ -1197,6 +1201,68 @@ export function BulkScheduleGrid() {
                 </div>
             </SectionCard>
 
+            {liveSessionSettings.descriptionEnabled && (
+            <SectionCard
+                icon={<Article size={18} />}
+                title="Description"
+                description="Provide a brief overview shared across the live classes you create below. You can include text, emojis, images, or posters to give participants a quick idea of what the sessions are about."
+            >
+                <div className="flex flex-col gap-3">
+                    <Controller
+                        control={form.control}
+                        name="sharedOptions.defaultDescription"
+                        render={({ field }) => (
+                            <RichTextEditor
+                                onChange={field.onChange}
+                                value={field.value || ''}
+                                onBlur={field.onBlur}
+                                minHeight={180}
+                            />
+                        )}
+                    />
+                    <div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                const raw = form.getValues('sharedOptions.defaultDescription') ?? '';
+                                // Strip HTML to detect "really empty" rich-text (e.g., "<p></p>").
+                                const plain = raw.replace(/<[^>]*>/g, '').trim();
+                                if (!plain) {
+                                    toast.error('Add a description first.');
+                                    return;
+                                }
+                                const rows = form.getValues('rows');
+                                let applied = 0;
+                                rows.forEach((r, i) => {
+                                    const existing = (r.description ?? '').replace(/<[^>]*>/g, '').trim();
+                                    if (!existing) {
+                                        form.setValue(`rows.${i}.description` as const, raw, {
+                                            shouldDirty: true,
+                                        });
+                                        applied += 1;
+                                    }
+                                });
+                                if (applied === 0) {
+                                    toast('All rows already have descriptions — nothing to fill.');
+                                } else {
+                                    toast.success(
+                                        `Default description applied to ${applied} row${applied === 1 ? '' : 's'}.`
+                                    );
+                                }
+                            }}
+                        >
+                            Apply to empty rows
+                        </Button>
+                        <span className="ml-2 text-xs text-neutral-500">
+                            Per-row descriptions remain editable below.
+                        </span>
+                    </div>
+                </div>
+            </SectionCard>
+            )}
+
             <SectionCard
                 icon={<TableIcon size={18} />}
                 title="Sessions"
@@ -1259,6 +1325,11 @@ export function BulkScheduleGrid() {
                                     <TableHead className="min-w-[160px] text-[11px] uppercase tracking-wide text-neutral-500">
                                         Waiting room
                                     </TableHead>
+                                    {liveSessionSettings.descriptionEnabled && (
+                                        <TableHead className="min-w-[140px] text-[11px] uppercase tracking-wide text-neutral-500">
+                                            Description
+                                        </TableHead>
+                                    )}
                                     <TableHead className="w-20 text-right text-[11px] uppercase tracking-wide text-neutral-500">
                                         Actions
                                     </TableHead>
@@ -1511,6 +1582,77 @@ export function BulkScheduleGrid() {
                                                 }}
                                             />
                                         </TableCell>
+                                        {liveSessionSettings.descriptionEnabled && (
+                                        <TableCell>
+                                            <Controller
+                                                control={form.control}
+                                                name={`rows.${index}.description` as const}
+                                                render={({ field }) => {
+                                                    const plain = (field.value ?? '')
+                                                        .replace(/<[^>]*>/g, '')
+                                                        .trim();
+                                                    return (
+                                                        <Popover>
+                                                            <PopoverTrigger asChild>
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className={cn(
+                                                                        'h-8 w-full justify-start gap-1.5 truncate text-xs',
+                                                                        plain &&
+                                                                            'border-primary-300 bg-primary-50'
+                                                                    )}
+                                                                >
+                                                                    <Article size={14} />
+                                                                    <span className="truncate">
+                                                                        {plain
+                                                                            ? plain.slice(0, 28) +
+                                                                              (plain.length > 28
+                                                                                  ? '…'
+                                                                                  : '')
+                                                                            : 'Add description'}
+                                                                    </span>
+                                                                </Button>
+                                                            </PopoverTrigger>
+                                                            <PopoverContent
+                                                                align="start"
+                                                                className="w-[420px] p-3"
+                                                                onOpenAutoFocus={(e) =>
+                                                                    e.preventDefault()
+                                                                }
+                                                            >
+                                                                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                                                    Description for row {index + 1}
+                                                                </div>
+                                                                <RichTextEditor
+                                                                    value={field.value || ''}
+                                                                    onChange={field.onChange}
+                                                                    onBlur={field.onBlur}
+                                                                    minHeight={140}
+                                                                />
+                                                                {plain && (
+                                                                    <div className="mt-2 flex justify-end">
+                                                                        <Button
+                                                                            type="button"
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="text-xs text-neutral-500"
+                                                                            onClick={() =>
+                                                                                field.onChange('')
+                                                                            }
+                                                                        >
+                                                                            Clear
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                            </PopoverContent>
+                                                        </Popover>
+                                                    );
+                                                }}
+                                            />
+                                        </TableCell>
+                                        )}
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-1">
                                                 <TooltipProvider>
@@ -1571,54 +1713,6 @@ export function BulkScheduleGrid() {
                         <span className="hidden text-xs text-neutral-500 sm:inline">
                             Tip: paste tab-separated rows directly into the table.
                         </span>
-                    </div>
-                </div>
-            </SectionCard>
-
-            <SectionCard
-                icon={<Article size={18} />}
-                title="Defaults"
-                description="Optional values applied to rows where the column is blank."
-            >
-                <div className="flex flex-col gap-2">
-                    <label
-                        htmlFor="bulk-default-desc"
-                        className="text-xs font-semibold uppercase tracking-wide text-neutral-500"
-                    >
-                        Default description
-                    </label>
-                    <Textarea
-                        rows={3}
-                        placeholder="Describe what these classes are about. Fills any blank Description cells when you click Apply."
-                        id="bulk-default-desc"
-                        className="resize-none"
-                    />
-                    <div>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                                const el = document.getElementById(
-                                    'bulk-default-desc'
-                                ) as HTMLTextAreaElement | null;
-                                const value = el?.value?.trim();
-                                if (!value) return;
-                                const rows = form.getValues('rows');
-                                rows.forEach((r, i) => {
-                                    if (!r.description) {
-                                        form.setValue(
-                                            `rows.${i}.description` as const,
-                                            value,
-                                            { shouldDirty: true }
-                                        );
-                                    }
-                                });
-                                toast.success('Default description applied to empty rows');
-                            }}
-                        >
-                            Apply to empty rows
-                        </Button>
                     </div>
                 </div>
             </SectionCard>
@@ -1827,16 +1921,10 @@ export function BulkScheduleGrid() {
                 </div>
             </SectionCard>
 
-            <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-0 sm:rounded-lg sm:border sm:px-4">
-                <div className="flex items-center gap-3 text-xs text-neutral-500">
-                    <Lightning size={16} className="text-primary-500" />
-                    <span>
-                        {fields.length} {fields.length === 1 ? 'class' : 'classes'} ready ·{' '}
-                        {validRowCount} fully filled
-                    </span>
-                </div>
-                <Button
+            <div className="sticky bottom-0 -mx-4 flex flex-wrap items-center justify-end gap-3 border-t border-neutral-200 bg-white/95 px-4 py-3 backdrop-blur sm:-mx-0 sm:rounded-lg sm:border sm:px-4">
+                <MyButton
                     type="button"
+                    buttonType="primary"
                     onClick={form.handleSubmit(
                         () => setPreviewOpen(true),
                         () =>
@@ -1844,448 +1932,51 @@ export function BulkScheduleGrid() {
                                 'Some rows have errors. Please fix them before previewing.'
                             )
                     )}
-                    disabled={submitting}
-                    className="bg-primary-500 text-white hover:bg-primary-600 hover:text-white"
+                    disable={submitting}
                 >
                     {submitting ? 'Creating…' : 'Preview & create'}
-                </Button>
+                </MyButton>
             </div>
 
-            <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-                <DialogContent className="flex max-h-[92vh] w-[95vw] max-w-[1200px] flex-col gap-0 p-0 sm:w-[95vw]">
-                    {/* Header */}
-                    <div className="flex flex-col gap-3 border-b border-neutral-200 px-6 py-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                                <div className="flex size-10 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
-                                    <Lightning size={20} />
-                                </div>
-                                <div>
-                                    <DialogTitle className="text-lg font-semibold text-neutral-800">
-                                        Review &amp; confirm
-                                    </DialogTitle>
-                                    <DialogDescription className="text-sm text-neutral-500">
-                                        Make sure everything looks right. Confirm to create
-                                        these classes — or go back and edit.
-                                    </DialogDescription>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Badge
-                                    variant="secondary"
-                                    className="rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-600"
-                                >
-                                    {fields.length} session
-                                    {fields.length === 1 ? '' : 's'}
-                                </Badge>
-                                <Badge
-                                    variant="outline"
-                                    className="rounded-full px-3 py-1 text-xs font-normal text-neutral-500"
-                                >
-                                    {validRowCount} fully filled
-                                </Badge>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Body — scrollable */}
-                    <div className="flex-1 overflow-y-auto px-6 py-5">
-                        {/* Shared settings — three-card layout */}
-                        <div className="grid gap-3 lg:grid-cols-3">
-                            {/* Schedule essentials */}
-                            <div className="rounded-lg border border-neutral-200 bg-white p-4">
-                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                    <Globe size={14} />
-                                    Schedule
-                                </div>
-                                <dl className="mt-3 space-y-2 text-sm">
-                                    <div className="flex items-baseline justify-between gap-3">
-                                        <dt className="text-neutral-500">Timezone</dt>
-                                        <dd className="font-medium text-neutral-800">
-                                            {watchedTimeZone || '—'}
-                                        </dd>
-                                    </div>
-                                    <div className="flex items-baseline justify-between gap-3">
-                                        <dt className="text-neutral-500">Access</dt>
-                                        <dd className="font-medium capitalize text-neutral-800">
-                                            {accessType}
-                                        </dd>
-                                    </div>
-                                </dl>
-                            </div>
-
-                            {/* Session features */}
-                            <div className="rounded-lg border border-neutral-200 bg-white p-4">
-                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                    <UsersThreeIcon size={14} />
-                                    Session features
-                                </div>
-                                <dl className="mt-3 space-y-2 text-sm">
-                                    <div className="flex items-baseline justify-between gap-3">
-                                        <dt className="text-neutral-500">Waiting room</dt>
-                                        <dd className="font-medium text-neutral-800">
-                                            {form.watch('sharedOptions.enableWaitingRoom')
-                                                ? `Opens ${form.watch(
-                                                      'sharedOptions.waitingRoomMinutes'
-                                                  )}m before`
-                                                : 'Disabled'}
-                                        </dd>
-                                    </div>
-                                    <div className="flex items-baseline justify-between gap-3">
-                                        <dt className="text-neutral-500">Playback</dt>
-                                        <dd className="font-medium text-neutral-800">
-                                            {(() => {
-                                                const blocked = [
-                                                    form.watch('sharedOptions.allowRewind')
-                                                        ? null
-                                                        : 'rewind',
-                                                    form.watch('sharedOptions.allowPause')
-                                                        ? null
-                                                        : 'pause',
-                                                ].filter(Boolean);
-                                                return blocked.length === 0
-                                                    ? 'Unrestricted'
-                                                    : `Blocked: ${blocked.join(', ')}`;
-                                            })()}
-                                        </dd>
-                                    </div>
-                                    <div className="flex items-baseline justify-between gap-3">
-                                        <dt className="text-neutral-500">Feedback</dt>
-                                        <dd className="font-medium text-neutral-800">
-                                            {form.watch('sharedOptions.enableFeedback')
-                                                ? 'Default form'
-                                                : 'Off'}
-                                        </dd>
-                                    </div>
-                                    <div className="flex items-baseline justify-between gap-3">
-                                        <dt className="text-neutral-500">Recording</dt>
-                                        <dd className="font-medium text-neutral-800">
-                                            {form.watch('sharedOptions.recordSession')
-                                                ? 'On'
-                                                : 'Off'}
-                                        </dd>
-                                    </div>
-                                </dl>
-                            </div>
-
-                            {/* Notifications */}
-                            <div className="rounded-lg border border-neutral-200 bg-white p-4">
-                                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                    <BellRinging size={14} />
-                                    Notifications
-                                </div>
-                                <div className="mt-3 space-y-3 text-sm">
-                                    <div>
-                                        <div className="text-xs text-neutral-500">
-                                            Channels
-                                        </div>
-                                        <div className="mt-1 flex flex-wrap gap-1">
-                                            {(() => {
-                                                const channels = [
-                                                    form.watch('notifyBy.mail')
-                                                        ? 'Email'
-                                                        : null,
-                                                    form.watch('notifyBy.whatsapp')
-                                                        ? 'WhatsApp'
-                                                        : null,
-                                                    form.watch('notifyBy.push_notification')
-                                                        ? 'Push'
-                                                        : null,
-                                                    form.watch('notifyBy.system_notification')
-                                                        ? 'System'
-                                                        : null,
-                                                ].filter(Boolean) as string[];
-                                                if (channels.length === 0) {
-                                                    return (
-                                                        <span className="text-xs text-neutral-400">
-                                                            None
-                                                        </span>
-                                                    );
-                                                }
-                                                return channels.map((c) => (
-                                                    <Badge
-                                                        key={c}
-                                                        variant="secondary"
-                                                        className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-normal text-neutral-700"
-                                                    >
-                                                        {c}
-                                                    </Badge>
-                                                ));
-                                            })()}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div className="text-xs text-neutral-500">
-                                            Triggers
-                                        </div>
-                                        <div className="mt-1 flex flex-wrap gap-1">
-                                            {(() => {
-                                                const triggers: string[] = [];
-                                                if (form.watch('notifySettings.onCreate'))
-                                                    triggers.push('On create');
-                                                const beforeTimes =
-                                                    form.watch(
-                                                        'notifySettings.beforeLiveTime'
-                                                    ) ?? [];
-                                                if (beforeTimes.length > 0) {
-                                                    triggers.push(
-                                                        `Before live (${beforeTimes
-                                                            .map((t) => t.time)
-                                                            .join(', ')})`
-                                                    );
-                                                }
-                                                if (form.watch('notifySettings.onLive'))
-                                                    triggers.push('On live');
-                                                if (
-                                                    form.watch('notifySettings.onAttendance')
-                                                )
-                                                    triggers.push('On attendance');
-                                                if (triggers.length === 0) {
-                                                    return (
-                                                        <span className="text-xs text-neutral-400">
-                                                            None
-                                                        </span>
-                                                    );
-                                                }
-                                                return triggers.map((t) => (
-                                                    <Badge
-                                                        key={t}
-                                                        variant="secondary"
-                                                        className="rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-normal text-primary-700"
-                                                    >
-                                                        {t}
-                                                    </Badge>
-                                                ));
-                                            })()}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Sessions table */}
-                        <div className="mt-5 flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-neutral-800">
-                                Sessions to be created
-                            </h3>
-                            <span className="text-xs text-neutral-500">
-                                {fields.length} row{fields.length === 1 ? '' : 's'}
-                            </span>
-                        </div>
-                        <div className="mt-2 overflow-hidden rounded-lg border border-neutral-200">
-                            <div className="max-h-[360px] overflow-auto">
-                                <Table className="min-w-[900px]">
-                                    <TableHeader className="sticky top-0 z-10 bg-neutral-50">
-                                        <TableRow className="border-neutral-200">
-                                            <TableHead className="w-10 text-[11px] uppercase tracking-wide text-neutral-500">
-                                                #
-                                            </TableHead>
-                                            <TableHead className="text-[11px] uppercase tracking-wide text-neutral-500">
-                                                Title
-                                            </TableHead>
-                                            <TableHead className="text-[11px] uppercase tracking-wide text-neutral-500">
-                                                Subject
-                                            </TableHead>
-                                            <TableHead className="text-[11px] uppercase tracking-wide text-neutral-500">
-                                                When
-                                            </TableHead>
-                                            <TableHead className="text-[11px] uppercase tracking-wide text-neutral-500">
-                                                Duration
-                                            </TableHead>
-                                            <TableHead className="text-[11px] uppercase tracking-wide text-neutral-500">
-                                                Platform
-                                            </TableHead>
-                                            <TableHead className="text-[11px] uppercase tracking-wide text-neutral-500">
-                                                Link
-                                            </TableHead>
-                                            <TableHead className="text-[11px] uppercase tracking-wide text-neutral-500">
-                                                Batches
-                                            </TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {(watchedRows ?? []).map((row, idx) => {
-                                            const platformLabel =
-                                                STREAMING_OPTIONS.find(
-                                                    (p) => p.value === row.platform
-                                                )?.label ?? row.platform;
-                                            const totalMins =
-                                                Number(row.durationHours || '0') * 60 +
-                                                Number(row.durationMinutes || '0');
-                                            const durationLabel =
-                                                totalMins >= 60
-                                                    ? `${Math.floor(totalMins / 60)}h ${
-                                                          totalMins % 60
-                                                      }m`
-                                                    : `${totalMins}m`;
-                                            const rowLevels = row.selectedLevels ?? [];
-                                            const batchLabels = rowLevels.map((sl) => {
-                                                const course = courses?.find(
-                                                    (c) =>
-                                                        c.courseId === sl.courseId &&
-                                                        c.sessionId === sl.sessionId
-                                                );
-                                                const sessionEntry = sessionList.find(
-                                                    (s) => s.id === sl.sessionId
-                                                );
-                                                const levelName = course?.levels
-                                                    .find((l) => l.id === sl.levelId)
-                                                    ?.name?.trim();
-                                                const courseName =
-                                                    course?.courseName?.trim() || 'Course';
-                                                const sessionName = sessionEntry?.name?.trim();
-                                                const levelIsGeneric =
-                                                    !levelName ||
-                                                    levelName.toLowerCase() === 'default';
-                                                const pill = levelIsGeneric
-                                                    ? courseName
-                                                    : `${courseName} · ${levelName}`;
-                                                const tooltip = [
-                                                    courseName,
-                                                    sessionName,
-                                                    levelName,
-                                                ]
-                                                    .filter(Boolean)
-                                                    .join(' / ');
-                                                return { pill, tooltip };
-                                            });
-                                            const formattedDate = (() => {
-                                                if (!row.startDate) return '—';
-                                                try {
-                                                    const d = new Date(
-                                                        `${row.startDate}T${
-                                                            row.startTime || '00:00'
-                                                        }`
-                                                    );
-                                                    return d.toLocaleDateString(undefined, {
-                                                        month: 'short',
-                                                        day: 'numeric',
-                                                        year: 'numeric',
-                                                    });
-                                                } catch {
-                                                    return row.startDate;
-                                                }
-                                            })();
-                                            return (
-                                                <TableRow
-                                                    key={idx}
-                                                    className="text-xs hover:bg-neutral-50"
-                                                >
-                                                    <TableCell className="text-center text-neutral-500">
-                                                        {idx + 1}
-                                                    </TableCell>
-                                                    <TableCell className="font-medium text-neutral-800">
-                                                        {row.title || (
-                                                            <span className="text-danger-500">
-                                                                (empty)
-                                                            </span>
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell className="text-neutral-600">
-                                                        {row.subject || '—'}
-                                                    </TableCell>
-                                                    <TableCell className="text-neutral-600">
-                                                        <div className="flex flex-col">
-                                                            <span className="text-neutral-800">
-                                                                {formattedDate}
-                                                            </span>
-                                                            <span className="text-[11px] text-neutral-500">
-                                                                {row.startTime || '—'}
-                                                            </span>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell className="text-neutral-600">
-                                                        {durationLabel}
-                                                    </TableCell>
-                                                    <TableCell className="text-neutral-600">
-                                                        {platformLabel}
-                                                    </TableCell>
-                                                    <TableCell className="max-w-[200px] truncate text-neutral-600">
-                                                        {row.link ? (
-                                                            <span title={row.link}>
-                                                                {row.link}
-                                                            </span>
-                                                        ) : (
-                                                            '—'
-                                                        )}
-                                                    </TableCell>
-                                                    <TableCell className="max-w-[260px]">
-                                                        {batchLabels.length === 0 ? (
-                                                            <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500">
-                                                                No batches
-                                                            </span>
-                                                        ) : (
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {batchLabels.map((b, i) => (
-                                                                    <span
-                                                                        key={`${rowLevels[i]!.courseId}-${rowLevels[i]!.sessionId}-${rowLevels[i]!.levelId}`}
-                                                                        title={b.tooltip}
-                                                                        className="inline-flex max-w-[180px] items-center truncate rounded-full bg-primary-100 px-2 py-0.5 text-[11px] font-medium text-primary-700"
-                                                                    >
-                                                                        {b.pill}
-                                                                    </span>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </TableCell>
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        </div>
-
-                        {validRowCount < fields.length && (
-                            <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                                <Warning size={14} className="mt-0.5 shrink-0" />
-                                <span>
-                                    {fields.length - validRowCount} row
-                                    {fields.length - validRowCount === 1 ? '' : 's'} still
-                                    missing required fields. Sessions will still be created for
-                                    fully-filled rows; failed rows will appear in the result
-                                    dialog.
-                                </span>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-neutral-200 bg-neutral-50/60 px-6 py-3">
-                        <span className="text-xs text-neutral-500">
-                            By confirming, the system creates {fields.length} session
-                            {fields.length === 1 ? '' : 's'} and applies access &amp;
-                            notification settings to each.
-                        </span>
-                        <div className="flex gap-2">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setPreviewOpen(false)}
-                                disabled={submitting}
-                            >
-                                Back to edit
-                            </Button>
-                            <Button
-                                type="button"
-                                disabled={submitting}
-                                className="bg-primary-500 text-white hover:bg-primary-600 hover:text-white"
-                                onClick={async () => {
-                                    await form.handleSubmit(onSubmit, () =>
-                                        toast.error(
-                                            'Some rows have errors. Please fix them.'
-                                        )
-                                    )();
-                                    setPreviewOpen(false);
-                                }}
-                            >
-                                {submitting ? 'Creating…' : 'Confirm & create'}
-                            </Button>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
+            <LiveSessionPreviewDialog
+                open={previewOpen}
+                onOpenChange={setPreviewOpen}
+                submitting={submitting}
+                onConfirm={async () => {
+                    await form.handleSubmit(onSubmit, () =>
+                        toast.error('Some rows have errors. Please fix them.')
+                    )();
+                    setPreviewOpen(false);
+                }}
+                timeZone={watchedTimeZone}
+                accessType={accessType}
+                sessionFeatures={{
+                    enableWaitingRoom: form.watch('sharedOptions.enableWaitingRoom'),
+                    waitingRoomMinutes: form.watch('sharedOptions.waitingRoomMinutes'),
+                    allowRewind: form.watch('sharedOptions.allowRewind'),
+                    allowPause: form.watch('sharedOptions.allowPause'),
+                    enableFeedback: form.watch('sharedOptions.enableFeedback'),
+                    recordSession: form.watch('sharedOptions.recordSession'),
+                }}
+                notifications={{
+                    notifyBy: {
+                        mail: form.watch('notifyBy.mail'),
+                        whatsapp: form.watch('notifyBy.whatsapp'),
+                        push_notification: form.watch('notifyBy.push_notification'),
+                        system_notification: form.watch('notifyBy.system_notification'),
+                    },
+                    notifySettings: {
+                        onCreate: form.watch('notifySettings.onCreate'),
+                        beforeLiveTime: form.watch('notifySettings.beforeLiveTime'),
+                        onLive: form.watch('notifySettings.onLive'),
+                        onAttendance: form.watch('notifySettings.onAttendance'),
+                    },
+                }}
+                sessions={watchedRows ?? []}
+                validCount={validRowCount}
+                courses={courses ?? []}
+                sessionList={sessionList}
+            />
             <Dialog
                 open={!!resultDialog?.open}
                 onOpenChange={(o) => setResultDialog((s) => (s ? { ...s, open: o } : null))}

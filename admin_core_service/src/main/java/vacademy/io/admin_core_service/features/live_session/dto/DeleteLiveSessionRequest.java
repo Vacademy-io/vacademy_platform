@@ -12,5 +12,10 @@ import java.util.List;
 public class DeleteLiveSessionRequest {
     private List<String> ids;
     private String type;
+    /**
+     * When null or true, learners are notified about the cancellation (legacy behavior).
+     * When explicitly false, the cancellation email is suppressed.
+     */
+    private Boolean notifyStudents;
 }
 

@@ -237,7 +237,8 @@ export default function ScheduleStep1() {
                         durationHours: '0',
                         durationMinutes: '30',
                         link: '',
-                        countAttendanceDaily: false,
+                        countAttendanceDaily:
+                            liveSessionSettings.defaultDailyAttendanceCounting,
                         thumbnailFileId: '',
                     },
                 ],
@@ -554,7 +555,8 @@ export default function ScheduleStep1() {
                                     durationMinutes: '30',
                                     link: '',
                                     thumbnailFileId: '',
-                                    countAttendanceDaily: false,
+                                    countAttendanceDaily:
+                                        liveSessionSettings.defaultDailyAttendanceCounting,
                                 },
                             ],
                 };
@@ -1451,7 +1453,8 @@ export default function ScheduleStep1() {
                         durationHours: dh,
                         durationMinutes: dm,
                         link: l,
-                        countAttendanceDaily: false,
+                        countAttendanceDaily:
+                            liveSessionSettings.defaultDailyAttendanceCounting,
                         thumbnailFileId: '',
                     },
                 ]);
@@ -1481,7 +1484,8 @@ export default function ScheduleStep1() {
                         durationHours: dh,
                         durationMinutes: dm,
                         link: l,
-                        countAttendanceDaily: false,
+                        countAttendanceDaily:
+                            liveSessionSettings.defaultDailyAttendanceCounting,
                         thumbnailFileId: '',
                     },
                 ]);
@@ -1510,7 +1514,8 @@ export default function ScheduleStep1() {
                         durationHours: dh,
                         durationMinutes: dm,
                         link: l,
-                        countAttendanceDaily: false,
+                        countAttendanceDaily:
+                            liveSessionSettings.defaultDailyAttendanceCounting,
                         thumbnailFileId: '',
                     },
                 ]);
@@ -1537,7 +1542,8 @@ export default function ScheduleStep1() {
                         durationHours: dh,
                         durationMinutes: dm,
                         link: l,
-                        countAttendanceDaily: false,
+                        countAttendanceDaily:
+                            liveSessionSettings.defaultDailyAttendanceCounting,
                         thumbnailFileId: '',
                     },
                 ]);
@@ -1724,6 +1730,7 @@ export default function ScheduleStep1() {
                 />
             </div>
 
+            {liveSessionSettings.descriptionEnabled && (
             <div className="flex h-full flex-col gap-6">
                 <div className="-mb-5 flex flex-col gap-1">
                     <h1 className="text-sm font-medium">Description</h1>
@@ -1750,6 +1757,7 @@ export default function ScheduleStep1() {
                     )}
                 />
             </div>
+            )}
         </div>
     );
 

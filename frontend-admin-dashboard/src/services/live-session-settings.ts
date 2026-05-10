@@ -41,6 +41,20 @@ export interface LiveSessionSettings {
      * change it per-class while scheduling.
      */
     defaultTimeZone: string;
+    /**
+     * Default value for the per-session "Daily attendance" toggle on a recurring
+     * class. When `true`, every newly added session inside a recurring schedule
+     * starts with daily attendance counting enabled. Admins can still flip the
+     * toggle per session while scheduling.
+     */
+    defaultDailyAttendanceCounting: boolean;
+    /**
+     * Whether the Description input is shown in live-class scheduling flows
+     * (single-class step 1, bulk default description, and per-row description).
+     * When `false`, all description UI is hidden and saved descriptions remain
+     * empty.
+     */
+    descriptionEnabled: boolean;
 }
 
 export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
@@ -59,6 +73,8 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultDayButtonEnabled: true,
     customActionButtonEnabled: true,
     defaultTimeZone: '',
+    defaultDailyAttendanceCounting: false,
+    descriptionEnabled: true,
 };
 
 const getInstituteId = (): string => {

@@ -98,6 +98,8 @@ try:
         SCRIPT_USER_PROMPT_TEMPLATE,
         SCRIPT_REVIEW_SYSTEM_PROMPT,
         SCRIPT_REVIEW_USER_PROMPT_TEMPLATE,
+        build_visual_preferences_script_block,
+        build_visual_preferences_shot_block,
         STYLE_GUIDE_SYSTEM_PROMPT,
         STYLE_GUIDE_USER_PROMPT_TEMPLATE,
         HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE,
@@ -139,6 +141,7 @@ except ImportError:
 DEFAULT_OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 DEFAULT_PEXELS_API_KEYS = os.environ.get("PEXELS_API_KEYS", "")
 DEFAULT_PIXABAY_API_KEYS = os.environ.get("PIXABAY_API_KEYS", "")
+DEFAULT_SERPER_API_KEYS = os.environ.get("SERPER_API_KEYS", "")
 
 VOICE_MAPPING = {
     # format: "lowercase language": {"edge": {"male": "...", "female": "..."}, "google": {"male": "...", "female": "..."}}
@@ -1446,6 +1449,7 @@ class VideoGenerationPipeline:
         voice_model: str = "eleven_multilingual_v2",
         pexels_api_keys: str = DEFAULT_PEXELS_API_KEYS,
         pixabay_api_keys: str = DEFAULT_PIXABAY_API_KEYS,
+        serper_api_keys: str = DEFAULT_SERPER_API_KEYS,
         runs_dir: Path = DEFAULT_RUNS_DIR,
         quality_tier: str = "ultra",
     ) -> None:
@@ -1481,6 +1485,18 @@ class VideoGenerationPipeline:
                 print(f"🖼️ Pixabay: {len(self._pixabay_service._keys)} API key(s) configured")
             except ImportError:
                 print("⚠️ pixabay_service.py not found — Pixabay disabled")
+
+        # Serper Google-search service (optional — used for real photos of named
+        # entities and CDN-direct video B-roll). Falls back gracefully when
+        # SERPER_API_KEYS isn't set; downstream paths route to Pexels/Pixabay/AI.
+        self._serper_service = None
+        if serper_api_keys:
+            try:
+                from serper_service import SerperService
+                self._serper_service = SerperService(serper_api_keys)
+                print(f"🔎 Serper: {len(self._serper_service._keys)} API key(s) configured")
+            except ImportError:
+                print("⚠️ serper_service.py not found — Serper disabled")
 
     # Keywords that hint the asset is illustration-y / educational — route
     # Pixabay first when no explicit provider hint is given.
@@ -1806,6 +1822,7 @@ class VideoGenerationPipeline:
         routing_plan: Optional[Dict[str, Any]] = None,
         video_type_plan: Optional[Dict[str, Any]] = None,
         host_plan: Optional[Dict[str, Any]] = None,
+        visual_preferences: Optional[Dict[str, Any]] = None,
         progress_callback: Optional[Any] = None,
         stop_event: Optional[Any] = None,
     ) -> Dict[str, Any]:
@@ -1947,6 +1964,13 @@ class VideoGenerationPipeline:
         #   • script LLM       → 1st-person directive (Change 7)
         #   • Director         → HOST_DIRECTOR_EXTENSION + per-shot host fields (Change 8)
         #   • HTML stage       → AvatarBatch sub-stage generates per-shot avatars (Change 9)
+        # User visual preferences (resolved view from
+        # IntentRouterService.merge_visual_preferences). Slice B reads it in
+        # _generate_script_plan to inject a soft-bias block; Slices C/D will
+        # read the same dict for the Director and per-shot HTML calls.
+        # None / empty / all-auto → no behavior change anywhere downstream.
+        self._visual_preferences: Dict[str, Any] = visual_preferences or {}
+
         # When enabled=False (default): pipeline behaves identically to today.
         self._host_plan: Dict[str, Any] = host_plan or {}
         self._host_enabled: bool = bool(self._host_plan.get("enabled"))
@@ -3294,6 +3318,24 @@ class VideoGenerationPipeline:
                         "  Use this only to keep tone consistent — don't describe their appearance in narration.\n"
                     )
                 user_prompt = user_prompt + _host_block
+
+            # User visual preferences (Slice B). Soft bias on `visual_type`,
+            # `visual_style`, and on-screen text density. The helper returns
+            # "" when no preference is actively expressed (all None / "auto"),
+            # so the no-op case adds zero tokens to the user prompt.
+            _vp_block = build_visual_preferences_script_block(
+                getattr(self, "_visual_preferences", None)
+            )
+            if _vp_block:
+                user_prompt = user_prompt + _vp_block
+                _flagged_vp = {
+                    k: v for k, v in (self._visual_preferences or {}).items()
+                    if v not in (None, "auto")
+                }
+                print(
+                    f"🎨 Script: applying user visual preferences "
+                    f"({_flagged_vp})"
+                )
         else:
             # Use content-type-specific prompts
             system_prompt = ct_prompts["system"]
@@ -5551,6 +5593,403 @@ class VideoGenerationPipeline:
         print(f"   ✅ Act Planner produced {len(parsed['acts'])} acts")
         return parsed, _usage or {}
 
+    def _extract_named_entities(self, script_text: str) -> List[Dict[str, Any]]:
+        """One-shot Gemini Flash call to pull real proper-noun subjects from the script.
+
+        Returns a list of {name, kind, suggested_query} dicts. The Director uses
+        these to plan IMAGE_HERO/IMAGE_SPLIT shots with real photos via Google
+        Image search (Serper); the per-shot HTML LLM uses them to bias its
+        `data-img-source` choices. Empty list on failure — pipeline degrades to
+        today's text-only behavior. Cached on the instance so the per-shot path
+        can reuse without re-paying.
+        """
+        cached = getattr(self, '_named_entities_cache', None)
+        if cached is not None:
+            return cached
+        try:
+            from subject_extractor import extract_named_entities_from_script
+            entities = extract_named_entities_from_script(
+                script_text or "",
+                self.html_client.chat,
+                max_entities=10,
+            )
+        except Exception as e:
+            print(f"   ⚠️ _extract_named_entities failed ({e}) — proceeding without entity hints")
+            entities = []
+        # Stash on the instance — per-shot HTML prompts read it from here.
+        self._named_entities_cache = entities
+        return entities
+
+    def _build_article_director_context(
+        self,
+    ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Read scrape_url artifacts off self._reference_context and shape them
+        into the (article_context, available_screenshots) pair the director
+        prompt expects. Returns (None, []) when scrape_url didn't run.
+
+        Cross-references `embeddable_images` (vision-captioned by
+        reference_file_service) by S3 URL so each available_screenshot carries
+        a `description` of what's actually depicted — without descriptions the
+        Director sees opaque ids (`inline_0`, `inline_1`) and can't tell the
+        Strait of Hormuz map from a stray "More from BBC" recommended-content
+        thumbnail.
+        """
+        ref_ctx = getattr(self, '_reference_context', None)
+        if not isinstance(ref_ctx, dict):
+            return None, []
+        sa = ref_ctx.get('scrape_artifacts') or {}
+        if not isinstance(sa, dict) or not sa:
+            return None, []
+        files = sa.get('files_captured') or []
+        if not isinstance(files, list):
+            files = []
+        # Build a description lookup from embeddable_images (vision-captioned
+        # by reference_file_service). Match by s3_url so we don't depend on
+        # filenames lining up.
+        emb_images = ref_ctx.get('embeddable_images') or []
+        desc_by_url: Dict[str, str] = {}
+        if isinstance(emb_images, list):
+            for ei in emb_images:
+                if not isinstance(ei, dict):
+                    continue
+                _url = (ei.get('s3_url') or ei.get('url') or '').strip()
+                _desc = (ei.get('description') or '').strip()
+                if _url and _desc:
+                    desc_by_url[_url] = _desc
+        # available_screenshots: {id, url, type, description} for the prompt
+        available: List[Dict[str, Any]] = []
+        for f in files:
+            if not isinstance(f, dict):
+                continue
+            sid = (f.get('id') or '').strip()
+            url = (f.get('url') or '').strip()
+            if not sid or not url:
+                continue
+            entry: Dict[str, Any] = {
+                "id": sid,
+                "url": url,
+                "type": f.get('type') or 'image',
+            }
+            _desc = desc_by_url.get(url) or ''
+            if _desc:
+                # Cap to keep the director prompt budget sane — first sentence
+                # is usually enough to tell the director what's in the image.
+                if len(_desc) > 240:
+                    _desc = _desc[:240].rsplit(' ', 1)[0] + '…'
+                entry["description"] = _desc
+            available.append(entry)
+        # article_context: source URL + title + excerpt
+        urls_attempted = sa.get('urls_attempted') or []
+        source_url = urls_attempted[0] if urls_attempted else ""
+        # Title isn't currently captured separately — pull the first non-empty
+        # line from the text excerpt as a best-effort title.
+        excerpt = (sa.get('text_excerpt') or '').strip()
+        title = ""
+        if excerpt:
+            for line in excerpt.splitlines():
+                ls = line.strip()
+                # Skip the standard "--- Captured from URL ---" header and the
+                # "Title:" and "Description:" prefix lines emitted by the
+                # web_content_capture_service text formatter.
+                if not ls or ls.startswith("---"):
+                    continue
+                if ls.lower().startswith("title:"):
+                    title = ls.split(":", 1)[1].strip()
+                    break
+                if not title:
+                    title = ls
+                    break
+        article_context = {
+            "source_url": source_url,
+            "title": title,
+            "text_excerpt": excerpt,
+        }
+        return article_context, available
+
+    @staticmethod
+    def _shot_real_photo_dur(shot: Dict[str, Any]) -> float:
+        """Return the shot's duration if it counts as a 'real photo' shot for
+        the news_recap floor calculation, else 0.
+
+        Counts: ARTICLE_FOCUS (always), and IMAGE_HERO / VIDEO_HERO / IMAGE_SPLIT
+        whose director plan requested a real-world photo (image_prompt or
+        video_query that names an entity, or img_source ∈ {web, article_screenshot}).
+        For director plans that don't yet expose img_source we conservatively
+        count all IMAGE/VIDEO_HERO and IMAGE_SPLIT — they will likely render with
+        a real photo or stock B-roll either way.
+        """
+        st = (shot.get('shot_type') or '').upper()
+        try:
+            dur = max(0.0, float(shot.get('end_time', 0)) - float(shot.get('start_time', 0)))
+        except (TypeError, ValueError):
+            dur = 0.0
+        if st in ("ARTICLE_FOCUS", "IMAGE_HERO", "VIDEO_HERO", "IMAGE_SPLIT"):
+            return dur
+        return 0.0
+
+    @staticmethod
+    def _shot_text_dur(shot: Dict[str, Any]) -> float:
+        """Duration of shots that count toward the text-shot cap."""
+        st = (shot.get('shot_type') or '').upper()
+        try:
+            dur = max(0.0, float(shot.get('end_time', 0)) - float(shot.get('start_time', 0)))
+        except (TypeError, ValueError):
+            dur = 0.0
+        if st in ("KINETIC_TEXT", "TEXT_DIAGRAM"):
+            return dur
+        return 0.0
+
+    def _enforce_news_recap_floors(
+        self,
+        director_plan: Optional[Dict[str, Any]],
+        video_type: str,
+        available_screenshots: List[Dict[str, Any]],
+        named_entities: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Deterministic post-pass: rewrite shot types in place so the plan
+        meets the news_recap floors (≥1 ARTICLE_FOCUS, ≥40% real-photo duration,
+        ≤25% combined KINETIC_TEXT+TEXT_DIAGRAM).
+
+        Preserves shot timing (start/end), shot_index, narration_excerpt, and
+        sync_points. Mutates only shot_type, image_prompt, video_query,
+        template_id, and template_params for the shots it converts.
+
+        No-op for video_type != "news_recap". Logs all mutations to
+        director_plan["news_recap_floor_mutations"] for observability.
+        """
+        if not director_plan or video_type != "news_recap":
+            return director_plan
+        shots = director_plan.get("shots") or []
+        if not isinstance(shots, list) or not shots:
+            return director_plan
+
+        total_dur = 0.0
+        for s in shots:
+            try:
+                total_dur += max(0.0, float(s.get("end_time", 0)) - float(s.get("start_time", 0)))
+            except (TypeError, ValueError):
+                continue
+        if total_dur <= 0:
+            return director_plan
+
+        mutations: List[Dict[str, Any]] = []
+
+        # ── 1. Ensure ≥1 ARTICLE_FOCUS shot when screenshots exist ──
+        if available_screenshots:
+            has_af = any((s.get("shot_type") or "").upper() == "ARTICLE_FOCUS" for s in shots)
+            if not has_af:
+                target = self._pick_shot_for_article_focus(shots)
+                if target is not None:
+                    self._convert_shot_to_article_focus(target, available_screenshots)
+                    mutations.append({
+                        "shot_index": target.get("shot_index"),
+                        "from": target.get("_prev_shot_type"),
+                        "to": "ARTICLE_FOCUS",
+                        "reason": "news_recap requires ≥1 ARTICLE_FOCUS when screenshots are available",
+                    })
+
+        # Recompute coverage after possible ARTICLE_FOCUS injection.
+        def _real_pct() -> float:
+            return sum(self._shot_real_photo_dur(s) for s in shots) / total_dur
+
+        def _text_pct() -> float:
+            return sum(self._shot_text_dur(s) for s in shots) / total_dur
+
+        # ── 2. Real-photo coverage ≥ 0.40 ──
+        guard = 0
+        while _real_pct() < 0.40 and guard < len(shots):
+            guard += 1
+            target = self._pick_shot_for_image_hero(shots, named_entities)
+            if target is None:
+                break
+            entity = self._best_entity_for_shot(target, named_entities)
+            if entity is None and not named_entities:
+                break
+            self._convert_shot_to_image_hero(target, entity)
+            mutations.append({
+                "shot_index": target.get("shot_index"),
+                "from": target.get("_prev_shot_type"),
+                "to": "IMAGE_HERO",
+                "reason": f"news_recap real-photo floor (entity={entity.get('name') if entity else 'n/a'})",
+            })
+
+        # ── 3. Text-shot coverage ≤ 0.25 ──
+        guard = 0
+        while _text_pct() > 0.25 and guard < len(shots):
+            guard += 1
+            target = self._pick_longest_text_shot(shots)
+            if target is None:
+                break
+            entity = self._best_entity_for_shot(target, named_entities)
+            if entity is None and not named_entities:
+                break
+            self._convert_shot_to_image_hero(target, entity)
+            mutations.append({
+                "shot_index": target.get("shot_index"),
+                "from": target.get("_prev_shot_type"),
+                "to": "IMAGE_HERO",
+                "reason": f"news_recap text-shot cap (entity={entity.get('name') if entity else 'n/a'})",
+            })
+
+        if mutations:
+            director_plan["news_recap_floor_mutations"] = mutations
+            print(
+                f"   📐 news_recap floors enforced: {len(mutations)} shot(s) rewritten — "
+                f"real-photo={_real_pct():.0%}, text={_text_pct():.0%}"
+            )
+        return director_plan
+
+    @staticmethod
+    def _pick_shot_for_article_focus(shots: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Pick the longest KINETIC_TEXT/TEXT_DIAGRAM shot to convert; if none
+        exist, pick the longest non-real-photo shot. Returns None if every
+        shot is already real-photo (in which case no need for ARTICLE_FOCUS,
+        though the floor still adds one — caller has already early-returned).
+        """
+        candidates = [s for s in shots if (s.get("shot_type") or "").upper() in ("KINETIC_TEXT", "TEXT_DIAGRAM")]
+        if not candidates:
+            candidates = [
+                s for s in shots
+                if (s.get("shot_type") or "").upper() not in
+                ("ARTICLE_FOCUS", "SOURCE_CLIP", "KINETIC_TITLE")
+            ]
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda s: float(s.get("end_time", 0)) - float(s.get("start_time", 0)),
+            reverse=True,
+        )
+        return candidates[0]
+
+    @staticmethod
+    def _pick_shot_for_image_hero(
+        shots: List[Dict[str, Any]], named_entities: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Find the next non-real-photo shot whose narration mentions a named
+        entity. Falls back to the longest non-real-photo shot if none match.
+        """
+        eligible = [
+            s for s in shots
+            if (s.get("shot_type") or "").upper() not in
+            ("ARTICLE_FOCUS", "IMAGE_HERO", "VIDEO_HERO", "IMAGE_SPLIT", "SOURCE_CLIP", "KINETIC_TITLE")
+        ]
+        if not eligible:
+            return None
+        if named_entities:
+            entity_names = [(e.get("name") or "").lower() for e in named_entities if e.get("name")]
+            with_match = [
+                s for s in eligible
+                if any(en and en in (s.get("narration_excerpt") or "").lower() for en in entity_names)
+            ]
+            if with_match:
+                with_match.sort(
+                    key=lambda s: float(s.get("end_time", 0)) - float(s.get("start_time", 0)),
+                    reverse=True,
+                )
+                return with_match[0]
+        eligible.sort(
+            key=lambda s: float(s.get("end_time", 0)) - float(s.get("start_time", 0)),
+            reverse=True,
+        )
+        return eligible[0]
+
+    @staticmethod
+    def _pick_longest_text_shot(shots: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        candidates = [
+            s for s in shots
+            if (s.get("shot_type") or "").upper() in ("KINETIC_TEXT", "TEXT_DIAGRAM")
+        ]
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda s: float(s.get("end_time", 0)) - float(s.get("start_time", 0)),
+            reverse=True,
+        )
+        return candidates[0]
+
+    @staticmethod
+    def _best_entity_for_shot(
+        shot: Dict[str, Any], named_entities: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Return the entity whose name appears in the shot's narration; else
+        the first entity in the list (still likely thematically related).
+        """
+        if not named_entities:
+            return None
+        narration = (shot.get("narration_excerpt") or "").lower()
+        for ent in named_entities:
+            name = (ent.get("name") or "").lower()
+            if name and name in narration:
+                return ent
+        return named_entities[0]
+
+    @staticmethod
+    def _convert_shot_to_article_focus(
+        shot: Dict[str, Any], available_screenshots: List[Dict[str, Any]]
+    ) -> None:
+        """Rewrite `shot` in place to ARTICLE_FOCUS, preserving timing.
+
+        Picks the first available screenshot id (above_fold preferred). The
+        quote_text is derived from the shot's narration_excerpt so the overlay
+        stays sync'd to what the viewer is hearing.
+        """
+        shot["_prev_shot_type"] = shot.get("shot_type")
+        shot["shot_type"] = "ARTICLE_FOCUS"
+        # Prefer above_fold; fall back to mid, footer, then any inline.
+        preferred = ["above_fold", "mid", "footer"]
+        screenshot_id = ""
+        for pref in preferred:
+            for s in available_screenshots:
+                if (s.get("id") or "") == pref:
+                    screenshot_id = pref
+                    break
+            if screenshot_id:
+                break
+        if not screenshot_id and available_screenshots:
+            screenshot_id = available_screenshots[0].get("id") or "above_fold"
+
+        # Truncate narration to a quote-sized line (≤ 120 chars); strip
+        # trailing partial words so the overlay reads cleanly.
+        narration = (shot.get("narration_excerpt") or "").strip()
+        if len(narration) > 120:
+            narration = narration[:120].rsplit(" ", 1)[0] + "…"
+
+        shot["template_id"] = "article_focus_zoom_pan"
+        shot["template_params"] = {
+            "screenshot_id": screenshot_id or "above_fold",
+            "quote_text": narration,
+            "highlight_box_pct": {"x_pct": 5, "y_pct": 8, "w_pct": 90, "h_pct": 50},
+        }
+        # Drop image/video prompts that no longer apply.
+        shot.pop("image_prompt", None)
+        shot.pop("video_query", None)
+
+    @staticmethod
+    def _convert_shot_to_image_hero(
+        shot: Dict[str, Any], entity: Optional[Dict[str, Any]]
+    ) -> None:
+        """Rewrite `shot` in place to IMAGE_HERO with a real-photo image_prompt
+        keyed off `entity.suggested_query`. Preserves timing, transition_in,
+        and narration. Falls back to narration-keyword prompt when no entity.
+        """
+        shot["_prev_shot_type"] = shot.get("shot_type")
+        shot["shot_type"] = "IMAGE_HERO"
+        if entity and entity.get("suggested_query"):
+            shot["image_prompt"] = entity["suggested_query"]
+        elif entity and entity.get("name"):
+            shot["image_prompt"] = entity["name"]
+        else:
+            # Last resort — extract a short keyword span from narration so the
+            # web/stock dispatcher has something to query.
+            narration = (shot.get("narration_excerpt") or "").strip()
+            shot["image_prompt"] = narration[:80] if narration else "news photograph"
+        # Hint downstream dispatch toward web search for named entities.
+        shot["img_source"] = "web" if entity else "stock"
+        # Drop incompatible fields from the prior shot type.
+        shot.pop("template_id", None)
+        shot.pop("template_params", None)
+        shot.pop("video_query", None)
+
     def _run_director(
         self,
         script_plan: Dict[str, Any],
@@ -5654,6 +6093,7 @@ class VideoGenerationPipeline:
                     width=_w,
                     height=_h,
                     audio_duration=audio_duration,
+                    visual_preferences=getattr(self, "_visual_preferences", None) or None,
                 ),
             )
             if act_usage:
@@ -5667,6 +6107,30 @@ class VideoGenerationPipeline:
             emphasis_map = build_emphasis_map(words)
         # Store so per-shot HTML generation can highlight narrator stress peaks
         self._emphasis_map = emphasis_map
+
+        # Build news/article context for the Director:
+        # - article_context: source URL + title + text excerpt, when scrape_url ran.
+        # - available_screenshots: stable-id list for ARTICLE_FOCUS shots.
+        # - named_entities: real proper-noun subjects to bias real-photo shots.
+        # - web_search_available: tells the Director it can request `img_source=web`.
+        _article_context, _available_screenshots = self._build_article_director_context()
+        _named_entities: List[Dict[str, Any]] = []
+        try:
+            _named_entities = self._extract_named_entities(script_text)
+        except Exception as _ne_err:
+            print(f"   ⚠️ Named-entity extraction errored ({_ne_err}); proceeding without entity hints")
+            _named_entities = []
+        _web_search_available = bool(
+            getattr(self, '_serper_service', None)
+            and getattr(self._serper_service, 'is_available', False)
+        )
+        # Wire the Serper per-run cache once the run_dir is known.
+        if _web_search_available:
+            try:
+                self._serper_service.set_run_dir(run_dir)
+                self._serper_service.reset_usage()
+            except Exception:
+                pass
 
         user_prompt = build_director_user_prompt(
             script_text=script_text,
@@ -5686,7 +6150,19 @@ class VideoGenerationPipeline:
             quality_tier=self._quality_tier,
             target_audience=target_audience,
             include_music_plan=self._is_background_music_enabled(),
+            video_type=getattr(self, '_video_type', None),
+            article_context=_article_context,
+            available_screenshots=_available_screenshots,
+            named_entities=_named_entities,
+            web_search_available=_web_search_available,
+            visual_preferences=getattr(self, "_visual_preferences", None) or None,
         )
+        # Stash for the floor-enforcer post-pass (avoids re-reading scrape artifacts).
+        self._director_news_recap_inputs = {
+            "video_type": getattr(self, '_video_type', None),
+            "available_screenshots": _available_screenshots,
+            "named_entities": _named_entities,
+        }
 
         # ── Input video context for Director ──────────────────────────
         # Give the Director access to source video transcripts, scenes,
@@ -6574,6 +7050,113 @@ class VideoGenerationPipeline:
             if rationale:
                 print(f"   📝 Rationale: {rationale}")
 
+        # ── Visual-preferences telemetry (Slice C log + Slice F persistence) ──
+        # Compare what the user asked for to what the Director actually picked.
+        # The shot→family mapping is best-effort; HERO shots are split by whether
+        # the Director set image_prompt (AI-generated) vs video_query / nothing
+        # (stock or ambiguous). Persisted to run_dir/visual_preferences_realized
+        # .json; video_generation_service merges it into
+        # extra_metadata.intent_outcomes.visual_preferences_realized after
+        # the HTML stage completes.
+        _vp = getattr(self, "_visual_preferences", None) or {}
+        if any(v not in (None, "auto") for v in _vp.values()):
+            _shot_to_family = {
+                "VIDEO_HERO":      "stock_video",  # refined by image_prompt below
+                "IMAGE_HERO":      "stock_video",  # refined by image_prompt below
+                "IMAGE_SPLIT":     "ai_imagery",
+                "PRODUCT_HERO":    "ai_imagery",
+                "INFOGRAPHIC_SVG": "svg_illustrated",
+                "KINETIC_TITLE":   "svg_illustrated",
+                "ANNOTATION_MAP":  "svg_illustrated",
+                "TEXT_DIAGRAM":    "motion_graphics",
+                "PROCESS_STEPS":   "motion_graphics",
+                "DATA_STORY":      "motion_graphics",
+                "EQUATION_BUILD":  "motion_graphics",
+                "ANIMATED_ASSET":  "motion_graphics",
+                "KINETIC_TEXT":    "motion_graphics",
+                "DEVICE_MOCKUP":   "app_ui_mockup",
+            }
+            _family_counts: Dict[str, int] = {}
+            _override_count = 0
+            _override_shots: List[int] = []
+            _shots_iterable = director_plan.get("shots", []) or []
+            _shot_total = max(1, len(_shots_iterable))
+            for _idx, _s in enumerate(_shots_iterable):
+                _st = (_s.get("shot_type") or "").upper()
+                _fam = _shot_to_family.get(_st)
+                # HERO shots with image_prompt are AI imagery, not stock.
+                if _st in ("VIDEO_HERO", "IMAGE_HERO") and _s.get("image_prompt"):
+                    _fam = "ai_imagery"
+                if _fam:
+                    _family_counts[_fam] = _family_counts.get(_fam, 0) + 1
+                if _s.get("preference_override_reason"):
+                    _override_count += 1
+                    _override_shots.append(_idx)
+            _declared = {
+                k: v for k, v in _vp.items()
+                if v not in (None, "auto") and k != "text_density"
+            }
+            _td = _vp.get("text_density")
+            _td_str = f" text={_td}" if _td and _td != "auto" else ""
+            _realized_sorted = dict(sorted(_family_counts.items(), key=lambda kv: -kv[1]))
+            print(
+                f"   🎨 Visual prefs: declared={_declared}{_td_str} | "
+                f"realized={_realized_sorted} | "
+                f"{_override_count} preference_override_reason shot(s)"
+            )
+
+            # Mismatch warnings — declared "high" but realized 0 (or <20% of
+            # shots) → loud warning so we can tune keyword tables / prompt
+            # rules later. Conversely declared "no" but realized >30% of
+            # shots → also a warning. Both are soft signals, not failures.
+            _mismatches: List[str] = []
+            for _fam_name, _decl in _declared.items():
+                _realized = _family_counts.get(_fam_name, 0)
+                _pct = _realized / _shot_total
+                if _decl == "high" and _realized == 0:
+                    _mismatches.append(
+                        f"{_fam_name}=high but 0/{_shot_total} shots realized"
+                    )
+                elif _decl == "high" and _pct < 0.20 and _shot_total >= 5:
+                    _mismatches.append(
+                        f"{_fam_name}=high but only {_realized}/{_shot_total} "
+                        f"shots ({_pct:.0%}) realized"
+                    )
+                elif _decl == "no" and _pct > 0.30 and _shot_total >= 5:
+                    # Gate on shot_total to suppress noise on tiny videos —
+                    # a single shot in a 3-shot timeline is 33% which doesn't
+                    # signal real Director defiance.
+                    _mismatches.append(
+                        f"{_fam_name}=no but {_realized}/{_shot_total} shots "
+                        f"({_pct:.0%}) realized"
+                    )
+            for _m in _mismatches:
+                print(f"   ⚠️  Visual prefs mismatch: {_m}")
+
+            # Persist for Slice F merge into extra_metadata.intent_outcomes.
+            # Pure JSON (json.dumps via Path.write_text) — keyed by run_dir so
+            # video_generation_service can find it deterministically after the
+            # HTML stage. Best-effort: a write failure is non-fatal.
+            try:
+                (run_dir / "visual_preferences_realized.json").write_text(
+                    json.dumps(
+                        {
+                            "declared": dict(_declared),
+                            "text_density_declared": _td if _td and _td != "auto" else None,
+                            "family_counts": _realized_sorted,
+                            "override_count": _override_count,
+                            "override_shots": _override_shots,
+                            "mismatches": _mismatches,
+                            "shot_total": len(_shots_iterable),
+                        },
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+            except Exception as _vp_err:
+                print(f"   ⚠️  Failed to persist visual_preferences_realized.json: {_vp_err}")
+
         # PR 3 — post-Director host coverage enforcement. Mutates
         # director_plan["shots"] in place. Three rules:
         #   1. 100% mode: every shot must have host_present=true (skip deny-list)
@@ -6583,6 +7166,21 @@ class VideoGenerationPipeline:
         # authoritative gate. AvatarBatch's run-based renderer reads what we
         # write here.
         self._enforce_host_coverage_rules(director_plan)
+
+        # news_recap composition floors — deterministic post-pass that rewrites
+        # text-heavy shots to ARTICLE_FOCUS / IMAGE_HERO with real-photo prompts
+        # so the director's natural bias toward TEXT_DIAGRAM doesn't tank
+        # visual storytelling. No-op for video_type != "news_recap".
+        try:
+            _nr_inputs = getattr(self, '_director_news_recap_inputs', {}) or {}
+            director_plan = self._enforce_news_recap_floors(
+                director_plan,
+                video_type=str(_nr_inputs.get("video_type") or getattr(self, '_video_type', '') or ""),
+                available_screenshots=_nr_inputs.get("available_screenshots") or [],
+                named_entities=_nr_inputs.get("named_entities") or [],
+            )
+        except Exception as _nr_err:
+            print(f"   ⚠️ news_recap floor enforcement failed ({_nr_err}); using director plan unchanged")
 
         return director_plan, total_usage
 
@@ -9020,6 +9618,21 @@ class VideoGenerationPipeline:
             end_time = float(shot.get("end_time", start_time + 8))
             duration = max(1.0, end_time - start_time)
 
+            # ── Slice D safety net: KINETIC_TEXT incompatible with low/minimal ──
+            # The Director was told to forbid KINETIC_TEXT at low/minimal text
+            # density (Slice C). Cheap planners ignore long forbid-lists; this
+            # belt-and-braces swap converts any KINETIC_TEXT shot that slipped
+            # through into a compatible alternative before any prompt build.
+            _vp_shot = getattr(self, "_visual_preferences", None) or {}
+            _td_shot = (_vp_shot.get("text_density") or "auto").lower()
+            if shot_type == "KINETIC_TEXT" and _td_shot in ("minimal", "low"):
+                _swap_to = "KINETIC_TITLE" if _td_shot == "low" else "TEXT_DIAGRAM"
+                print(
+                    f"   🎨 {_log_label} swap: KINETIC_TEXT → {_swap_to} "
+                    f"(text_density={_td_shot}; KINETIC_TEXT is text-only by design)"
+                )
+                shot_type = _swap_to
+
             # ── Shot template bypass (premium / ultra / super_ultra) ──
             # When the Director sets `template_id` on a shot AND the template
             # renders successfully, we skip the LLM call entirely and use the
@@ -9028,6 +9641,16 @@ class VideoGenerationPipeline:
             if _template_enabled and _template_compose_fn is not None and shot.get("template_id"):
                 _t_transition_in = shot.get("transition_in") or "fade"
                 _t_transition_block = TRANSITION_CSS_BLOCKS.get(_t_transition_in, "")
+                # Pull captured-page artifacts off the reference context so the
+                # ARTICLE_FOCUS template can resolve `screenshot_id` → URL.
+                # _reference_context arrives as a dict (ReferenceContext.to_dict()).
+                _t_scrape_artifacts: List[Dict[str, Any]] = []
+                _ref_ctx = getattr(self, '_reference_context', None)
+                if isinstance(_ref_ctx, dict):
+                    _sa = _ref_ctx.get('scrape_artifacts') or {}
+                    _files = _sa.get('files_captured') if isinstance(_sa, dict) else None
+                    if isinstance(_files, list):
+                        _t_scrape_artifacts = _files
                 _t_ctx = {
                     "shot_index": shot_idx,
                     "canvas_w": _w,
@@ -9037,6 +9660,7 @@ class VideoGenerationPipeline:
                     "shot_pack": getattr(self, "_current_shot_pack", None) or {},
                     "transition_in": _t_transition_in,
                     "transition_css_block": _t_transition_block,
+                    "scrape_artifacts": _t_scrape_artifacts,
                 }
                 try:
                     _t_result = _template_compose_fn(shot, _t_ctx)
@@ -9237,6 +9861,111 @@ class VideoGenerationPipeline:
             }.get(_stock_pref, "")
             if _stock_instruction:
                 user_prompt = user_prompt + _stock_instruction
+
+            # ── Per-shot text-density caps (Slice D) ──
+            # Caps headline length, forbids body paragraphs / supporting captions
+            # when the user picked text_density=minimal/low. Helper returns ""
+            # for auto/rich/None — zero token cost on no-op. The Director was
+            # already nudged via Slice C, but cheap planners build text-heavy
+            # shots anyway; this is the per-shot enforcement.
+            _shot_vp_block = build_visual_preferences_shot_block(
+                getattr(self, "_visual_preferences", None) or None,
+                shot_type,
+            )
+            if _shot_vp_block:
+                user_prompt = user_prompt + _shot_vp_block
+
+            # ── Named-entity / web-search / article-screenshot hints ──
+            # Gate on shot type — text-heavy shots don't use embedded media so
+            # they don't need ~500 extra tokens of policy.
+            if shot_type in ("IMAGE_HERO", "VIDEO_HERO", "IMAGE_SPLIT", "ANNOTATION_MAP", "ANIMATED_ASSET"):
+                _entities = getattr(self, '_named_entities_cache', None) or []
+                _serper_ok = bool(
+                    getattr(self, '_serper_service', None)
+                    and getattr(self._serper_service, 'is_available', False)
+                )
+                # Pull article screenshots + their vision-captioned descriptions
+                # from the reference context. Each block (entity / web / article)
+                # is gated INDEPENDENTLY — without that, an article with no
+                # extracted named entities AND no Serper key would silently drop
+                # the article-screenshot manifest, which is exactly how the
+                # original BBC render lost the captured Hormuz map.
+                _files_list: List[Dict[str, Any]] = []
+                _desc_by_url: Dict[str, str] = {}
+                _ref_ctx_dict = getattr(self, '_reference_context', None) if hasattr(self, '_reference_context') else None
+                if isinstance(_ref_ctx_dict, dict):
+                    _sa_dict = _ref_ctx_dict.get('scrape_artifacts') or {}
+                    _files_raw = _sa_dict.get('files_captured') if isinstance(_sa_dict, dict) else None
+                    if isinstance(_files_raw, list):
+                        _files_list = [f for f in _files_raw if isinstance(f, dict) and (f.get('id') or '').strip()]
+                    _emb_imgs = _ref_ctx_dict.get('embeddable_images') or []
+                    if isinstance(_emb_imgs, list):
+                        for _ei in _emb_imgs:
+                            if not isinstance(_ei, dict):
+                                continue
+                            _u = (_ei.get('s3_url') or _ei.get('url') or '').strip()
+                            _d = (_ei.get('description') or '').strip()
+                            if _u and _d:
+                                _desc_by_url[_u] = _d
+                _has_article = bool(_files_list)
+
+                if _entities or _serper_ok or _has_article:
+                    _media_block_parts: List[str] = ["\n\n**MEDIA SOURCING POLICY** (per the Director's plan):"]
+                    if _has_article:
+                        _media_block_parts.append(
+                            "- For article evidence (the page the user asked you to summarize): "
+                            "embed via `<img data-img-source=\"article_screenshot\" data-screenshot-id=\"<id>\">` "
+                            "using one of the AVAILABLE ARTICLE SCREENSHOTS / IMAGES listed below. "
+                            "Prefer this over generic stock whenever an inline image's description matches the beat."
+                        )
+                    if _serper_ok:
+                        _media_block_parts.append(
+                            "- For real, **named** subjects NOT covered by an article inline (people, places, "
+                            "brands, events you can NAME): emit `<img data-img-source=\"web\" "
+                            "data-img-query=\"<entity-friendly query>\" data-img-prompt=\"<descriptive caption>\">`. "
+                            "The pipeline routes this to Google Image search (Serper) and substitutes a real photo."
+                        )
+                    _media_block_parts.append(
+                        "- For generic real-world B-roll (cityscape, ocean, lab beakers): "
+                        "`<img data-img-source=\"stock\" data-img-prompt=\"...\">` or "
+                        "`<video data-video-query=\"...\">`."
+                    )
+                    _media_block_parts.append(
+                        "- For abstract/conceptual visuals (gradients, isolated cutouts, illustrations): "
+                        "`<img data-img-source=\"generate\" data-img-prompt=\"...\">` (AI generation)."
+                    )
+                    if _entities:
+                        _ent_lines: List[str] = []
+                        for e in _entities[:8]:
+                            if not isinstance(e, dict):
+                                continue
+                            name = (e.get('name') or '').strip()
+                            if not name:
+                                continue
+                            sq = (e.get('suggested_query') or name).strip()
+                            _ent_lines.append(f"  - {name} → web image query: \"{sq}\"")
+                        if _ent_lines:
+                            _media_block_parts.append(
+                                "\n**NAMED ENTITIES IN THIS VIDEO** (prefer article inlines if an inline matches; "
+                                "else use web search):"
+                            )
+                            _media_block_parts.extend(_ent_lines)
+                    if _has_article:
+                        _media_block_parts.append(
+                            "\n**AVAILABLE ARTICLE SCREENSHOTS / IMAGES** "
+                            "(reference these by `data-screenshot-id`):"
+                        )
+                        for _f in _files_list:
+                            _fid = (_f.get('id') or '').strip()
+                            _u = (_f.get('url') or '').strip()
+                            _d = _desc_by_url.get(_u, '')
+                            if _d and len(_d) > 200:
+                                _d = _d[:200].rsplit(' ', 1)[0] + '…'
+                            if _d:
+                                _media_block_parts.append(f"  - id: `{_fid}` — {_d}")
+                            else:
+                                _media_block_parts.append(f"  - id: `{_fid}`")
+                    user_prompt = user_prompt + "\n".join(_media_block_parts)
 
             # ── Fix B + Fix E: Hex-code-as-CSS rule + Global brand directives ──
             # Both apply to EVERY shot (host or non-host). Surfaces:
@@ -13101,10 +13830,34 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
                 provider_match = re.search(r'data-stock-provider=["\'](\w+)["\']', full_tag)
                 provider_hint = provider_match.group(1).lower() if provider_match else ""
-                services = self._resolve_stock_provider_chain(provider_hint, query)
+                source_match_v = re.search(r'data-video-source=["\'](\w+)["\']', full_tag)
+                video_source = source_match_v.group(1).lower() if source_match_v else ""
 
                 picked: Optional[Dict[str, Any]] = None
                 picked_provider = ""
+
+                # ── Web search via Serper (only when explicitly requested) ──
+                # YouTube/Vimeo/TikTok results were already filtered out at
+                # fetch time (renderer can't frame-seek their iframes), so
+                # search_videos returns only direct-CDN mp4s. When the result
+                # set is empty we fall through to Pexels/Pixabay below.
+                if video_source == "web" and getattr(self, '_serper_service', None) and self._serper_service.is_available:
+                    try:
+                        _serp_video = self._serper_service.best_video(query)
+                    except Exception as _sv_err:
+                        print(f"    ⚠️ Serper video search errored ({_sv_err}); falling through to stock")
+                        _serp_video = None
+                    if _serp_video:
+                        picked = {
+                            "url": _serp_video.get("url", ""),
+                            "image": _serp_video.get("thumbnail_url", ""),
+                            "id": None,
+                            "duration": 0,
+                        }
+                        picked_provider = "Serper"
+
+                services = self._resolve_stock_provider_chain(provider_hint, query) if not picked else []
+
                 for svc in services:
                     provider_name = type(svc).__name__.replace("Service", "")
                     if use_ranking:
@@ -13244,10 +13997,20 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 _sid_match = re.search(r'data-subject-id=["\']([^"\']+)["\']', full_tag)
                 if _sid_match:
                     _subject_id = _sid_match.group(1).strip() or _subject_id
+                # Pull the optional `data-img-query` (web search query — preferred
+                # over `data-img-prompt` when present, since the prompt is often
+                # a cinematic caption while the query is a clean entity name)
+                # and `data-screenshot-id` (article-screenshot lookup key).
+                _query_match = re.search(r'data-img-query=(["\'])(.*?)\1', full_tag, re.DOTALL)
+                _img_query = _query_match.group(2) if _query_match else ""
+                _ssid_match = re.search(r'data-screenshot-id=["\']([^"\']+)["\']', full_tag)
+                _screenshot_id = _ssid_match.group(1).strip() if _ssid_match else ""
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
                     "prompt": prompt,
+                    "img_query": _img_query,
+                    "screenshot_id": _screenshot_id,
                     "seg_idx": seg_idx,
                     "is_cutout": is_cutout,
                     "img_source": img_source,
@@ -13282,6 +14045,80 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # as-is and the CSS gradient background (written by the LLM) shows instead.
             _stock_only = self._tier_config.get("stock_preference") == "stock_only"
             if _stock_only and img_source == "generate":
+                img_source = "stock"
+
+            # ── article_screenshot: synchronous lookup in scrape_artifacts ──
+            # Resolves `data-screenshot-id` against the captured-files manifest
+            # without hitting any external API. Falls through to AI gen if the
+            # id isn't found (graceful degradation when the per-shot LLM
+            # references a screenshot the pipeline didn't actually capture).
+            if img_source == "article_screenshot":
+                _ref = getattr(self, '_reference_context', None)
+                _resolved_url = ""
+                if isinstance(_ref, dict):
+                    _sa = _ref.get('scrape_artifacts') or {}
+                    _files = _sa.get('files_captured') if isinstance(_sa, dict) else None
+                    target_id = (task.get('screenshot_id') or '').strip().lower()
+                    if isinstance(_files, list):
+                        if target_id:
+                            for _f in _files:
+                                if isinstance(_f, dict) and (_f.get('id') or '').lower() == target_id:
+                                    _resolved_url = _f.get('url') or ''
+                                    break
+                        if not _resolved_url:
+                            for _f in _files:
+                                if isinstance(_f, dict) and _f.get('url'):
+                                    _resolved_url = _f.get('url') or ''
+                                    break
+                if _resolved_url:
+                    print(
+                        f"    📰 Article screenshot (id={task.get('screenshot_id') or '?'}) "
+                        f"for seg={task.get('seg_idx', '?')}"
+                    )
+                    return {
+                        "entry": task.get("entry"),
+                        "entry_id": id(task.get("entry")),
+                        "full_tag": task.get("full_tag", ""),
+                        "stock_url": _resolved_url,
+                        "image_bytes": None,
+                        "filename": None,
+                        "usage": {},
+                    }
+                # No screenshot available — fall through to web search, then AI gen.
+                img_source = "web" if (
+                    getattr(self, '_serper_service', None)
+                    and getattr(self._serper_service, 'is_available', False)
+                ) else "generate"
+
+            # ── web: Google Image search via Serper for named entities ──
+            # Falls through to stock then AI gen on no match. Uses the dedicated
+            # `data-img-query` if the per-shot LLM provided one, else the
+            # cinematic-flavoured `data-img-prompt`.
+            if img_source == "web":
+                _serper = getattr(self, '_serper_service', None)
+                if _serper and getattr(_serper, 'is_available', False):
+                    orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
+                    web_query = (task.get("img_query") or "").strip() or task.get("prompt", "")
+                    try:
+                        _hit = _serper.best_image(web_query, orientation=orientation)
+                    except Exception as _se:
+                        print(f"    ⚠️ Serper image search errored ({_se}); falling through to stock")
+                        _hit = None
+                    if _hit and _hit.get("url"):
+                        print(
+                            f"    🔎 Web image (Serper, src={_hit.get('source','')}) for "
+                            f"seg={task.get('seg_idx', '?')}: {web_query[:60]}..."
+                        )
+                        return {
+                            "entry": task.get("entry"),
+                            "entry_id": id(task.get("entry")),
+                            "full_tag": task.get("full_tag", ""),
+                            "stock_url": _hit["url"],
+                            "image_bytes": None,
+                            "filename": None,
+                            "usage": {},
+                        }
+                # Fall through to stock — keeps the existing Pexels/Pixabay behavior.
                 img_source = "stock"
 
             # Stock photo path: try configured providers in order (hint + fallback)

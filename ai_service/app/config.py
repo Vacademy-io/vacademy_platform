@@ -130,6 +130,11 @@ class Settings(BaseSettings):
     # Pixabay API Configuration (comma-separated keys for round-robin rotation)
     pixabay_api_keys: str = ""
 
+    # Serper API Configuration (Google Image / Video / Web search; comma-separated
+    # keys for round-robin rotation). Used by news_recap and other videos that
+    # need real photos of named entities (people, places, brands, events).
+    serper_api_keys: str = ""
+
     # Render Worker (dedicated Hetzner server for video rendering)
     render_server_url: str = os.getenv("RENDER_SERVER_URL", "")
     render_server_key: str = os.getenv("RENDER_SERVER_KEY", "")

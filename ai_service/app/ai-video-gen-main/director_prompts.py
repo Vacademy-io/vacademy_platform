@@ -133,7 +133,47 @@ DIRECTOR_SYSTEM_PROMPT = (
     "(speaker, screen recording, demo) plays as the background with HTML overlays on top. "
     "Use for key quotes, soundbites, demo highlights — any moment where showing the real footage "
     "is more impactful than AI graphics. Specify `source_start` and `source_end` (seconds in the "
-    "source video). No `image_prompt` or `video_query` needed. ONLY available when source video context is provided.\n\n"
+    "source video). No `image_prompt` or `video_query` needed. ONLY available when source video context is provided.\n"
+    "- **ARTICLE_FOCUS**: Show the actual scraped article page (a real screenshot of the source "
+    "URL) with a slow zoom-pan toward a highlighted quote. Tells the viewer 'this is real, here "
+    "is the source.' MUST set `template_id: \"article_focus_zoom_pan\"` and `template_params` "
+    "with `screenshot_id` (one of the AVAILABLE ARTICLE SCREENSHOTS in the user prompt — typically "
+    "`above_fold`, `mid`, `footer`, or `inline_0..N`), `quote_text` (verbatim sentence from the "
+    "article, ≤120 chars), `highlight_box_pct` (rect to zoom toward, 0–100 scale), and optional "
+    "`source_label` (e.g. 'BBC News'). ONLY available when scrape_url captured screenshots — "
+    "look for AVAILABLE ARTICLE SCREENSHOTS in the user prompt. Best at 3–5s shot duration.\n\n"
+
+    "**MEDIA SOURCING POLICY** (which provider does each visual come from):\n"
+    "- Real, **named** subjects (people, places, brands, events you can name): emit "
+    "`<img data-img-source=\"web\" data-img-query=\"...\" data-img-prompt=\"...\">` so the "
+    "pipeline routes to Google Image search (Serper). Use this for proper-noun queries — "
+    "'Donald Trump', 'Strait of Hormuz', 'BBC News studio', 'NASA Artemis launch'. "
+    "Stock libraries don't carry these; AI generation hallucinates them.\n"
+    "- Real-world **B-roll** that is generic (cityscape, ocean waves, lab beakers, anonymous "
+    "office workers): use `video_query` (Pexels/Pixabay) or stock images. Cheaper and "
+    "rights-cleared.\n"
+    "- **Abstract concepts / metaphors / illustrations**: AI image generation "
+    "(`data-img-source=\"generate\"` or omit the attribute) — gradient backgrounds, isolated "
+    "cutouts, conceptual diagrams.\n"
+    "- **Article evidence / source citation**: ARTICLE_FOCUS shot referencing one of the "
+    "AVAILABLE ARTICLE SCREENSHOTS.\n"
+    "- **UI / device / app interactions**: DEVICE_MOCKUP (HTML/CSS, no photo).\n"
+    "Inside per-shot HTML, the per-shot designer will follow this same policy when emitting "
+    "individual `<img>` and `<video>` tags. Your job at the plan level is to pick the right "
+    "shot type and pass an `image_prompt` / `video_query` that names the entity.\n\n"
+
+    "**NEWS_RECAP COMPOSITION RULES** — apply ONLY if the user prompt's `VIDEO TYPE: news_recap`:\n"
+    "- If AVAILABLE ARTICLE SCREENSHOTS is non-empty, plan **at least one ARTICLE_FOCUS shot** "
+    "(typically early in the video to anchor the source).\n"
+    "- Real-photo shots (IMAGE_HERO / VIDEO_HERO / IMAGE_SPLIT with `data-img-source=\"web\"` or "
+    "ARTICLE_FOCUS) should cover **≥40% of total duration**. The viewer should *see* the people, "
+    "places, and events being discussed — not just text about them.\n"
+    "- KINETIC_TEXT + TEXT_DIAGRAM combined ≤25% of total duration. Reserve them for *abstract* "
+    "framing / transitions, not for the meat of the story.\n"
+    "- KINETIC_TITLE is **exempt** from the text cap — still encouraged for hooks and outros.\n"
+    "- For each NAMED ENTITY in the user prompt, plan at least one shot that features a real "
+    "photo of that entity. Use `image_prompt` keyed by the entity's `suggested_query` (e.g. "
+    "image_prompt='Donald Trump president 2026 oval office, news photo, sharp focus').\n\n"
 
     "**RULES**:\n"
     "1. First shot is the hook — pick whichever shot type sells the topic best "
@@ -463,6 +503,7 @@ def build_act_planner_user_prompt(
     width: int,
     height: int,
     audio_duration: float,
+    visual_preferences: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build the user prompt for the Act Planner (pass 1 of two-pass Director)."""
     aspect_label = "9:16 portrait" if width < height else "16:9 landscape"
@@ -476,7 +517,7 @@ def build_act_planner_user_prompt(
         }
         for i, b in enumerate(beat_outline)
     ]
-    return ACT_PLANNER_USER_PROMPT_TEMPLATE.format(
+    base = ACT_PLANNER_USER_PROMPT_TEMPLATE.format(
         script_text=script_text.strip(),
         beat_outline_json=json.dumps(beat_summary, indent=2, ensure_ascii=False),
         subject_domain=subject_domain,
@@ -484,6 +525,9 @@ def build_act_planner_user_prompt(
         height=height,
         aspect_label=aspect_label,
         audio_duration=audio_duration,
+    )
+    return base + build_visual_preferences_director_block(
+        visual_preferences, for_act_planner=True
     )
 
 
@@ -735,6 +779,194 @@ HOST_DIRECTOR_EXTENSION = (
 
 
 # ---------------------------------------------------------------------------
+# User visual preferences — Slice C helper (appended to Director / Act Planner)
+# ---------------------------------------------------------------------------
+#
+# Reads a *resolved* VisualPreferences dict (post-merge view from
+# IntentRouterService.merge_visual_preferences) and emits a markdown bias
+# block for the Director user prompt. The Director sees the full 14-type
+# shot catalog (vs the script's 5-type vocabulary) so the family→shot-type
+# mapping is richer than the Slice B helper. Returns "" when no preference
+# is actively expressed (all None / "auto") — zero token cost on no-op.
+#
+# Director must additionally emit `preference_override_reason` on shots
+# where it goes against a stated preference, so we can audit alignment.
+#
+# Mapping rationale (full Director catalog):
+#   stock_video       → VIDEO_HERO, IMAGE_HERO (no image_prompt → stock)
+#   ai_imagery        → IMAGE_HERO / IMAGE_SPLIT / PRODUCT_HERO with image_prompt
+#   svg_illustrated   → INFOGRAPHIC_SVG, KINETIC_TITLE, ANNOTATION_MAP
+#   motion_graphics   → TEXT_DIAGRAM, PROCESS_STEPS, DATA_STORY,
+#                       EQUATION_BUILD, ANIMATED_ASSET, KINETIC_TEXT
+#   app_ui_mockup     → DEVICE_MOCKUP
+
+_DIRECTOR_FAMILY_BIAS: Dict[str, Dict[str, str]] = {
+    "stock_video": {
+        "favor": (
+            "VIDEO_HERO, IMAGE_HERO with `video_query` or `image_prompt` "
+            "describing real-world / cinematic / documentary footage"
+        ),
+        "avoid": "VIDEO_HERO and IMAGE_HERO that rely on stock photo / video",
+        # Act-planner aggregation key — multiple families can collapse to the
+        # same style_direction (stock_video + ai_imagery → cinematic_photo);
+        # net bias is summed so contradictions cancel.
+        "act_style_direction": "cinematic_photo",
+    },
+    "ai_imagery": {
+        "favor": (
+            "IMAGE_HERO / IMAGE_SPLIT / PRODUCT_HERO with rich `image_prompt` "
+            "(AI-generated photography via Seedream)"
+        ),
+        "avoid": "AI-generated photo shots (prefer stock or pure motion-graphics types)",
+        "act_style_direction": "cinematic_photo",
+    },
+    "svg_illustrated": {
+        "favor": (
+            "INFOGRAPHIC_SVG, KINETIC_TITLE, ANNOTATION_MAP — pure SVG with "
+            "stroke-dashoffset draw-on, hand-drawn wobble, paper-grain canvas"
+        ),
+        "avoid": "pure-SVG infographic shots",
+        "act_style_direction": "illustrated_infographic",
+    },
+    "motion_graphics": {
+        "favor": (
+            "TEXT_DIAGRAM, PROCESS_STEPS, DATA_STORY, EQUATION_BUILD, "
+            "ANIMATED_ASSET, KINETIC_TEXT — GSAP-heavy motion-graphics types"
+        ),
+        "avoid": "motion-graphics types in favor of photo / video / SVG families",
+        # `kinetic_text` is the closest dedicated direction; `mixed` covers
+        # acts that blend it with other families. Picking the more specific
+        # one for aggregation; the planner's prompt explanation lists both.
+        "act_style_direction": "kinetic_text",
+    },
+    "app_ui_mockup": {
+        "favor": (
+            "DEVICE_MOCKUP — phone / browser / terminal / dashboard UI "
+            "constructed from HTML primitives (NOT stock photos of devices)"
+        ),
+        "avoid": "DEVICE_MOCKUP shots",
+        # DEVICE_MOCKUP lives inside motion-graphics-style acts; the Act
+        # Planner doesn't have a dedicated style_direction for it.
+        "act_style_direction": "mixed",
+    },
+}
+
+
+def build_visual_preferences_director_block(
+    prefs: Optional[Dict[str, Any]],
+    *,
+    for_act_planner: bool = False,
+) -> str:
+    """Build the visual-preferences bias block for the Director user prompt.
+
+    When ``for_act_planner`` is True the block is reframed for pass-1 use:
+    biases the act-level ``style_direction`` field instead of per-shot
+    ``shot_type``. Same family mappings, narrower output.
+
+    Returns "" when no preference is actively set (all None / "auto").
+    """
+    if not prefs:
+        return ""
+    active = {k: v for k, v in prefs.items() if v not in (None, "auto")}
+    if not active:
+        return ""
+
+    favor_lines: List[str] = []
+    avoid_lines: List[str] = []
+    if for_act_planner:
+        # Aggregate per style_direction so contradictions cancel (e.g.
+        # stock_video=high + ai_imagery=no both map to `cinematic_photo` —
+        # net 0 → emit nothing for that direction; per-shot bias still
+        # distinguishes stock vs AI inside the Director's pass-2 plan).
+        style_dir_net: Dict[str, int] = {}
+        for family, v in active.items():
+            if family == "text_density":
+                continue
+            bias = _DIRECTOR_FAMILY_BIAS.get(family)
+            if not bias:
+                continue
+            sd = bias.get("act_style_direction")
+            if not sd:
+                continue
+            delta = 1 if v == "high" else -1 if v == "no" else 0
+            style_dir_net[sd] = style_dir_net.get(sd, 0) + delta
+        for sd, n in sorted(style_dir_net.items()):
+            if n > 0:
+                favor_lines.append(f"- `{sd}` style_direction")
+            elif n < 0:
+                avoid_lines.append(f"- `{sd}` style_direction")
+    else:
+        for family, bias in _DIRECTOR_FAMILY_BIAS.items():
+            v = active.get(family)
+            if v == "high":
+                favor_lines.append(f"- {bias['favor']}")
+            elif v == "no":
+                avoid_lines.append(f"- {bias['avoid']}")
+
+    density = active.get("text_density")
+
+    parts: List[str] = ["\n\n## 🎨 USER VISUAL PREFERENCES (soft bias)"]
+    parts.append(
+        "The user has expressed visual treatment preferences. Honor them when "
+        "content allows; do NOT contort the narrative to fit them — content "
+        "always wins on conflict."
+    )
+
+    if for_act_planner:
+        parts.append(
+            "\nApply these to the act-level `style_direction` field. The "
+            "available values are: `cinematic_photo`, `illustrated_infographic`, "
+            "`product_stage`, `kinetic_text`, `mixed`. Map: "
+            "stock/ai → `cinematic_photo`; svg_illustrated → "
+            "`illustrated_infographic`; motion_graphics → `kinetic_text` or "
+            "`mixed`; app_ui_mockup → `mixed` (DEVICE_MOCKUP lives in motion-"
+            "graphics-style acts). Acts whose narration cleanly fits the "
+            "preference should use it; the rest can pick what content demands."
+        )
+    else:
+        parts.append(
+            "\nApply this to per-shot `shot_type` and `image_prompt` / "
+            "`video_query` choices. Where you go AGAINST a stated preference, "
+            "you MUST add `preference_override_reason` (one short sentence) "
+            "to that shot's JSON explaining why content forced your hand. Do "
+            "NOT silently override."
+        )
+
+    if favor_lines:
+        parts.append("\n**LEAN TOWARD:**")
+        parts.extend(favor_lines)
+    if avoid_lines:
+        parts.append(
+            "\n**LEAN AGAINST** (use only when content genuinely demands):"
+        )
+        parts.extend(avoid_lines)
+
+    if density == "minimal":
+        parts.append(
+            "\n**ON-SCREEN TEXT DENSITY: minimal** — viewer hears narration "
+            "but sees almost no on-screen text. KINETIC_TEXT is **FORBIDDEN** "
+            "(its entire point is on-screen text). LOWER_THIRD vocabulary "
+            "banners are FORBIDDEN. Per-shot `text_elements` ≤ 1 short phrase. "
+            "Headlines on hero shots: ≤ 4 words."
+        )
+    elif density == "low":
+        parts.append(
+            "\n**ON-SCREEN TEXT DENSITY: low** — keep on-screen text light. "
+            "KINETIC_TEXT is **FORBIDDEN** at this density. LOWER_THIRD: max "
+            "1 per 30s. Per-shot `text_elements` ≤ 2 short phrases. Headlines "
+            "≤ 7 words. Narration carries meaning; text is decorative."
+        )
+    elif density == "rich":
+        parts.append(
+            "\n**ON-SCREEN TEXT DENSITY: rich** — on-screen text is welcome. "
+            "Headlines + supporting labels are encouraged where they reinforce "
+            "the narration. KINETIC_TEXT and LOWER_THIRD are freely available."
+        )
+
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Director user prompt template
 # ---------------------------------------------------------------------------
 
@@ -833,6 +1065,12 @@ def build_director_user_prompt(
     quality_tier: str = "",
     target_audience: str = "General/Adult",
     include_music_plan: bool = False,
+    video_type: Optional[str] = None,
+    article_context: Optional[Dict[str, Any]] = None,
+    available_screenshots: Optional[List[Dict[str, Any]]] = None,
+    named_entities: Optional[List[Dict[str, Any]]] = None,
+    web_search_available: bool = False,
+    visual_preferences: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Assemble the Director user prompt from pipeline data."""
     aspect_label = "9:16 portrait" if width < height else "16:9"
@@ -1008,4 +1246,94 @@ def build_director_user_prompt(
             "Expert/professional audiences: dense data layers, faster pacing, domain-specific visuals."
         )
 
+    # ── Video type signal (used by NEWS_RECAP COMPOSITION RULES in the system prompt) ──
+    vt = (video_type or "").strip().lower()
+    if vt:
+        extras.append(f"\n\n**VIDEO TYPE**: `{vt}` — apply the matching composition rules from the system prompt.")
+
+    # ── Article context (only when scrape_url ran successfully) ──
+    if article_context:
+        src_url = (article_context.get("source_url") or "").strip()
+        title = (article_context.get("title") or "").strip()
+        excerpt = (article_context.get("text_excerpt") or "").strip()
+        if excerpt and len(excerpt) > 2000:
+            excerpt = excerpt[:2000].rsplit(" ", 1)[0] + "…"
+        ac_lines = ["\n\n**ARTICLE CONTEXT** (the page the user wants summarized):"]
+        if src_url:
+            ac_lines.append(f"- Source URL: {src_url}")
+        if title:
+            ac_lines.append(f"- Title: {title}")
+        if excerpt:
+            ac_lines.append(f"- Excerpt:\n  \"{excerpt}\"")
+        if len(ac_lines) > 1:
+            extras.append("\n".join(ac_lines))
+
+    # ── Available article screenshots (resolved by ARTICLE_FOCUS shots) ──
+    if available_screenshots:
+        as_lines = [
+            "\n\n**AVAILABLE ARTICLE SCREENSHOTS** (reference these by `screenshot_id` in ARTICLE_FOCUS shots):"
+        ]
+        for s in available_screenshots:
+            if not isinstance(s, dict):
+                continue
+            sid = (s.get("id") or "").strip()
+            if not sid:
+                continue
+            descriptor = s.get("description") or _default_screenshot_descriptor(sid)
+            as_lines.append(f"- `{sid}` — {descriptor}")
+        if len(as_lines) > 1:
+            as_lines.append(
+                "Use ARTICLE_FOCUS shots to display these. Set `template_id: \"article_focus_zoom_pan\"` "
+                "and `template_params.screenshot_id` to the chosen id."
+            )
+            extras.append("\n".join(as_lines))
+
+    # ── Named entities extracted from the script ──
+    if named_entities:
+        ne_lines = [
+            "\n\n**NAMED ENTITIES** (real people, places, organizations mentioned in the script — "
+            "prefer real photos via web search; emit `image_prompt` using the suggested_query):"
+        ]
+        for ent in named_entities[:24]:
+            if not isinstance(ent, dict):
+                continue
+            name = (ent.get("name") or "").strip()
+            if not name:
+                continue
+            kind = (ent.get("kind") or "subject").strip()
+            sq = (ent.get("suggested_query") or name).strip()
+            ne_lines.append(f"- `{name}` ({kind}) → suggested_query: \"{sq}\"")
+        if len(ne_lines) > 1:
+            extras.append("\n".join(ne_lines))
+
+    # ── Web search availability advisory ──
+    if web_search_available:
+        extras.append(
+            "\n\n**WEB SEARCH AVAILABLE**: yes — for real, named entities you MAY add "
+            "`data-img-source=\"web\"` hints to the per-shot HTML the Visual Designer will build, "
+            "or simply phrase `image_prompt` with the entity's name and the pipeline will route "
+            "to Google Images (Serper) automatically when a stock query falls back."
+        )
+
+    # ── User visual preferences (Slice C) ──
+    # Soft per-family bias on shot_type + on-screen text density. Returns ""
+    # when no preference is actively set, so the no-op case adds zero tokens.
+    _vp_block = build_visual_preferences_director_block(visual_preferences)
+    if _vp_block:
+        extras.append(_vp_block)
+
     return base + "".join(extras)
+
+
+def _default_screenshot_descriptor(screenshot_id: str) -> str:
+    """Human-readable hint for a screenshot id when the caller didn't supply one."""
+    sid = (screenshot_id or "").lower()
+    if sid == "above_fold":
+        return "top-of-page screenshot (article header + lede)"
+    if sid == "mid":
+        return "mid-page screenshot (article body / first inline image)"
+    if sid == "footer":
+        return "bottom-of-page screenshot (article tail / related links)"
+    if sid.startswith("inline_"):
+        return f"inline article image #{sid.split('_', 1)[1]}"
+    return "captured page asset"

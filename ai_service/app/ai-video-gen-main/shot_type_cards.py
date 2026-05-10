@@ -1551,6 +1551,61 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
             "Animations should be subtle — the video content is the star, overlays support it.",
         ],
     },
+
+    # ------------------------------------------------------------------
+    # ARTICLE_FOCUS — show the actual scraped article page as evidence,
+    # zoom-pan toward a quote pulled from the article body. ONLY available
+    # for news_recap videos when scrape_url captured page screenshots.
+    # Renders deterministically via the article_focus_zoom_pan template;
+    # the per-shot HTML LLM is bypassed.
+    # ------------------------------------------------------------------
+    "ARTICLE_FOCUS": {
+        "id": "ARTICLE_FOCUS",
+        "name": "Article Focus",
+        "category": "evidence",
+        "description": (
+            "Showcase the source article — the actual web page screenshot from scrape_url — "
+            "with a slow GSAP zoom-pan toward a highlighted quote box. Tells the viewer "
+            "'this is real, here is the source.' Optionally pairs the screenshot with an "
+            "animated pull-quote overlay carrying the verbatim sentence from the article."
+        ),
+        "use_for": (
+            "news_recap videos where a URL was scraped. Use 1–2 ARTICLE_FOCUS shots per "
+            "video — typically one early (above_fold) to anchor the source, and optionally "
+            "one mid-video (mid/footer) to cite a quote."
+        ),
+        "requires_image": False,
+        "requires_video": False,
+        "preferred_domains": ["news_recap", "documentary", "general"],
+        # Renders via the deterministic template registry; no per-shot LLM call.
+        "default_template_id": "article_focus_zoom_pan",
+        "html_template": (
+            "<!-- ARTICLE_FOCUS: rendered by template article_focus_zoom_pan. -->\n"
+            "<!-- The Director sets template_id and template_params; the pipeline -->\n"
+            "<!-- bypasses the per-shot LLM and composes the HTML deterministically. -->\n"
+        ),
+        "script_block": "",
+        "guidelines": [
+            "Set `template_id`: 'article_focus_zoom_pan' on the shot to bypass per-shot LLM.",
+            "Required `template_params`: { screenshot_id, quote_text, highlight_box_pct, accent_color }.",
+            "`screenshot_id` MUST match one of the AVAILABLE ARTICLE SCREENSHOTS in the user prompt "
+            "(typically 'above_fold' for the hero anchor, 'mid' or 'footer' for evidence beats, "
+            "'inline_0..N' for inline article images).",
+            "`quote_text` is the verbatim sentence from the article you want overlaid (≤ 120 chars).",
+            "`highlight_box_pct`: { x_pct, y_pct, w_pct, h_pct } — rect in 0–100 scale to zoom toward. "
+            "Default to {x_pct:5, y_pct:8, w_pct:90, h_pct:50} if you don't have a precise location.",
+            "Best at 3–5s shot duration. Long enough to read the quote; short enough to keep pace.",
+        ],
+        "director_inputs": {
+            "template_id": "article_focus_zoom_pan",
+            "template_params": [
+                "screenshot_id",
+                "quote_text",
+                "highlight_box_pct",
+                "accent_color",
+            ],
+        },
+    },
 }
 
 

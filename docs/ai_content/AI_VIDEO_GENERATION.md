@@ -167,11 +167,18 @@ Same AIVideoPlayer module (copy-pasted — no shared package):
   "video_id": null,
   "reference_files": [
     {"url": "https://...", "name": "diagram.png", "type": "image"}
-  ]
+  ],
+  "visual_preferences": {
+    "stock_video": "high",
+    "svg_illustrated": "no",
+    "text_density": "low"
+  }
 }
 ```
 
 > **Deprecated field**: `visual_style` (`standard` / `illustrated_svg` / `product_showcase`) is still accepted on the request body for API back-compat but **no longer gates behavior**. The Director now picks style per-shot. Old clients sending the field won't break; the pipeline ignores the value. Will be removed in a future major version.
+
+> **Optional `visual_preferences`** (added 2026-05): soft bias on per-family shot selection (`stock_video` / `ai_imagery` / `svg_illustrated` / `motion_graphics` / `app_ui_mockup` each `"no" | "auto" | "high"`) and on-screen text density (`text_density: "minimal" | "low" | "auto" | "rich"`). All keys optional; `null` / missing / `"auto"` are interchangeable. Free-text phrases in the prompt itself (e.g. "use less text", "more SVG diagrams") are also scanned and override slider input on overlap. Full reference: [VISUAL_PREFERENCES.md](./VISUAL_PREFERENCES.md).
 
 **Response**: `StreamingResponse` (Server-Sent Events). The route starts a background task and streams progress events:
 
@@ -453,6 +460,21 @@ All injected by `_ensure_fonts` regardless of tier or shot type. The Director ca
 **SVG filters** in the global `<defs>` block: `#roughen`, `#roughen-strong`.
 
 **Fonts** always loaded: Montserrat (headings), Inter (body), Fira Code (code), **Bebas Neue** (display — no longer gated on illustrated mode).
+
+#### 3.4.5a User-driven visual preferences (sliders + free-text) — 2026-05
+
+Director-owned style is good for coherence, bad for user agency. The visual-preferences layer adds **soft bias** on top: 5 family sliders (`stock_video`, `ai_imagery`, `svg_illustrated`, `motion_graphics`, `app_ui_mockup`) each at `no | auto | high`, plus a 4-level `text_density` knob (`minimal | low | auto | rich`). Two channels feed the same resolved view: structured sliders in Advanced Settings and free-text phrases in the prompt itself ("use more SVG diagrams", "less text on screen"). Free-text wins on overlap.
+
+Resolved preferences are injected at four points in the pipeline:
+
+- **Script LLM** — `build_visual_preferences_script_block` favors specific `visual_type` enums in `beat_outline` and sets a `visual_style` image-style hint.
+- **Act Planner** (super_ultra two-pass) — `build_visual_preferences_director_block(..., for_act_planner=True)` aggregates net bias per `style_direction` enum; opposing family signals cancel.
+- **Director** — `build_visual_preferences_director_block` emits LEAN TOWARD / LEAN AGAINST lists and the `preference_override_reason` contract: shots that go against a preference must include a one-sentence justification.
+- **Per-shot HTML** — `build_visual_preferences_shot_block` emits text-density caps on `minimal` / `low`. A belt-and-braces safety net swaps any `KINETIC_TEXT` the Director still emits to `KINETIC_TITLE` (`low`) or `TEXT_DIAGRAM` (`minimal`) before HTML assembly.
+
+Content always wins on conflict. Preferences are nudges, not quotas. After the Director runs, telemetry buckets the realized shots per family and writes `<run_dir>/visual_preferences_realized.json` (declared vs realized counts + override count + mismatch warnings) which is merged into `extra_metadata.intent_outcomes.visual_preferences_realized` after the HTML stage.
+
+**Full reference**: [VISUAL_PREFERENCES.md](./VISUAL_PREFERENCES.md).
 
 ### 3.4.6 Host (avatar / raw)  — first-class on-screen narrator
 
@@ -1384,6 +1406,19 @@ export interface GenerateVideoRequest {
   reference_files?: ReferenceFile[];
   orientation?: VideoOrientation;
   visual_style?: VisualStyle;  // deprecated — accepted for back-compat, ignored by pipeline
+  visual_preferences?: VisualPreferences;  // 2026-05 — soft bias on Director (see §3.4.5a)
+}
+
+export type FamilyBias = 'no' | 'auto' | 'high';
+export type TextDensity = 'minimal' | 'low' | 'auto' | 'rich';
+
+export interface VisualPreferences {
+  stock_video?: FamilyBias | null;
+  ai_imagery?: FamilyBias | null;
+  svg_illustrated?: FamilyBias | null;
+  motion_graphics?: FamilyBias | null;
+  app_ui_mockup?: FamilyBias | null;
+  text_density?: TextDensity | null;
 }
 ```
 
@@ -1408,6 +1443,8 @@ export interface GenerateVideoRequest {
 
 **Visual Style selector removed (2026-04)**: the old `<OptionBubble label="Style">` that let users pick `standard` / `illustrated` / `product_showcase` has been removed from the UI. The Director now picks per-shot style automatically based on content. See §3.4.
 
+**Visual mix sliders (2026-05)**: at the bottom of the **Advanced** tab in `SettingsPopover.tsx`, the `VisualPreferencesPanel` renders 5 family bias controls (Avoid / Auto / Prefer) plus a 4-level on-screen text density toggle (Minimal / Low / Auto / Rich). The panel collapses to a single "Visual mix · Active" badge in the popover trigger when any control is non-`auto`. The same field is also driven by free-text phrases scanned out of the prompt itself by `IntentRouterService` — see §3.4.5a and [VISUAL_PREFERENCES.md](./VISUAL_PREFERENCES.md) for the full flow.
+
 ### 5.4 History reconstruction
 
 `getRemoteHistory()` calls `GET /external/video/v1/history?limit=20`. The backend returns `RemoteHistoryItem[]` which the frontend maps to `HistoryItem[]`.
@@ -1422,6 +1459,8 @@ const metaQualityTier = typeof meta.quality_tier === 'string' ? meta.quality_tie
 ```
 
 If metadata is missing, it falls back to the default values. This means **old videos (pre-metadata) will show as "standard" mode in history** — not a bug, just the honest default.
+
+**Visual preferences pre-fill (2026-05)**: `getRemoteHistory()` reads `meta.user_selections.visual_preferences` (preferred) or the top-level `meta.visual_preferences` mirror and includes it on the returned `HistoryItem.options`. Clicking a past run in the sidebar runs `handleSelectHistory`, which performs a **focused merge** into the form's `setOptions` — only `visual_preferences` is replaced, the rest of the in-progress form (orientation, voice, prompt, attachments) is preserved. When the past run had no preference, the sliders are reset to the all-auto state.
 
 ### 5.5 AIVideoPlayer / AIContentPlayer
 

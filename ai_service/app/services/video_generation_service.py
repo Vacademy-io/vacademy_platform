@@ -103,6 +103,43 @@ def _estimate_video_cost_usd(
 
 
 
+def _assign_capture_ids(captured_files: List[Dict[str, Any]]) -> None:
+    """Mutate `captured_files` in place, stamping each entry with a stable `id`.
+
+    The Director and the ARTICLE_FOCUS template reference screenshots by role
+    rather than by filename. Filenames produced by web_content_capture_service
+    look like ``{slug}-{run_id}-above-fold.png`` / ``-mid.png`` / ``-footer.png``
+    for the three viewport screenshots and ``{slug}-{run_id}-img{N}.{ext}`` for
+    the inline images.
+
+    Roles assigned:
+      - ``above_fold``         (top-of-page screenshot)
+      - ``mid``                (mid-page screenshot)
+      - ``footer``             (bottom-of-page screenshot)
+      - ``inline_0`` … ``inline_N`` (top-ranked inline images)
+
+    Files whose name matches none of the patterns get ``inline_<idx>`` based on
+    their position in the captured-files list.
+    """
+    inline_idx = 0
+    for f in captured_files:
+        if not isinstance(f, dict):
+            continue
+        # Don't overwrite if upstream already assigned an id.
+        if f.get("id"):
+            continue
+        name = (f.get("name") or "").lower()
+        if "above-fold" in name or "above_fold" in name:
+            f["id"] = "above_fold"
+        elif "footer" in name:
+            f["id"] = "footer"
+        elif name.endswith("-mid.png") or "-mid." in name:
+            f["id"] = "mid"
+        else:
+            f["id"] = f"inline_{inline_idx}"
+            inline_idx += 1
+
+
 class VideoGenerationService:
     """
     Service for AI video generation with stage-based control.
@@ -189,6 +226,7 @@ class VideoGenerationService:
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
+        visual_preferences: Optional[Any] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -379,6 +417,20 @@ class VideoGenerationService:
                 gen_metadata["tts_provider"] = tts_provider
             if voice_id:
                 gen_metadata["voice_id"] = voice_id
+            # Persist the raw visual preference slider state at top-level so
+            # resume / retry can rehydrate it without rummaging through
+            # extra_metadata.user_selections. None-only entries are dropped.
+            if visual_preferences is not None:
+                try:
+                    _vp_dump = (
+                        visual_preferences.model_dump()
+                        if hasattr(visual_preferences, "model_dump")
+                        else dict(visual_preferences)
+                    )
+                    if any(v is not None for v in _vp_dump.values()):
+                        gen_metadata["visual_preferences"] = _vp_dump
+                except Exception:
+                    pass
 
             video_record = self.repository.create(
                 video_id=video_id,
@@ -458,6 +510,7 @@ class VideoGenerationService:
                     host=host,
                     brand_kit_id=brand_kit_id,
                     resolved_saved_avatar=resolved_saved_avatar,
+                    visual_preferences=visual_preferences,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -548,6 +601,7 @@ class VideoGenerationService:
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
         resolved_saved_avatar: Optional[Dict[str, Any]] = None,
+        visual_preferences: Optional[Any] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -585,6 +639,7 @@ class VideoGenerationService:
             "openrouter_key": openrouter_key,
             "pexels_api_keys": settings.pexels_api_keys or "",
             "pixabay_api_keys": settings.pixabay_api_keys or "",
+            "serper_api_keys": getattr(settings, "serper_api_keys", "") or "",
             "runs_dir": work_dir.parent,
             "quality_tier": quality_tier,
         }
@@ -993,6 +1048,61 @@ class VideoGenerationService:
                 except Exception as e:
                     logger.warning(f"[VideoGenService] Cached host_plan unreadable: {e}")
 
+        # ── Visual preferences (Slice A — deterministic, no LLM) ──
+        # Scan the prompt for visual treatment hints, merge with the user's
+        # structured slider input. Free-text wins on overlap (Q4 design rule).
+        # Runs on every path — fresh or resume — and caches to
+        # run_dir/visual_preferences.json. The merged view is mirrored into
+        # extra_metadata.intent_outcomes further below; the raw view is kept
+        # in extra_metadata.user_selections so history can pre-fill sliders
+        # to exactly what the user originally picked.
+        visual_prefs_struct: Dict[str, Any] = {}
+        visual_prefs_from_text: Dict[str, Any] = {}
+        visual_prefs_resolved: Dict[str, Any] = {}
+        try:
+            from .intent_router_service import (
+                extract_visual_preferences_from_text,
+                merge_visual_preferences,
+            )
+            cached_vp = run_dir / "visual_preferences.json"
+            if visual_preferences is None and cached_vp.exists():
+                # Resume / retry with no fresh slider input — reuse cached view.
+                try:
+                    _cached = json.loads(cached_vp.read_text(encoding="utf-8"))
+                    visual_prefs_struct = _cached.get("raw") or {}
+                    visual_prefs_from_text = _cached.get("from_text") or {}
+                    visual_prefs_resolved = _cached.get("resolved") or {}
+                except Exception as e:
+                    logger.warning(f"[VideoGenService] Cached visual_preferences unreadable: {e}")
+            if not visual_prefs_resolved:
+                # Fresh run, OR cache missing on resume — scan + merge.
+                if visual_preferences is not None:
+                    visual_prefs_struct = (
+                        visual_preferences.model_dump()
+                        if hasattr(visual_preferences, "model_dump")
+                        else dict(visual_preferences)
+                    )
+                visual_prefs_from_text = extract_visual_preferences_from_text(prompt or "")
+                visual_prefs_resolved = merge_visual_preferences(
+                    visual_prefs_struct, visual_prefs_from_text
+                )
+                cached_vp.write_text(
+                    json.dumps(
+                        {
+                            "raw": visual_prefs_struct,
+                            "from_text": visual_prefs_from_text,
+                            "resolved": visual_prefs_resolved,
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+            _flagged = {k: v for k, v in visual_prefs_resolved.items() if v is not None}
+            if _flagged:
+                logger.info(f"[VideoGenService] Visual preferences resolved: {_flagged}")
+        except Exception as e:
+            logger.warning(f"[VideoGenService] Visual preferences resolution failed (non-fatal): {e}")
+
         # ── Web capture (only if router enabled scrape_url) ──
         # Artifacts are captured into _scrape_artifacts so we can persist them
         # to extra_metadata.intent_outcomes for later quality analysis (e.g.
@@ -1017,12 +1127,23 @@ class VideoGenerationService:
                     # metadata column lean while still preserving enough excerpt
                     # to judge whether the scrape captured the article body.
                     _captured_files_safe = captured_files if isinstance(captured_files, list) else []
+                    # Stamp each captured file with a stable id so the Director
+                    # and ARTICLE_FOCUS template can reference screenshots by
+                    # role ("above_fold", "mid", "footer", "inline_0"…) instead
+                    # of fragile slug-prefixed filenames.
+                    _assign_capture_ids(_captured_files_safe)
                     _scrape_artifacts = {
                         "urls_attempted": urls,
                         "files_captured": _captured_files_safe,
                         "files_count": len(_captured_files_safe),
-                        "screenshot_count": sum(1 for f in _captured_files_safe if "screenshot" in (f.get("name") or "")),
-                        "inline_image_count": sum(1 for f in _captured_files_safe if "screenshot" not in (f.get("name") or "")),
+                        "screenshot_count": sum(
+                            1 for f in _captured_files_safe
+                            if (f.get("id") or "") in ("above_fold", "mid", "footer")
+                        ),
+                        "inline_image_count": sum(
+                            1 for f in _captured_files_safe
+                            if str(f.get("id") or "").startswith("inline_")
+                        ),
                         "text_chars": len(captured_text_context or ""),
                         "text_excerpt": (captured_text_context or "")[:4000],
                     }
@@ -1102,6 +1223,11 @@ class VideoGenerationService:
                     "input_video_audio": input_video_audio,
                     "reference_files_count": len(reference_files or []),
                     "routing_overrides": routing_overrides,
+                    # Raw slider input (None for unset families) — used by the
+                    # FE history sidebar to pre-fill sliders to what the user
+                    # originally picked. Free-text overrides land in
+                    # intent_outcomes.visual_preferences_resolved instead.
+                    "visual_preferences": visual_prefs_struct,
                 }
                 _emeta["intent_outcomes"] = {
                     "video_type": video_type_plan.model_dump(),
@@ -1111,6 +1237,11 @@ class VideoGenerationService:
                     ],
                     "scrape_url_artifacts": _scrape_artifacts,
                     "web_search_artifacts": _search_artifacts,
+                    # What the IntentRouter free-text scan picked up (only the
+                    # non-None keys actually fired) and the post-merge view the
+                    # downstream Script LLM / Director will consume in Slices B/C.
+                    "visual_preferences_from_text": visual_prefs_from_text,
+                    "visual_preferences_resolved": visual_prefs_resolved,
                 }
                 # Host snapshot. Inputs come from the HostPlan (post-tier-gate);
                 # outputs (per-shot avatar URLs, fal job ids, total seconds) are
@@ -1181,6 +1312,15 @@ class VideoGenerationService:
             else:
                 from .reference_file_service import ReferenceContext
                 reference_context = ReferenceContext(text_context=extra_text)
+
+        # ── Stash scrape artifacts on ReferenceContext so the Director +
+        # ARTICLE_FOCUS template can look up screenshots by stable id without
+        # poking at extra_metadata.intent_outcomes downstream.
+        if _scrape_artifacts:
+            if reference_context is None:
+                from .reference_file_service import ReferenceContext
+                reference_context = ReferenceContext()
+            reference_context.scrape_artifacts = dict(_scrape_artifacts)
 
         # ── Load indexed input video contexts (if provided) ──
         input_video_contexts = None
@@ -1485,6 +1625,10 @@ class VideoGenerationService:
                     routing_plan=routing_plan.model_dump() if routing_plan else None,
                     video_type_plan=video_type_plan.model_dump() if video_type_plan else None,
                     host_plan=host_plan.model_dump() if host_plan else None,
+                    # Resolved view = structured slider input merged with
+                    # IntentRouter free-text scan (free-text wins on overlap).
+                    # Empty / all-None → pipeline behaves identically to today.
+                    visual_preferences=visual_prefs_resolved or None,
                     progress_callback=_progress_cb,
                     stop_event=stop_event,
                 )
@@ -1809,6 +1953,40 @@ class VideoGenerationService:
                                     )
                         except Exception as _hm_err:
                             logger.warning(f"[VideoGenService] Failed to merge host_outputs.json: {_hm_err}")
+
+                # ── Merge visual_preferences_realized.json into extra_metadata ──
+                # _run_director writes this file alongside the director plan
+                # whenever the user expressed any non-default visual preference.
+                # We copy it into extra_metadata.intent_outcomes.visual_preferences_realized
+                # so history views, dashboards, and offline analysis can read
+                # declared-vs-realized stats without poking at the run_dir.
+                # No-op when the file is absent (no preferences set / older runs).
+                if stage_pipeline_name == "html" and run_dir:
+                    _vp_realized_file = run_dir / "visual_preferences_realized.json"
+                    if _vp_realized_file.exists():
+                        try:
+                            import json as _json_vp
+                            _vp_realized = _json_vp.loads(
+                                _vp_realized_file.read_text(encoding="utf-8")
+                            )
+                            _vrec_vp = self.repository.get_by_video_id(video_id)
+                            _emeta_vp = (_vrec_vp.extra_metadata or {}) if _vrec_vp else {}
+                            _io = _emeta_vp.get("intent_outcomes") or {}
+                            _io["visual_preferences_realized"] = _vp_realized
+                            _emeta_vp["intent_outcomes"] = _io
+                            self.repository.update_metadata(video_id, _emeta_vp)
+                            _fc = _vp_realized.get("family_counts") or {}
+                            _ov = _vp_realized.get("override_count", 0)
+                            _mm = len(_vp_realized.get("mismatches") or [])
+                            logger.info(
+                                f"[VideoGenService] Merged visual_preferences_realized.json: "
+                                f"realized={_fc} overrides={_ov} mismatches={_mm}"
+                            )
+                        except Exception as _vp_merge_err:
+                            logger.warning(
+                                f"[VideoGenService] Failed to merge "
+                                f"visual_preferences_realized.json: {_vp_merge_err}"
+                            )
 
                 # ── Validate required outputs for this stage ──
                 # If the pipeline returned but critical output files are missing,
@@ -2523,6 +2701,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         timeline_data: Any,
         frame_index: int,
         timeline_meta: Optional[Dict[str, Any]] = None,
+        visual_preferences: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Extract run-level + neighbour-level context for the frame-regen LLM.
 
@@ -2585,6 +2764,12 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 })
         if neighbours:
             ctx["neighbours"] = neighbours
+
+        # Slice D: surface user visual preferences so the regen system prompt
+        # can carry the same text-density caps and family bias the original
+        # generation honored. Empty / all-None → ignored downstream.
+        if visual_preferences:
+            ctx["visual_preferences"] = visual_preferences
 
         return ctx
 
@@ -2707,6 +2892,32 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 "\nDo NOT redesign — your edit should feel like the same designer "
                 "produced the surrounding shots."
             )
+
+        # Visual preferences (Slice D) — text-density caps + family hint inherited
+        # from the original run. The regen LLM can't change shot_type meaningfully
+        # (it rewrites HTML in place), so the block we inject is the per-shot
+        # text-density variant. Empty / all-auto → no-op.
+        _vp_regen = context.get("visual_preferences") or {}
+        if _vp_regen:
+            try:
+                if str(self.video_gen_root) not in sys.path:
+                    sys.path.insert(0, str(self.video_gen_root))
+                from prompts import build_visual_preferences_shot_block as _bvpsb  # type: ignore
+                _vp_block = _bvpsb(_vp_regen, target_shot_type or "")
+                if _vp_block:
+                    sections.append(_vp_block)
+            except Exception as _vp_imp_err:
+                # Best-effort — regen continues without the block. Log instead
+                # of swallowing silently so we notice if the helper moves /
+                # gets renamed and the regen path silently drops the bias.
+                # `_build_regen_prompt` doesn't define a method-local logger
+                # like other methods in this file; pull one inline so we don't
+                # NameError on the warning path.
+                import logging as _logging_vp
+                _logging_vp.getLogger(__name__).warning(
+                    f"[VideoGenService] Frame regen visual prefs helper "
+                    f"unavailable (continuing without block): {_vp_imp_err}"
+                )
 
         # Skill catalog — only when we know the target shot type and the registry imports
         if target_shot_type:
@@ -2845,7 +3056,24 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             timeline_meta = (
                 raw["meta"] if isinstance(raw, dict) and isinstance(raw.get("meta"), dict) else {}
             )
-            regen_context = self._build_regen_context(timeline_data, frame_index, timeline_meta)
+            # Slice D: pull resolved visual preferences from extra_metadata.
+            # Prefer the post-merge resolved view (includes free-text overrides
+            # the original prompt expressed); fall back to raw slider state.
+            _vp_regen: Dict[str, Any] = {}
+            try:
+                _video_rec = self.repository.get_by_video_id(video_id)
+                _emeta = (_video_rec.extra_metadata or {}) if _video_rec else {}
+                _vp_regen = (
+                    (_emeta.get("intent_outcomes") or {}).get("visual_preferences_resolved")
+                    or _emeta.get("visual_preferences")
+                    or {}
+                )
+            except Exception:
+                _vp_regen = {}
+            regen_context = self._build_regen_context(
+                timeline_data, frame_index, timeline_meta,
+                visual_preferences=_vp_regen,
+            )
             system_prompt, user_message = self._build_regen_prompt(
                 regen_context, original_html, user_prompt
             )
@@ -3018,6 +3246,87 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 "message": "Frame updated successfully. Player should reflect changes immediately."
             }
 
+
+    async def delete_video_frame(
+        self,
+        video_id: str,
+        entry_id: Optional[str] = None,
+        frame_index: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Remove a frame from the timeline and save back to S3.
+
+        Lookup precedence:
+          1. `entry_id` (preferred — order-independent)
+          2. `frame_index` (fallback for callers that only know position)
+
+        meta.total_duration is intentionally NOT recomputed here. Trimming the
+        timeline's effective length is a separate concern (the renderer reads
+        total_duration to drive the audio mix, and silently shrinking it could
+        cut a still-active narration sentence). If the caller wants to shrink,
+        they should call /frame/update on remaining entries or update meta
+        explicitly.
+
+        meta.sentences[] is also left as-is — sentences are tied to the global
+        narration audio, not to entries.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        if entry_id is None and frame_index is None:
+            raise ValueError("Either entry_id or frame_index must be provided.")
+
+        from ..config import get_settings
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data, entries, meta, is_wrapped, key, file_path = self._load_timeline(video_id, temp_dir)
+            settings = get_settings()
+            bucket = settings.aws_bucket_name
+
+            removed_idx = -1
+            removed_id: Optional[str] = None
+
+            if entry_id is not None:
+                for i, e in enumerate(entries):
+                    if e.get("id") == entry_id:
+                        removed_idx = i
+                        removed_id = entry_id
+                        break
+                if removed_idx < 0 and frame_index is not None:
+                    logger.warning(
+                        "delete_video_frame: entry_id %s not found, falling back to frame_index %d",
+                        entry_id, frame_index,
+                    )
+
+            if removed_idx < 0 and frame_index is not None:
+                if frame_index < 0 or frame_index >= len(entries):
+                    raise IndexError(
+                        f"Frame index {frame_index} out of range (0-{len(entries)-1})"
+                    )
+                removed_idx = frame_index
+                removed_id = entries[frame_index].get("id")
+
+            if removed_idx < 0:
+                raise ValueError(
+                    f"Entry '{entry_id}' not found in video '{video_id}' "
+                    "and no fallback frame_index provided."
+                )
+
+            entries.pop(removed_idx)
+
+            if is_wrapped:
+                data["entries"] = entries
+            else:
+                data = entries
+
+            self._save_timeline(data, file_path, bucket, key)
+
+            return {
+                "status": "success",
+                "video_id": video_id,
+                "entry_id": removed_id,
+                "frame_index": removed_idx,
+                "message": "Frame deleted successfully.",
+            }
 
     async def add_video_frame(
         self,

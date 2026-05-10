@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+import re
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -312,3 +313,158 @@ def apply_overrides(plan: RoutingPlan, overrides: Optional[Dict[str, Any]]) -> R
             logger.warning(f"[IntentRouter] Bad config override {cfg_overrides}: {e}")
 
     return plan
+
+
+# ---------------------------------------------------------------------------
+# Visual preferences — free-text scanner (deterministic, no LLM).
+#
+# Slice A of user-driven visual treatment steering. Scans the user's prompt
+# for phrases that imply a per-family bias (5 families) or text-density
+# preference (4 levels) and returns a partial dict matching the
+# VisualPreferences schema. Unmentioned families come back as None so the
+# caller can merge with structured slider input (free-text wins on overlap).
+# ---------------------------------------------------------------------------
+
+# Family patterns. Each match contributes "high" by default; if the 24-char
+# window before the match contains a negation (no/not/less/without/skip/avoid/
+# fewer/minimal/minimize) the polarity flips to "no" instead.
+_FAMILY_PATTERNS: List[Tuple[str, "re.Pattern[str]"]] = [
+    ("stock_video", re.compile(
+        r"\b(?:stock(?:\s+(?:video|footage|clips?))?|real\s+footage|"
+        r"live\s+video|actual\s+footage|use\s+videos?)\b",
+        re.IGNORECASE,
+    )),
+    ("ai_imagery", re.compile(
+        r"\b(?:ai[\s-]?generated(?:\s+(?:images?|photos?|art|imagery))?|"
+        r"generated\s+(?:images?|photos?|art|imagery)|ai\s+images?)\b",
+        re.IGNORECASE,
+    )),
+    ("svg_illustrated", re.compile(
+        r"\b(?:infographics?|illustrated|illustrations?|svgs?|diagrams?|"
+        r"hand[\s-]?drawn|sketch(?:ed|es)?)\b",
+        re.IGNORECASE,
+    )),
+    ("motion_graphics", re.compile(
+        r"\b(?:motion[\s-]?graphics?|animated\s+charts?|kinetic|"
+        r"animated\s+typography|chart\s+animations?|process\s+animations?)\b",
+        re.IGNORECASE,
+    )),
+    ("app_ui_mockup", re.compile(
+        r"\b(?:app\s+(?:ui|interface|mockups?|screens?)|"
+        r"mobile\s+app|web\s+app|screen\s+recording|"
+        r"(?:interface|ui|device)\s+mockups?|"
+        r"dashboard\s+(?:mockup|screenshot)|product\s+ui)\b",
+        re.IGNORECASE,
+    )),
+]
+
+# Negation tokens that flip a family match from "high" to "no". Anchored to
+# end-of-string so we only match when the negation is RIGHT before the
+# keyword (windowed lookbehind is faked by slicing 24 chars before the match
+# and running this pattern on the slice).
+_NEGATION_PATTERN = re.compile(
+    r"\b(?:no|not|less|without|skip|avoid|fewer|minim(?:al|ize|um))\s*$",
+    re.IGNORECASE,
+)
+
+
+def _scan_family_preference(text: str, pattern: "re.Pattern[str]") -> Optional[str]:
+    """Return 'high', 'no', or None for one family.
+
+    'high' = pattern matched at least once without a negation in the 24-char
+             window before the match.
+    'no'   = every match was preceded by a negation (and at least one matched).
+    None   = pattern never matched.
+
+    If both polarities appear (e.g. "more SVG but less stock"), 'high' wins —
+    the user expressed positive interest at least once, and the negation
+    likely refers to a different family.
+    """
+    found_high = False
+    found_no = False
+    for m in pattern.finditer(text):
+        window_start = max(0, m.start() - 24)
+        prefix = text[window_start:m.start()]
+        if _NEGATION_PATTERN.search(prefix):
+            found_no = True
+        else:
+            found_high = True
+    if found_high:
+        return "high"
+    if found_no:
+        return "no"
+    return None
+
+
+# Text-density patterns. Explicit phrase list per level — the generic
+# negation logic does NOT apply because phrases like "no text" are themselves
+# the keyword (would otherwise double-process). First-matching-level wins.
+_TEXT_DENSITY_PATTERNS: List[Tuple[str, "re.Pattern[str]"]] = [
+    ("minimal", re.compile(
+        r"\b(?:no\s+text|without\s+text|zero\s+text|text[\s-]?free|"
+        r"just\s+visuals|let\s+(?:the\s+)?visuals\s+speak|"
+        r"visuals\s+only)\b",
+        re.IGNORECASE,
+    )),
+    ("low", re.compile(
+        r"\b(?:less\s+text|minimal[\s-]text|minimize\s+text|"
+        r"fewer\s+words(?:\s+on\s+screen)?|reduce\s+text|"
+        r"too\s+much\s+text|cut\s+down\s+(?:on\s+)?text)\b",
+        re.IGNORECASE,
+    )),
+    ("rich", re.compile(
+        r"\b(?:lots?\s+of\s+text|rich\s+text|more\s+text\s+on\s+screen|"
+        r"title\s+cards\s+everywhere|text[\s-]?heavy)\b",
+        re.IGNORECASE,
+    )),
+]
+
+
+def extract_visual_preferences_from_text(prompt: str) -> Dict[str, Optional[str]]:
+    """Scan prompt for visual treatment hints. Pure, deterministic, no LLM.
+
+    Returns a dict with the same keys as VisualPreferences. Keys with no
+    detected phrase map to None (the caller's structured slider wins on
+    those keys; free-text wins on the keys this function fills in).
+    """
+    out: Dict[str, Optional[str]] = {
+        "stock_video": None,
+        "ai_imagery": None,
+        "svg_illustrated": None,
+        "motion_graphics": None,
+        "app_ui_mockup": None,
+        "text_density": None,
+    }
+    if not prompt:
+        return out
+    for family, pat in _FAMILY_PATTERNS:
+        out[family] = _scan_family_preference(prompt, pat)
+    for level, pat in _TEXT_DENSITY_PATTERNS:
+        if pat.search(prompt):
+            out["text_density"] = level
+            break
+    return out
+
+
+def merge_visual_preferences(
+    structured: Optional[Dict[str, Optional[str]]],
+    from_text: Dict[str, Optional[str]],
+) -> Dict[str, Optional[str]]:
+    """Merge UI sliders with the free-text scan. Free-text wins on overlap.
+
+    Keys present (non-None) in ``from_text`` overwrite the same key in
+    ``structured``; keys absent (None) in ``from_text`` keep the structured
+    value. The result has every VisualPreferences key set to either a value
+    or None (no missing keys).
+    """
+    keys = (
+        "stock_video", "ai_imagery", "svg_illustrated",
+        "motion_graphics", "app_ui_mockup", "text_density",
+    )
+    base = dict(structured or {})
+    merged: Dict[str, Optional[str]] = {k: base.get(k) for k in keys}
+    for k in keys:
+        v = from_text.get(k)
+        if v is not None:
+            merged[k] = v
+    return merged

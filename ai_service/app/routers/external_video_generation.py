@@ -27,6 +27,7 @@ from ..schemas.video_generation import (
     RegenerateFrameResponse,
     UpdateFrameRequest,
     AddFrameRequest,
+    DeleteFrameRequest,
     AddAudioTrackRequest,
     UpdateAudioTrackRequest,
     DeleteAudioTrackRequest,
@@ -324,6 +325,7 @@ async def generate_video_external(
                         routing_overrides=p.routing_overrides,
                         host=p.host,
                         brand_kit_id=getattr(p, "brand_kit_id", None),
+                        visual_preferences=getattr(p, "visual_preferences", None),
                     ):
                         await q.put(json.dumps(event))
             except asyncio.CancelledError:
@@ -604,6 +606,7 @@ async def resume_video_external(
                         background_music_enabled=_meta.get("background_music_enabled"),
                         background_music_volume=_meta.get("background_music_volume"),
                         sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
+                        visual_preferences=_meta.get("visual_preferences"),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -730,6 +733,7 @@ async def retry_video_external(
                     background_music_enabled=_meta.get("background_music_enabled"),
                     background_music_volume=_meta.get("background_music_volume"),
                     sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
+                    visual_preferences=_meta.get("visual_preferences"),
                 ):
                     await q.put(json.dumps(event))
         except Exception as exc:
@@ -995,6 +999,42 @@ async def update_frame_external(
             exit_time=payload.exit_time,
             z=payload.z,
             entry_id=payload.entry_id,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except IndexError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/frame/delete",
+    summary="Delete a frame from the timeline (External)"
+)
+async def delete_frame_external(
+    payload: DeleteFrameRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key)
+):
+    """
+    Remove a frame from the timeline. Prefer `entry_id` (order-independent);
+    `frame_index` is accepted as a fallback.
+
+    meta.total_duration and meta.sentences[] are not modified — trimming the
+    timeline's effective length is a separate concern, since the renderer
+    drives audio mixing off total_duration and sentences are tied to the
+    global narration audio rather than to entries.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    try:
+        result = await service.delete_video_frame(
+            video_id=payload.video_id,
+            entry_id=payload.entry_id,
+            frame_index=payload.frame_index,
         )
         return result
     except ValueError as e:

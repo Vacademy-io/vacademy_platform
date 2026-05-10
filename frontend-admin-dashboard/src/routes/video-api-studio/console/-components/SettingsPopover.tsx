@@ -71,6 +71,11 @@ import {
     AvatarQuality,
     HostConfig,
     HostType,
+    VisualPreferences,
+    FamilyBias,
+    TextDensity,
+    VISUAL_PREFERENCE_FAMILIES,
+    hasActiveVisualPreferences,
 } from '../../-services/video-generation';
 import {
     type VideoBrandingConfig,
@@ -964,6 +969,13 @@ function SettingsBody({
                         generation. Better visual precision; small extra LLM cost.
                     </p>
                 </div>
+
+                <VisualPreferencesPanel
+                    prefs={options.visual_preferences}
+                    qualityTier={options.quality_tier || 'ultra'}
+                    captionsEnabled={options.captions_enabled}
+                    onChange={(next) => update('visual_preferences', next)}
+                />
             </TabsContent>
         </Tabs>
     );
@@ -988,6 +1000,187 @@ function Field({
             </Label>
             {children}
             {helper && <p className="text-[10px] text-muted-foreground">{helper}</p>}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// VisualPreferencesPanel — Slice E
+// 5 family bias controls (Avoid / Auto / Prefer) + 1 text-density control
+// (Minimal / Low / Auto / Rich). Below `premium`, the Director doesn't run,
+// so we surface a hint that family bias is applied via the script LLM only.
+// ─────────────────────────────────────────────────────────────────────────
+
+const FAMILY_BIAS_OPTIONS: ReadonlyArray<{ value: FamilyBias; label: string }> = [
+    { value: 'no', label: 'Avoid' },
+    { value: 'auto', label: 'Auto' },
+    { value: 'high', label: 'Prefer' },
+];
+
+const TEXT_DENSITY_OPTIONS: ReadonlyArray<{
+    value: TextDensity;
+    label: string;
+    desc: string;
+}> = [
+    { value: 'minimal', label: 'Minimal', desc: 'Title-only on hooks. No body anywhere.' },
+    { value: 'low', label: 'Low', desc: 'Short headlines. Drop subtitle lines.' },
+    { value: 'auto', label: 'Auto', desc: 'Pipeline default — moderate text.' },
+    { value: 'rich', label: 'Rich', desc: 'Full headlines + supporting labels.' },
+];
+
+function VisualPreferencesPanel({
+    prefs,
+    qualityTier,
+    captionsEnabled,
+    onChange,
+}: {
+    prefs: VisualPreferences | undefined;
+    qualityTier: QualityTier;
+    captionsEnabled: boolean;
+    onChange: (next: VisualPreferences | undefined) => void;
+}) {
+    const current: VisualPreferences = prefs ?? {};
+    const isActive = hasActiveVisualPreferences(current);
+    const directorRuns =
+        qualityTier === 'premium' || qualityTier === 'ultra' || qualityTier === 'super_ultra';
+    const textDensity: TextDensity = (current.text_density ?? 'auto') as TextDensity;
+    const showCaptionsHint =
+        (textDensity === 'minimal' || textDensity === 'low') && !captionsEnabled;
+
+    function setBias(family: keyof Omit<VisualPreferences, 'text_density'>, value: FamilyBias) {
+        const next: VisualPreferences = { ...current };
+        // Drop the field entirely on "auto" so the persisted slider state stays
+        // small and the BE distinguishes "explicitly auto" from "untouched"
+        // only via "user explicitly clicked" telemetry — not necessary for v1.
+        if (value === 'auto') {
+            delete next[family];
+        } else {
+            next[family] = value;
+        }
+        onChange(hasActiveVisualPreferences(next) ? next : undefined);
+    }
+
+    function setDensity(value: TextDensity) {
+        const next: VisualPreferences = { ...current };
+        if (value === 'auto') {
+            delete next.text_density;
+        } else {
+            next.text_density = value;
+        }
+        onChange(hasActiveVisualPreferences(next) ? next : undefined);
+    }
+
+    function reset() {
+        onChange(undefined);
+    }
+
+    return (
+        <div className="mt-1 space-y-2 rounded-md border border-dashed border-muted-foreground/20 p-2.5">
+            <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-1.5 text-xs">
+                    <Palette className="size-3.5 text-muted-foreground" />
+                    Visual mix
+                    {isActive && (
+                        <Badge
+                            variant="outline"
+                            className="h-4 px-1 text-[9px] uppercase tracking-wide"
+                        >
+                            Active
+                        </Badge>
+                    )}
+                </Label>
+                {isActive && (
+                    <button
+                        type="button"
+                        onClick={reset}
+                        className="text-[10px] text-muted-foreground underline-offset-2 hover:underline"
+                    >
+                        Reset
+                    </button>
+                )}
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+                Soft hints only. Free-text phrases in your prompt (e.g.{' '}
+                <span className="font-mono">{'"more SVG diagrams"'}</span>) override these.
+                {!directorRuns && (
+                    <>
+                        {' '}
+                        On <span className="font-medium">{qualityTier}</span>, family bias is
+                        applied via the script. Director-level bias starts at Premium.
+                    </>
+                )}
+            </p>
+
+            {/* Family sliders */}
+            <div className="space-y-1.5 pt-0.5">
+                {VISUAL_PREFERENCE_FAMILIES.map(({ key, label }) => {
+                    const value = (current[key] ?? 'auto') as FamilyBias;
+                    return (
+                        <div key={key} className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-muted-foreground">{label}</span>
+                            <div className="inline-flex rounded-md border bg-muted p-0.5">
+                                {FAMILY_BIAS_OPTIONS.map((opt) => {
+                                    const active = value === opt.value;
+                                    return (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => setBias(key, opt.value)}
+                                            className={`rounded-sm px-2 py-0.5 text-[10px] uppercase tracking-wide transition-colors ${
+                                                active
+                                                    ? 'bg-background text-foreground shadow-sm'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+            {/* Text density slider */}
+            <div className="space-y-1 pt-1.5">
+                <Label className="flex items-center gap-1.5 text-[11px]">
+                    <TypeIcon className="size-3.5 text-muted-foreground" />
+                    On-screen text
+                </Label>
+                <div className="flex w-full rounded-md border bg-muted p-0.5">
+                    {TEXT_DENSITY_OPTIONS.map((opt) => {
+                        const active = textDensity === opt.value;
+                        return (
+                            <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => setDensity(opt.value)}
+                                title={opt.desc}
+                                className={`flex-1 rounded-sm px-2 py-1 text-[10px] transition-colors ${
+                                    active
+                                        ? 'bg-background text-foreground shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                            >
+                                {opt.label}
+                            </button>
+                        );
+                    })}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                    {TEXT_DENSITY_OPTIONS.find((o) => o.value === textDensity)?.desc}
+                </p>
+                {showCaptionsHint && (
+                    <p className="flex items-start gap-1 rounded bg-amber-500/10 px-1.5 py-1 text-[10px] text-amber-700 dark:text-amber-400">
+                        <Captions className="mt-0.5 size-3 shrink-0" />
+                        <span>
+                            Captions are <strong>recommended</strong> at this density — your video
+                            will rely on narration to carry meaning.
+                        </span>
+                    </p>
+                )}
+            </div>
         </div>
     );
 }

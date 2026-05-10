@@ -205,6 +205,7 @@ interface HistorySnapshot {
     entryTransitions: Record<string, TransitionPair>;
     dirtyEntryIds: string[];
     newEntryIds: string[];
+    deletedEntryIds: string[];
 }
 
 export interface VideoEditorState {
@@ -240,6 +241,10 @@ export interface VideoEditorState {
     dirtyEntryIds: string[];
     /** IDs of entries that are brand-new and have never been saved to the backend. */
     newEntryIds: string[];
+    /** IDs of previously-persisted entries the user has deleted in this session
+     *  but has not yet saved. saveChanges() calls /frame/delete for each one
+     *  before processing adds/updates so frame indices don't shift mid-save. */
+    deletedEntryIds: string[];
 
     // Extra audio tracks (background music, SFX, etc.)
     audioTracks: AudioTrack[];
@@ -400,6 +405,7 @@ function snapshot(s: VideoEditorState): HistorySnapshot {
         entryTransitions: s.entryTransitions,
         dirtyEntryIds: s.dirtyEntryIds,
         newEntryIds: s.newEntryIds,
+        deletedEntryIds: s.deletedEntryIds,
     };
 }
 
@@ -428,6 +434,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     isPreviewMode: false,
     dirtyEntryIds: [],
     newEntryIds: [],
+    deletedEntryIds: [],
     audioTracks: [],
     entryTransforms: {},
     entryBackgrounds: {},
@@ -458,6 +465,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             isPreviewMode: false,
             dirtyEntryIds: [],
             newEntryIds: [],
+            deletedEntryIds: [],
             audioTracks: [],
             entryTransforms: {},
             entryBackgrounds: {},
@@ -612,12 +620,20 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             delete nextB[entryId];
             const nextX = { ...s.entryTransitions };
             delete nextX[entryId];
+            // If the entry is brand-new (never saved), removing it is purely
+            // local — no server-side counterpart to delete. Otherwise it was
+            // previously persisted, so we have to send a /frame/delete on save.
+            const isNew = s.newEntryIds.includes(entryId);
             return {
                 ...pushPast(s),
                 entries: s.entries.filter((e) => e.id !== entryId),
                 selectedEntryId: s.selectedEntryId === entryId ? null : s.selectedEntryId,
                 dirtyEntryIds: s.dirtyEntryIds.filter((id) => id !== entryId),
                 newEntryIds: s.newEntryIds.filter((id) => id !== entryId),
+                deletedEntryIds:
+                    isNew || s.deletedEntryIds.includes(entryId)
+                        ? s.deletedEntryIds
+                        : [...s.deletedEntryIds, entryId],
                 entryTransforms: nextT,
                 entryBackgrounds: nextB,
                 entryTransitions: nextX,
@@ -843,6 +859,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entryTransitions: prev.entryTransitions,
                 dirtyEntryIds: prev.dirtyEntryIds,
                 newEntryIds: prev.newEntryIds,
+                deletedEntryIds: prev.deletedEntryIds,
             };
         });
     },
@@ -860,6 +877,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entryTransitions: next.entryTransitions,
                 dirtyEntryIds: next.dirtyEntryIds,
                 newEntryIds: next.newEntryIds,
+                deletedEntryIds: next.deletedEntryIds,
             };
         });
     },
@@ -880,6 +898,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             entries,
             dirtyEntryIds,
             newEntryIds,
+            deletedEntryIds,
             entryTransforms,
             entryBackgrounds,
             entryTransitions,
@@ -894,7 +913,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 !!entryTransitions[e.id]
         );
 
-        if (toSave.length === 0) return;
+        if (toSave.length === 0 && deletedEntryIds.length === 0) return;
 
         set({ isSaving: true });
 
@@ -902,6 +921,27 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             if (!apiKey) {
                 set({ isSaving: false });
                 throw new Error('No API key configured — changes were not saved to the server.');
+            }
+
+            // Process deletions first so frame indices used by later updates
+            // refer to the post-deletion timeline. Delete by entry_id (order-
+            // independent), so the order within deletedEntryIds doesn't matter.
+            for (const entryId of deletedEntryIds) {
+                const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/frame/delete`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Institute-Key': apiKey,
+                    },
+                    body: JSON.stringify({
+                        video_id: videoId,
+                        entry_id: entryId,
+                    }),
+                });
+                if (!res.ok) {
+                    const text = await res.text().catch(() => res.statusText);
+                    throw new Error(`Delete frame failed (${entryId}): ${text}`);
+                }
             }
 
             // Send to backend sequentially to avoid S3 concurrent-write race (C26).
@@ -982,6 +1022,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 entryTransitions: {},
                 dirtyEntryIds: [],
                 newEntryIds: [], // all new entries are now persisted
+                deletedEntryIds: [], // server-side deletions completed above
                 past: [],
                 future: [],
                 isSaving: false,

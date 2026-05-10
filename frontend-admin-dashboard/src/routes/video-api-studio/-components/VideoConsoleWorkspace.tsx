@@ -1327,6 +1327,25 @@ export function VideoConsoleWorkspace({
         async (item: HistoryItem) => {
             setSelectedHistoryId(item.video_id);
 
+            // Pre-fill the form's visual_preferences sliders from this past
+            // run so "make a similar one" is one click away. Narrow merge —
+            // we deliberately do NOT bulldoze the rest of the in-progress
+            // form (orientation, voice, prompt, attachments, …) so the user
+            // can browse history without losing what they were composing.
+            // When the past run had no preference set, we clear the sliders
+            // back to the all-auto state.
+            const itemPrefs = item.options?.visual_preferences;
+            setOptions((prev) =>
+                itemPrefs
+                    ? { ...prev, visual_preferences: itemPrefs }
+                    : (() => {
+                          if (!prev.visual_preferences) return prev;
+                          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                          const { visual_preferences: _drop, ...rest } = prev;
+                          return rest;
+                      })()
+            );
+
             // If we have URLs locally, use them directly
             if (item.html_url && (item.audio_url || !needsAudio(item.content_type))) {
                 setCurrentGeneration({

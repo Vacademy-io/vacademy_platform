@@ -13,8 +13,13 @@ import {
     ArrowDown,
     Shapes,
     Plus,
+    Upload,
+    Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useVideoEditorStore } from './stores/video-editor-store';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { getUserId } from '@/utils/userDetails';
 import {
     LayerNode,
     LayerKind,
@@ -522,9 +527,10 @@ function NodeInspector({ node, entryHtml, apply }: NodeInspectorProps) {
             )}
 
             {(node.kind === 'image' || node.kind === 'video') && (
-                <Field label="Source URL">
-                    <ControlledTextInput
+                <Field label="Source">
+                    <MediaSourceField
                         value={node.attrs.src ?? ''}
+                        kind={node.kind}
                         onCommit={(v) => setAttr('src', v || null)}
                     />
                 </Field>
@@ -613,6 +619,76 @@ function NodeInspector({ node, entryHtml, apply }: NodeInspectorProps) {
                     onCommit={(v) => setAttr('class', v || null)}
                 />
             </Field>
+        </div>
+    );
+}
+
+function MediaSourceField({
+    value,
+    kind,
+    onCommit,
+}: {
+    value: string;
+    kind: 'image' | 'video';
+    onCommit: (v: string) => void;
+}) {
+    const { uploadFile, getPublicUrl } = useFileUpload();
+    const inputRef = useRef<HTMLInputElement | null>(null);
+    const [uploading, setUploading] = useState(false);
+
+    const onPick = () => inputRef.current?.click();
+
+    const onFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setUploading(true);
+        try {
+            const fileId = await uploadFile({
+                file,
+                setIsUploading: () => {},
+                userId: getUserId(),
+                source: 'VIDEO_EDITOR_MEDIA',
+                sourceId: 'ADMIN',
+                publicUrl: true,
+            });
+            if (!fileId) throw new Error('Upload failed');
+            const url = await getPublicUrl(fileId as string);
+            if (!url) throw new Error('Failed to resolve public URL');
+            onCommit(url);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Upload failed');
+        } finally {
+            setUploading(false);
+            if (inputRef.current) inputRef.current.value = '';
+        }
+    };
+
+    return (
+        <div className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
+                <ControlledTextInput value={value} onCommit={onCommit} />
+            </div>
+            <button
+                type="button"
+                onClick={onPick}
+                disabled={uploading}
+                title={`Upload ${kind}`}
+                className="flex h-[26px] shrink-0 items-center gap-1 rounded border border-gray-300 bg-white px-2 text-[10px] text-gray-600 hover:border-indigo-300 hover:text-indigo-600 disabled:opacity-50"
+            >
+                {uploading ? (
+                    <Loader2 className="size-3 animate-spin" />
+                ) : (
+                    <Upload className="size-3" />
+                )}
+                {uploading ? 'Uploading' : 'Upload'}
+            </button>
+            <input
+                ref={inputRef}
+                type="file"
+                accept={kind === 'image' ? 'image/*' : 'video/*'}
+                className="hidden"
+                onChange={onFile}
+            />
         </div>
     );
 }

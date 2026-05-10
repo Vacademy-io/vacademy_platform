@@ -155,6 +155,104 @@ def extract_subjects(
     return mapping, valid_subjects
 
 
+_NAMED_ENTITY_SYSTEM_PROMPT = (
+    "You are a research assistant for a news/explainer video pipeline. Given a "
+    "narration script, extract the REAL named entities the viewer should see "
+    "real photos of: specific people, places, organizations, products, and "
+    "events. Generic concepts ('the economy', 'a teacher', 'our planet') are "
+    "NOT named entities and must be excluded.\n\n"
+    "For each entity emit a search-engine-friendly `suggested_query` that an "
+    "image search would resolve to a relevant news/wire photo. Add disambiguating "
+    "context (year, role, event) when the bare name is ambiguous.\n\n"
+    "Examples (good):\n"
+    "  - 'Donald Trump' → suggested_query: 'Donald Trump president 2026'\n"
+    "  - 'Strait of Hormuz' → suggested_query: 'Strait of Hormuz aerial naval'\n"
+    "  - 'BBC News' → suggested_query: 'BBC News studio newsroom'\n"
+    "Examples (skip — too generic):\n"
+    "  - 'a soldier', 'the economy', 'a tanker' (no specific name)\n\n"
+    "Return JSON only: {\"entities\": [{\"name\": \"...\", \"kind\": \"person|place|org|product|event\", "
+    "\"suggested_query\": \"...\"}]}. No commentary, no markdown fences. "
+    "Return at most 10 entities, ordered by importance to the story. "
+    "If the script has no clear named entities, return {\"entities\": []}."
+)
+
+
+def extract_named_entities_from_script(
+    script_text: str,
+    llm_chat: Any,
+    *,
+    max_entities: int = 10,
+    max_chars: int = 6000,
+) -> List[Dict[str, Any]]:
+    """Run a Gemini Flash call to extract real named entities from a narration script.
+
+    Used by the Director context-assembly path to give the Director the list of
+    proper-noun subjects in the script, so it can plan IMAGE_HERO / IMAGE_SPLIT
+    shots with real photos via Google Image search (Serper).
+
+    Args:
+        script_text: the full narration text the Visual Designer will animate.
+        llm_chat: a callable matching `OpenRouterClient.chat(messages, ...)`
+                  returning (raw_text, usage_dict).
+        max_entities: cap on entities returned (top-N by LLM ranking).
+        max_chars: cap on script length sent to the LLM (token budget guard).
+
+    Returns:
+        list of {name, kind, suggested_query}. Empty list on any parse error
+        or LLM failure (caller treats as "no named entities" and proceeds).
+    """
+    if not script_text or not isinstance(script_text, str):
+        return []
+    text = script_text.strip()
+    if not text:
+        return []
+    if len(text) > max_chars:
+        text = text[:max_chars].rsplit(" ", 1)[0]
+
+    user_prompt = "Script:\n" + text
+
+    try:
+        raw, _usage = llm_chat(
+            messages=[
+                {"role": "system", "content": _NAMED_ENTITY_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.1,
+            max_tokens=1500,
+        )
+    except Exception as e:
+        print(f"   ⚠️ Named-entity extractor LLM call failed: {e} — proceeding without entity hints")
+        return []
+
+    parsed = _parse_subjects_json(raw)
+    if not parsed:
+        return []
+    items = parsed.get("entities") or parsed.get("subjects") or []
+    if not isinstance(items, list):
+        return []
+
+    out: List[Dict[str, Any]] = []
+    seen_names: set = set()
+    for ent in items:
+        if not isinstance(ent, dict):
+            continue
+        name = (ent.get("name") or "").strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in seen_names:
+            continue
+        seen_names.add(key)
+        kind = (ent.get("kind") or "subject").strip().lower()
+        if kind not in ("person", "place", "org", "product", "event", "subject"):
+            kind = "subject"
+        sq = (ent.get("suggested_query") or name).strip()
+        out.append({"name": name, "kind": kind, "suggested_query": sq})
+        if len(out) >= max_entities:
+            break
+    return out
+
+
 def _parse_subjects_json(raw: str) -> Optional[Dict[str, Any]]:
     """Parse the LLM's JSON output. Tolerates markdown fences and bare lists."""
     if not raw or not isinstance(raw, str):

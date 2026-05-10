@@ -126,7 +126,7 @@ public class PlatformRazorpayWebHookService {
                     String orderId = extractPlatformPaymentId(paymentEntity);
                     String razorpayPaymentId = textOrNull(paymentEntity, "id");
                     webHookService.updateWebHook(webhookId, payload, orderId, eventType);
-                    handleCreditPackPayment(orderId, razorpayPaymentId);
+                    fulfillCreditPackPayment(orderId, razorpayPaymentId);
                     break;
 
                 case "payment.failed":
@@ -173,9 +173,28 @@ public class PlatformRazorpayWebHookService {
     // Event handlers
     // ───────────────────────────────────────────────────────────────
 
-    private void handleCreditPackPayment(String platformPaymentId, String razorpayPaymentId) {
+    /**
+     * Mark a platform_payment PAID and run the full fulfillment chain:
+     * grant credits in ai_service, render the GST invoice, send the
+     * confirmation email. Idempotent at every layer (early return if
+     * already PAID; V243 partial UNIQUE on credit_transactions; UNIQUE
+     * on platform_invoice.platform_payment_id).
+     *
+     * Public so the {@code PlatformBillingAdminController.fulfillPayment}
+     * stuck-payment recovery endpoint can reuse this exact code path —
+     * we never want a manually-recovered payment to follow a different
+     * path than a webhook-recovered one.
+     *
+     * @param platformPaymentId  our platform_payment.id (from webhook
+     *                           {@code notes.orderId} or admin path var)
+     * @param razorpayPaymentId  Razorpay's pay_* id (from webhook
+     *                           paymentEntity.id or admin request body).
+     *                           Must not be null — used as the dedup key
+     *                           on credit_transactions.external_reference_id.
+     */
+    public void fulfillCreditPackPayment(String platformPaymentId, String razorpayPaymentId) {
         if (platformPaymentId == null) {
-            log.error("Cannot handle capture: notes.orderId (= platformPaymentId) is missing");
+            log.error("Cannot fulfill: platformPaymentId is missing");
             return;
         }
         Optional<PlatformPayment> opt = paymentRepository.findById(platformPaymentId);
@@ -187,7 +206,7 @@ public class PlatformRazorpayWebHookService {
         if (payment.getPaymentStatus() == PlatformPaymentResult.PAID
                 || payment.getPaymentStatus() == PlatformPaymentResult.REFUNDED
                 || payment.getPaymentStatus() == PlatformPaymentResult.PARTIALLY_REFUNDED) {
-            log.info("platform_payment {} already in terminal state {} — webhook duplicate, no-op",
+            log.info("platform_payment {} already in terminal state {} — no-op",
                     platformPaymentId, payment.getPaymentStatus());
             return;
         }

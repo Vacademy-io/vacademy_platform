@@ -984,6 +984,7 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
             "CONTINUOUS MOTION: apply a 8–12s slow GSAP scale (1→1.05) on the subject and a slow drift on bg-mark.",
             "COLOR ACTS: bg-base starts as light/neutral. bg-texture (halftone layer) can be brand-primary for a bold act 2.",
             "DO NOT move the subject between acts — only the background layers change.",
+            "BRAND-ANCHOR: when a BRAND ANCHOR block appears in the user prompt, slam-text + tracking-label MUST reference the named product/brand. 'THE ICON' in the template is an EXAMPLE — replace with the actual brand (e.g. 'PARLE-G' as slam-text, 'INDIA'S BISCUIT' as tracking-label). For PRODUCT_HERO shots, the subject `<img>` SHOULD use `data-img-source=\"reference\"` with a brand image URL when one is provided.",
         ],
     },
 
@@ -1249,6 +1250,7 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
             "SECTION BADGE: `<div style='overflow:hidden;display:inline-block'><div id='badge' style='background:var(--brand-accent);transform:translateX(-110%)'>1. THE PASS</div></div>` + `gsap.to('#badge',{x:'0%',duration:0.45,ease:'expo.out'});`.",
             "KEEP IT MINIMAL: one phrase, 2-5 words. No body text, no diagrams, no images.",
             "Ideal duration: 1.5-3s. The words should all be visible by the 1s mark.",
+            "BRAND-ANCHOR: when a BRAND ANCHOR block appears in the user prompt, the word(s) MUST reference the named product/brand. The 'GET OUT THERE AND PLAY' template above is an EXAMPLE only — replace with brand-specific copy (e.g. 'PARLE-G — TASTE THE MOMENT'). Never ship generic agency taglines like 'Let's take your brand on an adventure'.",
         ],
     },
 

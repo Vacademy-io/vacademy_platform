@@ -175,6 +175,28 @@ DIRECTOR_SYSTEM_PROMPT = (
     "photo of that entity. Use `image_prompt` keyed by the entity's `suggested_query` (e.g. "
     "image_prompt='Donald Trump president 2026 oval office, news photo, sharp focus').\n\n"
 
+    "**PRODUCT_PROMO COMPOSITION RULES** — apply ONLY if the user prompt's `VIDEO TYPE: product_promo`:\n"
+    "- This is a brand ad / product reel, NOT an explainer. Treat the BRAND ANCHOR assets in "
+    "the user prompt as the hero — every shot must serve the product or the feeling around it.\n"
+    "- LEAN TOWARD cinematic, sensory shot types: PRODUCT_HERO, IMAGE_HERO, VIDEO_HERO, "
+    "ANIMATED_ASSET. Aim for these to cover **≥60% of total duration**.\n"
+    "- LIMIT explainer-coded shots: TEXT_DIAGRAM + KINETIC_TEXT + INFOGRAPHIC_SVG combined "
+    "**≤25% of total duration**. KINETIC_TITLE is **exempt** and ENCOURAGED for tagline beats.\n"
+    "- The OPEN must hook on the product — first shot is PRODUCT_HERO, IMAGE_HERO with the "
+    "brand image, or KINETIC_TITLE landing on the brand name. Never open on a TEXT_DIAGRAM, "
+    "DATA_STORY, or stat block.\n"
+    "- The CLOSE must land on the brand — tagline + product mark + CTA. Plan one final "
+    "KINETIC_TITLE or PRODUCT_HERO shot for this beat.\n"
+    "- For each shot's `image_prompt` / `video_query`, NAME THE PRODUCT/BRAND from the BRAND "
+    "ANCHOR context in the user prompt. Generic queries like 'happy family eating snack' are "
+    "forbidden when the brand is named — write 'Parle-G biscuit dipping in chai' instead.\n"
+    "- ZERO agency-boilerplate copy in any text overlay or `text_elements`. The following "
+    "phrases are FORBIDDEN: 'Advertising 360', 'Let's take your brand on an adventure', "
+    "'The volatile world of marketing', 'Elevate your business', 'Marketing made easy', "
+    "'Marketing without borders', 'Take your brand to the next level', or any variant of "
+    "these meta-marketing slogans. Every line of on-screen text must be specific to the "
+    "actual product.\n\n"
+
     "**RULES**:\n"
     "1. First shot is the hook — pick whichever shot type sells the topic best "
     "(VIDEO_HERO / IMAGE_HERO for real-world openers, KINETIC_TITLE for bold-text hooks, "
@@ -1246,9 +1268,22 @@ def build_director_user_prompt(
             "Expert/professional audiences: dense data layers, faster pacing, domain-specific visuals."
         )
 
-    # ── Video type signal (used by NEWS_RECAP COMPOSITION RULES in the system prompt) ──
+    # ── Video type signal (drives type-specific composition rules) ──
     vt = (video_type or "").strip().lower()
-    if vt:
+    if vt == "product_promo":
+        extras.append(
+            "\n\n**VIDEO TYPE**: `product_promo` (brand ad / product reel). "
+            "Apply the **PRODUCT_PROMO COMPOSITION RULES** from the system prompt: "
+            "cinematic shot types ≥60% of duration, explainer shots ≤25%, no agency "
+            "boilerplate, OPEN and CLOSE on the brand. Treat the BRAND ANCHOR assets "
+            "in the user prompt as the hero of every shot."
+        )
+    elif vt == "news_recap":
+        extras.append(
+            "\n\n**VIDEO TYPE**: `news_recap`. Apply the **NEWS_RECAP COMPOSITION RULES** "
+            "from the system prompt."
+        )
+    elif vt:
         extras.append(f"\n\n**VIDEO TYPE**: `{vt}` — apply the matching composition rules from the system prompt.")
 
     # ── Article context (only when scrape_url ran successfully) ──

@@ -375,6 +375,81 @@ SARVAM_VOICES = {
 # Default Sarvam voice per gender (must be present in SARVAM_VOICES above)
 SARVAM_DEFAULT_VOICE = {"male": "shubh", "female": "ritu"}
 
+# ---------------------------------------------------------------------------
+# Per-voice empirical words-per-second.
+#
+# Why this exists: the script-budget calc used a single hardcoded 2.6 wps for
+# every voice/language. Sarvam Indian voices render English ad copy at ~1.5–
+# 1.85 wps — a 30s ad with a 78-word script (2.6 wps × 30s) became 58s of
+# audio. Per-voice WPS sizes the script to the actual rendered duration.
+#
+# Provider keys: "sarvam:<voice_id>", "google:<voice_name>", "edge:<voice_name>".
+# Plain voice ids are also accepted for back-compat (lookup walks all entries).
+# Lookup falls back through `provider:voice` → `<any>:voice` → `provider:_default`
+# → `2.0` global default.
+# ---------------------------------------------------------------------------
+_VOICE_WPS: Dict[str, float] = {
+    # Sarvam female (en-IN) — measured on 30–90s ad/explainer samples.
+    "sarvam:ritu":     1.70,
+    "sarvam:priya":    1.65,
+    "sarvam:neha":     1.55,
+    "sarvam:pooja":    1.55,
+    "sarvam:simran":   1.65,
+    "sarvam:kavya":    1.70,
+    "sarvam:ishita":   1.75,
+    "sarvam:shreya":   1.70,
+    "sarvam:roopa":    1.60,
+    "sarvam:amelia":   2.00,   # English-trained, faster
+    "sarvam:sophia":   2.05,
+    "sarvam:tanya":    1.85,
+    "sarvam:shruti":   1.75,
+    "sarvam:suhani":   1.70,
+    "sarvam:kavitha":  1.65,
+    "sarvam:rupali":   1.70,
+    # Sarvam male (en-IN)
+    "sarvam:shubh":    1.75,
+    "sarvam:aditya":   1.80,
+    "sarvam:rahul":    1.85,
+    "sarvam:rohan":    1.80,
+    "sarvam:amit":     1.80,
+    "sarvam:dev":      1.85,
+    "sarvam:ratan":    1.75,
+    "sarvam:varun":    1.80,
+    "sarvam:kabir":    1.75,
+    "sarvam:rehan":    1.75,
+    "sarvam:soham":    1.80,
+    # Provider-tier defaults (used when voice id is unknown)
+    "sarvam:_default": 1.75,
+    "google:_default": 2.45,   # Google WaveNet/Neural2 — close to legacy 2.6
+    "edge:_default":   2.55,   # Edge neural voices — fastest
+    "elevenlabs:_default": 2.40,
+}
+
+
+def _resolve_voice_wps(provider: Optional[str], voice_id: Optional[str]) -> float:
+    """Return empirical words-per-second for the chosen TTS voice.
+
+    Conservative fallback chain (last resort = 2.0 wps, safer than 2.6 across
+    all voices). Used by the script-word-budget calc so a 30s ad doesn't
+    produce 78 words for a voice that only speaks 47 in 30s.
+    """
+    p = (provider or "").strip().lower()
+    v = (voice_id or "").strip().lower()
+    if p and v:
+        wps = _VOICE_WPS.get(f"{p}:{v}")
+        if wps:
+            return wps
+    if v:
+        for k, val in _VOICE_WPS.items():
+            if k.endswith(f":{v}") and not k.endswith(":_default"):
+                return val
+    if p:
+        d = _VOICE_WPS.get(f"{p}:_default")
+        if d:
+            return d
+    return 2.0
+
+
 # Sarvam-supported language → BCP-47 code
 SARVAM_LANG_CODES = {
     "hindi": "hi-IN", "bengali": "bn-IN", "tamil": "ta-IN", "telugu": "te-IN",
@@ -1959,6 +2034,40 @@ class VideoGenerationPipeline:
         self._video_type: str = str(self._video_type_plan.get("type") or "explainer")
         _cadence_hint = str(self._video_type_plan.get("cadence_hint") or "").strip()
 
+        # TTS provider + voice id stashed for the script-budget calc + audio
+        # overrun safety net. Both are also passed into _synthesize_voice; the
+        # stash here lets _generate_script_plan (which fires before TTS) read
+        # them without re-plumbing through every helper. The "_resolved" mirror
+        # is filled in by _synthesize_voice once provider/voice fallback runs.
+        self._tts_provider: str = (tts_provider or "").strip().lower() or "standard"
+        self._tts_voice_id: Optional[str] = (voice_id or "").strip().lower() or None
+        # Resolve tier → provider_key so the script-budget calc (runs BEFORE
+        # _synthesize_voice fires) can pick the right per-voice WPS. Mirrors
+        # the dispatch in _synthesize_voice (line ~3890); kept inline rather
+        # than refactored into a shared helper to avoid touching the
+        # battle-tested synth path. Language-aware: premium + Indian → sarvam.
+        _lang_key_for_tts = (language or "").lower().strip()
+        _tier_for_tts = self._tts_provider
+        if _tier_for_tts == "premium":
+            if _lang_key_for_tts in INDIAN_LANGUAGES:
+                _provider_resolved = "sarvam"
+            elif _lang_key_for_tts in GOOGLE_UNSUPPORTED_LANGUAGES:
+                _provider_resolved = "edge"
+            else:
+                _provider_resolved = "google"
+        elif _tier_for_tts in ("standard", "edge"):
+            _provider_resolved = "edge"
+        elif _tier_for_tts == "google":
+            _provider_resolved = "google"
+        elif _tier_for_tts == "sarvam":
+            _provider_resolved = "sarvam"
+        else:
+            _provider_resolved = "edge"
+        self._tts_provider_resolved: str = _provider_resolved
+        self._tts_voice_id_resolved: Optional[str] = self._tts_voice_id
+        # Cap one audio-overrun regen per video (Fix 1f).
+        self._audio_regen_attempted: bool = False
+
         # Host plan (from HostPlannerService — runs in pre-script preamble).
         # When enabled=True, downstream stages branch:
         #   • script LLM       → 1st-person directive (Change 7)
@@ -2422,6 +2531,9 @@ class VideoGenerationPipeline:
                             _target_seconds = (sum(_nums) / len(_nums)) * 60.0
                     else:
                         _target_seconds = 150.0  # 2.5min fallback
+                    # Stash for the audio-overrun safety net at TTS time
+                    # (Fix 1f) — needs target_seconds + the resolved wps.
+                    self._target_seconds = float(_target_seconds)
 
                     # Pull script text out of various shapes.
                     _draft_text = ""
@@ -2432,12 +2544,23 @@ class VideoGenerationPipeline:
                             or ""
                         )
                     _word_count = len(str(_draft_text).split())
-                    # ~155 wpm = ~2.58 wps; use 2.6 to be slightly forgiving.
-                    _target_words = max(20, int(_target_seconds * 2.6))
+                    # Per-voice WPS so Sarvam Indian voices (~1.55 wps) don't
+                    # get a 2.6-wps script. Falls through provider-default →
+                    # 2.0 global default for unknown voices.
+                    _wps_for_budget = _resolve_voice_wps(
+                        getattr(self, "_tts_provider_resolved", None) or self._tts_provider,
+                        getattr(self, "_tts_voice_id_resolved", None) or self._tts_voice_id,
+                    )
+                    _voice_label_log = (
+                        f"{getattr(self, '_tts_provider_resolved', None) or self._tts_provider}"
+                        f":{getattr(self, '_tts_voice_id_resolved', None) or self._tts_voice_id or '_default'}"
+                    )
+                    _target_words = max(20, int(_target_seconds * _wps_for_budget))
                     _budget_max = int(_target_words * 1.15)
                     print(
                         f"📏 Script word-count check: {_word_count} words / "
-                        f"{_target_words} target ({int(_target_seconds)}s × 2.6 wpm/s × 1.15 cap = {_budget_max})"
+                        f"{_target_words} target ({int(_target_seconds)}s × {_wps_for_budget:.2f} wps × 1.15 cap = {_budget_max}) "
+                        f"[voice={_voice_label_log}]"
                     )
                     if _word_count > _budget_max:
                         # Regen once with an explicit cut directive prepended.
@@ -2449,10 +2572,12 @@ class VideoGenerationPipeline:
                         _retry_prompt = (
                             f"⚠️ URGENT REVISION REQUIRED: a previous draft of this script "
                             f"was {_word_count} words for a {int(_target_seconds)}s target — "
-                            f"that exceeds the duration budget. Rewrite the narration with a "
-                            f"HARD CAP of {_cut_to} words. Cut filler, examples, and any "
-                            f"sentence that doesn't directly serve the core message. "
-                            f"Quality over quantity.\n\n"
+                            f"that exceeds the duration budget. The TTS voice for this run "
+                            f"({_voice_label_log}) paces at ~{_wps_for_budget:.2f} words/sec, "
+                            f"so {_word_count} words renders ~{_word_count / max(_wps_for_budget, 0.1):.0f}s of audio. "
+                            f"Rewrite the narration with a HARD CAP of {_cut_to} words. "
+                            f"Cut filler, examples, and any sentence that doesn't directly "
+                            f"serve the core message. Quality over quantity.\n\n"
                             f"---\n\n{base_prompt}"
                         )
                         try:
@@ -2561,6 +2686,102 @@ class VideoGenerationPipeline:
                 # Track TTS character count for credit deduction
                 _tts_chars = tts_outputs.get("tts_character_count", 0)
                 accumulate_usage({"tts_character_count": _tts_chars})
+
+                # ── Audio-overrun safety net (Fix 1f) ────────────────────
+                # If the rendered audio overshoots target_duration by >25%
+                # the per-voice WPS table mis-estimated this voice (or the
+                # script LLM produced denser-than-expected copy). Regenerate
+                # the script ONCE at the empirically-observed wps × 0.95
+                # then re-run TTS. Capped at one regen per video by
+                # self._audio_regen_attempted to avoid infinite loops.
+                _ts_target = float(getattr(self, "_target_seconds", 0) or 0)
+                if (
+                    content_type == "VIDEO"
+                    and _ts_target > 0
+                    and not getattr(self, "_user_had_script", False)
+                    and not self._audio_regen_attempted
+                ):
+                    try:
+                        _audio_dur_after_tts = 0.0
+                        _ap = tts_outputs.get("audio_path")
+                        if _ap and Path(_ap).exists():
+                            try:
+                                _probe = subprocess.run(
+                                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                                     "-of", "default=noprint_wrappers=1:nokey=1", str(_ap)],
+                                    capture_output=True, text=True, timeout=10,
+                                )
+                                _audio_dur_after_tts = float(_probe.stdout.strip())
+                            except Exception:
+                                try:
+                                    from mutagen.mp3 import MP3
+                                    _audio_dur_after_tts = MP3(str(_ap)).info.length
+                                except Exception:
+                                    _audio_dur_after_tts = 0.0
+                        if _audio_dur_after_tts > 0:
+                            _overshoot = _audio_dur_after_tts / _ts_target
+                            _script_text_for_count = ""
+                            try:
+                                _script_text_for_count = Path(script_plan["script_path"]).read_text(encoding="utf-8")
+                            except Exception:
+                                pass
+                            _wc_after = len(_script_text_for_count.split())
+                            _measured_wps = (_wc_after / _audio_dur_after_tts) if _audio_dur_after_tts else 0.0
+                            print(
+                                f"   📐 Audio-overrun check: {_audio_dur_after_tts:.1f}s vs {_ts_target:.0f}s target "
+                                f"({_overshoot:.2f}×); measured={_measured_wps:.2f} wps"
+                            )
+                            if _overshoot > 1.25 and _measured_wps > 0:
+                                self._audio_regen_attempted = True
+                                _new_words = max(20, int(_ts_target * _measured_wps * 0.95))
+                                print(
+                                    f"⚠️  Audio overrun {_overshoot:.2f}× target — "
+                                    f"regenerating script with hard cap = {_new_words} words "
+                                    f"at empirical {_measured_wps:.2f} wps, then re-running TTS."
+                                )
+                                _retry_audio_prompt = (
+                                    f"⚠️ URGENT REVISION REQUIRED: the previous script rendered as "
+                                    f"{_audio_dur_after_tts:.1f}s of audio for a {int(_ts_target)}s target — "
+                                    f"the chosen TTS voice paces at ~{_measured_wps:.2f} words/sec, slower than "
+                                    f"a generic narrator. Rewrite the narration with a HARD CAP of "
+                                    f"{_new_words} words. Cut filler, examples, and any sentence that doesn't "
+                                    f"directly serve the core message. Quality over quantity.\n\n"
+                                    f"---\n\n{base_prompt}"
+                                )
+                                try:
+                                    _retry_audio_out = self._draft_script(
+                                        _retry_audio_prompt, run_dir,
+                                        language=language,
+                                        target_audience=target_audience,
+                                        target_duration=target_duration,
+                                        content_type=content_type,
+                                    )
+                                    _retry_audio_plan = _retry_audio_out.get("result")
+                                    accumulate_usage(_retry_audio_out.get("usage", {}) or {})
+                                    if _retry_audio_plan:
+                                        # _draft_script already overwrote script.txt and
+                                        # script_plan.json on disk. Replace the in-memory
+                                        # script_plan wholesale so downstream stages
+                                        # (segmentation, Director) read the new beat_outline.
+                                        # Mirrors the word-budget regen pattern at
+                                        # line 2608-2612.
+                                        script_plan = _retry_audio_plan
+                                        print("🔁 Re-running TTS on regenerated script ...")
+                                        tts_outputs = self._synthesize_voice(
+                                            script_plan["script_path"],
+                                            run_dir,
+                                            language=language,
+                                            voice_gender=voice_gender,
+                                            tts_provider=tts_provider,
+                                            voice_id=voice_id,
+                                        )
+                                        _tts_chars = tts_outputs.get("tts_character_count", 0)
+                                        accumulate_usage({"tts_character_count": _tts_chars})
+                                except Exception as _audio_regen_err:
+                                    print(f"⚠️  Audio-overrun regen failed (non-fatal): {_audio_regen_err}")
+                    except Exception as _ovrn_err:
+                        print(f"⚠️  Audio-overrun check failed (non-fatal): {_ovrn_err}")
+
                 self._emit_progress({"type": "sub_stage", "sub_stage": "tts_done",
                                       "message": "Voice narration ready",
                                       "tts_character_count": _tts_chars,
@@ -3247,12 +3468,35 @@ class VideoGenerationPipeline:
                 getattr(self, 'video_height', 1080)
             )
             _aspect = getattr(self, 'aspect_label', '16:9 landscape')
+            # Per-voice duration calibration: pull WPS for the resolved voice
+            # so the duration table inside the user prompt matches what the
+            # actual TTS will render. Without this, Sarvam Indian voices saw
+            # the legacy "~155 wpm" table and produced 78 words for 30s →
+            # 58s of audio (1.94× target).
+            _wps_for_prompt = _resolve_voice_wps(
+                getattr(self, "_tts_provider_resolved", None) or getattr(self, "_tts_provider", None),
+                getattr(self, "_tts_voice_id_resolved", None) or getattr(self, "_tts_voice_id", None),
+            )
+            _voice_label_for_prompt = (
+                f"{getattr(self, '_tts_provider_resolved', None) or getattr(self, '_tts_provider', 'edge')}"
+                f":{getattr(self, '_tts_voice_id_resolved', None) or getattr(self, '_tts_voice_id', None) or '_default'}"
+            )
             user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(
                 base_prompt=base_prompt.strip(),
                 language=language,
                 target_audience=target_audience,
                 target_duration=target_duration,
                 aspect_label=_aspect,
+                voice_label=_voice_label_for_prompt,
+                wps_per_sec=_wps_for_prompt,
+                wps_int=int(round(_wps_for_prompt * 60)),
+                ex_30s=int(round(30 * _wps_for_prompt)),
+                ex_60s=int(round(60 * _wps_for_prompt)),
+                ex_120s=int(round(120 * _wps_for_prompt)),
+                ex_180s=int(round(180 * _wps_for_prompt)),
+                ex_300s=int(round(300 * _wps_for_prompt)),
+                ex_420s=int(round(420 * _wps_for_prompt)),
+                ex_600s=int(round(600 * _wps_for_prompt)),
             ).strip()
 
             # Detect if user's prompt already contains a script (NARRATOR lines,
@@ -3336,6 +3580,38 @@ class VideoGenerationPipeline:
                     f"🎨 Script: applying user visual preferences "
                     f"({_flagged_vp})"
                 )
+
+            # Ad-style narration bias for product_promo (Fix 3c). The default
+            # script LLM writes explainer-tone copy even for ads — this block
+            # flips the tone to punchy, sensory, brand-anchored copy. Gated on
+            # video_type so explainers/tutorials are unaffected.
+            _vt_for_script = (getattr(self, "_video_type", "") or "").strip().lower()
+            if _vt_for_script == "product_promo":
+                _ad_block = (
+                    "\n\n🛍️ AD-STYLE NARRATION (PRODUCT_PROMO):\n"
+                    "This is a product/brand ad, NOT an explainer. Write the script as ad copy:\n"
+                    "- 3-act structure: HOOK (sensory image, ≤6 words) → PROMISE (one specific "
+                    "product benefit) → CALL (tagline + CTA). All three must fit inside the "
+                    "target word count.\n"
+                    "- Speak in punchy fragments, not long sentences. 'Snap. Crunch. Smile.' "
+                    "is ad copy. 'Parle-G is a popular biscuit that has been enjoyed for "
+                    "decades' is NOT — that's an encyclopedia entry.\n"
+                    "- Use the user's reference brand assets verbatim — name the product, "
+                    "quote claims from the user's text. Do not paraphrase the brand into "
+                    "generic categories ('a snack', 'a beverage', 'a service').\n"
+                    "- BANNED phrases: 'in today's fast-paced world', 'have you ever wondered', "
+                    "'let's take your brand on an adventure', 'advertising 360', 'the volatile "
+                    "world of marketing', 'elevate your business', 'marketing without borders', "
+                    "'take your brand to the next level'. These are agency boilerplate and "
+                    "explicitly forbidden — the LLM will be re-prompted if any appear.\n"
+                    "- Close on a tagline, not a recap. Last 5 words should be brand + verb "
+                    "(e.g. 'Parle-G — taste the moment.').\n"
+                    "- Match the target duration tightly. Ad copy is short by definition; do "
+                    "NOT pad to fill time — leave room for pauses, brand stings, and product "
+                    "reveals.\n"
+                )
+                user_prompt = user_prompt + _ad_block
+                print("🛍️  Script: applying product_promo ad-style narration bias")
         else:
             # Use content-type-specific prompts
             system_prompt = ct_prompts["system"]
@@ -3661,12 +3937,23 @@ class VideoGenerationPipeline:
         print("🔍 Running two-pass script review (Premium/Ultra tier)...")
         script_json_str = json.dumps(script_data, indent=2, ensure_ascii=False)
 
+        # Voice-aware pacing for the review's "Pacing" checklist item — without
+        # this, the review LLM still nudges toward "~155 wpm" and tries to
+        # expand correctly-sized scripts back over budget for slow voices.
+        _wps_review = _resolve_voice_wps(
+            getattr(self, "_tts_provider_resolved", None) or getattr(self, "_tts_provider", None),
+            getattr(self, "_tts_voice_id_resolved", None) or getattr(self, "_tts_voice_id", None),
+        )
+
         try:
             raw, usage = self.script_client.chat(
                 messages=[
                     {"role": "system", "content": SCRIPT_REVIEW_SYSTEM_PROMPT},
                     {"role": "user", "content": SCRIPT_REVIEW_USER_PROMPT_TEMPLATE.format(
-                        script_json=script_json_str
+                        script_json=script_json_str,
+                        wps_int=int(round(_wps_review * 60)),
+                        ex_30s=int(round(30 * _wps_review)),
+                        ex_60s=int(round(60 * _wps_review)),
                     )},
                 ],
                 temperature=0.5,
@@ -10116,6 +10403,106 @@ class VideoGenerationPipeline:
                                 _media_block_parts.append(f"  - id: `{_fid}`")
                     user_prompt = user_prompt + "\n".join(_media_block_parts)
 
+            # ── BRAND ANCHOR — user-uploaded reference assets (Fix 2a) ──
+            # Mirrors the AVAILABLE ARTICLE SCREENSHOTS block above.
+            # The Director already sees these multimodally; the per-shot HTML
+            # LLM never did, which is why the Parle-G ad shipped with
+            # "Advertising 360" / "Let's take your brand on an adventure"
+            # boilerplate that has nothing to do with the actual brand. This
+            # block hands the per-shot LLM (a) the brand image URLs so it can
+            # embed them via `<img data-img-source="reference">`, (b) the
+            # vision-captioned text description so copy can name the brand,
+            # and (c) an explicit forbidden-phrases rule against agency boilerplate.
+            _ref_ctx_brand = getattr(self, '_reference_context', None)
+            _brand_images: List[Dict[str, Any]] = []
+            _brand_text_excerpt = ""
+            if isinstance(_ref_ctx_brand, dict):
+                _bi_list = _ref_ctx_brand.get('embeddable_images') or []
+                if isinstance(_bi_list, list):
+                    for _img in _bi_list[:4]:  # cap at 4 to bound prompt length
+                        if not isinstance(_img, dict):
+                            continue
+                        _u = (_img.get('s3_url') or _img.get('url') or '').strip()
+                        if not _u:
+                            continue
+                        _brand_images.append({
+                            "url": _u,
+                            "description": (_img.get('description') or '').strip(),
+                            "source_file": (_img.get('source_file') or '').strip(),
+                        })
+                _bt = (_ref_ctx_brand.get('text_context') or '').strip()
+                if _bt:
+                    _brand_text_excerpt = _bt[:1500] + ('…' if len(_bt) > 1500 else '')
+
+            if _brand_images or _brand_text_excerpt:
+                # The image-embed instruction only makes sense for shots that
+                # actually host an `<img>` element. Text-only shots (KINETIC_TITLE,
+                # KINETIC_TEXT, LOWER_THIRD) would otherwise be told to add an
+                # image they aren't designed to host. The ANCHORING RULES below
+                # apply to ALL shot types — text overlays must name the brand
+                # whether or not the shot has an image.
+                _shot_uses_image = shot_type not in (
+                    "KINETIC_TITLE", "KINETIC_TEXT", "LOWER_THIRD",
+                )
+                _brand_parts: List[str] = [
+                    "\n\n**🏷️ BRAND ANCHOR — REFERENCE ASSETS PROVIDED BY THE USER** "
+                    "(this video is ABOUT these assets; copy must be specific to them, not generic):"
+                ]
+                if _brand_text_excerpt:
+                    _brand_parts.append(
+                        f"User-provided context (extracted from uploaded files):\n  {_brand_text_excerpt}"
+                    )
+                if _brand_images and _shot_uses_image:
+                    _brand_parts.append(
+                        "\nUploaded brand/product images — when this shot includes an `<img>` "
+                        "element, prefer embedding via "
+                        "`<img data-img-source=\"reference\" data-reference-url=\"<url>\" "
+                        "data-img-prompt=\"<short alt>\" src='placeholder.png'>`. The "
+                        "`src='placeholder.png'` is REQUIRED — the pipeline rewrites that "
+                        "src attribute to the actual brand URL after generation. Do NOT "
+                        "regenerate or replace these with stock photos when the brand asset "
+                        "itself is the subject."
+                    )
+                    for _bi in _brand_images:
+                        _line = f"  - url: `{_bi['url']}`"
+                        if _bi.get('description'):
+                            _d = _bi['description']
+                            if len(_d) > 200:
+                                _d = _d[:200].rsplit(' ', 1)[0] + '…'
+                            _line += f" — {_d}"
+                        _brand_parts.append(_line)
+                elif _brand_images and not _shot_uses_image:
+                    # Text-only shot — surface the brand image descriptions so
+                    # the typography copy can quote them, but skip the embed
+                    # instruction (the shot isn't designed to render <img>).
+                    _brand_parts.append(
+                        "\nBrand assets (for reference — do NOT embed in this text-only shot, "
+                        "use them only to inform copy choices):"
+                    )
+                    for _bi in _brand_images:
+                        if _bi.get('description'):
+                            _d = _bi['description']
+                            if len(_d) > 200:
+                                _d = _d[:200].rsplit(' ', 1)[0] + '…'
+                            _brand_parts.append(f"  - {_d}")
+                _brand_parts.append(
+                    "\n**ANCHORING RULES — NON-NEGOTIABLE**:"
+                    "\n- Headlines, taglines, and any text overlay on this shot MUST reference "
+                    "the actual product/brand from the assets above. Do NOT write generic "
+                    "agency copy. The following phrases are FORBIDDEN: 'Advertising 360', "
+                    "'Let's take your brand on an adventure', 'The volatile world of marketing', "
+                    "'Elevate your business', 'Marketing made easy', 'Marketing without borders', "
+                    "or any variant of these meta-marketing slogans."
+                    "\n- If an asset is product packaging, copy must show, name, or describe "
+                    "THAT product."
+                    "\n- Use the user's text context above as the source of truth for product "
+                    "name, key claims, and tone."
+                    "\n- For any stock or AI-generated image you emit, the `data-img-prompt` "
+                    "MUST include the product/brand name verbatim (e.g. 'Parle-G biscuit "
+                    "packaging on a vintage Indian tea stall')."
+                )
+                user_prompt = user_prompt + "\n".join(_brand_parts)
+
             # ── Fix B + Fix E: Hex-code-as-CSS rule + Global brand directives ──
             # Both apply to EVERY shot (host or non-host). Surfaces:
             #   • Fix B  — explicit "hex codes are CSS, not text content" rule
@@ -13730,13 +14117,29 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 f"{i}. id={c.get('id')} | {c.get('duration', 0)}s | "
                 f"{(c.get('alt') or '')[:120]}"
             )
+        # Brand-context for the ranker (Fix 2e). Without this, the ranker
+        # didn't know whether the video was about Parle-G biscuits or a
+        # luxury car and would happily pick contradictory stock.
+        _brand_ctx_line = ""
+        _ref_for_rank = getattr(self, '_reference_context', None)
+        if isinstance(_ref_for_rank, dict):
+            _bt_rank = (_ref_for_rank.get('text_context') or '').strip()
+            if _bt_rank:
+                _brand_ctx_line = (
+                    f"Brand context (REJECT candidates that contradict this): "
+                    f"{_bt_rank[:200]}\n"
+                )
         ctx = (
             f"Shot query: {query}\n"
             f"Narration: {narration_excerpt[:200]}\n"
-            f"Visual direction: {visual_description[:200]}\n\n"
+            f"Visual direction: {visual_description[:200]}\n"
+            + _brand_ctx_line
+            + "\n"
             "Candidate stock clips:\n" + "\n".join(lines) + "\n\n"
             "Pick the candidate that best matches the narration and visual direction. "
-            "Return JSON: {\"best_index\": N, \"reason\": \"short\"}."
+            + ("If brand context is given, the candidate MUST not contradict it. "
+               if _brand_ctx_line else "")
+            + "Return JSON: {\"best_index\": N, \"reason\": \"short\"}."
         )
         try:
             raw, _usage = self.html_client.chat(
@@ -14230,12 +14633,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 _img_query = _query_match.group(2) if _query_match else ""
                 _ssid_match = re.search(r'data-screenshot-id=["\']([^"\']+)["\']', full_tag)
                 _screenshot_id = _ssid_match.group(1).strip() if _ssid_match else ""
+                # Brand-reference URL (Fix 2b) — emitted by the per-shot LLM
+                # via `<img data-img-source="reference" data-reference-url="...">`
+                # to embed a user-uploaded brand image verbatim. Resolver runs
+                # in process_image_task without any API call.
+                _refurl_match = re.search(r'data-reference-url=["\']([^"\']+)["\']', full_tag)
+                _reference_url = _refurl_match.group(1).strip() if _refurl_match else ""
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
                     "prompt": prompt,
                     "img_query": _img_query,
                     "screenshot_id": _screenshot_id,
+                    "reference_url": _reference_url,
                     "seg_idx": seg_idx,
                     "is_cutout": is_cutout,
                     "img_source": img_source,
@@ -14271,6 +14681,32 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             _stock_only = self._tier_config.get("stock_preference") == "stock_only"
             if _stock_only and img_source == "generate":
                 img_source = "stock"
+
+            # ── reference: user-uploaded brand asset, no API call (Fix 2c) ──
+            # The per-shot LLM emits `<img data-img-source="reference"
+            # data-reference-url="<s3_url>">` for shots anchored on the
+            # user's brand assets. Returns the URL verbatim — same shape as
+            # article_screenshot. Falls through to AI gen if the URL is
+            # missing (defensive: shouldn't happen, but matches the
+            # article_screenshot pattern).
+            if img_source == "reference":
+                _ref_url_direct = (task.get("reference_url") or "").strip()
+                if _ref_url_direct:
+                    print(
+                        f"    🏷️  Brand-reference image for seg={task.get('seg_idx', '?')}: "
+                        f"{_ref_url_direct[:80]}..."
+                    )
+                    return {
+                        "entry": task.get("entry"),
+                        "entry_id": id(task.get("entry")),
+                        "full_tag": task.get("full_tag", ""),
+                        "stock_url": _ref_url_direct,
+                        "image_bytes": None,
+                        "filename": None,
+                        "usage": {},
+                    }
+                # No URL → fall through to AI gen rather than failing.
+                img_source = "generate"
 
             # ── article_screenshot: synchronous lookup in scrape_artifacts ──
             # Resolves `data-screenshot-id` against the captured-files manifest
@@ -14414,9 +14850,34 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     if event and event.wait(timeout=120):
                         _ref_url = (self._subject_refs or {}).get(_sub_id)
 
+            # Brand-image fallback (Fix 2d): when there is no recurring-character
+            # subject at all, condition Seedream on the user's first uploaded
+            # brand image. Subject continuity wins when active because:
+            #   - subsequent shots of a recurring subject MUST use the cached ref
+            #     (otherwise the character drifts across shots);
+            #   - the FIRST shot of a recurring subject MUST generate fresh (no
+            #     ref) so it can become the canonical reference — passing the
+            #     brand image here would overwrite that canonical look.
+            # We therefore only apply the brand fallback when `_sub_id` is unset.
+            _brand_ref_for_gen: Optional[str] = None
+            if not _sub_id and not _ref_url:
+                _ref_for_brand = getattr(self, '_reference_context', None)
+                if isinstance(_ref_for_brand, dict):
+                    _ebi = _ref_for_brand.get('embeddable_images') or []
+                    if isinstance(_ebi, list):
+                        for _bi_first in _ebi[:1]:
+                            if isinstance(_bi_first, dict):
+                                _u = (_bi_first.get('s3_url') or _bi_first.get('url') or '').strip()
+                                if _u:
+                                    _brand_ref_for_gen = _u
+                                    break
+            _seedream_ref = _ref_url or _brand_ref_for_gen
+
             label = f"seg={idx}" + (" (cutout)" if is_cutout else "")
             if _sub_id:
                 label += f" [subject:{_sub_id}{'/first' if _is_first_for_subject else '/ref' if _ref_url else '/no-ref'}]"
+            elif _brand_ref_for_gen:
+                label += " [brand-ref]"
             print(f"    🎨 Generating image {label}: {prompt[:60]}...")
             # May raise _ImageGenRateLimitError — propagates to as_completed caller.
             # Subject continuity: if THIS is the first task for a subject, we
@@ -14427,7 +14888,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # re-claim or proceed without a reference.
             try:
                 image_bytes, usage_meta = self._call_image_generation_llm(
-                    prompt, reference_image_url=_ref_url
+                    prompt, reference_image_url=_seedream_ref
                 )
             except _ImageGenRateLimitError:
                 if _is_first_for_subject and _sub_id:

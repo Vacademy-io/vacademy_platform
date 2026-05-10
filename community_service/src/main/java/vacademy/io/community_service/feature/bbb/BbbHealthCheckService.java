@@ -136,9 +136,9 @@ public class BbbHealthCheckService {
     }
 
     /**
-     * Scheduled start — Sunday at 9:50 AM IST.
+     * Scheduled start — Sunday at 9:30 AM IST.
      */
-    @Scheduled(cron = "0 50 9 * * SUN", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 30 9 * * SUN", zone = "Asia/Kolkata")
     public void scheduledStartSunday() {
         log.info("[BBB Pool] Scheduled START (Sunday) triggered");
 
@@ -149,9 +149,9 @@ public class BbbHealthCheckService {
     }
 
     /**
-     * Scheduled health check — Sunday at 10:30 AM IST.
+     * Scheduled health check — Sunday at 9:45 AM IST.
      */
-    @Scheduled(cron = "0 30 10 * * SUN", zone = "Asia/Kolkata")
+    @Scheduled(cron = "0 45 9 * * SUN", zone = "Asia/Kolkata")
     public void scheduledHealthCheckSunday() {
         log.info("[BBB Pool HealthCheck] Scheduled check (Sunday) triggered");
 

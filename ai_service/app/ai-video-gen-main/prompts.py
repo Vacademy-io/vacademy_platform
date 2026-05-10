@@ -265,15 +265,15 @@ Target Audience: {target_audience}
 
 Target Duration: {target_duration}
 
-**DURATION GUIDELINES — STRICT** (based on speaking rate of ~155 words/minute):
-- 30 seconds = ~75 words
-- 1 minute = ~155 words
-- 2 minutes = ~310 words
-- 3 minutes = ~465 words
-- 5 minutes = ~775 words
-- 7 minutes = ~1085 words
-- 10 minutes = ~1550 words
-⚠️ HARD CAP — your script will be REJECTED and require regeneration if it exceeds the target by >15%. Count your words carefully. The final script MUST match the target duration above. Do NOT write more content than needed — a 1-minute video needs ~155 words, NOT 300. Going over means the video will exceed the requested length AND trigger a costly retry. WRITE FEWER WORDS, NOT MORE.
+**DURATION GUIDELINES — STRICT** (calibrated to your TTS voice `{voice_label}` rendering at ~{wps_int} words/minute):
+- 30 seconds ≈ {ex_30s} words
+- 1 minute ≈ {ex_60s} words
+- 2 minutes ≈ {ex_120s} words
+- 3 minutes ≈ {ex_180s} words
+- 5 minutes ≈ {ex_300s} words
+- 7 minutes ≈ {ex_420s} words
+- 10 minutes ≈ {ex_600s} words
+⚠️ HARD CAP — your script will be REJECTED and require regeneration if it exceeds the target by >15%. Count your words carefully. The final script MUST match the target duration above. The voice `{voice_label}` paces at roughly **{wps_per_sec:.2f} words/second** — write FEWER words than a generic narrator, leaving room for ad-style pauses, brand stings, and product reveals. WRITE FEWER WORDS, NOT MORE.
 
 **HEX-CODE HANDLING — MANDATORY**:
 Any hex code (`#XXXXXX` format like `#0D0D0D` or `#C9A84C`) that appears in the user's prompt above is a CSS STYLING value (background colour, accent colour, text colour). NEVER include the literal hex string in the narration script — the host won't say "hashtag zero D zero D zero D" out loud. Hex codes are passed downstream as CSS values via background-color / color / border-color properties; they belong in the visual layer, not the narration.
@@ -411,7 +411,7 @@ SCRIPT_REVIEW_USER_PROMPT_TEMPLATE = """Review and improve this educational vide
 
 3. **Analogies & examples**: For every abstract concept, ensure there is at least one concrete, age-appropriate analogy or real-world example. Replace weak analogies with more vivid, memorable ones.
 
-4. **Pacing**: Check word count against the target duration (~155 words/minute). Trim fluff or expand thin sections. Trim filler words and hedging phrases ('basically', 'actually', 'kind of', 'you know') that slow pacing without adding value.
+4. **Pacing**: Check word count against the target duration (the chosen TTS voice paces at ~{wps_int} words/minute, so a {ex_30s}-word script renders ~30 seconds, an {ex_60s}-word script renders ~1 minute, etc.). Trim fluff or expand thin sections. Trim filler words and hedging phrases ('basically', 'actually', 'kind of', 'you know') that slow pacing without adding value. **DO NOT pad the script just to hit a higher wpm benchmark — fewer words at this voice's pace is correct.**
 
 5. **Emotional arc**: Verify the beat `emotion` fields create a varied arc (not all "calm" or all "excitement"). Adjust if monotone.
 

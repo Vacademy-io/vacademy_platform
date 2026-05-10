@@ -546,6 +546,14 @@ export function BulkScheduleGrid() {
                 const totalDurationMinutes =
                     Number(row.durationHours || '0') * 60 +
                     Number(row.durationMinutes || '0');
+                // Bulk must match the single-class wire convention: send the
+                // user's wall-clock at the session's timezone, *labeled* as
+                // UTC ('Z'). The backend extracts meeting_date / start_time
+                // via Timestamp.toLocalDateTime() (no timezone awareness),
+                // so a real UTC instant for an IST wall-clock value would
+                // shift the stored date by the tz offset (e.g.
+                // 2026-05-10 00:45 IST → 2026-05-09 in the DB), and the
+                // search "today in session tz" filter would miss the row.
                 const startUtc = fromZonedTime(
                     `${row.startDate}T${row.startTime}:00`,
                     data.timeZone
@@ -553,8 +561,13 @@ export function BulkScheduleGrid() {
                 const endUtc = new Date(
                     startUtc.getTime() + totalDurationMinutes * 60_000
                 );
-                dto.start_time = startUtc.toISOString();
-                dto.last_entry_time = endUtc.toISOString();
+                const wireFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
+                dto.start_time = formatTZ(startUtc, wireFormat, {
+                    timeZone: data.timeZone,
+                });
+                dto.last_entry_time = formatTZ(endUtc, wireFormat, {
+                    timeZone: data.timeZone,
+                });
                 return dto;
             });
 
@@ -636,31 +649,14 @@ export function BulkScheduleGrid() {
                 (r) => r.session_id as string
             );
 
-            // The backend reports per-row step2 outcomes via `step2_applied`.
-            // Anything where step1 succeeded but step2 didn't is collected
-            // for the result dialog. Most common cause: the backend hasn't
-            // been rebuilt with the new step2_per_row field, so it silently
-            // ignored the payload. Surface a clearer diagnostic.
-            const sentStep2 = step2PerRow.length > 0;
-            const step2Failures = response.results
-                .filter((r) => r.success && r.session_id && !r.step2_applied)
-                .map((r) => ({
-                    rowIndex: r.index,
-                    reason: sentStep2
-                        ? 'Backend received the request but did not apply participants/access. Likely the local backend is running an older build without step2_per_row support — rebuild & restart it. Otherwise check server logs for "Bulk row N step2 FAILED".'
-                        : 'No step-2 payload was sent for this row.',
-                }));
-
+            // The bulk endpoint reports per-row outcomes via `success` /
+            // `error` (step1+step2 are atomic on the server now — a step2
+            // failure rolls back the row's session and surfaces the real
+            // error message). All we need to do here is render whatever the
+            // server returned.
             const failures = response.results
                 .filter((r) => !r.success)
-                .map((r) => ({ index: r.index, title: r.title, error: r.error }))
-                .concat(
-                    step2Failures.map((f) => ({
-                        index: f.rowIndex,
-                        title: data.rows[f.rowIndex]?.title,
-                        error: `Participants/access apply failed: ${f.reason}`,
-                    }))
-                );
+                .map((r) => ({ index: r.index, title: r.title, error: r.error }));
 
             if (createdIds.length > 0) {
                 // Clear any leftover bulk state — step 2 is no longer part of
@@ -2122,8 +2118,37 @@ export function BulkScheduleGrid() {
                                                           totalMins % 60
                                                       }m`
                                                     : `${totalMins}m`;
-                                            const batchCount = (row.selectedLevels ?? [])
-                                                .length;
+                                            const rowLevels = row.selectedLevels ?? [];
+                                            const batchLabels = rowLevels.map((sl) => {
+                                                const course = courses?.find(
+                                                    (c) =>
+                                                        c.courseId === sl.courseId &&
+                                                        c.sessionId === sl.sessionId
+                                                );
+                                                const sessionEntry = sessionList.find(
+                                                    (s) => s.id === sl.sessionId
+                                                );
+                                                const levelName = course?.levels
+                                                    .find((l) => l.id === sl.levelId)
+                                                    ?.name?.trim();
+                                                const courseName =
+                                                    course?.courseName?.trim() || 'Course';
+                                                const sessionName = sessionEntry?.name?.trim();
+                                                const levelIsGeneric =
+                                                    !levelName ||
+                                                    levelName.toLowerCase() === 'default';
+                                                const pill = levelIsGeneric
+                                                    ? courseName
+                                                    : `${courseName} · ${levelName}`;
+                                                const tooltip = [
+                                                    courseName,
+                                                    sessionName,
+                                                    levelName,
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join(' / ');
+                                                return { pill, tooltip };
+                                            });
                                             const formattedDate = (() => {
                                                 if (!row.startDate) return '—';
                                                 try {
@@ -2184,23 +2209,24 @@ export function BulkScheduleGrid() {
                                                             '—'
                                                         )}
                                                     </TableCell>
-                                                    <TableCell>
-                                                        <span
-                                                            className={cn(
-                                                                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium',
-                                                                batchCount > 0
-                                                                    ? 'bg-primary-100 text-primary-700'
-                                                                    : 'bg-neutral-100 text-neutral-500'
-                                                            )}
-                                                        >
-                                                            {batchCount === 0
-                                                                ? 'No batches'
-                                                                : `${batchCount} batch${
-                                                                      batchCount === 1
-                                                                          ? ''
-                                                                          : 'es'
-                                                                  }`}
-                                                        </span>
+                                                    <TableCell className="max-w-[260px]">
+                                                        {batchLabels.length === 0 ? (
+                                                            <span className="inline-flex items-center rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] font-medium text-neutral-500">
+                                                                No batches
+                                                            </span>
+                                                        ) : (
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {batchLabels.map((b, i) => (
+                                                                    <span
+                                                                        key={`${rowLevels[i]!.courseId}-${rowLevels[i]!.sessionId}-${rowLevels[i]!.levelId}`}
+                                                                        title={b.tooltip}
+                                                                        className="inline-flex max-w-[180px] items-center truncate rounded-full bg-primary-100 px-2 py-0.5 text-[11px] font-medium text-primary-700"
+                                                                    >
+                                                                        {b.pill}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </TableCell>
                                                 </TableRow>
                                             );

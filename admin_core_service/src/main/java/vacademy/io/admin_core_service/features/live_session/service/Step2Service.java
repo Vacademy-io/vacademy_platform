@@ -176,13 +176,23 @@ public class Step2Service {
         // Get the session to access timezone
         LiveSession session = sessionRepository.findById(schedule.getSessionId())
                 .orElseThrow(() -> new RuntimeException("Session not found: " + schedule.getSessionId()));
-        
+
         // Use session timezone, fallback to system default if not set
-        java.time.ZoneId sessionZone = session.getTimezone() != null 
+        java.time.ZoneId sessionZone = session.getTimezone() != null
                 ? java.time.ZoneId.of(session.getTimezone())
                 : java.time.ZoneId.systemDefault();
-        
-        java.time.LocalDate meetingLocalDate = schedule.getMeetingDate().toInstant().atZone(sessionZone).toLocalDate();
+
+        // schedule.meetingDate's runtime type can be either java.sql.Date
+        // (when the entity is freshly persisted in the same transaction —
+        // bulk creation reads it back from the L1 cache) or java.util.Date /
+        // java.sql.Timestamp (when JPA loaded it from a DB column in a
+        // separate request — single-class flow). java.sql.Date.toInstant()
+        // throws UnsupportedOperationException with a null message, so we
+        // route around it explicitly.
+        java.util.Date md = schedule.getMeetingDate();
+        java.time.LocalDate meetingLocalDate = (md instanceof java.sql.Date)
+                ? ((java.sql.Date) md).toLocalDate()
+                : md.toInstant().atZone(sessionZone).toLocalDate();
         java.time.LocalTime startLocalTime = schedule.getStartTime().toLocalTime();
         java.time.LocalTime lastEntryLocalTime = schedule.getLastEntryTime() != null ? schedule.getLastEntryTime().toLocalTime() : null;
 

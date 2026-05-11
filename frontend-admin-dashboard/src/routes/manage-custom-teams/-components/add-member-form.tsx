@@ -115,7 +115,7 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
     // PS section won't render.
     const { data: accessibleGrants } = useQuery({
         queryKey: ['accessible-grants', instituteId],
-        queryFn: () => listAccessibleGrants(instituteId),
+        queryFn: () => listAccessibleGrants(instituteId!),
         enabled: open && mode === 'subOrg' && !!instituteId,
         staleTime: 1000 * 60,
     });
@@ -197,7 +197,7 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
                 }
                 const result = await addSubOrgTeamMember({
                     sub_org_id: subOrgId,
-                    institute_id: instituteId,
+                    institute_id: instituteId!,
                     user: {
                         email: data.email,
                         full_name: data.fullName,

@@ -259,6 +259,11 @@ export default function ScheduleStep1() {
             defaultLink: '',
             feedbackEnabled: false,
             feedbackQuestions: DEFAULT_FEEDBACK_QUESTIONS,
+            bbbRecord: true,
+            bbbAutoStartRecording: false,
+            bbbMuteOnStart: true,
+            bbbWebcamsOnlyForModerator: false,
+            bbbGuestPolicy: 'ALWAYS_ACCEPT' as const,
         };
     }, []);
 

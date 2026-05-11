@@ -11,6 +11,4 @@ public interface InstituteSubOrgRepository extends JpaRepository<InstituteSubOrg
     List<InstituteSubOrg> findByInstituteId(String instituteId);
 
     List<InstituteSubOrg> findBySuborgId(String suborgId);
-
-    List<InstituteSubOrg> findByInstituteIdAndSuborgIdIn(String instituteId, List<String> suborgIds);
 }

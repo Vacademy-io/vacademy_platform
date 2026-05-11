@@ -21,8 +21,6 @@ public class SubOrgTeamAddRequestDTO {
     /** Optional: existing role id; if present we do NOT create a new role. */
     private String roleId;
     private List<String> packageSessionIds;
-    /** Enroll-invite IDs to grant ENROLL_INVITE-scoped access for. */
-    private List<String> inviteIds;
     private String accessPermission;
 
     @Data

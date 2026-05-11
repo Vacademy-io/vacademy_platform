@@ -377,7 +377,6 @@ export interface SubOrgTeamAddRequest {
     role_name: string;
     role_id?: string;
     package_session_ids: string[];
-    invite_ids?: string[];
     access_permission?: string;
 }
 
@@ -432,10 +431,10 @@ export const listAccessibleSubOrgs = async (
 
 export interface AccessibleGrants {
     package_session_ids: string[];
-    invites: Array<{ id: string; name: string }>;
 }
 
-/** Returns the caller's accessible PSes + invites for the Add Member form. */
+/** Returns the caller's accessible package sessions for the Add Member form.
+ *  Invite-level access is auto-linked server-side from the selected PSes — no client choice. */
 export const listAccessibleGrants = async (
     instituteId: string
 ): Promise<AccessibleGrants> => {

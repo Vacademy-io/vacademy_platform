@@ -20,7 +20,6 @@ import vacademy.io.admin_core_service.features.faculty.repository.FacultySubject
 import vacademy.io.admin_core_service.features.institute.entity.InstituteSubOrg;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubOrgRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
-import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamAddRequestDTO;
@@ -218,33 +217,21 @@ public class SubOrgTeamService {
             }
         }
 
-        // Validate package sessions and invites are within caller's scope (sub-org admins only).
+        // Validate package sessions are within caller's scope (sub-org admins only).
+        // Invite-level access is auto-linked from the selected PSes, so there's no separate
+        // invite_ids field on the request — the form doesn't let the caller pick invites.
         List<String> requestedPsIds = request.getPackageSessionIds() != null
                 ? request.getPackageSessionIds() : new ArrayList<>();
-        List<String> requestedInviteIds = request.getInviteIds() != null
-                ? request.getInviteIds() : new ArrayList<>();
-        if (requestedPsIds.isEmpty() && requestedInviteIds.isEmpty()) {
-            throw new VacademyException("At least one package session or invite must be selected");
+        if (requestedPsIds.isEmpty()) {
+            throw new VacademyException("At least one package session must be selected");
         }
         if (!callerIsSystemAdmin) {
-            if (!requestedPsIds.isEmpty()) {
-                Set<String> accessiblePs = new HashSet<>(facultyMappingRepository
-                        .findAccessIdsByUserIdAndInstituteId(caller.getUserId(), request.getInstituteId(),
-                                List.of("ACTIVE")));
-                for (String psId : requestedPsIds) {
-                    if (!accessiblePs.contains(psId)) {
-                        throw new VacademyException("Package session " + psId + " is outside your access scope");
-                    }
-                }
-            }
-            if (!requestedInviteIds.isEmpty()) {
-                Set<String> accessibleInvites = new HashSet<>(facultyMappingRepository
-                        .findEnrollInviteAccessIdsByUserIdAndInstituteId(caller.getUserId(),
-                                request.getInstituteId(), List.of("ACTIVE")));
-                for (String inviteId : requestedInviteIds) {
-                    if (!accessibleInvites.contains(inviteId)) {
-                        throw new VacademyException("Invite " + inviteId + " is outside your access scope");
-                    }
+            Set<String> accessiblePs = new HashSet<>(facultyMappingRepository
+                    .findAccessIdsByUserIdAndInstituteId(caller.getUserId(), request.getInstituteId(),
+                            List.of("ACTIVE")));
+            for (String psId : requestedPsIds) {
+                if (!accessiblePs.contains(psId)) {
+                    throw new VacademyException("Package session " + psId + " is outside your access scope");
                 }
             }
         }
@@ -319,25 +306,6 @@ public class SubOrgTeamService {
                 facultyMappingRepository.save(inviteMapping);
                 inviteGranted++;
             }
-        }
-
-        // Backwards-compatible: if explicit invite_ids were passed (e.g. by a system admin),
-        // still honour them — adds any invites not already linked via the PS auto-discovery.
-        for (String inviteId : requestedInviteIds) {
-            if (!grantedInviteIds.add(inviteId)) continue;
-            FacultySubjectPackageSessionMapping mapping = new FacultySubjectPackageSessionMapping();
-            mapping.setUserId(userId);
-            mapping.setName(request.getUser().getFullName());
-            mapping.setStatus("ACTIVE");
-            mapping.setUserType("ROLE");
-            mapping.setTypeId(request.getRoleId());
-            mapping.setAccessType("ENROLL_INVITE");
-            mapping.setAccessId(inviteId);
-            mapping.setAccessPermission(accessPermission);
-            mapping.setLinkageType("SUB_ORG");
-            mapping.setSuborgId(request.getSubOrgId());
-            facultyMappingRepository.save(mapping);
-            inviteGranted++;
         }
 
         Map<String, Object> result = new java.util.HashMap<>();
@@ -458,14 +426,13 @@ public class SubOrgTeamService {
     }
 
     /**
-     * Grants the caller is allowed to extend to a new team member from the Add Member form.
-     * Returns BOTH package-session IDs and enroll-invite IDs that the caller's FSPSSM scope
-     * covers. The frontend uses these two lists to decide what to show: if the caller only has
-     * invite-level access, only the invite picker is rendered.
+     * Package-session IDs the caller can grant access to from the Add Member form.
+     * Invite-level FSPSSM rows are auto-linked server-side from the selected PSes via PSLIPO,
+     * so the caller never picks invites explicitly.
      *
-     * - Sub-org admin → their FSPSSM-accessible PS IDs and ENROLL_INVITE IDs.
-     * - True admin    → every active PS + every active EnrollInvite under the institute.
-     * - Anyone else   → empty both lists.
+     * - Sub-org admin → their FSPSSM-accessible PS IDs.
+     * - True admin    → every active PS under the institute.
+     * - Anyone else   → empty list.
      */
     public Map<String, Object> listAccessibleGrants(CustomUserDetails caller, String instituteId) {
         if (caller == null) {
@@ -477,40 +444,22 @@ public class SubOrgTeamService {
 
         Map<String, Object> result = new java.util.HashMap<>();
         List<String> psIds;
-        List<String> inviteIds;
 
         List<String> subOrgs = facultyMappingRepository
                 .findDistinctSubOrgIdsByUserAndLinkage(caller.getUserId(), List.of("ACTIVE"));
         if (subOrgs.isEmpty()) {
             if (!hasSystemRole(caller, instituteId, "ADMIN", "TEACHER")) {
                 result.put("package_session_ids", java.util.Collections.emptyList());
-                result.put("invites", java.util.Collections.emptyList());
                 return result;
             }
             psIds = packageSessionRepository.findPackageSessionsByInstituteId(instituteId, List.of("ACTIVE"))
                     .stream().map(PackageSession::getId).collect(java.util.stream.Collectors.toList());
-            inviteIds = enrollInviteRepository.findByInstituteIdAndStatus(instituteId, "ACTIVE")
-                    .stream().map(EnrollInvite::getId).collect(java.util.stream.Collectors.toList());
         } else {
             psIds = facultyMappingRepository.findAccessIdsByUserIdAndInstituteId(
                     caller.getUserId(), instituteId, List.of("ACTIVE"));
-            inviteIds = facultyMappingRepository.findEnrollInviteAccessIdsByUserIdAndInstituteId(
-                    caller.getUserId(), instituteId, List.of("ACTIVE"));
-        }
-
-        // Hydrate invites with their names for the picker.
-        List<Map<String, Object>> invites = new ArrayList<>();
-        if (!inviteIds.isEmpty()) {
-            for (EnrollInvite inv : enrollInviteRepository.findAllById(inviteIds)) {
-                Map<String, Object> m = new java.util.HashMap<>();
-                m.put("id", inv.getId());
-                m.put("name", inv.getName());
-                invites.add(m);
-            }
         }
 
         result.put("package_session_ids", psIds);
-        result.put("invites", invites);
         return result;
     }
 

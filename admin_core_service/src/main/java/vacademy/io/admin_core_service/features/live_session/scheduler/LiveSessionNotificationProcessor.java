@@ -192,9 +192,15 @@ public class LiveSessionNotificationProcessor {
     /**
      * Fires the LIVE_SESSION_END workflow trigger for every schedule whose end
      * (meeting_date + last_entry_time, in session timezone) fell within the
-     * look-back window. The workflow engine de-dupes per (trigger, scheduleId)
-     * via the unique constraint on workflow_execution, so re-firing across
-     * consecutive ticks is safe — only the first wins.
+     * look-back window.
+     *
+     * <p>De-duplication is handled by the workflow engine's idempotency layer:
+     * LIVE_SESSION_END triggers are configured with EVENT_BASED strategy
+     * (includeTriggerId + includeEventType + includeEventId), which produces
+     * a stable key {@code trigger_X_eventType_LIVE_SESSION_END_eventId_<scheduleId>}.
+     * The unique index on {@code workflow_execution.idempotency_key} (V30)
+     * rejects duplicate INSERTs on the second-arriving replica's call. See
+     * WorkflowBuilderService for where this strategy is set on trigger creation.
      *
      * <p>Per-row try/catch so a single bad schedule (or workflow failure) can't
      * stop the rest of the dispatch.

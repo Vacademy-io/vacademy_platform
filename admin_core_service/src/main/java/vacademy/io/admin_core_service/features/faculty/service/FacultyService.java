@@ -109,16 +109,39 @@ public class FacultyService {
         boolean hasBatches = filter.getBatches() != null && !filter.getBatches().isEmpty();
         boolean hasStatus = filter.getStatus() != null && !filter.getStatus().isEmpty();
 
-        Page<FacultySubjectPackageSessionMapping> paginatedResponse = facultyRepository.findByFilters(
-                instituteId,
-                filter.getName(),
-                filter.getSubjects() == null ? new ArrayList<>() : filter.getSubjects(),
-                filter.getBatches() == null ? new ArrayList<>() : filter.getBatches(),
-                filter.getStatus() == null ? new ArrayList<>() : filter.getStatus(),
-                hasSubjects,
-                hasBatches,
-                hasStatus,
-                pageable);
+        // Sub-org scope: when the caller has SUB_ORG-linked FSPSSM access (i.e. they are a
+        // sub-org admin, not a real institute admin), restrict the faculty list to teachers
+        // who are linked to one of THEIR sub-orgs for this PS. Real admins (no SUB_ORG
+        // linkages) keep the original unrestricted view.
+        List<String> callerSubOrgs = userDetails != null
+                ? facultyRepository.findDistinctSubOrgIdsByUserAndLinkage(userDetails.getUserId(), List.of("ACTIVE"))
+                : new ArrayList<>();
+
+        Page<FacultySubjectPackageSessionMapping> paginatedResponse;
+        if (callerSubOrgs != null && !callerSubOrgs.isEmpty()) {
+            paginatedResponse = facultyRepository.findByFiltersScopedToSubOrgs(
+                    instituteId,
+                    filter.getName(),
+                    filter.getSubjects() == null ? new ArrayList<>() : filter.getSubjects(),
+                    filter.getBatches() == null ? new ArrayList<>() : filter.getBatches(),
+                    filter.getStatus() == null ? new ArrayList<>() : filter.getStatus(),
+                    callerSubOrgs,
+                    hasSubjects,
+                    hasBatches,
+                    hasStatus,
+                    pageable);
+        } else {
+            paginatedResponse = facultyRepository.findByFilters(
+                    instituteId,
+                    filter.getName(),
+                    filter.getSubjects() == null ? new ArrayList<>() : filter.getSubjects(),
+                    filter.getBatches() == null ? new ArrayList<>() : filter.getBatches(),
+                    filter.getStatus() == null ? new ArrayList<>() : filter.getStatus(),
+                    hasSubjects,
+                    hasBatches,
+                    hasStatus,
+                    pageable);
+        }
 
         return ResponseEntity.ok(createAllFacultyResponse(paginatedResponse));
     }

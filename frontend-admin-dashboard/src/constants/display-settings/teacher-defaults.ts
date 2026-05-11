@@ -32,13 +32,17 @@ function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[]
                     ? true
                     : false,
             subTabs:
-                item.subItems?.map((sub, subIndex) => ({
-                    id: sub.subItemId || sub.subItem || `${item.id}-${subIndex + 1}`,
-                    label: sub.subItem,
-                    route: sub.subItemLink || '#',
-                    order: subIndex + 1,
-                    visible: true,
-                })) || [],
+                item.subItems?.map((sub, subIndex) => {
+                    const subId = sub.subItemId || sub.subItem || `${item.id}-${subIndex + 1}`;
+                    return {
+                        id: subId,
+                        label: sub.subItem,
+                        route: sub.subItemLink || '#',
+                        order: subIndex + 1,
+                        // Sub-org teams is hidden by default for teachers too — opt-in via settings.
+                        visible: subId !== 'suborg-teams',
+                    };
+                }) || [],
         }));
 }
 

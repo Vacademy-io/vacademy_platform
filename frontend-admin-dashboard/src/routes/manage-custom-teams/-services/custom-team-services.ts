@@ -16,6 +16,8 @@ import {
     SUB_ORG_TEAM_LIST,
     SUB_ORG_TEAM_ADD,
     SUB_ORG_TEAM_REMOVE,
+    SUB_ORG_TEAM_ACCESSIBLE,
+    SUB_ORG_TEAM_ACCESSIBLE_GRANTS,
 } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
@@ -375,6 +377,7 @@ export interface SubOrgTeamAddRequest {
     role_name: string;
     role_id?: string;
     package_session_ids: string[];
+    invite_ids?: string[];
     access_permission?: string;
 }
 
@@ -407,6 +410,39 @@ export const removeSubOrgTeamMember = async (
         method: 'POST',
         url: SUB_ORG_TEAM_REMOVE,
         data,
+    });
+    return response.data;
+};
+
+export interface AccessibleSubOrg {
+    id: string;
+    name: string;
+}
+
+export const listAccessibleSubOrgs = async (
+    instituteId: string
+): Promise<AccessibleSubOrg[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: SUB_ORG_TEAM_ACCESSIBLE,
+        params: { instituteId },
+    });
+    return response.data;
+};
+
+export interface AccessibleGrants {
+    package_session_ids: string[];
+    invites: Array<{ id: string; name: string }>;
+}
+
+/** Returns the caller's accessible PSes + invites for the Add Member form. */
+export const listAccessibleGrants = async (
+    instituteId: string
+): Promise<AccessibleGrants> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: SUB_ORG_TEAM_ACCESSIBLE_GRANTS,
+        params: { instituteId },
     });
     return response.data;
 };

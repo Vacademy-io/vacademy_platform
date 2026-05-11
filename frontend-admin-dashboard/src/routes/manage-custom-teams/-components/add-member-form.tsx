@@ -20,7 +20,9 @@ import {
     createCustomRole,
     getAllRoles,
     addSubOrgTeamMember,
+    listAccessibleGrants,
 } from '../-services/custom-team-services';
+import { fetchBatchesByIds } from '@/routes/admin-package-management/-services/package-service';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -93,18 +95,44 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
 
     const hasFacultyAssigned = form.watch('hasFacultyAssigned');
 
-    // Fetch Roles
-    const { data: roles = [] } = useQuery({
+    // Fetch Roles. In subOrg mode, system roles are hidden — sub-org admins can only assign
+    // custom roles to their team members.
+    const SYSTEM_ROLE_NAMES = ['ADMIN', 'TEACHER', 'STUDENT', 'EVALUATOR', 'COURSE CREATOR', 'ASSESSMENT CREATOR'];
+    const { data: rolesRaw = [] } = useQuery({
         queryKey: ['roles'],
         queryFn: getAllRoles,
         staleTime: 1000 * 60 * 5,
         enabled: open,
     });
+    const roles = mode === 'subOrg'
+        ? (rolesRaw || []).filter((r: any) => !SYSTEM_ROLE_NAMES.includes(String(r.name || '').toUpperCase()))
+        : (rolesRaw || []);
 
     const instituteId = getCurrentInstituteId();
 
-    // Fetch paginated package sessions
-    const { data: paginatedSessions, isLoading: isLoadingSessions } = useQuery({
+    // In subOrg mode, the caller can only grant access to PSes/invites their FSPSSM allows.
+    // We fetch the allowed set from the backend; if they have only invite-level access, the
+    // PS section won't render.
+    const { data: accessibleGrants } = useQuery({
+        queryKey: ['accessible-grants', instituteId],
+        queryFn: () => listAccessibleGrants(instituteId),
+        enabled: open && mode === 'subOrg' && !!instituteId,
+        staleTime: 1000 * 60,
+    });
+    const accessiblePsIds = accessibleGrants?.package_session_ids;
+
+    const { data: scopedSessionsData, isLoading: isLoadingScopedSessions } = useQuery({
+        queryKey: ['scoped-package-sessions', accessiblePsIds],
+        queryFn: async () => {
+            if (!accessiblePsIds || accessiblePsIds.length === 0) return { content: [] };
+            const resp = await fetchBatchesByIds(accessiblePsIds);
+            return { content: resp.content || [] };
+        },
+        enabled: open && mode === 'subOrg' && !!accessiblePsIds && accessiblePsIds.length > 0,
+    });
+
+    // Fetch paginated package sessions (institute-wide flow — unchanged for default mode)
+    const { data: paginatedSessionsRaw, isLoading: isLoadingPaginatedSessions } = useQuery({
         queryKey: ['paginated-sessions', debouncedSessionSearch, sessionPage],
         queryFn: () => fetchPaginatedBatches({
             page: sessionPage,
@@ -112,8 +140,31 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
             search: debouncedSessionSearch || undefined,
             statuses: ['ACTIVE'],
         }),
-        enabled: open,
+        enabled: open && mode !== 'subOrg',
     });
+
+    // Unified shape for the UI: in subOrg mode use the scoped list (no pagination needed);
+    // otherwise use the original paginated source.
+    const paginatedSessions = mode === 'subOrg'
+        ? (scopedSessionsData
+            ? {
+                  content: (scopedSessionsData.content as any[]).filter((ps: any) => {
+                      if (!debouncedSessionSearch) return true;
+                      const haystack = [
+                          ps.package_dto?.package_name,
+                          ps.level?.level_name,
+                          ps.session?.session_name,
+                      ].filter(Boolean).join(' ').toLowerCase();
+                      return haystack.includes(debouncedSessionSearch.toLowerCase());
+                  }),
+                  total_pages: 1,
+                  total_elements: scopedSessionsData.content.length,
+                  has_previous: false,
+                  has_next: false,
+              }
+            : undefined)
+        : paginatedSessionsRaw;
+    const isLoadingSessions = mode === 'subOrg' ? isLoadingScopedSessions : isLoadingPaginatedSessions;
 
     const togglePackageSession = (id: string) => {
         setSelectedPackageSessionIds((prev) =>
@@ -138,9 +189,9 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
             if (mode === 'subOrg') {
                 if (!subOrgId) throw new Error('Missing sub-org id');
                 if (isCustomRole) {
-                    // Create the role first (still institute-level), then proceed with its id.
-                    const permissionIds = hasFacultyAssigned ? ['109'] : [];
-                    const roleResponse = await createCustomRole({ name: customRoleName, permissionIds });
+                    // Sub-org team members always get faculty-access permission (the role is
+                    // scoped via SUB_ORG FSPSSM entries server-side), so no checkbox needed.
+                    const roleResponse = await createCustomRole({ name: customRoleName, permissionIds: ['109'] });
                     roleId = roleResponse.id || roleResponse.roleId;
                     roleName = customRoleName;
                 }
@@ -209,6 +260,8 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
         onSuccess: () => {
             toast.success('Member added successfully');
             queryClient.invalidateQueries({ queryKey: ['custom-teams'] });
+            queryClient.invalidateQueries({ queryKey: ['custom-roles'] });
+            queryClient.invalidateQueries({ queryKey: ['roles'] });
             reset();
             setSelectedPackageSessionIds([]);
             setSessionSearch('');
@@ -368,25 +421,27 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
                                     </div>
                                 </div>
 
-                                <div className="flex items-center space-x-2 pt-2">
-                                    <Controller
-                                        control={control}
-                                        name="hasFacultyAssigned"
-                                        render={({ field }) => (
-                                            <Checkbox
-                                                id="hasFacultyAssigned"
-                                                checked={field.value}
-                                                onCheckedChange={field.onChange}
-                                            />
-                                        )}
-                                    />
-                                    <Label
-                                        htmlFor="hasFacultyAssigned"
-                                        className="cursor-pointer font-normal"
-                                    >
-                                        Has Faculty Assigned Permission?
-                                    </Label>
-                                </div>
+                                {mode !== 'subOrg' && (
+                                    <div className="flex items-center space-x-2 pt-2">
+                                        <Controller
+                                            control={control}
+                                            name="hasFacultyAssigned"
+                                            render={({ field }) => (
+                                                <Checkbox
+                                                    id="hasFacultyAssigned"
+                                                    checked={field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                            )}
+                                        />
+                                        <Label
+                                            htmlFor="hasFacultyAssigned"
+                                            className="cursor-pointer font-normal"
+                                        >
+                                            Has Faculty Assigned Permission?
+                                        </Label>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Access Mapping Section - Multi-select Package Sessions */}
@@ -484,34 +539,36 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
                                         )}
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <Label>Linkage Type</Label>
-                                        <Controller
-                                            control={control}
-                                            name="linkageType"
-                                            render={({ field }) => (
-                                                <Select
-                                                    onValueChange={field.onChange}
-                                                    value={field.value}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select Linkage Type" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="DIRECT">
-                                                            Direct
-                                                        </SelectItem>
-                                                        <SelectItem value="INHERITED">
-                                                            Inherited
-                                                        </SelectItem>
-                                                        <SelectItem value="PARTNERSHIP">
-                                                            Partnership
-                                                        </SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            )}
-                                        />
-                                    </div>
+                                    {mode !== 'subOrg' && (
+                                        <div className="space-y-2">
+                                            <Label>Linkage Type</Label>
+                                            <Controller
+                                                control={control}
+                                                name="linkageType"
+                                                render={({ field }) => (
+                                                    <Select
+                                                        onValueChange={field.onChange}
+                                                        value={field.value}
+                                                    >
+                                                        <SelectTrigger>
+                                                            <SelectValue placeholder="Select Linkage Type" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="DIRECT">
+                                                                Direct
+                                                            </SelectItem>
+                                                            <SelectItem value="INHERITED">
+                                                                Inherited
+                                                            </SelectItem>
+                                                            <SelectItem value="PARTNERSHIP">
+                                                                Partnership
+                                                            </SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </form>

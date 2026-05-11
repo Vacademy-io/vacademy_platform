@@ -11,6 +11,7 @@ import vacademy.io.admin_core_service.features.suborg.service.SubOrgTeamService;
 import vacademy.io.common.auth.dto.PagedUserWithRolesResponse;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -30,6 +31,22 @@ public class SubOrgTeamController {
             @RequestBody SubOrgTeamListRequestDTO request,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
         return ResponseEntity.ok(subOrgTeamService.listTeamMembers(request, user));
+    }
+
+    /** Sub-orgs the caller can manage (for the picker on the manage-suborg-teams page). */
+    @GetMapping("/accessible-sub-orgs")
+    public ResponseEntity<List<Map<String, Object>>> listAccessibleSubOrgs(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        return ResponseEntity.ok(subOrgTeamService.listAccessibleSubOrgs(user, instituteId));
+    }
+
+    /** Grants (PS IDs + invites) the caller can extend from the Add Member form. */
+    @GetMapping("/accessible-grants")
+    public ResponseEntity<Map<String, Object>> listAccessibleGrants(
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        return ResponseEntity.ok(subOrgTeamService.listAccessibleGrants(user, instituteId));
     }
 
     @PostMapping("/add")

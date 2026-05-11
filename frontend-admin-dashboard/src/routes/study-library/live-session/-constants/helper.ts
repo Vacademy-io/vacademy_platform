@@ -67,6 +67,9 @@ export interface FeedbackQuestionConfig {
 
 export interface FeedbackConfig {
     enabled: boolean;
+    // When false, the learner cannot dismiss the feedback form — skip button
+    // is hidden client-side and the backend rejects empty mandatory answers.
+    allow_skip?: boolean;
     questions: FeedbackQuestionConfig[];
 }
 
@@ -289,6 +292,7 @@ export function transformFormToDTOStep1(
         bbbWebcamsOnlyForModerator,
         bbbGuestPolicy,
         feedbackEnabled,
+        feedbackCompulsory,
         feedbackQuestions,
     } = form;
 
@@ -371,8 +375,9 @@ export function transformFormToDTOStep1(
         } : null,
         feedback_config: feedbackEnabled ? {
             enabled: true,
+            allow_skip: !feedbackCompulsory,
             questions: feedbackQuestions ?? [],
-        } : { enabled: false, questions: [] },
+        } : { enabled: false, allow_skip: true, questions: [] },
     };
 }
 

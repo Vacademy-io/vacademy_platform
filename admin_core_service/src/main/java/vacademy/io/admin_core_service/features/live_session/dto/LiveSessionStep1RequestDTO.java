@@ -56,6 +56,10 @@ public class LiveSessionStep1RequestDTO {
     @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class FeedbackConfigDTO {
         private Boolean enabled;
+        // When false, learners cannot dismiss the feedback form and must answer
+        // every enabled+mandatory question. Null/true preserves the previous
+        // skip-allowed behavior so existing sessions are unaffected.
+        private Boolean allowSkip;
         private java.util.List<FeedbackQuestionDTO> questions;
     }
 

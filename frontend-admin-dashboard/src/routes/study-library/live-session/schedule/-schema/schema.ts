@@ -103,6 +103,9 @@ export const sessionFormSchema = z
         bbbGuestPolicy: z.enum(['ALWAYS_ACCEPT', 'ASK_MODERATOR', 'ALWAYS_DENY']).optional(),
         // Learner feedback configuration
         feedbackEnabled: z.boolean().optional(),
+        // When true, learner cannot skip the feedback form. Serialized to the
+        // backend as feedback_config.allow_skip = !feedbackCompulsory.
+        feedbackCompulsory: z.boolean().optional(),
         feedbackQuestions: z.array(z.object({
             id: z.string(),
             type: z.string(),

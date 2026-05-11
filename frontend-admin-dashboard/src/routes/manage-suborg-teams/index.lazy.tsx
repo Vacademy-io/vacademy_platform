@@ -20,8 +20,6 @@ import {
 } from '@/components/ui/select';
 import { Building2 } from 'lucide-react';
 
-// @ts-expect-error — routeTree.gen.ts hasn't been regenerated yet for this new route;
-// the next dev/build run with the TanStack Router Vite plugin will pick it up.
 export const Route = createLazyFileRoute('/manage-suborg-teams/')({
     component: ManageSubOrgTeams,
 });
@@ -46,7 +44,7 @@ function ManageSubOrgTeams() {
 
     const { data: rawSubOrgs, isLoading } = useQuery({
         queryKey: ['sub-orgs-accessible-picker', instituteId],
-        queryFn: () => listAccessibleSubOrgs(instituteId),
+        queryFn: () => listAccessibleSubOrgs(instituteId!),
         enabled: !!instituteId,
     });
 

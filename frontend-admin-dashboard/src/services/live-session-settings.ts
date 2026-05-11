@@ -25,6 +25,12 @@ export interface LiveSessionSettings {
     allowedPlatforms: Partial<Record<PlatformKey, boolean>>;
     /** Whether learners can submit feedback after a session. */
     feedbackEnabled: boolean;
+    /**
+     * Default value for the per-session "Make feedback compulsory" toggle.
+     * When `true`, new live sessions start with feedback marked as compulsory
+     * (allow_skip = false). Admins can still flip the toggle per session.
+     */
+    defaultFeedbackCompulsory: boolean;
     /** Whether the "Bulk Schedule" mode appears in step 1. */
     bulkScheduleEnabled: boolean;
     /** Whether the "Single Class" mode appears in step 1. Cannot be false at the same time as bulk. */
@@ -67,6 +73,7 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
         other: true,
     },
     feedbackEnabled: true,
+    defaultFeedbackCompulsory: false,
     bulkScheduleEnabled: true,
     singleScheduleEnabled: true,
     recurringEnabled: true,

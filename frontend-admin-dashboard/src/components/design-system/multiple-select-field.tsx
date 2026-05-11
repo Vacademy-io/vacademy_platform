@@ -88,7 +88,11 @@ export default function MultiSelectDropdown({
                                                 {isOpen ? <CaretUp /> : <CaretDown />}
                                             </div>
                                         </PopoverTrigger>
-                                        <PopoverContent className="w-full p-1">
+                                        <PopoverContent
+                                            className="max-h-[320px] w-full overflow-y-auto overscroll-contain p-1"
+                                            onWheel={(e) => e.stopPropagation()}
+                                            onTouchMove={(e) => e.stopPropagation()}
+                                        >
                                             {options.map((option) => (
                                                 <div
                                                     key={option.value}

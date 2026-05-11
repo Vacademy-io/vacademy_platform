@@ -245,6 +245,7 @@ export function BulkScheduleGrid() {
                 allowRewind: true,
                 allowPause: true,
                 enableFeedback: false,
+                feedbackCompulsory: liveSessionSettings.defaultFeedbackCompulsory ?? false,
                 feedbackQuestions: BULK_DEFAULT_FEEDBACK_QUESTIONS,
                 recordSession: false,
                 autoStartRecording: false,
@@ -515,6 +516,7 @@ export function BulkScheduleGrid() {
                     recurringSchedule: [],
                     learner_button_config: null,
                     feedbackEnabled: shared.enableFeedback,
+                    feedbackCompulsory: shared.enableFeedback ? shared.feedbackCompulsory : false,
                     feedbackQuestions: shared.enableFeedback
                         ? shared.feedbackQuestions ?? BULK_DEFAULT_FEEDBACK_QUESTIONS
                         : undefined,
@@ -1030,6 +1032,27 @@ export function BulkScheduleGrid() {
 
                             {form.watch('sharedOptions.enableFeedback') && (
                                 <div className="mt-3 space-y-2">
+                                    <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-white px-3 py-2">
+                                        <div>
+                                            <div className="text-xs font-medium text-neutral-700">
+                                                Make feedback compulsory
+                                            </div>
+                                            <div className="mt-0.5 text-[11px] text-neutral-500">
+                                                Learners cannot skip the form — all required
+                                                questions must be answered.
+                                            </div>
+                                        </div>
+                                        <Controller
+                                            control={form.control}
+                                            name="sharedOptions.feedbackCompulsory"
+                                            render={({ field }) => (
+                                                <Switch
+                                                    checked={field.value ?? false}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                            )}
+                                        />
+                                    </div>
                                     <div className="text-xs font-medium text-neutral-600">
                                         Questions
                                     </div>

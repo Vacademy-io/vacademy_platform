@@ -477,6 +477,17 @@ function mergeDisplayWithDefaults(
             true,
     };
 
+    // Team-tab role visibility. Preserve any explicitly-set keys; consumers
+    // treat missing keys as visible (true). No defaults are materialized here
+    // because the role list is dynamic (custom roles), so we can't know all
+    // valid keys at merge time.
+    merged.teamManagement = {
+        visibleRoles: {
+            ...(defaults.teamManagement?.visibleRoles || {}),
+            ...(incoming?.teamManagement?.visibleRoles || {}),
+        },
+    };
+
     // Sidebar Categories
     const defSidebarCategories: NonNullable<DisplaySettingsData['sidebarCategories']> = [
         { id: 'CRM', visible: true, default: true, order: 0 },

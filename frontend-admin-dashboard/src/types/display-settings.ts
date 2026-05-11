@@ -197,6 +197,15 @@ export const DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS: LiveClassSchedulingSettings
     singleScheduleEnabled: true,
 };
 
+// Per-role control over which roles this role can see/select in the Team tab —
+// in the role-type filter chips and the "Role Type" dropdown of the Invite
+// User dialog. Keys are role names uppercased (matches backend authorities and
+// RoleType.name from dummy-data), e.g. 'ADMIN', 'TEACHER', 'COURSE CREATOR'.
+// Missing keys default to true so existing institutes are unaffected.
+export interface TeamManagementSettings {
+    visibleRoles: Record<string, boolean>;
+}
+
 export interface DisplaySettingsData {
     // 1) Sidebar tabs and sub-tabs configuration and ordering
     sidebar: SidebarTabConfig[];
@@ -285,6 +294,12 @@ export interface DisplaySettingsData {
     //      scheduling for specific roles even if it's institute-enabled.
     //      Both flags default to true so existing institutes are unaffected.
     liveClassScheduling?: LiveClassSchedulingSettings;
+
+    // 13c) Team tab role-visibility controls. Restricts which roles the
+    //      viewing role can see/select in the Team tab's role-type filter and
+    //      the Invite User dialog. Self-role is always treated as visible by
+    //      consumers to prevent lockout.
+    teamManagement?: TeamManagementSettings;
 
     // 14) Sidebar Category Configuration
     sidebarCategories?: Array<{

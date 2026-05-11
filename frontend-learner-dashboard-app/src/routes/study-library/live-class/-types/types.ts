@@ -128,6 +128,9 @@ export interface FeedbackQuestion {
 
 export interface FeedbackConfig {
     enabled: boolean;
+    // When false, the learner cannot dismiss the form — the Skip button is
+    // hidden and the backend rejects empty mandatory answers.
+    allow_skip?: boolean;
     questions: FeedbackQuestion[];
 }
 

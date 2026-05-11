@@ -258,6 +258,7 @@ export default function ScheduleStep1() {
             durationHours: '0',
             defaultLink: '',
             feedbackEnabled: false,
+            feedbackCompulsory: liveSessionSettings.defaultFeedbackCompulsory ?? false,
             feedbackQuestions: DEFAULT_FEEDBACK_QUESTIONS,
             bbbRecord: true,
             bbbAutoStartRecording: false,
@@ -613,6 +614,7 @@ export default function ScheduleStep1() {
             bbbWebcamsOnlyForModerator: schedule.bbb_config?.webcams_only_for_moderator ?? false,
             bbbGuestPolicy: (schedule.bbb_config?.guest_policy as 'ALWAYS_ACCEPT' | 'ASK_MODERATOR' | 'ALWAYS_DENY') ?? 'ALWAYS_ACCEPT',
             feedbackEnabled: schedule.feedback_config?.enabled ?? false,
+            feedbackCompulsory: schedule.feedback_config?.allow_skip === false,
             feedbackQuestions: schedule.feedback_config?.questions ?? DEFAULT_FEEDBACK_QUESTIONS,
         });
 
@@ -2204,6 +2206,30 @@ export default function ScheduleStep1() {
 
             {form.watch('feedbackEnabled') && (
                 <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-white px-3 py-2">
+                        <div>
+                            <div className="text-xs font-medium text-neutral-700">
+                                Make feedback compulsory
+                            </div>
+                            <div className="mt-0.5 text-[11px] text-neutral-500">
+                                Learners cannot skip the form — all required questions must be answered.
+                            </div>
+                        </div>
+                        <FormField
+                            control={control}
+                            name="feedbackCompulsory"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center space-y-0">
+                                    <FormControl>
+                                        <Switch
+                                            checked={field.value ?? false}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                    </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                    </div>
                     <div className="text-xs font-medium text-neutral-600">Questions</div>
                     {(form.watch('feedbackQuestions') ?? DEFAULT_FEEDBACK_QUESTIONS).map((q, idx) => (
                         <div

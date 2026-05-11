@@ -1,7 +1,7 @@
 import { LockSimple } from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/badge';
 import { LiveSession } from '../schedule/-services/utils';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import Papa from 'papaparse';
 import { toast } from 'sonner';
 import { useNavigate } from '@tanstack/react-router';
@@ -319,7 +319,14 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
         }
     }, [scheduledSessionDetails]);
 
-    const handleCardClick = () => {
+    const cardRef = useRef<HTMLDivElement>(null);
+
+    // MyDialog portals to document.body, but Radix re-bubbles synthetic events
+    // through the React tree — so clicks on the dialog's X button, header,
+    // footer, or backdrop would otherwise fire this handler and navigate away.
+    // Guard by checking the click's DOM target actually lives inside the card.
+    const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!cardRef.current?.contains(e.target as Node)) return;
         navigate({
             to: '/study-library/live-session/view/$sessionId',
             params: { sessionId: session?.session_id || '' },
@@ -329,6 +336,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
     const formattedDateTime = `${session.meeting_date} ${session.start_time}`;
     return (
         <div
+            ref={cardRef}
             className="my-6 flex cursor-pointer flex-col gap-4 rounded-xl border bg-neutral-50 p-4 transition-shadow hover:shadow-md"
             onClick={handleCardClick}
         >

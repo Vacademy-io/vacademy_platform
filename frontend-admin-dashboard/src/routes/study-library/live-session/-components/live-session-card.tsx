@@ -15,7 +15,7 @@ import { LiveSession } from '../schedule/-services/utils';
 import { handleDownloadQRCode } from '@/routes/homework-creation/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { useQueryClient } from '@tanstack/react-query';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { useState, useCallback } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import Papa from 'papaparse';
 import { fetchSessionDetails, SessionDetailsResponse } from '../-hooks/useSessionDetails';
@@ -270,7 +270,14 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
         toast.success('Attendance report downloaded successfully.');
     };
 
-    const handleCardClick = () => {
+    const cardRef = useRef<HTMLDivElement>(null);
+
+    // MyDialog portals to document.body, but Radix re-bubbles synthetic events
+    // through the React tree — so clicks on the dialog's X button, header,
+    // footer, or backdrop would otherwise fire this handler and navigate away.
+    // Guard by checking the click's DOM target actually lives inside the card.
+    const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!cardRef.current?.contains(e.target as Node)) return;
         navigate({
             to: '/study-library/live-session/view/$sessionId',
             params: { sessionId: session?.session_id || '' },
@@ -280,6 +287,7 @@ export default function LiveSessionCard({ session, isDraft = false }: LiveSessio
     return (
         <>
             <div
+                ref={cardRef}
                 className="my-6 flex cursor-pointer flex-col gap-4 rounded-xl border bg-neutral-50 p-4 transition-shadow hover:shadow-md"
                 onClick={handleCardClick}
             >

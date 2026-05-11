@@ -18,6 +18,7 @@ import type { DisplaySettingsData } from '@/types/display-settings';
 import { TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
+import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
@@ -1934,6 +1935,17 @@ export default function TeacherDisplaySettings() {
                     ))}
                 </CardContent>
             </Card>
+
+            <TeamRoleVisibilityCard
+                selfRoleName="TEACHER"
+                visibleRoles={settings.teamManagement?.visibleRoles || {}}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        teamManagement: { visibleRoles: next },
+                    }))
+                }
+            />
 
             <Card>
                 <CardHeader>

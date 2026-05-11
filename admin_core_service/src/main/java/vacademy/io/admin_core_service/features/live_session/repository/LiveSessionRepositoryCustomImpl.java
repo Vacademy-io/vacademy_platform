@@ -223,9 +223,16 @@ public class LiveSessionRepositoryCustomImpl implements LiveSessionRepositoryCus
             parameters.put("timezones", request.getTimezones());
         }
 
-        // Streaming service types filter
+        // Streaming service types filter.
+        // The platform value historically sat in `session_streaming_service_type`
+        // (when frontend send-mapping was reversed) and now sits in `link_type`
+        // for sessions created after the swap-fix. Both columns are checked so
+        // the filter returns sessions from both eras. Safe because platform
+        // values (bbb/youtube/zoom/zoho/google meet/other) and streaming-mode
+        // values (embed/redirect) don't overlap.
         if (request.getStreamingServiceTypes() != null && !request.getStreamingServiceTypes().isEmpty()) {
-            conditions.add("s.session_streaming_service_type IN :streamingServiceTypes");
+            conditions.add("(s.session_streaming_service_type IN :streamingServiceTypes "
+                    + "OR s.link_type IN :streamingServiceTypes)");
             parameters.put("streamingServiceTypes", request.getStreamingServiceTypes());
         }
 

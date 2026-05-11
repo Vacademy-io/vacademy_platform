@@ -391,6 +391,16 @@ export default function LiveSessionSettings() {
                         checked={settings.feedbackEnabled}
                         onChange={(v) => togglePrimitive('feedbackEnabled', v)}
                     />
+                    {settings.feedbackEnabled && (
+                        <div className="mt-4 border-t border-neutral-100 pt-4">
+                            <SettingRow
+                                title="Make feedback compulsory by default"
+                                description="Pre-fills the per-session 'Make feedback compulsory' toggle to ON. When enabled, learners cannot skip the feedback form."
+                                checked={settings.defaultFeedbackCompulsory}
+                                onChange={(v) => togglePrimitive('defaultFeedbackCompulsory', v)}
+                            />
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

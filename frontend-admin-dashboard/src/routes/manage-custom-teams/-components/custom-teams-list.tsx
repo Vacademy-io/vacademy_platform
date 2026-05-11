@@ -81,7 +81,7 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                     .filter((n: string) => !SYSTEM_ROLES.has((n || '').toUpperCase()));
                 const resp = await listSubOrgTeamMembers({
                     sub_org_id: subOrgId,
-                    institute_id: instituteId,
+                    institute_id: instituteId!,
                     roles: customRoleNames,
                     // INVITED covers freshly added members who haven't accepted yet.
                     status: ['ACTIVE', 'DISABLED', 'INVITED'],
@@ -141,7 +141,7 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
             }
             return removeSubOrgTeamMember({
                 sub_org_id: subOrgId,
-                institute_id: instituteId,
+                institute_id: instituteId!,
                 user_id: userId,
             });
         },

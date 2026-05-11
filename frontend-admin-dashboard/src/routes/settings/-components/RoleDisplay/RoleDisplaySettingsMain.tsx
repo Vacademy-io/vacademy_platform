@@ -30,6 +30,22 @@ export default function RoleDisplaySettingsMain() {
         queryFn: getAllRoles,
     });
 
+    // System roles already have dedicated panels (Admin / Teacher) or are not
+    // configurable here (Student lives under "Student Display"). Filter them
+    // out so this dropdown only lists true custom roles.
+    const SYSTEM_ROLE_NAMES = new Set([
+        'ADMIN',
+        'TEACHER',
+        'STUDENT',
+        'LEARNER',
+        'EVALUATOR',
+        'COURSE CREATOR',
+        'ASSESSMENT CREATOR',
+    ]);
+    const filteredCustomRoles = (customRoles || []).filter(
+        (r: CustomRole) => !SYSTEM_ROLE_NAMES.has(r.name.toUpperCase())
+    );
+
     const createRoleMutation = useMutation({
         mutationFn: (name: string) => createCustomRole({ name, permissionIds: ['109'] }),
         onSuccess: () => {
@@ -144,9 +160,15 @@ export default function RoleDisplaySettingsMain() {
                                         <SelectValue placeholder="Choose a custom role..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {customRoles?.map((r: CustomRole) => (
-                                            <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                                        ))}
+                                        {filteredCustomRoles.length === 0 ? (
+                                            <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                                                No custom roles yet. Create one with the + button.
+                                            </div>
+                                        ) : (
+                                            filteredCustomRoles.map((r: CustomRole) => (
+                                                <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                                            ))
+                                        )}
                                     </SelectContent>
                                 </Select>
                                 <Button
@@ -168,6 +190,11 @@ export default function RoleDisplaySettingsMain() {
                             <CustomRoleDisplaySettings
                                 key={selectedCustomRoleId}
                                 roleId={selectedCustomRoleId}
+                                roleName={
+                                    customRoles?.find(
+                                        (r: CustomRole) => r.id === selectedCustomRoleId
+                                    )?.name
+                                }
                             />
                             {(() => {
                                 const selectedRoleName =

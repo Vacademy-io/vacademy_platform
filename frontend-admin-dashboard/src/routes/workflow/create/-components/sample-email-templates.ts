@@ -386,4 +386,39 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   <p style="color:#888;font-size:13px;margin-top:32px">Best regards,<br/>{{instituteName}}</p>
 </div>`,
   },
+
+  // ─── Live class ended (post-class recap) ───
+  // Keyed by sampleTemplateKey on the LIVE_SESSION_END use-case questions, not
+  // by useCaseId — that use-case has TWO template_select questions and needs
+  // distinct samples per question (present vs absent).
+
+  live_session_recap_present: {
+    name: 'Live Class Recap (Attended)',
+    subject: 'Thanks for attending {{sessionTitle}}',
+    variables: ['fullName', 'sessionTitle', 'date', 'time', 'instituteName'],
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
+  <div style="text-align:center;padding:16px 0">
+    <h1 style="color:#16a34a;margin:0;font-size:22px">Great to see you!</h1>
+  </div>
+  <h2 style="color:#1a1a1a">Hi {{fullName}},</h2>
+  <p style="color:#444;line-height:1.6">Thanks for attending <strong>{{sessionTitle}}</strong> on {{date}} at {{time}}. We hope it was useful.</p>
+  <p style="color:#444;line-height:1.6">Keep up the consistency — see you in the next class!</p>
+  <p style="color:#888;font-size:13px;margin-top:32px">Best regards,<br/>{{instituteName}}</p>
+</div>`,
+  },
+
+  live_session_recap_absent: {
+    name: 'Live Class Recap (Missed)',
+    subject: 'You missed {{sessionTitle}}',
+    variables: ['fullName', 'sessionTitle', 'date', 'time', 'instituteName'],
+    html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
+  <div style="text-align:center;padding:16px 0">
+    <h1 style="color:#d97706;margin:0;font-size:22px">We missed you!</h1>
+  </div>
+  <h2 style="color:#1a1a1a">Hi {{fullName}},</h2>
+  <p style="color:#444;line-height:1.6">We noticed you weren't able to join <strong>{{sessionTitle}}</strong> on {{date}} at {{time}}.</p>
+  <p style="color:#444;line-height:1.6">No worries — please make sure to attend the next live class so you don't fall behind.</p>
+  <p style="color:#888;font-size:13px;margin-top:32px">Best regards,<br/>{{instituteName}}</p>
+</div>`,
+  },
 };

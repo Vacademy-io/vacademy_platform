@@ -13,6 +13,11 @@ import {
     GET_SUB_ORG_SEAT_USAGE,
     GET_SUB_ORG_SUBSCRIPTION_STATUS,
     ADD_SUB_ORG_MEMBER,
+    SUB_ORG_TEAM_LIST,
+    SUB_ORG_TEAM_ADD,
+    SUB_ORG_TEAM_REMOVE,
+    SUB_ORG_TEAM_ACCESSIBLE,
+    SUB_ORG_TEAM_ACCESSIBLE_GRANTS,
 } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
@@ -316,6 +321,127 @@ export const addSubOrgMember = async (
         method: 'POST',
         url: ADD_SUB_ORG_MEMBER,
         data,
+    });
+    return response.data;
+};
+
+// --- Sub-Org Team (custom-role) management ---
+
+export interface SubOrgTeamListRequest {
+    sub_org_id: string;
+    institute_id: string;
+    roles?: string[];
+    status?: string[];
+    name?: string;
+    page_number?: number;
+    page_size?: number;
+}
+
+export interface SubOrgTeamListResponse {
+    content: Array<{
+        userId: string;
+        username?: string;
+        fullName?: string;
+        email?: string;
+        mobileNumber?: string;
+        roles?: Array<{ id: string; name: string; institute_id?: string; status?: string }>;
+        [key: string]: unknown;
+    }>;
+    page_number: number;
+    page_size: number;
+    total_elements: number;
+    total_pages: number;
+    last: boolean;
+    first: boolean;
+}
+
+export const listSubOrgTeamMembers = async (
+    data: SubOrgTeamListRequest
+): Promise<SubOrgTeamListResponse> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: SUB_ORG_TEAM_LIST,
+        data,
+    });
+    return response.data;
+};
+
+export interface SubOrgTeamAddRequest {
+    sub_org_id: string;
+    institute_id: string;
+    user: {
+        email: string;
+        full_name: string;
+        mobile_number?: string;
+    };
+    role_name: string;
+    role_id?: string;
+    package_session_ids: string[];
+    access_permission?: string;
+}
+
+export interface SubOrgTeamAddResponse {
+    user_id: string;
+    granted_count: number;
+}
+
+export const addSubOrgTeamMember = async (
+    data: SubOrgTeamAddRequest
+): Promise<SubOrgTeamAddResponse> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: SUB_ORG_TEAM_ADD,
+        data,
+    });
+    return response.data;
+};
+
+export interface SubOrgTeamRemoveRequest {
+    sub_org_id: string;
+    institute_id: string;
+    user_id: string;
+}
+
+export const removeSubOrgTeamMember = async (
+    data: SubOrgTeamRemoveRequest
+): Promise<{ user_id: string; sub_org_id: string; deactivated_mappings: number }> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: SUB_ORG_TEAM_REMOVE,
+        data,
+    });
+    return response.data;
+};
+
+export interface AccessibleSubOrg {
+    id: string;
+    name: string;
+}
+
+export const listAccessibleSubOrgs = async (
+    instituteId: string
+): Promise<AccessibleSubOrg[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: SUB_ORG_TEAM_ACCESSIBLE,
+        params: { instituteId },
+    });
+    return response.data;
+};
+
+export interface AccessibleGrants {
+    package_session_ids: string[];
+}
+
+/** Returns the caller's accessible package sessions for the Add Member form.
+ *  Invite-level access is auto-linked server-side from the selected PSes — no client choice. */
+export const listAccessibleGrants = async (
+    instituteId: string
+): Promise<AccessibleGrants> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: SUB_ORG_TEAM_ACCESSIBLE_GRANTS,
+        params: { instituteId },
     });
     return response.data;
 };

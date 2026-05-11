@@ -100,6 +100,8 @@ export const bulkSharedOptionsSchema = z.object({
     allowRewind: z.boolean().default(true),
     allowPause: z.boolean().default(true),
     enableFeedback: z.boolean().default(false),
+    /** When true, learner cannot skip the feedback form — serialized as feedback_config.allow_skip = false. */
+    feedbackCompulsory: z.boolean().default(false),
     /** Per-question feedback config sent to the backend when enableFeedback is true. */
     feedbackQuestions: z.array(feedbackQuestionSchema).default([]),
     /** Maps to bbb_record on the backend; only takes effect for rows whose platform is BBB. */

@@ -111,6 +111,7 @@ export interface Schedule {
     } | null;
     feedback_config?: {
         enabled?: boolean;
+        allow_skip?: boolean;
         questions?: Array<{
             id: string;
             type: string;

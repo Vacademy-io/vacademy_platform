@@ -31,6 +31,7 @@ import {
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
+import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
 
@@ -1949,6 +1950,17 @@ export default function AdminDisplaySettings() {
                     ))}
                 </CardContent>
             </Card>
+
+            <TeamRoleVisibilityCard
+                selfRoleName="ADMIN"
+                visibleRoles={settings.teamManagement?.visibleRoles || {}}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        teamManagement: { visibleRoles: next },
+                    }))
+                }
+            />
 
             <Card>
                 <CardHeader>

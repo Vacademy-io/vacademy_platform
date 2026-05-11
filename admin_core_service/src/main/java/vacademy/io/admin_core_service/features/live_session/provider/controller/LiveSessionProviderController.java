@@ -757,6 +757,44 @@ public class LiveSessionProviderController {
                         "message", "Feedback already submitted for this session"));
             }
 
+            // Enforce compulsory feedback: when allow_skip is explicitly false, every
+            // enabled+mandatory question must have a non-empty answer. The frontend
+            // hides the skip button using the same flag — this is the server backstop.
+            var sessionForValidation = liveSessionRepository.findById(sessionId).orElse(null);
+            if (sessionForValidation != null
+                    && sessionForValidation.getFeedbackConfigJson() != null
+                    && !sessionForValidation.getFeedbackConfigJson().isBlank()) {
+                try {
+                    var feedbackConfig = objectMapper.readValue(
+                            sessionForValidation.getFeedbackConfigJson(),
+                            vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO.FeedbackConfigDTO.class);
+                    if (feedbackConfig != null
+                            && Boolean.FALSE.equals(feedbackConfig.getAllowSkip())
+                            && feedbackConfig.getQuestions() != null) {
+                        Map<String, Object> responses = request.getResponses() != null
+                                ? request.getResponses()
+                                : Map.of();
+                        for (var question : feedbackConfig.getQuestions()) {
+                            if (!Boolean.TRUE.equals(question.getEnabled())) continue;
+                            if (!Boolean.TRUE.equals(question.getMandatory())) continue;
+                            Object answer = responses.get(question.getId());
+                            boolean missing = answer == null
+                                    || (answer instanceof String s && s.isBlank());
+                            if (missing) {
+                                return ResponseEntity.badRequest().body(Map.of(
+                                        "status", "validation_failed",
+                                        "message", "Mandatory feedback question must be answered: " + question.getLabel(),
+                                        "questionId", question.getId()));
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    // Don't block submission on a parse failure — log and accept.
+                    log.warn("[Feedback] Could not parse feedback config for validation on schedule {}: {}",
+                            scheduleId, e.getMessage());
+                }
+            }
+
             // Serialize responses to JSON
             String responsesJson = objectMapper.writeValueAsString(request.getResponses());
 

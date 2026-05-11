@@ -214,7 +214,20 @@ public class WorkflowBuilderService {
         // Create trigger(s) if applicable
         if ("EVENT_DRIVEN".equalsIgnoreCase(dto.getWorkflowType()) && dto.getTrigger() != null) {
             WorkflowBuilderDTO.TriggerDTO trig = dto.getTrigger();
-            String defaultIdempotencySettings = "{\"strategy\":\"UUID\"}";
+            // Idempotency strategy: most triggers fire once per HTTP request from the
+            // event source, so a per-call UUID key is fine — duplicates aren't possible.
+            // BUT for triggers that fire from a periodic Quartz scan (currently only
+            // LIVE_SESSION_END, dispatched by LiveSessionNotificationProcessor), every
+            // backend replica's scheduler picks up the same ended schedule, and a UUID
+            // key means the unique constraint on workflow_execution.idempotency_key
+            // never catches the cross-replica duplicates. Switching to EVENT_BASED with
+            // includeEventId=true produces a stable key
+            //   trigger_<id>_eventType_<EVENT>_eventId_<scheduleId>
+            // so the second-arriving replica's INSERT hits the unique index and is
+            // rejected — exactly-once delivery without any new schema.
+            String defaultIdempotencySettings = isPeriodicScanTrigger(trig.getTriggerEventName())
+                    ? "{\"strategy\":\"EVENT_BASED\",\"includeTriggerId\":true,\"includeEventType\":true,\"includeEventId\":true}"
+                    : "{\"strategy\":\"UUID\"}";
             Workflow managedWorkflow = workflowRepository.findById(workflowId).orElseThrow();
 
             java.util.List<String> effectiveIds = trig.getEffectiveEventIds();
@@ -410,5 +423,21 @@ public class WorkflowBuilderService {
                 .schedule(scheduleDto)
                 .trigger(triggerDto)
                 .build();
+    }
+
+    /**
+     * Trigger event types whose dispatch happens from a periodic Quartz scan
+     * (rather than a per-request HTTP path). For these, every backend replica
+     * picks up the same eligible record and would fire the workflow once per
+     * replica unless we use an event-derived idempotency key. Add new event
+     * types here as they're added to the periodic-scan list.
+     *
+     * <p>Currently only LIVE_SESSION_END qualifies — fired by
+     * LiveSessionNotificationProcessor#dispatchEndedLiveSessionWorkflows on a
+     * 5-min Quartz tick, with eventId = scheduleId (stable per occurrence).
+     */
+    private static boolean isPeriodicScanTrigger(String eventName) {
+        if (eventName == null) return false;
+        return "LIVE_SESSION_END".equals(eventName);
     }
 }

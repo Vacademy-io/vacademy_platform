@@ -314,13 +314,15 @@ function FeedbackPage() {
           )}
         </button>
 
-        <button
-          type="button"
-          className="feedback-skip-btn"
-          onClick={() => navigate({ to: "/study-library/live-class" })}
-        >
-          Skip
-        </button>
+        {config?.feedback_config?.allow_skip !== false && (
+          <button
+            type="button"
+            className="feedback-skip-btn"
+            onClick={() => navigate({ to: "/study-library/live-class" })}
+          >
+            Skip
+          </button>
+        )}
       </div>
       </div>
 

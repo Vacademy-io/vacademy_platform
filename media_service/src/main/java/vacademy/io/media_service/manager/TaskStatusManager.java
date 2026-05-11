@@ -1,5 +1,6 @@
 package vacademy.io.media_service.manager;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+@Slf4j
 @Component
 public class TaskStatusManager {
 
@@ -44,6 +46,7 @@ public class TaskStatusManager {
         try {
             return ResponseEntity.ok(responseConverterService.convertToQuestionPaperResponse(resultJson));
         } catch (Exception e) {
+            log.error("Failed to convert result_json for taskId={}: {}", taskId, e.getMessage(), e);
             return ResponseEntity.ok(new AutoQuestionPaperResponse());
         }
     }

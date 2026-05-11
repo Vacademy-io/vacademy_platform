@@ -6,6 +6,9 @@ import type {
     DashboardWidgetConfig,
 } from '@/types/display-settings';
 
+// Sub-items that should default to hidden. Admins can opt them in via display settings.
+const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>(['suborg-teams']);
+
 function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
     return menu.map((item, index) => ({
         id: item.id,
@@ -14,13 +17,16 @@ function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
         order: index + 1,
         visible: item.id !== 'admissions' && item.id !== 'fee-management',
         subTabs:
-            item.subItems?.map((sub, subIndex) => ({
-                id: sub.subItemId || sub.subItem || `${item.id}-${subIndex + 1}`,
-                label: sub.subItem,
-                route: sub.subItemLink || '#',
-                order: subIndex + 1,
-                visible: true,
-            })) || [],
+            item.subItems?.map((sub, subIndex) => {
+                const id = sub.subItemId || sub.subItem || `${item.id}-${subIndex + 1}`;
+                return {
+                    id,
+                    label: sub.subItem,
+                    route: sub.subItemLink || '#',
+                    order: subIndex + 1,
+                    visible: !SUB_ITEMS_HIDDEN_BY_DEFAULT.has(id),
+                };
+            }) || [],
     }));
 }
 

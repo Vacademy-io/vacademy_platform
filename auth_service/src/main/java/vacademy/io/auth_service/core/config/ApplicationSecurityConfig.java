@@ -58,6 +58,7 @@ public class ApplicationSecurityConfig {
             "/auth-service/v1/send-password",
             "/auth-service/v1/user/internal/users-credential",
             "/auth-service/internal/v1/user-roles/users-of-status",
+            "/auth-service/internal/v1/user-invitation/invite",
             "/auth-service/oauth2/**",
             "/auth-service/login/**",
             "/auth-service/public/v1/**",

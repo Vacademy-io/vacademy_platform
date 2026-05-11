@@ -61,6 +61,60 @@ public interface FacultySubjectPackageSessionMappingRepository
       @Param("hasStatusList") boolean hasStatusList,
       Pageable pageable);
 
+  // Sub-org-scoped variant of findByFilters. Restricts results to FSPSSM rows whose
+  // suborg_id is in the supplied set AND whose linkage_type='SUB_ORG'. Used when a sub-org
+  // admin opens a course-details faculty list — they should see only teachers attached to
+  // their own sub-org for that PS.
+  @Query(value = """
+      SELECT DISTINCT ON (fm.user_id) fm.*
+      FROM faculty_subject_package_session_mapping fm
+      WHERE (
+          (fm.access_type = 'Package' AND EXISTS (SELECT 1 FROM package_institute pi WHERE pi.package_id = fm.access_id AND pi.institute_id = :instituteId))
+          OR (fm.access_type = 'PACKAGE_SESSION' AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.access_id AND pi.institute_id = :instituteId))
+          OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
+          OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
+      )
+        AND fm.linkage_type = 'SUB_ORG'
+        AND fm.suborg_id IN (:suborgIds)
+        AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
+        AND (CAST(:hasBatchesIds AS boolean) = false OR (
+            (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id IN (:batchesIds)) OR
+            (fm.package_session_id IN (:batchesIds))
+        ))
+        AND (CAST(:hasStatusList AS boolean) = false OR fm.status IN (:statusList))
+        AND (:name IS NULL OR CAST(:name AS text) = '' OR LOWER(fm.name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')))
+      ORDER BY fm.user_id, fm.updated_at DESC
+      """, countQuery = """
+      SELECT COUNT(DISTINCT fm.user_id)
+      FROM faculty_subject_package_session_mapping fm
+      WHERE (
+          (fm.access_type = 'Package' AND EXISTS (SELECT 1 FROM package_institute pi WHERE pi.package_id = fm.access_id AND pi.institute_id = :instituteId))
+          OR (fm.access_type = 'PACKAGE_SESSION' AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.access_id AND pi.institute_id = :instituteId))
+          OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
+          OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
+      )
+        AND fm.linkage_type = 'SUB_ORG'
+        AND fm.suborg_id IN (:suborgIds)
+        AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
+        AND (CAST(:hasBatchesIds AS boolean) = false OR (
+            (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id IN (:batchesIds)) OR
+            (fm.package_session_id IN (:batchesIds))
+        ))
+        AND (CAST(:hasStatusList AS boolean) = false OR fm.status IN (:statusList))
+        AND (:name IS NULL OR CAST(:name AS text) = '' OR LOWER(fm.name) LIKE LOWER(CONCAT('%', CAST(:name AS text), '%')))
+      """, nativeQuery = true)
+  Page<FacultySubjectPackageSessionMapping> findByFiltersScopedToSubOrgs(
+      @Param("instituteId") String instituteId,
+      @Param("name") String name,
+      @Param("subjectIds") List<String> subjects,
+      @Param("batchesIds") List<String> batches,
+      @Param("statusList") List<String> status,
+      @Param("suborgIds") List<String> suborgIds,
+      @Param("hasSubjectIds") boolean hasSubjectIds,
+      @Param("hasBatchesIds") boolean hasBatchesIds,
+      @Param("hasStatusList") boolean hasStatusList,
+      Pageable pageable);
+
   Optional<FacultySubjectPackageSessionMapping> findByUserIdAndPackageSessionIdAndSubjectIdAndStatusIn(String userId,
       String packageSessionId, String subjectId, List<String> status);
 
@@ -236,4 +290,65 @@ public interface FacultySubjectPackageSessionMappingRepository
   List<String> findSubOrgIdsByUserAndPackageSession(
       @Param("userId") String userId,
       @Param("packageSessionId") String packageSessionId);
+
+  // ─────────── Sub-org team management ───────────
+
+  /**
+   * Distinct user IDs that have at least one active SUB_ORG-linked FSPSSM entry for the given
+   * sub-org. Used as the candidate set for the sub-org team listing.
+   */
+  @Query("""
+          SELECT DISTINCT f.userId
+          FROM FacultySubjectPackageSessionMapping f
+          WHERE f.suborgId = :subOrgId
+            AND f.linkageType = 'SUB_ORG'
+            AND f.status IN :statuses
+      """)
+  List<String> findDistinctUserIdsBySubOrgIdAndLinkage(
+      @Param("subOrgId") String subOrgId,
+      @Param("statuses") List<String> statuses);
+
+  /**
+   * Distinct sub-org IDs the caller currently has SUB_ORG-linked FSPSSM access to. Used to
+   * validate that a sub-org admin is operating on their own sub-org.
+   */
+  @Query("""
+          SELECT DISTINCT f.suborgId
+          FROM FacultySubjectPackageSessionMapping f
+          WHERE f.userId = :userId
+            AND f.linkageType = 'SUB_ORG'
+            AND f.suborgId IS NOT NULL
+            AND f.status IN :statuses
+      """)
+  List<String> findDistinctSubOrgIdsByUserAndLinkage(
+      @Param("userId") String userId,
+      @Param("statuses") List<String> statuses);
+
+  /**
+   * All FSPSSM entries for a user under a specific sub-org. Used by the remove-member flow
+   * to mark the entries inactive.
+   */
+  @Query("""
+          SELECT f
+          FROM FacultySubjectPackageSessionMapping f
+          WHERE f.userId = :userId
+            AND f.suborgId = :subOrgId
+            AND f.linkageType = 'SUB_ORG'
+      """)
+  List<FacultySubjectPackageSessionMapping> findByUserIdAndSubOrgIdAndLinkage(
+      @Param("userId") String userId,
+      @Param("subOrgId") String subOrgId);
+
+  /**
+   * Count the still-active SUB_ORG-linked FSPSSM entries for a user across the institute.
+   * Used to decide whether to also drop the user's UserRole when removing them from a sub-org.
+   */
+  @Query("""
+          SELECT COUNT(f)
+          FROM FacultySubjectPackageSessionMapping f
+          WHERE f.userId = :userId
+            AND f.linkageType = 'SUB_ORG'
+            AND f.status = 'ACTIVE'
+      """)
+  long countActiveSubOrgLinkagesByUser(@Param("userId") String userId);
 }

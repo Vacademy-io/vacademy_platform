@@ -18,6 +18,7 @@ import type { DisplaySettingsData } from '@/types/display-settings';
 import { TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
+import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
@@ -556,6 +557,33 @@ export default function TeacherDisplaySettings() {
                             />
                         </div>
                     ))}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Course List Card</CardTitle>
+                    <CardDescription>
+                        Control which details appear on each course card under Explore Courses.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">Show enrolled student count</div>
+                        <Switch
+                            checked={
+                                settings.courseListCard?.showEnrolledStudentCount === true
+                            }
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    courseListCard: {
+                                        showEnrolledStudentCount: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                 </CardContent>
             </Card>
 
@@ -1907,6 +1935,17 @@ export default function TeacherDisplaySettings() {
                     ))}
                 </CardContent>
             </Card>
+
+            <TeamRoleVisibilityCard
+                selfRoleName="TEACHER"
+                visibleRoles={settings.teamManagement?.visibleRoles || {}}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        teamManagement: { visibleRoles: next },
+                    }))
+                }
+            />
 
             <Card>
                 <CardHeader>

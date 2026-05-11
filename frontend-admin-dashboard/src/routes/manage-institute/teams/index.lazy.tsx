@@ -23,6 +23,10 @@ import { MyButton } from '@/components/design-system/button';
 import { Funnel, X, Users } from '@phosphor-icons/react';
 import { CornerDownLeft } from 'lucide-react';
 import { getAllRoles, type CustomRole } from '@/routes/manage-custom-teams/-services/custom-team-services';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
 
 export interface RoleTypeSelectedFilter {
   roles: { id: string; name: string }[];
@@ -93,15 +97,36 @@ function RouteComponent() {
     invites: null,
   });
 
-  // All roles from the API for filters and dropdowns (exclude STUDENT)
+  // Resolve the viewer's effective display settings (admin or teacher cache,
+  // matching the layout-container pattern). Custom-role users fall through to
+  // teacher settings, which is the same baseline used elsewhere.
+  const viewerVisibleRoles = useMemo(() => {
+    const accessToken = getTokenFromCookie(TokenKey.accessToken);
+    const viewerRoles = getUserRoles(accessToken);
+    const isAdmin = viewerRoles.includes('ADMIN');
+    const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
+    const ds = getDisplaySettingsFromCache(roleKey);
+    return ds?.teamManagement?.visibleRoles ?? {};
+  }, []);
+
+  // All roles from the API for filters and dropdowns. Exclude STUDENT and any
+  // roles the viewer's display settings have hidden — self-role is never
+  // hidden to prevent lockout from admin/teacher self-management.
   const allRoles = useMemo(() => {
+    const accessToken = getTokenFromCookie(TokenKey.accessToken);
+    const viewerRoles = (getUserRoles(accessToken) || []).map((r) => r.toUpperCase());
     return customRoles
       .filter((cr) => cr.name !== 'STUDENT')
+      .filter((cr) => {
+        const key = cr.name.toUpperCase();
+        if (viewerRoles.includes(key)) return true;
+        return viewerVisibleRoles[key] !== false;
+      })
       .map((cr) => ({
         id: cr.id,
         name: cr.name,
       }));
-  }, [customRoles]);
+  }, [customRoles, viewerVisibleRoles]);
 
   // Default filter with all roles (used in API calls when no filter selected)
   const allRolesFilter = useMemo(() => {

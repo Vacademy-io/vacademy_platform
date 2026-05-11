@@ -18,6 +18,7 @@ import type { DisplaySettingsData } from '@/types/display-settings';
 import { CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
+import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
@@ -172,7 +173,13 @@ const LEARNER_MANAGEMENT_OPTIONS: Array<{
     },
 ];
 
-export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }) {
+export default function CustomRoleDisplaySettings({
+    roleId,
+    roleName,
+}: {
+    roleId: string;
+    roleName?: string;
+}) {
     const [settings, setSettings] = useState<DisplaySettingsData | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
@@ -1908,6 +1915,17 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                     ))}
                 </CardContent>
             </Card>
+
+            <TeamRoleVisibilityCard
+                selfRoleName={roleName || ''}
+                visibleRoles={settings.teamManagement?.visibleRoles || {}}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        teamManagement: { visibleRoles: next },
+                    }))
+                }
+            />
 
             <Card>
                 <CardHeader>

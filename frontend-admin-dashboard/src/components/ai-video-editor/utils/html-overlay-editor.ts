@@ -112,7 +112,14 @@ function buildOverlayEl(o: Overlay): string {
 
     const safeSrc = sanitizeMediaUrl(o.src);
     if (!safeSrc) return '';
-    const innerStyle = `width:100%;height:100%;object-fit:${o.objectFit};display:block`;
+    // When height is auto (undefined), drop object-fit and let the inner
+    // element size to its natural aspect ratio. object-fit only matters
+    // when both dimensions are explicit and the container's aspect differs
+    // from the content's.
+    const innerStyle =
+        o.height != null
+            ? `width:100%;height:100%;object-fit:${o.objectFit};display:block`
+            : `width:100%;height:auto;display:block`;
 
     if (o.kind === 'image') {
         return `<div ${dataAttrs.join(' ')} style="${styles.join(';')}"><img src="${escapeHtml(safeSrc)}" style="${innerStyle}" alt=""/></div>`;
@@ -139,10 +146,24 @@ function parseStyle(el: HTMLElement): Record<string, string> {
     return out;
 }
 
-function parsePercent(v: string | undefined): number | undefined {
+/**
+ * Parse a CSS length that may be expressed as a percentage *or* a pixel
+ * value, and return the result as a percentage of `axisSizePx`. Used to
+ * tolerate the px values written back by the canvas drag/resize handles
+ * (which target a generic DOM path and can't know our overlay model is
+ * stored in %). Returns `undefined` for anything we can't parse.
+ */
+function parsePercentOrPx(
+    v: string | undefined,
+    axisSizePx: number | undefined
+): number | undefined {
     if (!v) return undefined;
-    const m = v.match(/^(-?\d+(?:\.\d+)?)%$/);
-    return m ? parseFloat(m[1]!) : undefined;
+    const pct = v.match(/^(-?\d+(?:\.\d+)?)%$/);
+    if (pct) return parseFloat(pct[1]!);
+    if (axisSizePx == null || !Number.isFinite(axisSizePx) || axisSizePx <= 0) return undefined;
+    const px = v.match(/^(-?\d+(?:\.\d+)?)px$/);
+    if (px) return (parseFloat(px[1]!) / axisSizePx) * 100;
+    return undefined;
 }
 
 function inferAnchor(transform: string): Anchor {
@@ -156,16 +177,19 @@ function parseRotation(transform: string): number {
     return m ? parseFloat(m[1]!) : 0;
 }
 
-function toOverlay(el: HTMLElement): Overlay | null {
+function toOverlay(el: HTMLElement, canvas?: { w: number; h: number }): Overlay | null {
     const id = el.getAttribute(OVERLAY_ATTR);
     const kind = el.getAttribute('data-vx-kind') as OverlayKind | null;
     if (!id || !kind) return null;
 
     const style = parseStyle(el);
-    const left = parsePercent(style['left']) ?? 0;
-    const top = parsePercent(style['top']) ?? 0;
-    const width = parsePercent(style['width']);
-    const height = parsePercent(style['height']);
+    // Tolerate px values for left/top/width/height — the canvas drag handles
+    // commit pixel-valued patches via a generic patchNodeStyle path. We
+    // normalize back to % so the overlay model stays resolution-independent.
+    const left = parsePercentOrPx(style['left'], canvas?.w) ?? 0;
+    const top = parsePercentOrPx(style['top'], canvas?.h) ?? 0;
+    const width = parsePercentOrPx(style['width'], canvas?.w);
+    const height = parsePercentOrPx(style['height'], canvas?.h);
     const transform = style['transform'] ?? '';
     const opacity = style['opacity'] ? parseFloat(style['opacity']!) : 1;
     const appearAt = el.getAttribute('data-vx-t-in');
@@ -186,9 +210,7 @@ function toOverlay(el: HTMLElement): Overlay | null {
     };
 
     if (kind === 'text') {
-        const fontPx = style['font-size']
-            ? parseFloat(style['font-size']!.replace('px', ''))
-            : 32;
+        const fontPx = style['font-size'] ? parseFloat(style['font-size']!.replace('px', '')) : 32;
         const weight = style['font-weight'] ? parseInt(style['font-weight']!, 10) : 400;
         const align = (style['text-align'] ?? 'center') as 'left' | 'center' | 'right';
         return {
@@ -225,25 +247,19 @@ function getContainer(doc: Document, create: boolean): HTMLElement | null {
     if (container || !create) return container;
     container = doc.createElement('div');
     container.className = OVERLAY_CONTAINER_CLASS;
-    container.setAttribute(
-        'style',
-        'position:absolute;inset:0;z-index:500;pointer-events:none'
-    );
+    container.setAttribute('style', 'position:absolute;inset:0;z-index:500;pointer-events:none');
     doc.body.appendChild(container);
     return container;
 }
 
 function parseFragment(html: string): Document {
     const parser = new DOMParser();
-    return parser.parseFromString(
-        `<!DOCTYPE html><html><body>${html}</body></html>`,
-        'text/html'
-    );
+    return parser.parseFromString(`<!DOCTYPE html><html><body>${html}</body></html>`, 'text/html');
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
 
-export function listOverlays(html: string): Overlay[] {
+export function listOverlays(html: string, canvas?: { w: number; h: number }): Overlay[] {
     if (typeof window === 'undefined' || !html) return [];
     try {
         const doc = parseFragment(html);
@@ -252,12 +268,49 @@ export function listOverlays(html: string): Overlay[] {
         const nodes = container.querySelectorAll(`[${OVERLAY_ATTR}]`);
         const out: Overlay[] = [];
         nodes.forEach((n) => {
-            const o = toOverlay(n as HTMLElement);
+            const o = toOverlay(n as HTMLElement, canvas);
             if (o) out.push(o);
         });
         return out;
     } catch {
         return [];
+    }
+}
+
+/**
+ * Resolve the path-from-body of the overlay element with the given id,
+ * using the same visible-child indexing that html-tree.ts and
+ * editor-iframe-agent.ts use. Returns `null` if the overlay is missing.
+ *
+ * Used to bridge an Overlays-tab selection into the store's
+ * `selectedLayerPath`, which drives the canvas drag/resize handles.
+ */
+const PATH_IGNORED_TAGS = new Set(['script', 'style', 'link', 'meta']);
+
+export function findOverlayPath(html: string, overlayId: string): number[] | null {
+    if (typeof window === 'undefined' || !html) return null;
+    try {
+        const doc = parseFragment(html);
+        const target = doc.body.querySelector(`[${OVERLAY_ATTR}="${overlayId}"]`);
+        if (!target) return null;
+        const path: number[] = [];
+        let cur: Element | null = target;
+        while (cur && cur !== doc.body) {
+            const parent: Element | null = cur.parentElement;
+            if (!parent) return null;
+            const visible: Element[] = [];
+            for (let i = 0; i < parent.children.length; i++) {
+                const child = parent.children[i]!;
+                if (!PATH_IGNORED_TAGS.has(child.tagName.toLowerCase())) visible.push(child);
+            }
+            const idx = visible.indexOf(cur);
+            if (idx < 0) return null;
+            path.unshift(idx);
+            cur = parent;
+        }
+        return path;
+    } catch {
+        return null;
     }
 }
 
@@ -327,7 +380,7 @@ export function newImageOverlay(src: string): ImageOverlay {
         left: 50,
         top: 50,
         width: 30,
-        height: 30,
+        // height intentionally undefined → image renders at natural aspect ratio.
         anchor: 'center',
         rotation: 0,
         opacity: 1,
@@ -343,7 +396,7 @@ export function newVideoOverlay(src: string): VideoOverlay {
         left: 50,
         top: 50,
         width: 40,
-        height: 40,
+        // height intentionally undefined → video renders at natural aspect ratio.
         anchor: 'center',
         rotation: 0,
         opacity: 1,

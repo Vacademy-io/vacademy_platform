@@ -13,6 +13,10 @@ import { useState } from 'react';
 import { VideoCamera, CheckCircle, PlayCircle } from '@phosphor-icons/react';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
+import {
+    buildAppendReorderPayload,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 const formSchema = z.object({
     videoUrl: z
@@ -109,7 +113,7 @@ export const AddVimeoDialog = ({ openState }: { openState?: (open: boolean) => v
                 title: data.videoName || 'Vimeo Video',
                 description: null,
                 image_file_id: null,
-                slide_order: 0,
+                slide_order: getNextSlideOrder(items || []),
                 video_slide: {
                     id: crypto.randomUUID(),
                     description: '',
@@ -143,15 +147,7 @@ export const AddVimeoDialog = ({ openState }: { openState?: (open: boolean) => v
             const newSlide = currentSlides.find((slide) => slide.id === newSlideId);
             if (!newSlide) return;
 
-            const reorderedSlides = [
-                { slide_id: newSlideId, slide_order: 0 },
-                ...currentSlides
-                    .filter((slide) => slide.id !== newSlideId)
-                    .map((slide, index) => ({
-                        slide_id: slide.id,
-                        slide_order: index + 1,
-                    })),
-            ];
+            const reorderedSlides = buildAppendReorderPayload(newSlideId, currentSlides);
 
             await updateSlideOrder({
                 chapterId: chapterId || '',

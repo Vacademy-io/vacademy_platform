@@ -1,6 +1,7 @@
 import { BACKEND_BASE_URL } from '../config/baseUrl';
 
 export const BASE_URL = BACKEND_BASE_URL;
+export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
 export const BASE_URL_LEARNER_DASHBOARD =
     import.meta.env.VITE_LEARNER_DASHBOARD_URL || 'https://learner.vacademy.io';
 
@@ -60,12 +61,15 @@ export const VIMOTION_BRAND_KIT_DEFAULT = `${BASE_URL}/admin-core-service/vimoti
 export const VIMOTION_BRAND_KIT_SET_DEFAULT = (id: string) =>
     `${BASE_URL}/admin-core-service/vimotion/v1/brand-kits/${id}/set-default`;
 
+// Brand-kit-from-website scrape (ai_service, JWT-auth — does NOT persist;
+// returns a draft the FE prefills into the existing BrandKitDrawer).
+export const VIMOTION_BRAND_KIT_SCRAPE = `${AI_SERVICE_BASE_URL}/admin/vimotion/v1/brand-kits/scrape`;
+
 export const VIMOTION_AVATARS = `${BASE_URL}/admin-core-service/vimotion/v1/avatars`;
 export const VIMOTION_AVATAR_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/vimotion/v1/avatars/${id}`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
 export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/certificate/update-setting`;
-// Add this with your other constants
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;
 export const AUDIENCE_CAMPAIGNS_LIST = `${BASE_URL}/admin-core-service/v1/audience/campaigns`;
 export const GET_CAMPAIGN_USERS = `${BASE_URL}/admin-core-service/v1/audience/leads`;
@@ -80,6 +84,7 @@ export const UPDATE_LEAD_TIER = `${BASE_URL}/admin-core-service/v1/audience/user
 export const ASSIGN_COUNSELOR_TO_LEAD = `${BASE_URL}/admin-core-service/v1/audience/user-lead-profile/assign-counselor`;
 export const GET_USER_AUDIENCES = `${BASE_URL}/admin-core-service/v1/audience/user-audiences`;
 export const GET_CROSS_STAGE_TIMELINE = `${BASE_URL}/admin-core-service/timeline/v1/student`;
+export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/latest-notes-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;
@@ -236,6 +241,7 @@ export const ADD_COURSE = `${BASE_URL}/admin-core-service/course/v1/add-course`;
 export const BULK_ADD_COURSES = `${BASE_URL}/admin-core-service/course/v1/bulk-add-courses`;
 export const DELETE_COURSE = `${BASE_URL}/admin-core-service/course/v1/delete-courses`;
 export const UPDATE_COURSE = `${BASE_URL}/admin-core-service/course/v1/update-course-details`;
+export const COPY_COURSE_CONTENT = `${BASE_URL}/admin-core-service/course/v1/copy-content`;
 
 // Teacher Course Approval Workflow URLs
 export const TEACHER_MY_COURSES = `${BASE_URL}/admin-core-service/teacher/course-approval/v1/my-courses/detailed/v2`;
@@ -295,7 +301,6 @@ export const GET_COURSE_DETAILS = `${BASE_URL}/admin-core-service/packages/v1/pa
 export const UPDATE_COURSE_BY_ID = `${BASE_URL}/admin-core-service/course/v1/update-course`;
 export const GET_LEARNER_PACKAGES_BY_USER_ID = `${BASE_URL}/admin-core-service/learner-packages/v1/search-by-user-id`;
 
-// Bulk Assign / De-assign (V3 Learner Management)
 export const BULK_ASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/assign`;
 export const BULK_DEASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/deassign`;
 export const GET_DEFAULT_INVITE = (instituteId: string, packageSessionId: string) =>
@@ -401,6 +406,7 @@ export const DUPLICATE_STUDY_MATERIAL_FROM_SESSION = `${BASE_URL}/admin-core-ser
 // Live sessions
 export const CREATE_LIVE_SESSION_STEP_1 = `${BASE_URL}/admin-core-service/live-sessions/v1/create/step1`;
 export const CREATE_LIVE_SESSION_STEP_2 = `${BASE_URL}/admin-core-service/live-sessions/v1/create/step2`;
+export const CREATE_LIVE_SESSION_BULK = `${BASE_URL}/admin-core-service/live-sessions/v1/create/bulk`;
 export const GET_LIVE_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/live`;
 export const DELETE_LIVE_SESSION = `${BASE_URL}/admin-core-service/live-sessions/v1/delete`;
 export const GET_UPCOMING_SESSIONS = `${BASE_URL}/admin-core-service/get-sessions/upcoming`;
@@ -490,6 +496,8 @@ export const REFERRAL_UPDATE = (referralOptionId: string) =>
 export const REFERRAL_DELETE = `${BASE_URL}/admin-core-service/v1/referral-option`;
 
 export const GET_INSITITUTE_SETTINGS = `${BASE_URL}/admin-core-service/institute/setting/v1/get`;
+export const SAVE_INSTITUTE_SETTING = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
+export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/institute/setting/v1/data`;
 export const UPDATE_CUSTOM_FIELD_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/custom-field/create-or-update`;
 export const GET_CUSTOM_FIELD_LIST_WITH_USAGE = `${BASE_URL}/admin-core-service/institute/v1/custom-field/list-with-usage`;
 // Message Templates
@@ -545,7 +553,6 @@ export const GET_MY_SYSTEM_FILES = `${BASE_URL}/admin-core-service/system-files/
 export const GET_LEARNER_PORTAL_ACCESS = `${BASE_URL}/admin-core-service/admin/learner-portal/v1/access`;
 export const SEND_LEARNER_RESET_PASSWORD = `${BASE_URL}/admin-core-service/admin/learner-portal/v1/send-cred`;
 
-// Enrollment & User Plan Actions
 export const ENROLL_LEARNER_V2 = `${BASE_URL}/admin-core-service/v2/learner/enroll`;
 export const CANCEL_USER_PLAN = (user_plan_id: string) =>
     `${BASE_URL}/admin-core-service/v1/user-plan/${user_plan_id}/cancel`;

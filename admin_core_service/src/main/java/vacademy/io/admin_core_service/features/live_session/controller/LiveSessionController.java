@@ -3,11 +3,14 @@ package vacademy.io.admin_core_service.features.live_session.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.live_session.dto.BulkLiveSessionRequestDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.BulkLiveSessionResponseDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.DeleteLiveSessionRequest;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep1RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2RequestDTO;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
+import vacademy.io.admin_core_service.features.live_session.service.BulkLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.live_session.service.Step1Service;
 import vacademy.io.admin_core_service.features.live_session.service.Step2Service;
@@ -24,6 +27,7 @@ public class LiveSessionController {
     private final Step1Service step1Service;
     private final Step2Service step2Service;
     private final GetLiveSessionService getLiveSessionService;
+    private final BulkLiveSessionService bulkLiveSessionService;
 
     @PostMapping("create/step1")
     ResponseEntity< LiveSession> addLiveSessionStep1(@RequestBody LiveSessionStep1RequestDTO SessionRequest,
@@ -38,13 +42,22 @@ public class LiveSessionController {
         return ResponseEntity.ok(step2Service.step2AddService(SessionRequest , user));
     }
 
+    @PostMapping("create/bulk")
+    ResponseEntity<BulkLiveSessionResponseDTO> addLiveSessionsBulk(@RequestBody BulkLiveSessionRequestDTO request,
+                                                                   @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(bulkLiveSessionService.createBulk(request, user));
+    }
+
     @PostMapping("/delete")
     public ResponseEntity<?> deleteLiveSessions(
             @RequestBody DeleteLiveSessionRequest request,
             @RequestAttribute("user") CustomUserDetails user) {
 
 
-        return ResponseEntity.ok(getLiveSessionService.deleteLiveSessions(request.getIds(), request.getType()));
+        return ResponseEntity.ok(getLiveSessionService.deleteLiveSessions(
+                request.getIds(),
+                request.getType(),
+                request.getNotifyStudents()));
     }
 
 }

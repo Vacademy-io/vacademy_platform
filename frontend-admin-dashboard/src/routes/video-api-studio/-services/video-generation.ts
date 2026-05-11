@@ -146,6 +146,51 @@ export type QualityTier = 'free' | 'standard' | 'premium' | 'ultra' | 'super_ult
 // Type kept for reading historical metadata from past runs.
 export type VisualStyle = 'standard' | 'illustrated_svg' | 'product_showcase';
 
+// ─── Visual preferences (Slice A/B/C/D back-end → Slice E front-end) ──
+// Soft per-family bias hints + on-screen text density. The user picks via
+// Advanced Settings sliders; the BE merges with a deterministic free-text
+// scan of the prompt (free-text wins on overlap). Unset / null fields mean
+// "no opinion" — the pipeline behaves as today on those families.
+export type FamilyBias = 'no' | 'auto' | 'high';
+export type TextDensity = 'minimal' | 'low' | 'auto' | 'rich';
+
+export interface VisualPreferences {
+    /** Bias for VIDEO_HERO + IMAGE_HERO with stock footage / real video. */
+    stock_video?: FamilyBias | null;
+    /** Bias for shots with AI-generated images (Seedream). */
+    ai_imagery?: FamilyBias | null;
+    /** Bias for INFOGRAPHIC_SVG / KINETIC_TITLE / ANNOTATION_MAP. */
+    svg_illustrated?: FamilyBias | null;
+    /** Bias for TEXT_DIAGRAM / PROCESS_STEPS / DATA_STORY / EQUATION_BUILD / ANIMATED_ASSET / KINETIC_TEXT. */
+    motion_graphics?: FamilyBias | null;
+    /** Bias for DEVICE_MOCKUP (HTML-rendered app/web/mobile UI). */
+    app_ui_mockup?: FamilyBias | null;
+    /**
+     * On-screen text density. Does NOT affect narration length — only the
+     * amount of visible text in each shot. On `minimal`/`low` the Director
+     * forbids KINETIC_TEXT and the per-shot HTML caps headline word count.
+     */
+    text_density?: TextDensity | null;
+}
+
+/** Ordered list of family slider keys — drives the Advanced Settings UI. */
+export const VISUAL_PREFERENCE_FAMILIES = [
+    { key: 'stock_video', label: 'Stock video / real footage' },
+    { key: 'ai_imagery', label: 'AI-generated imagery' },
+    { key: 'svg_illustrated', label: 'SVG / illustrated diagrams' },
+    { key: 'motion_graphics', label: 'Motion graphics' },
+    { key: 'app_ui_mockup', label: 'App / device UI mockups' },
+] as const satisfies ReadonlyArray<{
+    key: keyof Omit<VisualPreferences, 'text_density'>;
+    label: string;
+}>;
+
+/** Returns true when the user has expressed any non-default opinion. */
+export function hasActiveVisualPreferences(prefs: VisualPreferences | undefined | null): boolean {
+    if (!prefs) return false;
+    return Object.values(prefs).some((v) => v != null && v !== 'auto');
+}
+
 export interface ReferenceFile {
     url: string;
     name: string;
@@ -255,6 +300,13 @@ export interface GenerateVideoRequest {
      * scoped by institute_id; an unresolved id falls back to institute defaults.
      */
     brand_kit_id?: string;
+    /**
+     * Soft per-family bias hints + on-screen text density. Set by the FE
+     * Advanced Settings sliders. Free-text phrases in the prompt
+     * (e.g. "use more SVG diagrams", "less text on screen") override the
+     * matching field via the IntentRouter free-text scanner.
+     */
+    visual_preferences?: VisualPreferences;
 }
 
 // ── Intent Router types ─────────────────────────────────────────────────
@@ -393,6 +445,15 @@ export interface ErrorEvent {
     video_id?: string;
 }
 
+/** Emitted by the backend when the user cancels via POST /cancel/{video_id}.
+ *  Distinct from `error` so the FE can show a friendlier "Stopped" UI and
+ *  skip the failure-recovery / retry suggestions. */
+export interface CancelledEvent {
+    type: 'cancelled';
+    message?: string;
+    video_id?: string;
+}
+
 /** Sub-stage progress event emitted during long phases (e.g. director_planning, shot_done) */
 export interface SubStageEvent {
     type: 'sub_stage';
@@ -476,6 +537,7 @@ export type SSEEvent =
     | CompletedEvent
     | InfoEvent
     | ErrorEvent
+    | CancelledEvent
     | SubStageEvent
     | ShotDoneEvent
     | ShotErrorEvent;
@@ -1265,6 +1327,32 @@ export async function getRenderStatus(
 }
 
 /**
+ * Stop an in-flight generation pipeline server-side.
+ *
+ * The backend signals the pipeline thread to abort at its next safe
+ * checkpoint, transitions the video to `CANCELLED`, refunds all credits
+ * charged so far for it, and pushes a `cancelled` SSE event.
+ *
+ * Idempotent: returns `{ stopped: false }` if the video already finished
+ * (completed / failed / previously cancelled). 404 if the videoId doesn't
+ * exist.
+ */
+export async function cancelGeneration(
+    videoId: string,
+    apiKey: string
+): Promise<{ status: string; video_id: string; stopped: boolean }> {
+    const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/cancel/${videoId}`, {
+        method: 'POST',
+        headers: { 'X-Institute-Key': apiKey },
+    });
+    if (!response.ok) {
+        const text = await response.text().catch(() => response.statusText);
+        throw new Error(`Cancel failed: ${text}`);
+    }
+    return response.json();
+}
+
+/**
  * Clear the cached rendered MP4 for a video so it can be re-rendered.
  * Removes `video` from s3_urls and `render_job_id` from metadata.
  */
@@ -1447,6 +1535,21 @@ export async function getRemoteHistory(
         const voiceGender = pickStr('voice_gender', 'female') as VoiceGender;
         const ttsProvider = pickStr('tts_provider', 'standard') as TtsProvider;
         const htmlQuality = pickStr('html_quality', 'advanced') as 'classic' | 'advanced';
+
+        // Visual preferences (Slice A back-end → Slice E history pre-fill).
+        // The pipeline writes the raw slider state under
+        // `meta.user_selections.visual_preferences` and a top-level mirror at
+        // `meta.visual_preferences`. We prefer the nested view for newer runs
+        // and fall back to the top-level for legacy paths. Old runs without
+        // either return undefined → sliders default to "auto" everywhere.
+        const visualPreferencesRaw =
+            (sel.visual_preferences as Record<string, unknown> | undefined) ??
+            (meta.visual_preferences as Record<string, unknown> | undefined);
+        const visualPreferences: VisualPreferences | undefined =
+            visualPreferencesRaw && typeof visualPreferencesRaw === 'object'
+                ? (visualPreferencesRaw as VisualPreferences)
+                : undefined;
+
         return {
             id: item.id,
             video_id: item.video_id,
@@ -1472,6 +1575,7 @@ export async function getRemoteHistory(
                 quality_tier: qualityTier,
                 orientation,
                 visual_style: visualStyle,
+                ...(visualPreferences ? { visual_preferences: visualPreferences } : {}),
             },
             token_usage: item.token_usage ?? null,
         };

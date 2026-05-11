@@ -20,6 +20,7 @@ import GtmSettings from '../-components/GtmSettings';
 import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
 import DoubtManagementSettings from '../-components/DoubtManagementSettings';
+import LiveSessionSettings from '../-components/LiveSessionSettings';
 
 export const getAvailableSettingsTabs = () => {
     return [
@@ -127,6 +128,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.DoubtManagement,
             value: 'Doubt Management',
             component: DoubtManagementSettings,
+        },
+        {
+            tab: SettingsTabs.LiveSession,
+            value: 'Live Session Settings',
+            component: LiveSessionSettings,
         },
     ];
 };

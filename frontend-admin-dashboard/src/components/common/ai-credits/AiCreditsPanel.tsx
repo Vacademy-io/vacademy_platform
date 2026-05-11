@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react';
-import { Link } from '@tanstack/react-router';
 import {
     useAiCreditsQuery,
     useAiTransactionsQuery,
     useAiUsageAnalyticsQuery,
     useAiUsageForecastQuery,
 } from '@/services/ai-credits/get-ai-credits';
+import { TopUpModal } from './TopUpModal';
 import type {
     CreditTransaction,
     UsageByRequestType,
@@ -521,28 +521,46 @@ const tabs: { id: TabId; label: string; icon: typeof ChartBar }[] = [
 // ─── Main Component ────────────────────────────────
 interface AiCreditsPanelProps {
     className?: string;
+    /** Override the default badge trigger. Must be a single focusable element (e.g. a button). */
+    trigger?: React.ReactNode;
+    popoverSide?: 'top' | 'right' | 'bottom' | 'left';
+    popoverAlign?: 'start' | 'center' | 'end';
+    popoverSideOffset?: number;
+    /** Override the default "Explore AI Tools" link in the footer. Pass `null` to hide it. */
+    footerAction?: React.ReactNode | null;
 }
 
-export function AiCreditsPanel({ className }: AiCreditsPanelProps) {
+export function AiCreditsPanel({
+    className,
+    trigger,
+    popoverSide,
+    popoverAlign = 'end',
+    popoverSideOffset = 8,
+    footerAction,
+}: AiCreditsPanelProps) {
     const { data: credits, isError } = useAiCreditsQuery(true);
     const [activeTab, setActiveTab] = useState<TabId>('overview');
     const [isOpen, setIsOpen] = useState(false);
+    const [topUpOpen, setTopUpOpen] = useState(false);
 
     if (!credits || isError) return null;
 
     return (
         <Popover open={isOpen} onOpenChange={setIsOpen}>
             <PopoverTrigger asChild>
-                <button className={cn('cursor-pointer outline-none', className)}>
-                    <AiCreditsBadge
-                        currentBalance={credits.current_balance}
-                        isLowBalance={credits.is_low_balance}
-                    />
-                </button>
+                {trigger ?? (
+                    <button className={cn('cursor-pointer outline-none', className)}>
+                        <AiCreditsBadge
+                            currentBalance={credits.current_balance}
+                            isLowBalance={credits.is_low_balance}
+                        />
+                    </button>
+                )}
             </PopoverTrigger>
             <PopoverContent
-                align="end"
-                sideOffset={8}
+                side={popoverSide}
+                align={popoverAlign}
+                sideOffset={popoverSideOffset}
                 className="w-[340px] rounded-2xl border border-neutral-200 bg-neutral-50 p-0 shadow-xl sm:w-[380px]"
             >
                 {/* Header */}
@@ -601,13 +619,23 @@ export function AiCreditsPanel({ className }: AiCreditsPanelProps) {
                 {/* Footer */}
                 <Separator />
                 <div className="flex items-center justify-between rounded-b-2xl bg-white px-4 py-2">
-                    <Link
-                        to="/explore-ai"
-                        className="flex items-center gap-1.5 rounded-lg bg-purple-50 px-2.5 py-1.5 text-[11px] font-semibold text-purple-700 transition-colors hover:bg-purple-100"
-                    >
-                        <Sparkle className="size-3" weight="fill" />
-                        Explore AI Tools
-                    </Link>
+                    {footerAction === null ? (
+                        <span />
+                    ) : (
+                        footerAction ?? (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setIsOpen(false);
+                                    setTopUpOpen(true);
+                                }}
+                                className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-purple-700"
+                            >
+                                <Sparkle className="size-3" weight="fill" />
+                                Top up
+                            </button>
+                        )
+                    )}
 
                     {credits.is_low_balance ? (
                         <span className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
@@ -629,6 +657,7 @@ export function AiCreditsPanel({ className }: AiCreditsPanelProps) {
                     )}
                 </div>
             </PopoverContent>
+            <TopUpModal open={topUpOpen} onOpenChange={setTopUpOpen} />
         </Popover>
     );
 }

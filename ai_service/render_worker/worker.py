@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Callable, Optional
 from urllib.request import Request, urlopen
@@ -221,7 +222,48 @@ class RenderWorker:
             # ── Parallel frame rendering ──
             # Split frames across N parallel Playwright processes for speed.
             # Each process renders a subset of frames, then we assemble with FFmpeg.
-            NUM_WORKERS = int(os.environ.get("RENDER_PARALLEL_WORKERS", "4"))
+            #
+            # Worker count picking:
+            #   • RENDER_PARALLEL_WORKERS env var → explicit override, used as-is.
+            #   • Unset → auto-cap based on MemAvailable from /proc/meminfo.
+            #
+            # Each chromium worker peaks at ~2.5 GB during render (browser + renderer
+            # + GPU + utility processes). On an 8 GB box, 4 workers (the old default)
+            # tries to claim 10 GB and the 4th launch fails with a Playwright launch
+            # error that gets truncated by `rewrite_error` so the underlying OOM /
+            # resource-exhaustion cause isn't visible. Auto-cap formula:
+            #   workers = max(1, floor((MemAvailable_MB - 1024) / 2560))
+            # leaving 1 GB for OS / uvicorn / ffmpeg-spawned-later. On a typical
+            # 8 GB box → 2 workers; 16 GB → 6; 32 GB → 12.
+            def _autocap_workers() -> int:
+                try:
+                    with open("/proc/meminfo", "r") as _mf:
+                        for _line in _mf:
+                            if _line.startswith("MemAvailable:"):
+                                _avail_kb = int(_line.split()[1])
+                                _avail_mb = _avail_kb / 1024
+                                _cap = max(1, int((_avail_mb - 1024) / 2560))
+                                logger.info(
+                                    f"[RENDER] Auto-capped workers to {_cap} "
+                                    f"(MemAvailable={_avail_mb:.0f} MB, ~2.5 GB/worker)"
+                                )
+                                return _cap
+                except Exception as _e:
+                    logger.warning(f"[RENDER] Could not read /proc/meminfo for autocap: {_e}")
+                return 4  # last-resort default — same as old behavior
+
+            _env_workers = os.environ.get("RENDER_PARALLEL_WORKERS", "").strip()
+            if _env_workers:
+                NUM_WORKERS = int(_env_workers)
+                _autocap = _autocap_workers()
+                if NUM_WORKERS > _autocap:
+                    logger.warning(
+                        f"[RENDER] RENDER_PARALLEL_WORKERS={NUM_WORKERS} exceeds "
+                        f"RAM-based safe cap of {_autocap}. Honoring env value but "
+                        f"chromium launches may OOM on this box."
+                    )
+            else:
+                NUM_WORKERS = _autocap_workers()
             FPS = fps if fps and fps in (15, 20, 25, 30, 45, 60) else 25
             output_path = work_dir / "output.mp4"
             frames_dir = work_dir / ".render_frames"
@@ -244,9 +286,11 @@ class RenderWorker:
                 except Exception:
                     base_settings = {}
                 if caption_font_size is not None:
-                    # Scale font size proportionally to native render width (always 1920 or 1080)
-                    scale = render_width / 1920.0
-                    base_settings["font_size"] = int(caption_font_size * scale)
+                    # Pass-through: generate_video.py applies canvas-relative
+                    # scaling (width/1920) to font_size on every render path
+                    # — pre-scaling here would compound to (width/1920)² on
+                    # portrait and silently shrink captions to ~1% of frame.
+                    base_settings["font_size"] = int(caption_font_size)
                 if caption_text_color is not None:
                     base_settings["font_color"] = caption_text_color
                 if caption_bg_color is not None or caption_bg_opacity is not None:
@@ -261,13 +305,6 @@ class RenderWorker:
                     base_settings["background_color"] = f"rgba({r},{g},{b},{alpha})"
                 if caption_position is not None:
                     base_settings["position"] = caption_position
-                    # Update box.y for position
-                    box = base_settings.get("box", {})
-                    if caption_position == "top":
-                        box["y"] = int(render_height * 0.03)
-                    else:
-                        box["y"] = int(render_height * 0.85)
-                    base_settings["box"] = box
                 override_path = work_dir / "captions_settings_override.json"
                 override_path.write_text(json.dumps(base_settings, indent=2))
                 _captions_settings_path = override_path
@@ -275,159 +312,52 @@ class RenderWorker:
 
             # First, compute total frames by doing a dry-run parse of timeline + audio
             import json as _json
-            import re as _re
+            import sys as _sys
+            from pathlib import Path as _Path
             tl_data = _json.loads(timeline_path.read_text())
             if isinstance(tl_data, dict) and "entries" in tl_data:
                 tl_entries = tl_data["entries"]
             else:
                 tl_entries = tl_data
 
-            # Strip <video data-source-clip> tags from SOURCE_CLIP entries so
-            # Playwright doesn't render the video (the compositor handles it).
-            # Without this, the video appears twice: once from Playwright and
-            # once from the compositor.
-            _video_tag_re = _re.compile(
-                r'<video\b[^>]*data-source-clip[^>]*>(?:</video>)?',
-                _re.IGNORECASE,
-            )
+            # All shot-HTML preprocessing now lives in the shared helper —
+            # see app/ai-video-gen-main/shot_preprocess.py. Both this path
+            # (production /jobs) and the single-shot preview path (in
+            # screenshot_worker.record_shot_mp4) call it so a shot rendered
+            # via /shot/preview-mp4 looks identical to the same shot inside
+            # a full /jobs render.
+            _harness_dir = _Path(__file__).parent / "ai-video-gen-main"
+            if str(_harness_dir) not in _sys.path:
+                _sys.path.insert(0, str(_harness_dir))
+            from shot_preprocess import preprocess_shot_html, PREPROCESS_BUILD
+
+            # Build identifier — proves the new shared preprocessor (with
+            # timescale rewrite) is actually running this render, vs. a
+            # stale image. Search container logs for this exact line to
+            # verify a full /jobs render uses the latest preprocessor.
+            logger.info(f"[shot-preprocess] build={PREPROCESS_BUILD} entries={len(tl_entries)}")
+
             _modified_tl = False
             for _entry in tl_entries:
-                if _entry.get("shot_type") == "SOURCE_CLIP" and "html" in _entry:
-                    _orig = _entry["html"]
-                    _stripped = _video_tag_re.sub("", _orig)
-                    if _stripped != _orig:
-                        _entry["html"] = _stripped
-                        _modified_tl = True
-            # Strip LLM-generated stage-drift camera animations from ALL entries.
-            # The LLM adds gsap.fromTo('.stage-drift', ...) which creates a slow
-            # zoom/pan that looks smooth in FE (60fps real-time) but choppy in
-            # render (screenshot-based GSAP seeking). Disabling it makes render stable.
-            _drift_re = _re.compile(
-                r"gsap\.fromTo\(\s*['\"]\.stage-drift['\"].*?\);",
-                _re.DOTALL,
-            )
-            # Strip FE-injected `<script data-vx-timescale=...>gsap.globalTimeline.timeScale(...)`
-            # tags. The video editor injects these so its per-shot iframe (own GSAP instance)
-            # compresses/expands animations to fit a user-edited duration. In the renderer ALL
-            # shots share window.gsap.globalTimeline, so this call poisons the timeline:
-            # already-registered tweens get retroactively misaligned and never fire within
-            # the shot's active window.
-            _timescale_re = _re.compile(
-                r'<script\s[^>]*\bdata-vx-timescale="[^"]*"[^>]*>[\s\S]*?</script>',
-                _re.IGNORECASE,
-            )
-            # Strip LLM-generated `<script src="...gsap*.js">` CDN loaders. The render
-            # harness already loads GSAP 3.12.5 globally; when the renderer dynamically
-            # inserts the shot's <script src=> into shadow DOM, the browser fetches and
-            # executes a SECOND gsap which overwrites window.gsap with a fresh instance.
-            # Every tween already registered against the harness's gsap is orphaned, and
-            # the renderer's per-frame `gsap.globalTimeline.totalTime(state.t)` scrubs an
-            # empty timeline. Symptom: shots from that point onward freeze on their initial
-            # static HTML state (no opacity tweens, no transforms).
-            _gsap_cdn_re = _re.compile(
-                r'<script\s[^>]*\bsrc="[^"]*\bgsap[^"]*\.js[^"]*"[^>]*>\s*</script>',
-                _re.IGNORECASE,
-            )
-            # Convert `animation:vx-...` CSS shorthand on `<div data-vx-shot="1" ...>`
-            # wrappers into GSAP-driven tweens that the renderer's per-frame scrub controls.
-            #
-            # The video editor injects these via buildTransitionCss() (see
-            # frontend-admin-dashboard/.../utils/transitions.ts) to drive in/out
-            # fade/slide/zoom transitions. CSS keyframe animations advance at WALL-CLOCK
-            # time, but the renderer captures frames serially at variable per-frame cost
-            # (50-200ms each), so the wall clock outruns the render's scrub clock — the
-            # CSS animation completes long before the scrub reaches the shot's exit and
-            # the shot renders blank.
-            #
-            # We parse the animation shorthand, strip it from the wrapper's inline style,
-            # and emit a `<script>` whose tweens are equivalent to the original keyframes
-            # but registered on `gsap.globalTimeline` — the renderer scrubs that timeline
-            # via `globalTimeline.totalTime(state.t)` so the transitions play frame-accurate.
-            _vx_shot_open_re = _re.compile(
-                r'(<div\s+data-vx-shot="[^"]*"\s+style=")([^"]*)("\s*>)',
-                _re.IGNORECASE,
-            )
-            _anim_prop_re = _re.compile(r'animation\s*:[^;]*;?', _re.IGNORECASE)
-            _vx_anim_token_re = _re.compile(
-                r'(vx-(?:fade|slide-[lrud]|zoom-in|zoom-out)-(?:in|out))\s+'
-                r'([\d.]+)s\s+(\S+?)\s+([-\d.]+)s\s+both',
-                _re.IGNORECASE,
-            )
-            # Per-type from-state (CSS-keyframe "unit=0"). The to-state is identity for all.
-            _vx_state0 = {
-                'fade':     {'opacity': 0},
-                'slide-l':  {'opacity': 0, 'xPercent': -100},
-                'slide-r':  {'opacity': 0, 'xPercent': 100},
-                'slide-u':  {'opacity': 0, 'yPercent': -100},
-                'slide-d':  {'opacity': 0, 'yPercent': 100},
-                'zoom-in':  {'opacity': 0, 'scale': 0.6},
-                'zoom-out': {'opacity': 0, 'scale': 1.4},
-            }
-            _vx_state1 = {'opacity': 1, 'xPercent': 0, 'yPercent': 0, 'scale': 1}
-            _css_to_gsap_ease = {
-                'ease':        'power2.inOut',
-                'linear':      'none',
-                'ease-in':     'power2.in',
-                'ease-out':    'power2.out',
-                'ease-in-out': 'power2.inOut',
-            }
-
-            def _vars_to_js(d):
-                return '{' + ','.join(f'{k}:{v}' for k, v in d.items()) + '}'
-
-            def _convert_vx_wrapper(_html):
-                def _repl(m):
-                    opening, style, closing = m.group(1), m.group(2), m.group(3)
-                    am = _anim_prop_re.search(style)
-                    if not am:
-                        return m.group(0)
-                    anim_value = am.group(0).split(':', 1)[1].rstrip(';').strip()
-                    new_style = _anim_prop_re.sub('', style).strip(';').strip()
-                    tweens_js = []
-                    for tok in _vx_anim_token_re.finditer(anim_value):
-                        name, dur, easing, delay = tok.group(1), float(tok.group(2)), tok.group(3), float(tok.group(4))
-                        if name.endswith('-in'):
-                            type_, direction = name[3:-3], 'in'
-                        elif name.endswith('-out'):
-                            type_, direction = name[3:-4], 'out'
-                        else:
-                            continue
-                        if type_ not in _vx_state0:
-                            continue
-                        s0 = _vx_state0[type_]
-                        # Only include identity-axis keys that actually changed (avoid
-                        # GSAP wiping the user's baked transform along the unchanged axis).
-                        s1 = {k: _vx_state1[k] for k in s0.keys()}
-                        from_v, to_v = (s0, s1) if direction == 'in' else (s1, s0)
-                        ease = _css_to_gsap_ease.get(easing.lower(), 'power2.inOut')
-                        to_with_meta = dict(to_v)
-                        to_with_meta['duration'] = dur
-                        to_with_meta['delay'] = delay
-                        to_with_meta['ease'] = f'"{ease}"'
-                        tweens_js.append(
-                            f'gsap.fromTo(__vxw,{_vars_to_js(from_v)},{_vars_to_js(to_with_meta)});'
-                        )
-                    if not tweens_js:
-                        return f'{opening}{new_style}{closing}'
-                    script = (
-                        '<script data-vx-render-transition="1">'
-                        'var __vxw=scope.querySelector(\'[data-vx-shot="1"]\');'
-                        'if(__vxw){' + ''.join(tweens_js) + '}'
-                        '</script>'
-                    )
-                    return f'{opening}{new_style}{closing}{script}'
-                return _vx_shot_open_re.sub(_repl, _html)
-
-            for _entry in tl_entries:
-                if "html" in _entry:
-                    _orig = _entry["html"]
-                    _cleaned = _drift_re.sub("", _orig)
-                    _cleaned = _timescale_re.sub("", _cleaned)
-                    _cleaned = _gsap_cdn_re.sub("", _cleaned)
-                    _cleaned = _convert_vx_wrapper(_cleaned)
-                    if _cleaned != _orig:
-                        _entry["html"] = _cleaned
-                        _modified_tl = True
+                if "html" not in _entry:
+                    continue
+                _orig = _entry["html"]
+                _cleaned, _ts = preprocess_shot_html(
+                    _orig,
+                    shot_type=_entry.get("shot_type"),
+                    shot_id=_entry.get("id"),
+                )
+                if _cleaned != _orig:
+                    _entry["html"] = _cleaned
+                    _modified_tl = True
+                # Attach the extracted vx-timescale to the entry so the
+                # dispatcher's __updateSnippets can read e.timescale and
+                # create a per-shot child timeline. Skip the field when ≈1
+                # to keep the wire payload small for shots without a
+                # FE-editor duration adjustment.
+                if abs(_ts - 1.0) > 1e-6:
+                    _entry["timescale"] = _ts
+                    _modified_tl = True
 
             from moviepy import AudioFileClip as _AFC
             _audio_dur = _AFC(str(audio_path)).duration
@@ -561,6 +491,50 @@ class RenderWorker:
                     f"to {total_duration:.2f}s to cover trailing narration"
                 )
 
+            # Internal gap-snap: extend each content shot's exitTime so it
+            # touches the next shot's inTime. Director-generated storyboards
+            # often leave small gaps (shot N exits at 15.9s, shot N+1 starts
+            # at 16.2s). The renderer's _active_entries_at filter excludes a
+            # shot once t >= exitTime, so frames inside the gap have ZERO
+            # active shots and render as the bare page background — the
+            # blank-white frames the user has been reporting at t=16, t=26
+            # etc. Branding entries (intro/outro/watermark) are excluded;
+            # they have their own placement semantics. Snap is only applied
+            # at the render side here so OLD timelines (built before the
+            # build-side gap-snap shipped in automation_pipeline.py v20)
+            # also get fixed without regenerating.
+            if tl_entries:
+                _content = [
+                    _e for _e in tl_entries
+                    if not str(_e.get("id", "")).startswith("branding-")
+                ]
+                _content_sorted = sorted(
+                    _content, key=lambda _e: float(_e.get("inTime", 0) or 0)
+                )
+                _snapped = 0
+                _max_gap_filled = 0.0
+                for _i in range(len(_content_sorted) - 1):
+                    _cur = _content_sorted[_i]
+                    _nxt = _content_sorted[_i + 1]
+                    _cur_exit = float(_cur.get("exitTime", 0) or 0)
+                    _nxt_in = float(_nxt.get("inTime", 0) or 0)
+                    _gap = _nxt_in - _cur_exit
+                    # Only fill positive gaps. Touching (gap=0) and overlapping
+                    # (gap<0) shots are already fine. Skip absurd gaps (>10s) —
+                    # likely an intentional structural break.
+                    if 0.0 < _gap <= 10.0:
+                        _cur["exitTime"] = _nxt_in
+                        _snapped += 1
+                        if _gap > _max_gap_filled:
+                            _max_gap_filled = _gap
+                if _snapped > 0:
+                    _modified_tl = True
+                    logger.info(
+                        f"[GAP-SNAP] extended {_snapped} shot(s) to eliminate "
+                        f"timeline gaps (largest gap filled: {_max_gap_filled:.3f}s) "
+                        f"— prevents blank frames between shots"
+                    )
+
             if _modified_tl:
                 timeline_path.write_text(_json.dumps(
                     tl_data if isinstance(tl_data, dict) else tl_entries,
@@ -622,24 +596,104 @@ class RenderWorker:
             # Run workers in parallel
             logger.info(f"Launching {len(frame_ranges)} parallel render workers: {frame_ranges}")
 
-            def _run_chunk(start: int, end: int) -> subprocess.CompletedProcess:
-                chunk_cmd = base_cmd + ["--start-frame", str(start), "--end-frame", str(end)]
+            # Per-worker frame progress (rendered, total) for aggregate %.
+            _worker_progress: dict[int, tuple[int, int]] = {
+                i: (0, end - start) for i, (start, end) in enumerate(frame_ranges)
+            }
+            import re as _re_mod
+            _frame_progress_re = _re_mod.compile(
+                r"\[FRAME-PROGRESS\][^\n]*?rendered=(\d+)/(\d+)"
+            )
+
+            def _push_aggregate_progress() -> None:
+                if not on_progress:
+                    return
+                # Scale into the [25, 70] band — earlier % is download/setup,
+                # later % is FFmpeg encode + S3 upload.
+                done = sum(p[0] for p in _worker_progress.values())
+                total = sum(p[1] for p in _worker_progress.values()) or 1
+                pct = 25.0 + (done / total) * 45.0
                 try:
-                    return subprocess.run(
+                    on_progress(min(70.0, pct))
+                except Exception:
+                    pass
+
+            def _run_chunk(worker_idx: int, start: int, end: int) -> subprocess.CompletedProcess:
+                # Stagger chromium launches so N parallel workers don't all hit
+                # the chromium-spawn memory peak in the same moment. A 4-worker
+                # render on a tight box used to fail at the last `chromium.launch`
+                # because all four were allocating headers + heaps simultaneously.
+                # 2s/worker is negligible vs. multi-minute renders.
+                if worker_idx > 0:
+                    time.sleep(worker_idx * 2)
+                chunk_cmd = base_cmd + ["--start-frame", str(start), "--end-frame", str(end)]
+                proc = subprocess.Popen(
+                    chunk_cmd,
+                    cwd=str(REPO_ROOT),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    bufsize=1,  # line-buffered
+                )
+                stdout_chunks: list[str] = []
+                stderr_chunks: list[str] = []
+
+                import threading as _th
+
+                def _drain_stdout() -> None:
+                    assert proc.stdout is not None
+                    for line in proc.stdout:
+                        stdout_chunks.append(line)
+                        # Forward to container logs in real time. Strip trailing \n
+                        # to avoid double newlines from logger formatting.
+                        _stripped = line.rstrip("\n")
+                        if _stripped:
+                            logger.info(f"[w{worker_idx}] {_stripped}")
+                        # Aggregate frame progress when we see a [FRAME-PROGRESS] line.
+                        m = _frame_progress_re.search(line)
+                        if m:
+                            try:
+                                rendered = int(m.group(1))
+                                total = int(m.group(2))
+                                _worker_progress[worker_idx] = (rendered, total)
+                                _push_aggregate_progress()
+                            except Exception:
+                                pass
+
+                def _drain_stderr() -> None:
+                    assert proc.stderr is not None
+                    for line in proc.stderr:
+                        stderr_chunks.append(line)
+
+                t_out = _th.Thread(target=_drain_stdout, daemon=True)
+                t_err = _th.Thread(target=_drain_stderr, daemon=True)
+                t_out.start()
+                t_err.start()
+
+                try:
+                    proc.wait(timeout=5400)
+                    t_out.join(timeout=10)
+                    t_err.join(timeout=10)
+                    return subprocess.CompletedProcess(
                         chunk_cmd,
-                        check=False,
-                        cwd=str(REPO_ROOT),
-                        capture_output=True,
-                        text=True,
-                        timeout=5400,
+                        returncode=proc.returncode,
+                        stdout="".join(stdout_chunks),
+                        stderr="".join(stderr_chunks),
                     )
-                except subprocess.TimeoutExpired as te:
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=10)
+                    except Exception:
+                        pass
+                    t_out.join(timeout=5)
+                    t_err.join(timeout=5)
                     return subprocess.CompletedProcess(
                         chunk_cmd,
                         returncode=124,
-                        stdout=(te.stdout.decode("utf-8", "replace") if isinstance(te.stdout, bytes) else (te.stdout or "")),
+                        stdout="".join(stdout_chunks),
                         stderr=(
-                            (te.stderr.decode("utf-8", "replace") if isinstance(te.stderr, bytes) else (te.stderr or ""))
+                            "".join(stderr_chunks)
                             + f"\n[WORKER-TIMEOUT] subprocess exceeded 5400s for frames ({start}, {end})\n"
                         ),
                     )
@@ -648,8 +702,8 @@ class RenderWorker:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=NUM_WORKERS) as pool:
                 futures = [
-                    loop.run_in_executor(pool, _run_chunk, start, end)
-                    for start, end in frame_ranges
+                    loop.run_in_executor(pool, _run_chunk, i, start, end)
+                    for i, (start, end) in enumerate(frame_ranges)
                 ]
                 results = await asyncio.gather(*futures)
 
@@ -970,6 +1024,82 @@ class RenderWorker:
                 str(output_path),
             ]
             logger.info(f"FFmpeg filter_complex: {filter_complex}")
+
+            # ── Pre-FFmpeg frame-gap backfill ──
+            # Under memory pressure (multiple concurrent jobs sharing chromium
+            # on a tight box), Playwright's page.screenshot occasionally
+            # returns "success" without writing the file — no exception, no log
+            # line, just a missing JPG. Workers complete cleanly with 1-8
+            # frames silently dropped, then ffmpeg fails: "Could find no file
+            # with path 'frame_%06d.jpg' and index in the range 0-4". image2's
+            # probe range is 5; a single missing frame in 0-4 sinks the whole
+            # render even though 4000+ usable frames are on disk.
+            #
+            # Defensive fix: detect gaps in the frame index sequence and
+            # backfill each missing index with a copy of its nearest existing
+            # neighbor BEFORE invoking ffmpeg. Quality impact: each gap
+            # becomes a single-frame freeze (67ms at 15 FPS, 33ms at 30 FPS).
+            # Vastly preferable to failing the entire render.
+            try:
+                _frames_now = sorted(frames_dir.glob("frame_*.jpg"))
+                _frame_count = len(_frames_now)
+                _first_5 = [p.name for p in _frames_now[:5]]
+                _last_5 = [p.name for p in _frames_now[-5:]] if _frame_count > 5 else []
+                _frame0 = frames_dir / "frame_000000.jpg"
+                _frame0_exists = _frame0.exists()
+                _frame0_size = _frame0.stat().st_size if _frame0_exists else -1
+                logger.info(
+                    f"[FFMPEG-PREFLIGHT] dir={frames_dir} count={_frame_count} "
+                    f"first5={_first_5} last5={_last_5} "
+                    f"frame0_exists={_frame0_exists} frame0_bytes={_frame0_size}"
+                )
+
+                if _frame_count > 0:
+                    _present_indices: set[int] = set()
+                    for _p in _frames_now:
+                        try:
+                            _present_indices.add(int(_p.stem.split("_")[-1]))
+                        except (ValueError, IndexError):
+                            pass
+                    if _present_indices:
+                        _highest = max(_present_indices)
+                        _missing = [
+                            i for i in range(_highest + 1) if i not in _present_indices
+                        ]
+                        if _missing:
+                            import bisect as _bisect_mod
+                            _present_sorted = sorted(_present_indices)
+                            _filled = 0
+                            _failed = 0
+                            for _idx in _missing:
+                                _pos = _bisect_mod.bisect_left(_present_sorted, _idx)
+                                if _pos == 0:
+                                    _neighbor = _present_sorted[0]
+                                elif _pos == len(_present_sorted):
+                                    _neighbor = _present_sorted[-1]
+                                else:
+                                    _left = _present_sorted[_pos - 1]
+                                    _right = _present_sorted[_pos]
+                                    _neighbor = (
+                                        _left if (_idx - _left) <= (_right - _idx) else _right
+                                    )
+                                _src = frames_dir / f"frame_{_neighbor:06d}.jpg"
+                                _dst = frames_dir / f"frame_{_idx:06d}.jpg"
+                                try:
+                                    shutil.copyfile(_src, _dst)
+                                    _filled += 1
+                                except Exception:
+                                    _failed += 1
+                            _sample = _missing[:10] + (["..."] if len(_missing) > 10 else [])
+                            logger.warning(
+                                f"[FFMPEG-PREFLIGHT] backfilled {_filled}/{len(_missing)} "
+                                f"missing frames with nearest-neighbor copies "
+                                f"(failed={_failed}). Missing indices (sample): {_sample}. "
+                                f"Highest frame: {_highest}. Quality impact: brief "
+                                f"frame freezes at gap locations."
+                            )
+            except Exception as _diag_err:
+                logger.warning(f"[FFMPEG-PREFLIGHT] backfill failed: {_diag_err}")
 
             ffmpeg_result = await loop.run_in_executor(
                 None,

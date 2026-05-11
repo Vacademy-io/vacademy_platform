@@ -16,6 +16,7 @@ from typing import Optional, List
 from uuid import uuid4
 
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..schemas.credits import (
@@ -27,6 +28,9 @@ from ..schemas.credits import (
     CreditDeductRequest,
     CreditDeductResponse,
     CreditTransactionResponse,
+    InternalGrantFromPaymentRequest,
+    InternalRefundFromPaymentRequest,
+    InternalGrantOrRefundResponse,
     TransactionHistoryRequest,
     TransactionHistoryResponse,
     UsageAnalyticsResponse,
@@ -327,6 +331,236 @@ class CreditService:
             new_balance=new_balance,
             transaction_id=transaction_id,
             message=f"Successfully deducted {request.amount} credits",
+        )
+
+    # ========================================================================
+    # Internal: Credit Pack Purchase Fulfillment (called from webhook)
+    # ========================================================================
+
+    def grant_from_purchase(
+        self,
+        request: InternalGrantFromPaymentRequest,
+    ) -> InternalGrantOrRefundResponse:
+        """
+        Grant credits to fulfill a successful Razorpay credit-pack purchase.
+
+        Idempotent on `external_reference_id` (the Razorpay payment_id):
+        the V243 partial UNIQUE index on credit_transactions.external_reference_id
+        absorbs duplicate webhook deliveries. On collision the entire transaction
+        rolls back (UPDATE included) and we return already_processed=True.
+
+        Order of operations matters: UPDATE first, then INSERT. If INSERT fails
+        on the unique constraint, db.rollback() reverses the UPDATE too.
+        """
+        self.ensure_credits_exist(request.institute_id)
+
+        now = datetime.utcnow()
+        transaction_id = str(uuid4())
+
+        try:
+            # 1. Atomic balance update
+            update_result = self.db.execute(
+                text("""
+                    UPDATE institute_credits
+                    SET total_credits = total_credits + :amount,
+                        current_balance = current_balance + :amount,
+                        updated_at = :now
+                    WHERE institute_id = :institute_id
+                    RETURNING current_balance
+                """),
+                {
+                    "amount": request.amount,
+                    "now": now,
+                    "institute_id": request.institute_id,
+                },
+            )
+            row = update_result.fetchone()
+            new_balance = row.current_balance if row else Decimal("0")
+
+            # 2. Insert ledger row — fails on dup external_reference_id
+            self.db.execute(
+                text("""
+                    INSERT INTO credit_transactions
+                        (id, institute_id, transaction_type, amount, balance_after,
+                         description, reference_id, external_reference_id,
+                         granted_by, created_at)
+                    VALUES
+                        (:id, :institute_id, :type, :amount, :balance,
+                         :desc, :ref_id, :ext_ref, :granted_by, :now)
+                """),
+                {
+                    "id": transaction_id,
+                    "institute_id": request.institute_id,
+                    "type": TransactionType.PURCHASE.value,
+                    "amount": request.amount,
+                    "balance": new_balance,
+                    "desc": request.description
+                    or f"Credit pack purchase ({request.pack_code or 'unknown'})",
+                    "ref_id": str(request.platform_payment_id)
+                    if request.platform_payment_id
+                    else None,
+                    "ext_ref": request.external_reference_id,
+                    "granted_by": "platform_billing",
+                    "now": now,
+                },
+            )
+            self.db.commit()
+        except IntegrityError:
+            # Concurrent or retried webhook beat us. Roll back the UPDATE too.
+            self.db.rollback()
+            existing = self.db.execute(
+                text(
+                    "SELECT id FROM credit_transactions "
+                    "WHERE external_reference_id = :ext_ref"
+                ),
+                {"ext_ref": request.external_reference_id},
+            ).fetchone()
+            balance = self.get_balance(request.institute_id)
+            logger.info(
+                "grant_from_purchase: duplicate ext_ref=%s for institute=%s — already processed",
+                request.external_reference_id,
+                request.institute_id,
+            )
+            return InternalGrantOrRefundResponse(
+                success=True,
+                institute_id=request.institute_id,
+                new_balance=balance.current_balance if balance else Decimal("0"),
+                transaction_id=str(existing.id) if existing else None,
+                already_processed=True,
+                message="Already processed (duplicate webhook)",
+            )
+
+        logger.info(
+            "Granted %s credits to institute %s from payment ext_ref=%s pack=%s",
+            request.amount,
+            request.institute_id,
+            request.external_reference_id,
+            request.pack_code,
+        )
+        return InternalGrantOrRefundResponse(
+            success=True,
+            institute_id=request.institute_id,
+            new_balance=new_balance,
+            transaction_id=transaction_id,
+            already_processed=False,
+            message=f"Granted {request.amount} credits from payment",
+        )
+
+    def refund_from_purchase(
+        self,
+        request: InternalRefundFromPaymentRequest,
+    ) -> InternalGrantOrRefundResponse:
+        """
+        Reverse a previously-granted purchase (partial or full refund).
+
+        Idempotent on the Razorpay refund_id (passed as external_reference_id).
+        Note: refund_id is distinct from the original payment_id, so the unique
+        constraint won't collide with the PURCHASE row even when both are stored
+        in external_reference_id.
+
+        The balance may go negative if the institute has already consumed the
+        purchased credits — this is intentional (logged for ops review). Refunds
+        flip total_credits down too (REFUND is the inverse of PURCHASE), unlike
+        ADMIN_DEDUCTION which only moves used_credits.
+        """
+        self.ensure_credits_exist(request.institute_id)
+
+        now = datetime.utcnow()
+        transaction_id = str(uuid4())
+
+        try:
+            update_result = self.db.execute(
+                text("""
+                    UPDATE institute_credits
+                    SET total_credits = total_credits - :amount,
+                        current_balance = current_balance - :amount,
+                        updated_at = :now
+                    WHERE institute_id = :institute_id
+                    RETURNING current_balance
+                """),
+                {
+                    "amount": request.amount,
+                    "now": now,
+                    "institute_id": request.institute_id,
+                },
+            )
+            row = update_result.fetchone()
+            new_balance = row.current_balance if row else Decimal("0")
+
+            self.db.execute(
+                text("""
+                    INSERT INTO credit_transactions
+                        (id, institute_id, transaction_type, amount, balance_after,
+                         description, reference_id, external_reference_id,
+                         granted_by, created_at)
+                    VALUES
+                        (:id, :institute_id, :type, :amount, :balance,
+                         :desc, :ref_id, :ext_ref, :granted_by, :now)
+                """),
+                {
+                    "id": transaction_id,
+                    "institute_id": request.institute_id,
+                    "type": TransactionType.REFUND.value,
+                    "amount": -request.amount,
+                    "balance": new_balance,
+                    "desc": request.description
+                    or f"Refund for payment ({request.pack_code or 'unknown'})",
+                    "ref_id": str(request.platform_payment_id)
+                    if request.platform_payment_id
+                    else None,
+                    "ext_ref": request.external_reference_id,
+                    "granted_by": "platform_billing",
+                    "now": now,
+                },
+            )
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            existing = self.db.execute(
+                text(
+                    "SELECT id FROM credit_transactions "
+                    "WHERE external_reference_id = :ext_ref"
+                ),
+                {"ext_ref": request.external_reference_id},
+            ).fetchone()
+            balance = self.get_balance(request.institute_id)
+            logger.info(
+                "refund_from_purchase: duplicate ext_ref=%s for institute=%s — already processed",
+                request.external_reference_id,
+                request.institute_id,
+            )
+            return InternalGrantOrRefundResponse(
+                success=True,
+                institute_id=request.institute_id,
+                new_balance=balance.current_balance if balance else Decimal("0"),
+                transaction_id=str(existing.id) if existing else None,
+                already_processed=True,
+                message="Already processed (duplicate webhook)",
+            )
+
+        if new_balance < 0:
+            logger.warning(
+                "Refund pushed institute %s balance negative: %s "
+                "(refund=%s ext_ref=%s) — ops review required",
+                request.institute_id,
+                new_balance,
+                request.amount,
+                request.external_reference_id,
+            )
+
+        logger.info(
+            "Refunded %s credits from institute %s for payment ext_ref=%s",
+            request.amount,
+            request.institute_id,
+            request.external_reference_id,
+        )
+        return InternalGrantOrRefundResponse(
+            success=True,
+            institute_id=request.institute_id,
+            new_balance=new_balance,
+            transaction_id=transaction_id,
+            already_processed=False,
+            message=f"Refunded {request.amount} credits",
         )
 
     # ========================================================================

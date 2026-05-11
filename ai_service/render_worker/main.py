@@ -14,10 +14,12 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Header
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from worker import RenderWorker
 from transcribe_worker import TranscribeWorker
+from screenshot_worker import get_screenshot_worker
 # audio_ops is imported lazily inside the /audio/* route handlers
 # (matches /concat_audio's pattern — keeps the import surface minimal here).
 
@@ -106,6 +108,19 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
     jobs[job_id]["status"] = "running"
     jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
+    # Surface whether AI service supplied a callback URL. Silent None here
+    # is the most common reason renders complete on the worker but the FE
+    # never sees them — make it impossible to miss in the logs.
+    if request.callback_url:
+        logger.info(
+            f"Job {job_id} (video_id={request.video_id}) will push to: {request.callback_url}"
+        )
+    else:
+        logger.warning(
+            f"Job {job_id} (video_id={request.video_id}) has NO callback_url — "
+            f"AI server will not be notified. Check AI_SERVICE_PUBLIC_URL on AI service."
+        )
+
     try:
         video_url = await worker.render(
             video_id=request.video_id,
@@ -161,9 +176,56 @@ async def _run_render_job(job_id: str, request: RenderJobRequest):
 
 
 def _update_progress(job_id: str, progress: float):
-    if job_id in jobs:
-        jobs[job_id]["progress"] = progress
-        jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
+    """Update in-memory progress and debounce-push to the AI server.
+
+    Called from sync threads (subprocess stdout streamer in worker.py), so we
+    use a sync httpx client. We rate-limit pushes: at most one push per 5s
+    OR when progress moves by ≥ 2% — whichever comes first. This keeps the
+    AI server's DB fresh without flooding it.
+    """
+    if job_id not in jobs:
+        return
+    import time as _time
+    job = jobs[job_id]
+    job["progress"] = progress
+    job["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    callback_url = job.get("callback_url")
+    if not callback_url:
+        return
+
+    now_ts = _time.time()
+    last_pushed = job.get("_last_pushed_progress", -1.0)
+    last_pushed_at = job.get("_last_pushed_at", 0.0)
+    moved_enough = abs(progress - last_pushed) >= 2.0
+    enough_time = (now_ts - last_pushed_at) >= 5.0
+    if not (moved_enough or enough_time):
+        return
+
+    job["_last_pushed_progress"] = progress
+    job["_last_pushed_at"] = now_ts
+
+    # Sync HTTP push — runs on the worker thread, doesn't block the event loop.
+    try:
+        import httpx as _httpx
+        headers = {}
+        if RENDER_KEY:
+            headers["X-Render-Key"] = RENDER_KEY
+        with _httpx.Client(timeout=10) as client:
+            client.post(
+                callback_url,
+                json={
+                    "video_id": job["video_id"],
+                    "job_id": job_id,
+                    "status": "running",
+                    "progress": progress,
+                },
+                headers=headers,
+            )
+    except Exception as e:
+        # Push failure is non-fatal — the AI server has a watchdog on
+        # last_seen_at. We just log.
+        logger.debug(f"Progress push failed for {job_id}: {e}")
 
 
 async def _send_callback(url: str, data: dict):
@@ -214,6 +276,11 @@ async def submit_job(
         "error": None,
         "created_at": now,
         "updated_at": now,
+        # Push-based status: cached so _update_progress can debounce-POST
+        # progress to the AI server. Without callback_url the push is skipped.
+        "callback_url": request.callback_url,
+        "_last_pushed_progress": -1.0,  # sentinel so first update fires
+        "_last_pushed_at": 0.0,
     }
 
     # Fire and forget
@@ -234,6 +301,202 @@ async def get_job_status(job_id: str, x_render_key: str = Header("")):
 
 
 # ---------------------------------------------------------------------------
+# Screenshot — single-shot captures for the vision-review path
+#
+# Loads the same harness as /jobs (via render_harness.py), injects one shot's
+# HTML, and returns base64-encoded PNGs at requested timestamps. Used by the
+# AI service's vision reviewer to grade shots before they're shipped.
+# ---------------------------------------------------------------------------
+
+class ScreenshotRequest(BaseModel):
+    html: str = Field(..., description="Shot HTML — post-skill-composer, post-density-validator")
+    width: int = Field(..., gt=0, le=4096, description="Viewport width in px (e.g. 1920)")
+    height: int = Field(..., gt=0, le=4096, description="Viewport height in px (e.g. 1080)")
+    timestamps: List[float] = Field(..., min_length=1, max_length=5, description="Shot-relative seconds at which to capture frames")
+    background: str = Field(default="#0a0e27", description="CSS color used as the harness fill where shot HTML is transparent")
+
+
+class ScreenshotFrame(BaseModel):
+    t: float
+    image_b64: str = Field(..., description="Base64-encoded PNG bytes")
+
+
+class ScreenshotResponse(BaseModel):
+    screenshots: List[ScreenshotFrame]
+    ms: int = Field(..., description="Wall-clock duration of the screenshot batch")
+
+
+@app.post("/screenshot", response_model=ScreenshotResponse)
+async def take_screenshot(
+    request: ScreenshotRequest,
+    x_render_key: str = Header(""),
+):
+    """Capture N PNG screenshots of one shot's HTML at the given timestamps.
+
+    Synchronous (no job queue) because per-shot screenshot is fast (<3s p95)
+    and the vision reviewer waits inline. Reuses a long-lived Chromium
+    instance under the hood — see screenshot_worker.ScreenshotWorker.
+    """
+    _verify_key(x_render_key)
+
+    # Reject obviously bad timestamps early.
+    for t in request.timestamps:
+        if t < 0 or t > 600:
+            raise HTTPException(status_code=400, detail=f"timestamp out of range: {t}")
+
+    import time as _time
+    start = _time.monotonic()
+    try:
+        worker = get_screenshot_worker()
+        frames = await worker.screenshot_shot(
+            html=request.html,
+            width=request.width,
+            height=request.height,
+            timestamps=request.timestamps,
+            background=request.background,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("screenshot failed")
+        raise HTTPException(status_code=500, detail=f"screenshot failed: {exc}")
+    elapsed_ms = int((_time.monotonic() - start) * 1000)
+
+    return ScreenshotResponse(
+        screenshots=[ScreenshotFrame(**f) for f in frames],
+        ms=elapsed_ms,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Shot preview MP4 — single-shot debug render
+#
+# Renders one shot's HTML at every frame across `duration_seconds` and returns
+# a short MP4 (no audio). Used to iterate on shot HTML quickly without paying
+# the cost of a full multi-minute /jobs render.
+# ---------------------------------------------------------------------------
+
+class ShotPreviewRequest(BaseModel):
+    """Single-shot preview-MP4 request.
+
+    Accepts BOTH the explicit `{width, height, duration_seconds}` shape AND
+    a timeline entry shape `{html, inTime, exitTime, htmlEndX, htmlEndY, ...}`
+    so you can paste a `timeline.entries[i]` object verbatim. Extra fields
+    (id, z, sound_cues, etc.) are ignored.
+
+    Resolution rules:
+      - width  ← `width` if set, else `htmlEndX - htmlStartX`
+      - height ← `height` if set, else `htmlEndY - htmlStartY`
+      - duration_seconds ← `duration_seconds` if set, else `exitTime - inTime`
+    """
+
+    # Required — the only truly mandatory field.
+    html: str = Field(..., description="Shot HTML (inline <style>/<script>/<svg> all OK)")
+
+    # Timeline-entry shape (paste-friendly). Optional individually; one of
+    # each pair must resolve to a positive value at request time.
+    inTime: Optional[float] = Field(default=None, description="Timeline entry start time (used to compute duration)")
+    exitTime: Optional[float] = Field(default=None, description="Timeline entry end time (used to compute duration)")
+    htmlStartX: int = Field(default=0, description="Timeline entry left offset; subtracted from htmlEndX")
+    htmlStartY: int = Field(default=0, description="Timeline entry top offset; subtracted from htmlEndY")
+    htmlEndX: Optional[int] = Field(default=None, description="Timeline entry right edge (used to compute width)")
+    htmlEndY: Optional[int] = Field(default=None, description="Timeline entry bottom edge (used to compute height)")
+
+    # Explicit overrides — take precedence over timeline-derived values.
+    width: Optional[int] = Field(default=None, gt=0, le=4096, description="Override viewport width")
+    height: Optional[int] = Field(default=None, gt=0, le=4096, description="Override viewport height")
+    duration_seconds: Optional[float] = Field(default=None, gt=0, le=60, description="Override duration (≤60s)")
+
+    fps: int = Field(default=25, description="Frames per second (15, 20, 25, 30, or 60)")
+    background: str = Field(default="#0a0e27", description="Harness fill color where the shot is transparent")
+    shot_type: Optional[str] = Field(
+        default=None,
+        description="Timeline entry's shot_type (e.g. 'SOURCE_CLIP'). Used by the "
+                    "production-equivalent preprocessing — for SOURCE_CLIP, inline "
+                    "<video data-source-clip> tags are stripped. Safe to omit for "
+                    "regular shots; defaults to None.",
+    )
+
+    # Pydantic v2: silently drop unknown fields (id, z, sound_cues, ...)
+    model_config = {"extra": "ignore"}
+
+
+@app.post("/shot/preview-mp4")
+async def preview_shot_mp4(
+    request: ShotPreviewRequest,
+    x_render_key: str = Header(""),
+):
+    """Render one shot's HTML to a short MP4 (no audio).
+
+    Synchronous — for a 9s shot at 25fps that's 225 frames, ~30-60s wall-clock
+    on the worker. Use this to test individual shot HTML changes (positioning,
+    animations, GSAP timing) without re-rendering the full video.
+
+    Returns the MP4 bytes directly with `Content-Type: video/mp4`. Save it to
+    a file and play locally:
+        curl -X POST .../shot/preview-mp4 -H "X-Render-Key: ..." \\
+             -H "Content-Type: application/json" \\
+             -d @shot.json --output preview.mp4
+    """
+    _verify_key(x_render_key)
+
+    # Resolve dimensions: explicit override → timeline-entry derivation.
+    eff_width = request.width if request.width is not None else (
+        (request.htmlEndX - request.htmlStartX) if request.htmlEndX is not None else None
+    )
+    eff_height = request.height if request.height is not None else (
+        (request.htmlEndY - request.htmlStartY) if request.htmlEndY is not None else None
+    )
+    eff_duration = request.duration_seconds if request.duration_seconds is not None else (
+        (request.exitTime - request.inTime)
+        if (request.exitTime is not None and request.inTime is not None)
+        else None
+    )
+
+    if eff_width is None or eff_width <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="width is required — provide either `width` or `htmlEndX` (with optional `htmlStartX`)",
+        )
+    if eff_height is None or eff_height <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="height is required — provide either `height` or `htmlEndY` (with optional `htmlStartY`)",
+        )
+    if eff_duration is None or eff_duration <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="duration_seconds is required — provide either `duration_seconds` or both `inTime` and `exitTime`",
+        )
+
+    try:
+        worker = get_screenshot_worker()
+        mp4_bytes = await worker.record_shot_mp4(
+            html=request.html,
+            width=int(eff_width),
+            height=int(eff_height),
+            duration_seconds=float(eff_duration),
+            fps=request.fps,
+            background=request.background,
+            shot_type=request.shot_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("preview-mp4 failed")
+        raise HTTPException(status_code=500, detail=f"preview-mp4 failed: {exc}")
+
+    return Response(
+        content=mp4_bytes,
+        media_type="video/mp4",
+        headers={
+            "Content-Disposition": "inline; filename=shot-preview.mp4",
+            "Content-Length": str(len(mp4_bytes)),
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # Index Jobs — Video input indexing (stub for Step 1, real pipeline in Step 2)
 # ---------------------------------------------------------------------------
 
@@ -241,9 +504,10 @@ index_jobs: Dict[str, dict] = {}
 
 
 class IndexJobRequest(BaseModel):
-    input_video_id: str = Field(..., description="AI Input Video record ID")
-    source_url: str = Field(..., description="S3 URL of the uploaded video")
-    mode: str = Field(..., description="'podcast' or 'demo'")
+    input_video_id: str = Field(..., description="AI Input Asset record ID (legacy field name)")
+    source_url: str = Field(..., description="S3 URL of the uploaded asset")
+    mode: str = Field(..., description="Video: 'podcast'|'demo'. Image: 'photo'|'screenshot'|'diagram'")
+    kind: str = Field(default="video", description="'video' or 'image' — selects pipeline branch")
     callback_url: Optional[str] = Field(None, description="Webhook URL on completion")
 
 
@@ -256,18 +520,26 @@ class IndexJobResponse(BaseModel):
 class IndexJobStatus(BaseModel):
     job_id: str
     input_video_id: str
+    kind: str = "video"
     status: str  # queued, running, completed, failed
     progress: Optional[float] = None
     output_urls: Optional[dict] = None
-    duration_seconds: Optional[float] = None
-    resolution: Optional[str] = None
+    duration_seconds: Optional[float] = None  # video only
+    resolution: Optional[str] = None          # video only
+    width: Optional[int] = None               # image only
+    height: Optional[int] = None              # image only
     error: Optional[str] = None
     created_at: str
     updated_at: str
 
 
 async def _run_index_job(job_id: str, request: IndexJobRequest):
-    """Run the real video extraction pipeline in a thread pool executor."""
+    """Run the indexing pipeline in a thread pool executor.
+
+    Dispatches on `request.kind`:
+      video → extractor.pipeline.run_index_pipeline (transcript/visuals)
+      image → extractor.image_pipeline.run_image_index_pipeline (caption/ocr/face/colors)
+    """
     index_jobs[job_id]["status"] = "running"
     index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
@@ -276,12 +548,17 @@ async def _run_index_job(job_id: str, request: IndexJobRequest):
         index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     try:
-        from extractor.pipeline import run_index_pipeline
+        if request.kind == "image":
+            from extractor.image_pipeline import run_image_index_pipeline
+            pipeline_fn = run_image_index_pipeline
+        else:
+            from extractor.pipeline import run_index_pipeline
+            pipeline_fn = run_index_pipeline
 
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            run_index_pipeline,
+            pipeline_fn,
             request.input_video_id,
             request.source_url,
             request.mode,
@@ -291,10 +568,14 @@ async def _run_index_job(job_id: str, request: IndexJobRequest):
         index_jobs[job_id]["status"] = "completed"
         index_jobs[job_id]["progress"] = 100
         index_jobs[job_id]["output_urls"] = result["output_urls"]
+        # Video-only fields (None for image jobs).
         index_jobs[job_id]["duration_seconds"] = result.get("duration_seconds")
         index_jobs[job_id]["resolution"] = result.get("resolution")
+        # Image-only fields (None for video jobs).
+        index_jobs[job_id]["width"] = result.get("width")
+        index_jobs[job_id]["height"] = result.get("height")
         index_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
-        logger.info(f"Index job {job_id} completed: {list(result['output_urls'].keys())}")
+        logger.info(f"Index job {job_id} ({request.kind}) completed: {list(result['output_urls'].keys())}")
 
         if request.callback_url:
             await _send_callback(request.callback_url, {
@@ -304,6 +585,8 @@ async def _run_index_job(job_id: str, request: IndexJobRequest):
                 "output_urls": result["output_urls"],
                 "duration_seconds": result.get("duration_seconds"),
                 "resolution": result.get("resolution"),
+                "width": result.get("width"),
+                "height": result.get("height"),
             })
 
     except Exception as e:
@@ -345,11 +628,14 @@ async def submit_index_job(
     index_jobs[job_id] = {
         "job_id": job_id,
         "input_video_id": request.input_video_id,
+        "kind": request.kind,
         "status": "queued",
         "progress": 0,
         "output_urls": None,
         "duration_seconds": None,
         "resolution": None,
+        "width": None,
+        "height": None,
         "error": None,
         "created_at": now,
         "updated_at": now,

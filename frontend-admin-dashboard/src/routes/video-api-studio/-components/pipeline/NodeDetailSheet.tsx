@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,8 @@ import {
     Loader2,
     Mic,
     Music,
+    Pause,
+    Play,
     Sparkles,
     UserSquare2,
     Wand2,
@@ -26,6 +28,7 @@ import {
 import { toast } from 'sonner';
 import { fetchScriptText, regenerateFrame, updateFrame } from '../../-services/video-generation';
 import { LatexRenderer } from '../LatexRenderer';
+import { useSceneHtml } from './-utils/scenes-html-context';
 import { NODE_LABELS, type PipelineNodeId } from './-utils/stage-vocab';
 import type {
     NodeSlot,
@@ -665,10 +668,18 @@ function SceneDetail({
     apiKey?: string;
 }) {
     const timeline = state.artifactUrls.timeline;
+    const html = useSceneHtml(scene.index);
+    // `playKey` bumps every time the user hits "Play this beat" so the
+    // iframe re-mounts and any JS-driven animations restart from t=0.
+    const [playKey, setPlayKey] = useState(0);
+    const handleRestartIframe = () => setPlayKey((k) => k + 1);
     // Regenerate is only useful when the run has wrapped — pre-HTML the
     // BE has no timeline.json to find the frame in, and `frame/regenerate`
     // would fail with a 400 ("Generate HTML stage first").
     const canRegen = !!timeline && !!apiKey;
+
+    const narration = state.narration;
+    const narrationAudioUrl = narration.state === 'wrapped' ? narration.data.audioUrl : undefined;
 
     return (
         <div className="space-y-4">
@@ -683,8 +694,13 @@ function SceneDetail({
                 </span>
             </div>
 
-            {/* Hero media */}
-            {scene.videoUrl ? (
+            {/* Hero media — prefer the rendered HTML when present so the
+                user can actually "play" the beat (animations, video tags
+                inside the HTML, etc). Falls back to the AI B-roll clip,
+                then the still, then a text-only notice. */}
+            {html ? (
+                <SceneHtmlPreview html={html} sceneIndex={scene.index} playKey={playKey} />
+            ) : scene.videoUrl ? (
                 <div className="overflow-hidden rounded-lg border bg-black">
                     <video
                         src={scene.videoUrl}
@@ -707,6 +723,20 @@ function SceneDetail({
                 <div className="flex aspect-video w-full items-center justify-center rounded-lg border bg-gray-50 text-xs text-muted-foreground">
                     Text-driven scene — no still or B-roll on this beat
                 </div>
+            )}
+
+            {/* Narration-synced playback. Crops the wrapped voiceover to
+                this scene's [startTime, endTime] window and re-keys the
+                HTML iframe so its animations restart in lock-step with
+                the audio — the closest "play this beat" we can get
+                without rendering the MP4. */}
+            {html && narrationAudioUrl && (
+                <SceneNarrationPlayer
+                    audioUrl={narrationAudioUrl}
+                    startTime={scene.startTime}
+                    endTime={scene.endTime}
+                    onRestartIframe={handleRestartIframe}
+                />
             )}
 
             {/* Regenerate this scene — inline AI remake panel. Drives the
@@ -931,6 +961,179 @@ function RegenerateScenePanel({
                 The AI rewrites just this shot&apos;s HTML — narration, timing, and other shots stay
                 untouched. After accepting, re-render the MP4 to see the result.
             </p>
+        </div>
+    );
+}
+
+/**
+ * Embed a shot's rendered HTML in a sandboxed iframe at its native 1920×1080
+ * design surface, scaled to fit the sheet's viewport width. ResizeObserver
+ * keeps the scale correct as the sheet grows / shrinks (e.g. responsive
+ * breakpoints, devtools toggle). Re-uses the same sandbox flags as
+ * AIVideoPlayer so JS-driven animations + autoplay work.
+ *
+ * `key={`${sceneIndex}-${playKey}`}` on the iframe serves two purposes:
+ *   - Switching between scenes forces a fresh document so animation timers
+ *     from the previous scene don't bleed in.
+ *   - Bumping `playKey` from the parent re-mounts the iframe so the user
+ *     can replay the beat in lock-step with the narration audio.
+ */
+function SceneHtmlPreview({
+    html,
+    sceneIndex,
+    playKey,
+}: {
+    html: string;
+    sceneIndex: number;
+    playKey?: number;
+}) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [scale, setScale] = useState(0.3);
+
+    useLayoutEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const update = () => {
+            const w = el.getBoundingClientRect().width;
+            if (w > 0) setScale(w / 1920);
+        };
+        update();
+        const ro = new ResizeObserver(update);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
+    return (
+        <div
+            ref={containerRef}
+            className="relative aspect-video w-full overflow-hidden rounded-lg border bg-white"
+        >
+            <iframe
+                key={`${sceneIndex}-${playKey ?? 0}`}
+                title={`Scene ${sceneIndex + 1} HTML`}
+                srcDoc={html}
+                sandbox="allow-scripts allow-same-origin"
+                allow="autoplay"
+                className="absolute left-0 top-0 origin-top-left border-0"
+                style={{
+                    width: 1920,
+                    height: 1080,
+                    transform: `scale(${scale})`,
+                }}
+            />
+        </div>
+    );
+}
+
+/**
+ * Plays the wrapped narration audio cropped to a single scene's time
+ * window, in lock-step with a re-keyed HTML iframe. Single play head
+ * inside this component — pause is real, "Play this beat" reseeks
+ * audio to `startTime`, kicks the parent to restart the iframe, and
+ * schedules an auto-pause at `endTime` via rAF (timeupdate granularity
+ * is too coarse for short beats — we typically have 2-4s shots).
+ *
+ * We deliberately don't try to drive the iframe's internal animations
+ * via postMessage — the rendered HTML doesn't subscribe to messages,
+ * and re-mounting is the same effect with no contract.
+ */
+function SceneNarrationPlayer({
+    audioUrl,
+    startTime,
+    endTime,
+    onRestartIframe,
+}: {
+    audioUrl: string;
+    startTime: number;
+    endTime: number;
+    onRestartIframe: () => void;
+}) {
+    const audioRef = useRef<HTMLAudioElement>(null);
+    const rafRef = useRef<number | null>(null);
+    const [playing, setPlaying] = useState(false);
+
+    // Stop the rAF auto-pause loop on unmount / scene switch — otherwise
+    // a still-running tick can call `pause()` on a fresh audio element.
+    useEffect(() => {
+        return () => {
+            if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+        };
+    }, []);
+
+    const handlePlay = async () => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        audio.currentTime = Math.max(0, startTime);
+        // Restart the iframe alongside the audio so animations re-trigger
+        // from t=0 of this beat. We do this *before* play() so the tiny
+        // remount delay doesn't desync.
+        onRestartIframe();
+        try {
+            await audio.play();
+        } catch (err) {
+            // Likely autoplay-policy denial. Surface so the user can retry.
+            toast.error(err instanceof Error ? err.message : 'Could not start playback');
+            return;
+        }
+        setPlaying(true);
+
+        const tick = () => {
+            const a = audioRef.current;
+            if (!a || a.paused) {
+                rafRef.current = null;
+                setPlaying(false);
+                return;
+            }
+            if (a.currentTime >= endTime) {
+                a.pause();
+                setPlaying(false);
+                rafRef.current = null;
+                return;
+            }
+            rafRef.current = requestAnimationFrame(tick);
+        };
+        if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(tick);
+    };
+
+    const handlePause = () => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        audio.pause();
+        setPlaying(false);
+        if (rafRef.current != null) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+        }
+    };
+
+    return (
+        <div className="space-y-2 rounded-lg border bg-card p-3">
+            <div className="flex items-center gap-2">
+                <Button
+                    size="sm"
+                    onClick={playing ? handlePause : handlePlay}
+                    className="h-7 gap-1.5 text-[11px]"
+                >
+                    {playing ? (
+                        <>
+                            <Pause className="size-3" /> Pause
+                        </>
+                    ) : (
+                        <>
+                            <Play className="size-3" /> Play this beat with narration
+                        </>
+                    )}
+                </Button>
+                <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                    {startTime.toFixed(1)}s – {endTime.toFixed(1)}s
+                </span>
+            </div>
+            {/* Hidden control surface — the visible affordance is the
+                button above. Keeping the element rendered (not just a
+                bare <audio>) means users can right-click → save / inspect
+                if they want the raw audio for the full timeline. */}
+            <audio ref={audioRef} src={audioUrl} preload="metadata" controls className="w-full" />
         </div>
     );
 }

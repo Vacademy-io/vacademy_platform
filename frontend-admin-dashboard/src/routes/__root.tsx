@@ -15,7 +15,10 @@ import {
 import { TokenKey } from '@/constants/auth/tokens';
 import { getUserRoles } from '@/lib/auth/sessionUtility';
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
-import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import {
+    getDisplaySettingsFromCache,
+    resolveEffectivePostLoginRoute,
+} from '@/services/display-settings';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 
 const TanStackRouterDevtools =
@@ -137,7 +140,8 @@ const handleAuthenticatedUserLoginAccess = (location: any) => {
             const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
     const roleKey = getActiveRoleDisplaySettingsKey();
             const fromCache = getDisplaySettingsFromCache(roleKey);
-            const to = fromCache?.postLoginRedirectRoute || '/dashboard';
+            const candidate = fromCache?.postLoginRedirectRoute || '/dashboard';
+            const to = resolveEffectivePostLoginRoute(candidate, fromCache);
             throw redirect({ to });
         }
     }

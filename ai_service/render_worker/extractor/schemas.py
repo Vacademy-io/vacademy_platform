@@ -176,3 +176,72 @@ class VideoContext(BaseModel):
     foreground: Optional[SpeakerForeground] = None
     face_segments: list[FaceSegment] = Field(default_factory=list)  # full-video face track (podcast mode)
     demo_only: Optional[DemoContext] = None
+
+
+# ---------------------------------------------------------------------------
+# Image indexing — image_metadata.json
+#
+# Parallel to VideoContext but for single-frame inputs (photos, screenshots,
+# diagrams). Modes determine which sub-blocks are populated:
+#   photo      → faces + foreground (rembg matte) + caption + ocr (light) + colors
+#   screenshot → ocr (heavy) + caption (with ui_elements) + colors
+#   diagram    → ocr + caption (diagram-aware) + colors
+# ---------------------------------------------------------------------------
+
+class ImageMeta(BaseModel):
+    mode: str                       # "photo" | "screenshot" | "diagram"
+    width: int
+    height: int
+    format: str                     # "JPEG", "PNG", "WEBP", ...
+    file_size_bytes: int
+
+
+class DominantColor(BaseModel):
+    hex: str                        # "#1e3a8a"
+    weight: float                   # 0-1, share of pixels in this cluster
+
+
+class ImageColors(BaseModel):
+    dominant: list[DominantColor] = Field(default_factory=list)
+
+
+class OcrBlock(BaseModel):
+    text: str
+    bbox_norm: list[float]          # [x, y, w, h] normalized 0-1
+    confidence: float = 0.0
+
+
+class ImageOcr(BaseModel):
+    blocks: list[OcrBlock] = Field(default_factory=list)
+    full_text: str = ""             # blocks joined with "\n"
+
+
+class ImageFaces(BaseModel):
+    """Single-frame face detection output (photo mode only)."""
+    detected: bool = False
+    primary_bbox_norm: Optional[list[float]] = None  # [x, y, w, h]
+    free_regions: list[str] = Field(default_factory=list)
+    face_count: int = 0
+
+
+class ImageForeground(BaseModel):
+    """Background-removed PNG with alpha (photo mode only)."""
+    asset_path: str                 # "assets/image_fg.png"
+    has_alpha: bool = True
+
+
+class ImageCaption(BaseModel):
+    short: str = ""                 # one-sentence summary
+    long: str = ""                  # paragraph
+    tags: list[str] = Field(default_factory=list)
+    ui_elements: list[str] = Field(default_factory=list)  # screenshot mode only
+
+
+class ImageContext(BaseModel):
+    """Top-level schema written to image_metadata.json."""
+    meta: ImageMeta
+    colors: ImageColors
+    ocr: ImageOcr
+    faces: Optional[ImageFaces] = None        # photo mode only
+    foreground: Optional[ImageForeground] = None  # photo mode only
+    caption: Optional[ImageCaption] = None    # any mode; null if Gemini unavailable

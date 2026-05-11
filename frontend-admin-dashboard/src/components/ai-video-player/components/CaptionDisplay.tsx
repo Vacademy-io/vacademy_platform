@@ -125,10 +125,14 @@ export const CaptionDisplay: React.FC<CaptionDisplayProps> = ({
         return null;
     }
 
+    // Position as a fraction of player height to mirror the render server's
+    // `height * 0.037` / `* 0.074` (generate_video.py:1623-1627). Fixed-px
+    // values only matched the MP4 at the native 1920×1080 canvas; smaller
+    // preview containers showed captions visibly higher than the rendered output.
     const positionStyles: React.CSSProperties =
         settings.position === 'top'
-            ? { top: '40px', bottom: 'auto' }
-            : { bottom: '80px', top: 'auto' };
+            ? { top: '3.7%', bottom: 'auto' }
+            : { bottom: '7.4%', top: 'auto' };
 
     return (
         <div

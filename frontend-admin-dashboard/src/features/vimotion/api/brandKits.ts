@@ -4,8 +4,9 @@ import {
     VIMOTION_BRAND_KIT_BY_ID,
     VIMOTION_BRAND_KIT_DEFAULT,
     VIMOTION_BRAND_KIT_SET_DEFAULT,
+    VIMOTION_BRAND_KIT_SCRAPE,
 } from '@/constants/urls';
-import type { BrandKit, BrandKitWritePayload } from './dashboardTypes';
+import type { BrandKit, BrandKitScrapeResult, BrandKitWritePayload } from './dashboardTypes';
 
 export async function listBrandKits(instituteId: string): Promise<BrandKit[]> {
     const { data } = await authenticatedAxiosInstance.get<BrandKit[]>(VIMOTION_BRAND_KITS, {
@@ -73,4 +74,20 @@ export async function deleteBrandKit(id: string, instituteId: string): Promise<v
     await authenticatedAxiosInstance.delete(VIMOTION_BRAND_KIT_BY_ID(id), {
         params: { instituteId },
     });
+}
+
+export async function scrapeBrandKitFromUrl(
+    url: string,
+    instituteId: string
+): Promise<BrandKitScrapeResult> {
+    // Hits ai_service directly — JWT-auth via authenticatedAxiosInstance, no
+    // persistence. instituteId scopes the S3 path. Long-running (15-40s
+    // typical); the axios default timeout would cut us off, so extend for this
+    // call only.
+    const { data } = await authenticatedAxiosInstance.post<BrandKitScrapeResult>(
+        VIMOTION_BRAND_KIT_SCRAPE,
+        { url },
+        { params: { instituteId }, timeout: 60_000 }
+    );
+    return data;
 }

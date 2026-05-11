@@ -17,6 +17,8 @@ import vacademy.io.notification_service.features.chatbot_flow.repository.WhatsAp
 import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.notification_service.institute.InstituteInternalService;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -150,8 +152,34 @@ public class WhatsAppTemplateManagerService {
             throw new RuntimeException("Meta WhatsApp credentials not configured for this institute");
         }
 
+        // For media headers (IMAGE/VIDEO/DOCUMENT), Meta requires an upload
+        // handle obtained via the Resumable Upload API — a public URL is NOT
+        // accepted (subcode 2388273). Upload the sample media now and use the
+        // returned handle in the template payload.
+        String headerHandle = null;
+        String headerType = template.getHeaderType();
+        boolean needsHandle = headerType != null
+                && !"NONE".equals(headerType)
+                && !"TEXT".equals(headerType);
+        if (needsHandle) {
+            String sampleUrl = template.getHeaderSampleUrl();
+            if (sampleUrl == null || sampleUrl.isBlank()) {
+                throw new RuntimeException("A sample media URL is required for "
+                        + headerType + " header templates. Please upload a sample.");
+            }
+            if (creds.appId == null || creds.appId.isBlank()) {
+                throw new RuntimeException("Meta app_id is not configured for this institute. "
+                        + "It is required to upload sample media for " + headerType + " header templates.");
+            }
+            // uploadHeaderMediaToMeta throws with a descriptive message that
+            // includes Meta's response body / error subcode so admins can see
+            // exactly what went wrong (e.g. bad app_id, missing scope on the
+            // access token, unsupported file type).
+            headerHandle = uploadHeaderMediaToMeta(sampleUrl, creds, headerType);
+        }
+
         // Build Meta API payload
-        Map<String, Object> payload = buildMetaTemplatePayload(template);
+        Map<String, Object> payload = buildMetaTemplatePayload(template, headerHandle);
 
         try {
             String url = "https://graph.facebook.com/v22.0/" + creds.wabaId + "/message_templates";
@@ -539,7 +567,144 @@ public class WhatsAppTemplateManagerService {
 
     // ==================== Helpers ====================
 
-    private Map<String, Object> buildMetaTemplatePayload(WhatsAppTemplate template) {
+    /**
+     * Upload sample header media to Meta via the Resumable Upload API and
+     * return the resulting handle for use as `example.header_handle` when
+     * submitting an IMAGE/VIDEO/DOCUMENT-header template.
+     *
+     * Two-step flow per
+     * https://developers.facebook.com/docs/graph-api/guides/upload :
+     *   1) POST /v22.0/{app_id}/uploads?file_name=&file_length=&file_type=
+     *      with Bearer auth → returns {"id": "upload:..."}
+     *   2) POST /v22.0/{upload_session_id} with Authorization: OAuth <token>
+     *      (NOT Bearer), header file_offset: 0, body = raw bytes
+     *      → returns {"h": "<handle>"}
+     */
+    private String uploadHeaderMediaToMeta(String mediaUrl, MetaCredentials creds, String headerType) {
+        // Step 0: download the bytes from the public sample URL.
+        byte[] bytes;
+        String contentType;
+        try {
+            ResponseEntity<byte[]> downloadResp = restTemplate.exchange(
+                    mediaUrl, HttpMethod.GET, HttpEntity.EMPTY, byte[].class);
+            bytes = downloadResp.getBody();
+            if (bytes == null || bytes.length == 0) {
+                throw new RuntimeException("Sample media URL returned empty body: " + mediaUrl);
+            }
+            contentType = downloadResp.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE);
+        } catch (org.springframework.web.client.RestClientException e) {
+            throw new RuntimeException("Failed to download sample media from " + mediaUrl
+                    + " — make sure the URL is publicly accessible. Cause: " + e.getMessage(), e);
+        }
+        if (contentType == null || contentType.isBlank()) {
+            contentType = guessContentTypeFromUrl(mediaUrl, headerType);
+        }
+        // Strip parameters like "; charset=..." that some CDNs return.
+        int semi = contentType.indexOf(';');
+        if (semi > 0) contentType = contentType.substring(0, semi).trim();
+
+        String fileName = extractFileName(mediaUrl, headerType);
+
+        // Step 1: start an upload session. Per Meta docs, both Bearer and the
+        // access_token query param work — we use Bearer to match the rest of
+        // this service's calls.
+        String startUrl = "https://graph.facebook.com/v22.0/" + creds.appId + "/uploads"
+                + "?file_name=" + URLEncoder.encode(fileName, StandardCharsets.UTF_8)
+                + "&file_length=" + bytes.length
+                + "&file_type=" + URLEncoder.encode(contentType, StandardCharsets.UTF_8);
+
+        HttpHeaders startHeaders = new HttpHeaders();
+        startHeaders.setBearerAuth(creds.accessToken);
+        HttpEntity<Void> startRequest = new HttpEntity<>(null, startHeaders);
+
+        String uploadSessionId;
+        try {
+            ResponseEntity<String> startResp = restTemplate.exchange(
+                    startUrl, HttpMethod.POST, startRequest, String.class);
+            log.info("Meta resumable-upload start: status={}, body={}",
+                    startResp.getStatusCode(), startResp.getBody());
+            if (!startResp.getStatusCode().is2xxSuccessful() || startResp.getBody() == null) {
+                throw new RuntimeException("Meta resumable-upload start failed (" + startResp.getStatusCode() + "): "
+                        + startResp.getBody());
+            }
+            uploadSessionId = objectMapper.readTree(startResp.getBody()).path("id").asText(null);
+            if (uploadSessionId == null || uploadSessionId.isBlank()) {
+                throw new RuntimeException("Meta resumable-upload start returned no session id: " + startResp.getBody());
+            }
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            // Meta returns the actual error in the response body — surface it.
+            throw new RuntimeException("Meta resumable-upload start failed: "
+                    + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (org.springframework.web.client.RestClientException e) {
+            throw new RuntimeException("Meta resumable-upload start network error: " + e.getMessage(), e);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new RuntimeException("Meta resumable-upload start returned invalid JSON: " + e.getMessage(), e);
+        }
+
+        // Step 2: upload the bytes. NOTE: this leg uses "Authorization: OAuth <token>"
+        // (the literal scheme name "OAuth", not "Bearer") and a "file_offset" header.
+        String uploadUrl = "https://graph.facebook.com/v22.0/" + uploadSessionId;
+        HttpHeaders uploadHeaders = new HttpHeaders();
+        uploadHeaders.set(HttpHeaders.AUTHORIZATION, "OAuth " + creds.accessToken);
+        uploadHeaders.set("file_offset", "0");
+        uploadHeaders.setContentType(MediaType.parseMediaType(contentType));
+        HttpEntity<byte[]> uploadRequest = new HttpEntity<>(bytes, uploadHeaders);
+
+        try {
+            ResponseEntity<String> uploadResp = restTemplate.exchange(
+                    uploadUrl, HttpMethod.POST, uploadRequest, String.class);
+            log.info("Meta resumable-upload bytes: status={}, body={}",
+                    uploadResp.getStatusCode(), uploadResp.getBody());
+            if (!uploadResp.getStatusCode().is2xxSuccessful() || uploadResp.getBody() == null) {
+                throw new RuntimeException("Meta resumable-upload bytes failed (" + uploadResp.getStatusCode() + "): "
+                        + uploadResp.getBody());
+            }
+            String handle = objectMapper.readTree(uploadResp.getBody()).path("h").asText(null);
+            if (handle == null || handle.isBlank()) {
+                throw new RuntimeException("Meta resumable-upload returned no handle: " + uploadResp.getBody());
+            }
+            log.info("Meta resumable-upload succeeded: bytes={}, sessionId={}", bytes.length, uploadSessionId);
+            return handle;
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            throw new RuntimeException("Meta resumable-upload bytes failed: "
+                    + e.getStatusCode() + " " + e.getResponseBodyAsString(), e);
+        } catch (org.springframework.web.client.RestClientException e) {
+            throw new RuntimeException("Meta resumable-upload bytes network error: " + e.getMessage(), e);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new RuntimeException("Meta resumable-upload bytes returned invalid JSON: " + e.getMessage(), e);
+        }
+    }
+
+    private String extractFileName(String url, String headerType) {
+        try {
+            String path = url.split("\\?", 2)[0];
+            int slash = path.lastIndexOf('/');
+            String name = slash >= 0 ? path.substring(slash + 1) : path;
+            if (!name.isBlank()) return name;
+        } catch (Exception ignored) {
+            // fall through to default
+        }
+        return "sample-" + headerType.toLowerCase();
+    }
+
+    private String guessContentTypeFromUrl(String url, String headerType) {
+        String lower = url.toLowerCase().split("\\?", 2)[0];
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".mp4")) return "video/mp4";
+        if (lower.endsWith(".3gp")) return "video/3gpp";
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        // Sensible defaults per header type
+        return switch (headerType) {
+            case "IMAGE" -> "image/jpeg";
+            case "VIDEO" -> "video/mp4";
+            case "DOCUMENT" -> "application/pdf";
+            default -> "application/octet-stream";
+        };
+    }
+
+    private Map<String, Object> buildMetaTemplatePayload(WhatsAppTemplate template, String headerHandle) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("name", template.getName());
         payload.put("language", template.getLanguage());
@@ -564,11 +729,11 @@ public class WhatsAppTemplateManagerService {
                 }
             } else {
                 header.put("format", template.getHeaderType()); // IMAGE, VIDEO, DOCUMENT
-                // Note: Media headers require an upload handle from Meta's Resumable Upload API.
-                // For now, we pass the URL and let the admin know if Meta rejects it.
-                // A future improvement would implement the upload flow.
-                if (template.getHeaderSampleUrl() != null && !template.getHeaderSampleUrl().isBlank()) {
-                    header.put("example", Map.of("header_handle", List.of(template.getHeaderSampleUrl())));
+                // Media headers require a handle obtained via Meta's Resumable
+                // Upload API (passed in by the caller). A raw URL is rejected
+                // by Meta with subcode 2388273.
+                if (headerHandle != null && !headerHandle.isBlank()) {
+                    header.put("example", Map.of("header_handle", List.of(headerHandle)));
                 }
             }
             components.add(header);
@@ -649,9 +814,15 @@ public class WhatsAppTemplateManagerService {
             String accessToken = meta.path("access_token").asText(meta.path("accessToken").asText(
                     ws.path("access_token").asText(ws.path("accessToken").asText(""))));
             String wabaId = meta.path("wabaId").asText(meta.path("waba_id").asText(""));
+            // app_id is required for the Resumable Upload API used to obtain a
+            // header_handle when submitting templates with IMAGE/VIDEO/DOCUMENT
+            // headers. Same key as ChannelMappingController reads for webhook
+            // subscription. Optional: if missing, media-header submit will fail
+            // with a clearer error than Meta's subcode 2388273.
+            String appId = meta.path("app_id").asText(meta.path("appId").asText(""));
 
             if (accessToken.isBlank() || wabaId.isBlank()) return null;
-            return new MetaCredentials(accessToken, wabaId);
+            return new MetaCredentials(accessToken, wabaId, appId);
         } catch (Exception e) {
             log.error("Failed to resolve Meta credentials: {}", e.getMessage());
             return null;
@@ -704,6 +875,6 @@ public class WhatsAppTemplateManagerService {
         catch (Exception e) { return List.of(); }
     }
 
-    private record MetaCredentials(String accessToken, String wabaId) {}
+    private record MetaCredentials(String accessToken, String wabaId, String appId) {}
     private record WatiCredentials(String apiKey, String apiUrl) {}
 }

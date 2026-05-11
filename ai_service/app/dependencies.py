@@ -155,13 +155,47 @@ def get_institute_from_api_key(
     """
     settings_service = InstituteSettingsService(db)
     institute_id = settings_service.validate_api_key(x_institute_key)
-    
+
     if not institute_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or inactive API Key"
         )
     return institute_id
+
+
+def require_internal_service_token(
+    x_internal_service_token: Optional[str] = Header(
+        None, description="Service-to-service shared secret"
+    ),
+) -> None:
+    """
+    Gate for internal endpoints called by other Vacademy services
+    (e.g. admin_core_service's Razorpay webhook handler invoking
+    /credits/v1/internal/grant-from-payment after a successful pack purchase).
+
+    Compares the supplied header to settings.internal_service_token in constant
+    time. If the server has no token configured, every request is rejected —
+    there is no implicit-allow fallback.
+    """
+    expected = get_settings().internal_service_token
+    if not expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Internal service token is not configured on this server",
+        )
+    if not x_internal_service_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-Internal-Service-Token header",
+        )
+    # Constant-time comparison to defeat timing-attack inference of the secret.
+    import hmac
+    if not hmac.compare_digest(x_internal_service_token, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid X-Internal-Service-Token",
+        )
 
 def get_embedding_service(db: Session = Depends(db_dependency)) -> EmbeddingService:
     """Create an EmbeddingService with a fresh DB session."""
@@ -200,7 +234,7 @@ def require_credits(request_type: str, estimated_tokens: int = 1000):
 __all__ = [
     "get_course_outline_service", "get_image_service", "get_ai_chat_service",
     "get_chat_agent_service", "get_institute_from_api_key", "get_embedding_service",
-    "require_credits",
+    "require_credits", "require_internal_service_token",
 ]
 
 

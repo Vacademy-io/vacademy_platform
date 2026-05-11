@@ -167,32 +167,34 @@ export function Composer({
     const refreshInputVideos = useRef<() => void>();
     refreshInputVideos.current = () => {
         if (!apiKey) return;
-        import('../../-services/input-video').then(({ listInputVideos }) => {
-            listInputVideos(apiKey)
-                .then((videos) => {
-                    const toItem = (v: {
+        import('../../-services/input-asset').then(({ listInputAssets }) => {
+            listInputAssets(apiKey)
+                .then((assets) => {
+                    const toItem = (a: {
                         id: string;
                         name: string;
+                        kind: 'video' | 'image';
                         mode: string;
                         duration_seconds: number | null;
                         status: string;
                         progress: number;
                     }) => ({
-                        id: v.id,
-                        name: v.name,
-                        mode: v.mode,
-                        duration_seconds: v.duration_seconds,
-                        status: v.status,
-                        progress: v.progress,
+                        id: a.id,
+                        name: a.name,
+                        kind: a.kind,
+                        mode: a.mode,
+                        duration_seconds: a.duration_seconds,
+                        status: a.status,
+                        progress: a.progress,
                     });
-                    setIndexedVideos(videos.filter((v) => v.status === 'COMPLETED').map(toItem));
+                    setIndexedVideos(assets.filter((a) => a.status === 'COMPLETED').map(toItem));
                     setProcessingVideos(
-                        videos
+                        assets
                             .filter(
-                                (v) =>
-                                    v.status === 'QUEUED' ||
-                                    v.status === 'PROCESSING' ||
-                                    v.status === 'PENDING'
+                                (a) =>
+                                    a.status === 'QUEUED' ||
+                                    a.status === 'PROCESSING' ||
+                                    a.status === 'PENDING'
                             )
                             .map(toItem)
                     );
@@ -214,13 +216,13 @@ export function Composer({
         return () => clearInterval(timer);
     }, [processingVideos.length]);
 
-    // Auto-add newly completed videos to the selection (up to 5 max).
+    // Auto-add newly completed assets to the selection (up to 10 max).
     useEffect(() => {
         const currentIds = new Set(indexedVideos.map((v) => v.id));
         for (const id of currentIds) {
             if (!prevCompletedIds.current.has(id) && prevCompletedIds.current.size > 0) {
                 onSelectedInputVideoIdsChange((prev) => {
-                    if (prev.includes(id) || prev.length >= 5) return prev;
+                    if (prev.includes(id) || prev.length >= 10) return prev;
                     const next = [...prev, id];
                     // Multi-source auto-forces TTS — original audio is single-clip only.
                     if (next.length > 1) onInputVideoAudioChange('tts');
@@ -743,7 +745,7 @@ export function Composer({
                 />
 
                 {/* Textarea / preview row */}
-                <div className="px-1.5">
+                <div data-tour="vim-composer-prompt" className="px-1.5">
                     {showPreview ? (
                         <div className="max-h-[240px] min-h-[44px] overflow-y-auto py-2">
                             {prompt ? (
@@ -796,6 +798,7 @@ export function Composer({
                     <Button
                         variant="ghost"
                         size="icon"
+                        data-tour="vim-composer-attach"
                         className="size-8 text-muted-foreground hover:text-blue-600"
                         onClick={() => attachmentInputRef.current?.click()}
                         disabled={isUploadingAttachment || isGenerating || disabled}
@@ -827,7 +830,7 @@ export function Composer({
                     </Button>
 
                     {/* Source video clips — separate popover with upload + selection. */}
-                    <div className="relative">
+                    <div data-tour="vim-composer-source-video" className="relative">
                         <SourceVideoPopover
                             apiKey={apiKey}
                             indexedVideos={indexedVideos}
@@ -860,29 +863,32 @@ export function Composer({
 
                     <div className="ml-auto flex items-center gap-1.5">
                         {/* Settings popover */}
-                        <SettingsPopover
-                            options={options}
-                            onOptionsChange={onOptionsChange}
-                            reviewModeEnabled={reviewModeEnabled}
-                            onReviewModeChange={onReviewModeChange}
-                            availableVoices={availableVoices}
-                            isLoadingVoices={isLoadingVoices}
-                            playingVoiceId={playingVoiceId}
-                            onPlayPreview={handlePlayPreview}
-                            videoStyle={videoStyle}
-                            onVideoStyleChange={setVideoStyle}
-                            videoBranding={videoBranding}
-                            onVideoBrandingChange={setVideoBranding}
-                            videoTemplates={videoTemplates}
-                            models={models}
-                            vimMode={vimMode}
-                        />
+                        <div data-tour="vim-composer-settings">
+                            <SettingsPopover
+                                options={options}
+                                onOptionsChange={onOptionsChange}
+                                reviewModeEnabled={reviewModeEnabled}
+                                onReviewModeChange={onReviewModeChange}
+                                availableVoices={availableVoices}
+                                isLoadingVoices={isLoadingVoices}
+                                playingVoiceId={playingVoiceId}
+                                onPlayPreview={handlePlayPreview}
+                                videoStyle={videoStyle}
+                                onVideoStyleChange={setVideoStyle}
+                                videoBranding={videoBranding}
+                                onVideoBrandingChange={setVideoBranding}
+                                videoTemplates={videoTemplates}
+                                models={models}
+                                vimMode={vimMode}
+                            />
+                        </div>
 
                         {/* Send */}
                         <Button
                             onClick={handleSubmit}
                             disabled={!prompt.trim() || isGenerating || disabled || showPreview}
                             size="icon"
+                            data-tour="vim-composer-send"
                             className="size-9 rounded-md shadow-sm"
                             title="Generate (Enter)"
                             aria-label="Generate"

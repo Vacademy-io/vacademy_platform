@@ -1,4 +1,4 @@
-import { Globe, Sparkles, Volume2, Layers, FileText, ImageIcon, X, Mic } from 'lucide-react';
+import { Clapperboard, FileText, Globe, ImageIcon, Layers, Mic, Sparkles, Volume2, X } from 'lucide-react';
 import { RoutingPlan, RoutingToolName } from '../../-services/video-generation';
 
 export interface AttachmentItem {
@@ -12,6 +12,7 @@ export interface AttachmentItem {
 export interface IndexedVideoItem {
     id: string;
     name: string;
+    kind: 'video' | 'image';
     mode: string;
     duration_seconds: number | null;
     status: string;
@@ -248,6 +249,11 @@ function SourcesRow({
                             <span className="flex size-4 items-center justify-center rounded-sm bg-indigo-500 text-[9px] font-bold text-white">
                                 {label}
                             </span>
+                            {video?.kind === 'image' ? (
+                                <ImageIcon className="size-3 shrink-0 text-muted-foreground" />
+                            ) : (
+                                <Clapperboard className="size-3 shrink-0 text-muted-foreground" />
+                            )}
                             <span className="max-w-[120px] truncate font-medium">
                                 {video?.name || 'Unknown'}
                             </span>

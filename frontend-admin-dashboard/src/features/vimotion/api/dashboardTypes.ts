@@ -46,6 +46,22 @@ export interface BrandKit {
 
 export type BrandKitWritePayload = Partial<Omit<BrandKit, 'id' | 'created_at' | 'updated_at'>>;
 
+// "Build kit from website" response — the backend returns a draft shaped like
+// BrandKitWritePayload plus preview assets (rehosted on our S3) so the drawer
+// can show what was pulled. Persistence is unchanged: the user reviews and the
+// existing POST /brand-kits saves it.
+export interface BrandKitScrapePreview {
+    source_url: string;
+    logo_url?: string;
+    screenshot_url?: string;
+}
+
+export interface BrandKitScrapeResult {
+    draft: BrandKitWritePayload;
+    preview: BrandKitScrapePreview;
+    warnings?: string[];
+}
+
 // ── Studio Avatar ────────────────────────────────────────────────────────────
 
 export type AvatarProvider = 'custom' | 'argil' | 'veed';

@@ -336,6 +336,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
                 onOpenChange={setSearchOpen}
                 sidebarItems={sidebarItems}
                 instituteId={instituteId}
+                sidebarCategories={roleDisplay?.sidebarCategories}
             />
         </div>
     );

@@ -275,3 +275,47 @@ class AlertsListResponse(BaseModel):
 class AcknowledgeAlertRequest(BaseModel):
     """Request to acknowledge an alert."""
     acknowledged_by: str
+
+
+# ============================================================================
+# Internal Service-to-Service Schemas (credit pack purchase fulfillment)
+# Called by admin_core_service from the Razorpay webhook handler.
+# Auth via X-Internal-Service-Token (see dependencies.require_internal_service_token).
+# ============================================================================
+
+class InternalGrantFromPaymentRequest(BaseModel):
+    """Grant credits to an institute as the fulfillment of a paid order."""
+    institute_id: str
+    amount: Decimal = Field(..., gt=0, description="Credits to grant")
+    # Razorpay payment_id (e.g. "pay_NhfXY..."). Used as the dedup key on
+    # credit_transactions.external_reference_id; webhook retries are absorbed
+    # by the partial UNIQUE index from V243.
+    external_reference_id: str = Field(..., min_length=1, max_length=255)
+    # platform_payment.id — populated on credit_transactions.reference_id for
+    # reverse lookups ("which transactions belong to this purchase?").
+    platform_payment_id: Optional[UUID] = None
+    pack_code: Optional[str] = None
+    description: Optional[str] = None
+
+
+class InternalRefundFromPaymentRequest(BaseModel):
+    """Reverse a previously-granted purchase (full or partial)."""
+    institute_id: str
+    amount: Decimal = Field(..., gt=0, description="Credits to deduct")
+    # Razorpay refund_id (e.g. "rfnd_NhfXY..."). Used as the dedup key.
+    external_reference_id: str = Field(..., min_length=1, max_length=255)
+    platform_payment_id: Optional[UUID] = None
+    pack_code: Optional[str] = None
+    description: Optional[str] = None
+
+
+class InternalGrantOrRefundResponse(BaseModel):
+    """Common response shape for grant + refund."""
+    success: bool
+    institute_id: str
+    new_balance: Decimal
+    transaction_id: Optional[str] = None
+    # True when a row with the same external_reference_id already existed —
+    # the operation was a no-op. The webhook can safely retry on errors.
+    already_processed: bool = False
+    message: str

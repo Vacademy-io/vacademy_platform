@@ -17,6 +17,10 @@ import { convertHtmlToPdf } from '../../-helper/helper';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useSlidesMutations } from '../../-hooks/use-slides';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
+import {
+    buildAppendReorderPayload,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 interface FormData {
     docFile: FileList | null;
@@ -92,15 +96,7 @@ export const AddDocDialog = ({
             const newSlide = currentSlides.find((slide) => slide.id === newSlideId);
             if (!newSlide) return;
 
-            const reorderedSlides = [
-                { slide_id: newSlideId, slide_order: 0 },
-                ...currentSlides
-                    .filter((slide) => slide.id !== newSlideId)
-                    .map((slide, index) => ({
-                        slide_id: slide.id,
-                        slide_order: index + 1,
-                    })),
-            ];
+            const reorderedSlides = buildAppendReorderPayload(newSlideId, currentSlides);
 
             await updateSlideOrder({
                 chapterId: chapterId || '',
@@ -207,7 +203,7 @@ export const AddDocDialog = ({
                 title,
                 image_file_id: '',
                 description: null,
-                slide_order: 0,
+                slide_order: getNextSlideOrder(items || []),
                 document_slide: {
                     id: documentIdRef.current,
                     type: 'DOC',

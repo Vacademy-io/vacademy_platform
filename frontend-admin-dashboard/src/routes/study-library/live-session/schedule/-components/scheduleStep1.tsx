@@ -58,6 +58,22 @@ import { DefaultClassLinkInput } from './DefaultClassLinkInput';
 import { LearnerButtonConfigInput } from './LearnerButtonConfigInput';
 import { ScrollArea } from '@radix-ui/react-scroll-area';
 import { LiveClassLinkField } from './LiveClassLinkField';
+import {
+    CalendarBlank,
+    Info,
+    Clock,
+    Globe,
+    Link as LinkIcon,
+    VideoCamera,
+    ChatTeardrop,
+    UsersThree,
+    ArrowsClockwise,
+    CursorClick,
+} from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
+import type { PlatformKey } from '@/services/live-session-settings';
+import { SectionCard } from './SectionCard';
 
 // Default feedback questions configuration
 const DEFAULT_FEEDBACK_QUESTIONS = [
@@ -70,7 +86,50 @@ const DEFAULT_FEEDBACK_QUESTIONS = [
 export default function ScheduleStep1() {
     // Hooks and State
     const navigate = useNavigate();
-    const { setSessionId, step1Data, setStep1Data, sessionId, isEdit } = useLiveSessionStore();
+    const { setSessionId, step1Data, setStep1Data, sessionId, isEdit, clearBulkSessionIds } =
+        useLiveSessionStore();
+    // Institute-level live-session feature flags. Defaults are all-on, so
+    // existing institutes see no behavioural change until an admin opens the
+    // settings tab and turns something off.
+    const { settings: liveSessionSettings } = useLiveSessionSettings();
+
+    // Bulk lives on its own route now; clear any stale bulk ids that might
+    // remain from a prior bulk run so step 2 from this single-class flow
+    // doesn't accidentally fan out.
+    useEffect(() => {
+        clearBulkSessionIds();
+    }, [clearBulkSessionIds]);
+
+    // If single-class scheduling is disabled by settings but bulk is enabled,
+    // bounce the admin to the bulk page since they can't use this one.
+    useEffect(() => {
+        if (
+            !liveSessionSettings.singleScheduleEnabled &&
+            liveSessionSettings.bulkScheduleEnabled &&
+            !isEdit
+        ) {
+            navigate({ to: '/study-library/live-session/schedule/bulk' });
+        }
+    }, [
+        liveSessionSettings.singleScheduleEnabled,
+        liveSessionSettings.bulkScheduleEnabled,
+        isEdit,
+        navigate,
+    ]);
+
+    // Filter the streaming-platform dropdown by institute allow-list. The
+    // edit-mode preservation (if a previously-allowed platform got disabled
+    // later, keep it in the option list so the existing session's dropdown
+    // still reflects its actual value) is applied further down where
+    // `sessionPlatformWatch` is in scope.
+    const filteredStreamingOptions = useMemo(
+        () =>
+            STREAMING_OPTIONS.filter(
+                (opt) =>
+                    liveSessionSettings.allowedPlatforms[opt.value as PlatformKey] !== false
+            ),
+        [liveSessionSettings.allowedPlatforms]
+    );
     const { sessionDetails } = useSessionDetailsStore();
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [selectedMusicFile, setSelectedMusicFile] = useState<File | null>(null);
@@ -157,7 +216,10 @@ export default function ScheduleStep1() {
 
     // Initialize default values
     const getDefaultValues = useCallback(() => {
-        const defaultTimezone = getBrowserTimezone();
+        // Honor the institute-level default timezone if an admin set one in
+        // settings; otherwise fall back to the admin's browser timezone.
+        const defaultTimezone =
+            liveSessionSettings.defaultTimeZone || getBrowserTimezone();
         const defaultTime = getCurrentTimeInTimezone(defaultTimezone);
 
         return {
@@ -175,7 +237,8 @@ export default function ScheduleStep1() {
                         durationHours: '0',
                         durationMinutes: '30',
                         link: '',
-                        countAttendanceDaily: false,
+                        countAttendanceDaily:
+                            liveSessionSettings.defaultDailyAttendanceCounting,
                         thumbnailFileId: '',
                     },
                 ],
@@ -196,6 +259,11 @@ export default function ScheduleStep1() {
             defaultLink: '',
             feedbackEnabled: false,
             feedbackQuestions: DEFAULT_FEEDBACK_QUESTIONS,
+            bbbRecord: true,
+            bbbAutoStartRecording: false,
+            bbbMuteOnStart: true,
+            bbbWebcamsOnlyForModerator: false,
+            bbbGuestPolicy: 'ALWAYS_ACCEPT' as const,
         };
     }, []);
 
@@ -205,6 +273,34 @@ export default function ScheduleStep1() {
         defaultValues: getDefaultValues(),
         mode: 'onChange',
     });
+
+    // Settings load asynchronously. If they arrive after the form initialised
+    // and the admin hasn't manually changed the timezone yet, snap the field
+    // to the institute default. We only do this for new sessions (not edit).
+    useEffect(() => {
+        if (isEdit) return;
+        const adminDefault = liveSessionSettings.defaultTimeZone;
+        if (!adminDefault) return;
+        const tzDirty = form.getFieldState('timeZone').isDirty;
+        if (tzDirty) return;
+        if (form.getValues('timeZone') !== adminDefault) {
+            form.setValue('timeZone', adminDefault);
+        }
+    }, [liveSessionSettings.defaultTimeZone, isEdit, form]);
+
+    // For NEW sessions only: if the institute disables recurring weekly
+    // schedules and the form somehow holds WEEKLY (e.g. defaults loaded before
+    // the setting), snap to ONCE. We never touch existing recurring sessions
+    // being edited — the renderMeetingTypeSelection still shows the option in
+    // edit mode so the data stays intact.
+    useEffect(() => {
+        if (isEdit) return;
+        if (liveSessionSettings.recurringEnabled) return;
+        if (form.getValues('meetingType') === RecurringType.WEEKLY) {
+            form.setValue('meetingType', RecurringType.ONCE);
+        }
+    }, [liveSessionSettings.recurringEnabled, isEdit, form]);
+
     // Auto-update "Select days" dropdown when days are toggled manually
     const recurringSchedule = useWatch({
         control: form.control,
@@ -464,7 +560,8 @@ export default function ScheduleStep1() {
                                     durationMinutes: '30',
                                     link: '',
                                     thumbnailFileId: '',
-                                    countAttendanceDaily: false,
+                                    countAttendanceDaily:
+                                        liveSessionSettings.defaultDailyAttendanceCounting,
                                 },
                             ],
                 };
@@ -599,6 +696,21 @@ export default function ScheduleStep1() {
     const isZoomPlatform = sessionPlatformWatch === StreamingPlatform.ZOOM;
     const isZohoPlatform = sessionPlatformWatch === StreamingPlatform.ZOHO;
     const isBbbPlatform = sessionPlatformWatch === StreamingPlatform.BBB;
+
+    // In edit mode, if the existing session's platform was later disallowed in
+    // settings, splice it back into the option list so the select doesn't
+    // appear blank. Saving preserves the value either way — this is a UI fix.
+    const editAwareStreamingOptions = useMemo(() => {
+        if (
+            !isEdit ||
+            !sessionPlatformWatch ||
+            filteredStreamingOptions.some((o) => o.value === sessionPlatformWatch)
+        ) {
+            return filteredStreamingOptions;
+        }
+        const restored = STREAMING_OPTIONS.find((o) => o.value === sessionPlatformWatch);
+        return restored ? [...filteredStreamingOptions, restored] : filteredStreamingOptions;
+    }, [filteredStreamingOptions, isEdit, sessionPlatformWatch]);
 
     // Disabled options logic based on current platform selection
     const disabledLiveClassOptions = useMemo(() => {
@@ -1346,7 +1458,8 @@ export default function ScheduleStep1() {
                         durationHours: dh,
                         durationMinutes: dm,
                         link: l,
-                        countAttendanceDaily: false,
+                        countAttendanceDaily:
+                            liveSessionSettings.defaultDailyAttendanceCounting,
                         thumbnailFileId: '',
                     },
                 ]);
@@ -1376,7 +1489,8 @@ export default function ScheduleStep1() {
                         durationHours: dh,
                         durationMinutes: dm,
                         link: l,
-                        countAttendanceDaily: false,
+                        countAttendanceDaily:
+                            liveSessionSettings.defaultDailyAttendanceCounting,
                         thumbnailFileId: '',
                     },
                 ]);
@@ -1405,7 +1519,8 @@ export default function ScheduleStep1() {
                         durationHours: dh,
                         durationMinutes: dm,
                         link: l,
-                        countAttendanceDaily: false,
+                        countAttendanceDaily:
+                            liveSessionSettings.defaultDailyAttendanceCounting,
                         thumbnailFileId: '',
                     },
                 ]);
@@ -1432,7 +1547,8 @@ export default function ScheduleStep1() {
                         durationHours: dh,
                         durationMinutes: dm,
                         link: l,
-                        countAttendanceDaily: false,
+                        countAttendanceDaily:
+                            liveSessionSettings.defaultDailyAttendanceCounting,
                         thumbnailFileId: '',
                     },
                 ]);
@@ -1619,6 +1735,7 @@ export default function ScheduleStep1() {
                 />
             </div>
 
+            {liveSessionSettings.descriptionEnabled && (
             <div className="flex h-full flex-col gap-6">
                 <div className="-mb-5 flex flex-col gap-1">
                     <h1 className="text-sm font-medium">Description</h1>
@@ -1645,27 +1762,38 @@ export default function ScheduleStep1() {
                     )}
                 />
             </div>
+            )}
         </div>
     );
 
-    const renderMeetingTypeSelection = () => (
-        <FormField
-            control={control}
-            name="meetingType"
-            render={({ field }) => (
-                <MyRadioButton
-                    name="meetingType"
-                    value={field.value ?? ''}
-                    onChange={field.onChange}
-                    options={[
-                        { label: 'One Time Class', value: RecurringType.ONCE },
-                        { label: 'Recurring Class', value: RecurringType.WEEKLY },
-                    ]}
-                    className="flex flex-col gap-4 sm:flex-row"
-                />
-            )}
-        />
-    );
+    const renderMeetingTypeSelection = () => {
+        // In edit mode keep BOTH options visible regardless of the institute
+        // setting — otherwise an existing recurring session being edited would
+        // appear to silently lose its recurring data when the radio option
+        // disappears. The setting only gates new sessions.
+        const showWeeklyOption = liveSessionSettings.recurringEnabled || isEdit;
+        const meetingTypeOptions = [
+            { label: 'One Time Class', value: RecurringType.ONCE },
+            ...(showWeeklyOption
+                ? [{ label: 'Recurring Class', value: RecurringType.WEEKLY }]
+                : []),
+        ];
+        return (
+            <FormField
+                control={control}
+                name="meetingType"
+                render={({ field }) => (
+                    <MyRadioButton
+                        name="meetingType"
+                        value={field.value ?? ''}
+                        onChange={field.onChange}
+                        options={meetingTypeOptions}
+                        className="flex flex-col gap-4 sm:flex-row"
+                    />
+                )}
+            />
+        );
+    };
 
     const renderTimezoneSelection = () => {
         const selectedTimezone = form.watch('timeZone') || 'Asia/Kolkata';
@@ -1922,7 +2050,7 @@ export default function ScheduleStep1() {
                 label="Live Stream Platform"
                 name="sessionPlatform"
                 labelStyle="text-sm font-medium"
-                options={STREAMING_OPTIONS}
+                options={editAwareStreamingOptions}
                 control={form.control}
                 className="mt-[8px] w-full font-thin sm:w-56"
                 onSelect={handleSessionPlatformChange}
@@ -2167,65 +2295,86 @@ export default function ScheduleStep1() {
                     />
                 </div>
             </div>
-            {!isZohoPlatform && (
-                <div className="flex flex-col items-start gap-4">
-                    <h4 className="text-sm font-semibold">Lock video playback settings</h4>
-                    <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
-                        <Controller
-                            control={control}
-                            name="allowRewind"
-                            render={({ field }) => (
-                                <label className="flex items-center gap-2">
-                                    <span className="text-sm">Allow rewind</span>
-                                    <Switch
-                                        disabled={
-                                            watch('streamingType') !== SessionPlatform.EMBED_IN_APP
-                                        }
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                    />
-                                </label>
-                            )}
-                        />
-                        <Controller
-                            control={control}
-                            name="allowPause"
-                            render={({ field }) => (
-                                <label className="flex items-center gap-2">
-                                    <span className="text-sm">Allow play pause</span>
-                                    <Switch
-                                        disabled={
-                                            watch('streamingType') !== SessionPlatform.EMBED_IN_APP
-                                        }
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                    />
-                                </label>
-                            )}
-                        />
-                    </div>
-                </div>
-            )}
-            <div>
-                <div className="flex h-full flex-col items-start gap-4 sm:flex-row">
-                    <Controller
-                        control={control}
-                        name={`enableWaitingRoom`}
-                        render={({ field }) => (
-                            <label className="flex items-center gap-2">
-                                <span className="text-sm">Enable Waiting Room</span>
-                                <Switch checked={field.value} onCheckedChange={field.onChange} />
-                            </label>
-                        )}
-                    />
-                </div>
-            </div>
         </div>
     );
 
     const renderWaitingRoomAndUpload = () => {
-        if (form.watch('enableWaitingRoom')) {
-            return (
+        const enabled = form.watch('enableWaitingRoom');
+        return (
+            <div className="flex flex-col gap-5">
+                <div className="flex flex-col gap-4">
+                    {!isZohoPlatform && (
+                        <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                            <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                Lock playback controls
+                            </div>
+                            <div className="mt-2 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-6">
+                                <Controller
+                                    control={control}
+                                    name="allowRewind"
+                                    render={({ field }) => (
+                                        <label className="flex items-center gap-2">
+                                            <span className="text-sm">Allow rewind</span>
+                                            <Switch
+                                                disabled={
+                                                    watch('streamingType') !==
+                                                    SessionPlatform.EMBED_IN_APP
+                                                }
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                                <Controller
+                                    control={control}
+                                    name="allowPause"
+                                    render={({ field }) => (
+                                        <label className="flex items-center gap-2">
+                                            <span className="text-sm">Allow play pause</span>
+                                            <Switch
+                                                disabled={
+                                                    watch('streamingType') !==
+                                                    SessionPlatform.EMBED_IN_APP
+                                                }
+                                                checked={field.value}
+                                                onCheckedChange={field.onChange}
+                                            />
+                                        </label>
+                                    )}
+                                />
+                            </div>
+                        </div>
+                    )}
+                    <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                        <div>
+                            <div className="text-sm font-medium text-neutral-800">
+                                Enable Waiting Room
+                            </div>
+                            <div className="mt-0.5 text-xs text-neutral-500">
+                                Hold learners in a waiting room before the class goes live, with
+                                an optional thumbnail and background score.
+                            </div>
+                        </div>
+                        <Controller
+                            control={control}
+                            name="enableWaitingRoom"
+                            render={({ field }) => (
+                                <Switch
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                />
+                            )}
+                        />
+                    </div>
+                </div>
+                {enabled && renderWaitingRoomDetails()}
+            </div>
+        );
+    };
+
+    const renderWaitingRoomDetails = () => {
+        return (
                 <div className="flex flex-col items-start gap-4 sm:flex-row">
                     <SelectField
                         label="Open Waiting Room Before"
@@ -2364,8 +2513,6 @@ export default function ScheduleStep1() {
                     </div>
                 </div>
             );
-        }
-        return <></>;
     };
 
     const renderRecurringSchedule = () =>
@@ -2814,7 +2961,8 @@ export default function ScheduleStep1() {
                                     )}
 
                                     {/* Default Class Link and Custom Button - Day Level */}
-                                    {isSelect && (
+                                    {isSelect &&
+                                        (liveSessionSettings.defaultDayButtonEnabled || isEdit) && (
                                         <div className="mx-4 mb-4 space-y-6 rounded-lg border border-gray-200 bg-white p-4">
                                             <div className="space-y-4">
                                                 <Controller
@@ -2877,6 +3025,7 @@ export default function ScheduleStep1() {
         </div>
     );
 
+
     return (
         <>
             {!isFormInitialized ? (
@@ -2889,8 +3038,15 @@ export default function ScheduleStep1() {
                         onSubmit={form.handleSubmit(onSubmit, onError)}
                         className="flex flex-col gap-5"
                     >
-                        <div className="z-[9] m-0 flex items-center justify-between border-b border-neutral-200 bg-white p-0 py-2 text-lg font-semibold">
-                            <h1>{getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} Information</h1>
+                        <div className="sticky top-0 z-[9] -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:-mx-0 sm:px-0">
+                            <div>
+                                <h1 className="text-lg font-semibold text-neutral-800">
+                                    {getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} Information
+                                </h1>
+                                <p className="text-xs text-neutral-500">
+                                    Set up the class details, then continue to participants & access.
+                                </p>
+                            </div>
                             <MyButton
                                 type="submit"
                                 scale="large"
@@ -2906,18 +3062,81 @@ export default function ScheduleStep1() {
                             </MyButton>
                         </div>
 
-                        <div className="flex flex-col gap-8">
-                            {renderBasicInformation()}
-                            {renderMeetingTypeSelection()}
-                            {renderTimezoneSelection()}
-                            {renderSessionTiming()}
-                            {renderLiveClassLink()}
-                            {renderFeedbackSettings()}
-                            {renderStreamingChoices()}
-                            {renderCustomButtonConfig()}
-                            {renderWaitingRoomAndUpload()}
-                            {renderRecurringSchedule()}
-                            <Separator />
+                        <div className="flex flex-col gap-5">
+                            <SectionCard
+                                icon={<Info size={18} />}
+                                title="Basic Information"
+                                description="Title, subject and a short description of the class."
+                            >
+                                {renderBasicInformation()}
+                            </SectionCard>
+
+                            <SectionCard
+                                icon={<CalendarBlank size={18} />}
+                                title="Schedule"
+                                description="Choose between a one-time class or a recurring weekly schedule."
+                            >
+                                <div className="flex flex-col gap-6">
+                                    {renderMeetingTypeSelection()}
+                                    {renderTimezoneSelection()}
+                                    {renderSessionTiming()}
+                                </div>
+                            </SectionCard>
+
+                            <SectionCard
+                                icon={<VideoCamera size={18} />}
+                                title="Streaming & Link"
+                                description="Where learners join the class and which platform you stream from."
+                            >
+                                <div className="flex flex-col gap-6">
+                                    {renderLiveClassLink()}
+                                    {renderStreamingChoices()}
+                                </div>
+                            </SectionCard>
+
+                            <SectionCard
+                                icon={<UsersThree size={18} />}
+                                title="Waiting Room & Playback"
+                                description="Lock playback controls and configure the learner waiting room."
+                            >
+                                {renderWaitingRoomAndUpload()}
+                            </SectionCard>
+
+                            {(liveSessionSettings.feedbackEnabled || isEdit) && (
+                                <SectionCard
+                                    icon={<ChatTeardrop size={18} />}
+                                    title="Learner Feedback"
+                                    description="Collect ratings and comments after the session ends."
+                                >
+                                    {renderFeedbackSettings()}
+                                </SectionCard>
+                            )}
+
+                            {(liveSessionSettings.customActionButtonEnabled || isEdit) && (
+                                <SectionCard
+                                    icon={<CursorClick size={18} />}
+                                    title="Custom Action Button"
+                                    description="Optional button shown on the learner's session screen."
+                                >
+                                    {renderCustomButtonConfig()}
+                                </SectionCard>
+                            )}
+
+                            {/* Render the recurring section whenever the form is
+                                in WEEKLY mode. We don't gate on the institute
+                                setting here — the radio above already does that
+                                for new sessions, and existing recurring
+                                sessions opened for edit must remain editable
+                                even if the setting was later disabled. */}
+                            {meetingType === RecurringType.WEEKLY && (
+                                    <SectionCard
+                                        icon={<ArrowsClockwise size={18} />}
+                                        title="Recurring Schedule"
+                                        description="Pick days and per-day session times for the recurring series."
+                                    >
+                                        {renderRecurringSchedule()}
+                                    </SectionCard>
+                                )}
                         </div>
                     </form>
                 </FormProvider>

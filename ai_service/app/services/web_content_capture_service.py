@@ -30,7 +30,20 @@ _MAX_URLS_DEFAULT = 2
 _MAX_INLINE_IMAGES_PER_URL = 3
 _SCREENSHOTS_PER_URL = 3
 _PAGE_TEXT_CHARS = 1500
-_NAV_TIMEOUT_MS = 12_000
+# Navigation budgets. Two-tiered: domcontentloaded gets us body+text fast on
+# the vast majority of sites; the load fallback is for pages with critical
+# resources that block content. We don't use `networkidle` because ad-heavy
+# news sites (BBC, ddnews.gov.in, etc.) almost never reach 500ms of zero
+# in-flight requests — a previous 12s networkidle budget caused outright
+# capture failure on ddnews.gov.in even though the article was fully visible
+# at ~8s. With this strategy we proceed with whatever loaded even if both
+# nav waits timeout, since a partial-load screenshot still gives the director
+# something to work with.
+_NAV_TIMEOUT_DOMCONTENT_MS = 30_000
+_NAV_TIMEOUT_LOAD_MS = 15_000
+# Wait after navigation for late-rendering JS / images. News sites with
+# carousel hero images or lazy-loaded gallery thumbs need this to be ≥1s.
+_POST_NAV_SETTLE_MS = 1_500
 _HTTP_TIMEOUT_S = 10.0
 _MIN_IMAGE_DIM_PX = 100
 _VIEWPORT = {"width": 1440, "height": 900}
@@ -152,15 +165,35 @@ class WebContentCaptureService:
         page = await context.new_page()
 
         try:
+            # Two-tiered navigation strategy. domcontentloaded almost always
+            # succeeds — DOM is parsed before ads/analytics finish loading. If
+            # even that times out (very slow connection / blocked network), we
+            # don't bail: the page may have rendered enough content to scrape.
+            # Capturing a partial page beats failing outright; the director
+            # gets a screenshot + whatever text is visible.
             try:
-                await page.goto(url, wait_until="networkidle", timeout=_NAV_TIMEOUT_MS)
-            except Exception:
-                # Fallback to plain 'load' if networkidle stalls
-                await page.goto(url, wait_until="load", timeout=_NAV_TIMEOUT_MS)
+                await page.goto(url, wait_until="domcontentloaded", timeout=_NAV_TIMEOUT_DOMCONTENT_MS)
+            except Exception as _e1:
+                logger.warning(
+                    f"[WebCapture] domcontentloaded timeout for {url}: {_e1} — "
+                    "trying 'load' wait next"
+                )
+                try:
+                    await page.goto(url, wait_until="load", timeout=_NAV_TIMEOUT_LOAD_MS)
+                except Exception as _e2:
+                    # Both waits failed. Don't return — Playwright still has
+                    # whatever DOM rendered; we'll scrape it on a best-effort
+                    # basis and return partial results.
+                    logger.warning(
+                        f"[WebCapture] load timeout for {url}: {_e2} — "
+                        "proceeding with partial page state"
+                    )
 
-            # Give late-rendering content a beat
+            # Late-render settle: news sites often defer hero images and
+            # carousel thumbs. 1.5s is the sweet spot — long enough to catch
+            # these, short enough not to inflate cold-cache renders.
             try:
-                await page.wait_for_timeout(800)
+                await page.wait_for_timeout(_POST_NAV_SETTLE_MS)
             except Exception:
                 pass
 

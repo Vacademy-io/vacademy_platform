@@ -39,14 +39,23 @@ rsync -avz --progress \
     "$SCRIPT_DIR/main.py" \
     "$SCRIPT_DIR/worker.py" \
     "$SCRIPT_DIR/transcribe_worker.py" \
+    "$SCRIPT_DIR/screenshot_worker.py" \
+    "$SCRIPT_DIR/audio_ops.py" \
     "$SCRIPT_DIR/requirements.txt" \
     "$SCRIPT_DIR/Dockerfile" \
     "$SCRIPT_DIR/build.sh" \
     "$RENDER_SERVER:$REMOTE_DIR/render_worker/"
 
-# Sync generate_video.py and config files
+# Sync generate_video.py and config files. render_harness.py is shared
+# between the renderer and the screenshot endpoint — see build.sh comment.
+# dispatcher_install_js.py holds the ~850-line shadow-DOM dispatcher JS
+# extracted from generate_video.py; both /jobs (production) and the
+# /shot/preview-mp4 single-shot path import it for byte-identical behavior.
 rsync -avz --progress \
     "$AI_SERVICE_DIR/app/ai-video-gen-main/generate_video.py" \
+    "$AI_SERVICE_DIR/app/ai-video-gen-main/render_harness.py" \
+    "$AI_SERVICE_DIR/app/ai-video-gen-main/dispatcher_install_js.py" \
+    "$AI_SERVICE_DIR/app/ai-video-gen-main/shot_preprocess.py" \
     "$RENDER_SERVER:$REMOTE_DIR/app/ai-video-gen-main/"
 
 # Sync extractor package (video indexing pipeline)
@@ -106,7 +115,7 @@ docker run -d \
     -e AWS_S3_PUBLIC_BUCKET='vacademy-media-storage-public' \
     -e RENDER_KEY='vsahcraedyeamsyh' \
     -e MAX_CONCURRENT_JOBS='2' \
-    -e OPENROUTER_API_KEY='' \
+    -e OPENROUTER_API_KEY='sk-or-v1-' \
     "$IMAGE_NAME"
 
 echo ""

@@ -133,7 +133,69 @@ DIRECTOR_SYSTEM_PROMPT = (
     "(speaker, screen recording, demo) plays as the background with HTML overlays on top. "
     "Use for key quotes, soundbites, demo highlights — any moment where showing the real footage "
     "is more impactful than AI graphics. Specify `source_start` and `source_end` (seconds in the "
-    "source video). No `image_prompt` or `video_query` needed. ONLY available when source video context is provided.\n\n"
+    "source video). No `image_prompt` or `video_query` needed. ONLY available when source video context is provided.\n"
+    "- **ARTICLE_FOCUS**: Show the actual scraped article page (a real screenshot of the source "
+    "URL) with a slow zoom-pan toward a highlighted quote. Tells the viewer 'this is real, here "
+    "is the source.' MUST set `template_id: \"article_focus_zoom_pan\"` and `template_params` "
+    "with `screenshot_id` (one of the AVAILABLE ARTICLE SCREENSHOTS in the user prompt — typically "
+    "`above_fold`, `mid`, `footer`, or `inline_0..N`), `quote_text` (verbatim sentence from the "
+    "article, ≤120 chars), `highlight_box_pct` (rect to zoom toward, 0–100 scale), and optional "
+    "`source_label` (e.g. 'BBC News'). ONLY available when scrape_url captured screenshots — "
+    "look for AVAILABLE ARTICLE SCREENSHOTS in the user prompt. Best at 3–5s shot duration.\n\n"
+
+    "**MEDIA SOURCING POLICY** (which provider does each visual come from):\n"
+    "- Real, **named** subjects (people, places, brands, events you can name): emit "
+    "`<img data-img-source=\"web\" data-img-query=\"...\" data-img-prompt=\"...\">` so the "
+    "pipeline routes to Google Image search (Serper). Use this for proper-noun queries — "
+    "'Donald Trump', 'Strait of Hormuz', 'BBC News studio', 'NASA Artemis launch'. "
+    "Stock libraries don't carry these; AI generation hallucinates them.\n"
+    "- Real-world **B-roll** that is generic (cityscape, ocean waves, lab beakers, anonymous "
+    "office workers): use `video_query` (Pexels/Pixabay) or stock images. Cheaper and "
+    "rights-cleared.\n"
+    "- **Abstract concepts / metaphors / illustrations**: AI image generation "
+    "(`data-img-source=\"generate\"` or omit the attribute) — gradient backgrounds, isolated "
+    "cutouts, conceptual diagrams.\n"
+    "- **Article evidence / source citation**: ARTICLE_FOCUS shot referencing one of the "
+    "AVAILABLE ARTICLE SCREENSHOTS.\n"
+    "- **UI / device / app interactions**: DEVICE_MOCKUP (HTML/CSS, no photo).\n"
+    "Inside per-shot HTML, the per-shot designer will follow this same policy when emitting "
+    "individual `<img>` and `<video>` tags. Your job at the plan level is to pick the right "
+    "shot type and pass an `image_prompt` / `video_query` that names the entity.\n\n"
+
+    "**NEWS_RECAP COMPOSITION RULES** — apply ONLY if the user prompt's `VIDEO TYPE: news_recap`:\n"
+    "- If AVAILABLE ARTICLE SCREENSHOTS is non-empty, plan **at least one ARTICLE_FOCUS shot** "
+    "(typically early in the video to anchor the source).\n"
+    "- Real-photo shots (IMAGE_HERO / VIDEO_HERO / IMAGE_SPLIT with `data-img-source=\"web\"` or "
+    "ARTICLE_FOCUS) should cover **≥40% of total duration**. The viewer should *see* the people, "
+    "places, and events being discussed — not just text about them.\n"
+    "- KINETIC_TEXT + TEXT_DIAGRAM combined ≤25% of total duration. Reserve them for *abstract* "
+    "framing / transitions, not for the meat of the story.\n"
+    "- KINETIC_TITLE is **exempt** from the text cap — still encouraged for hooks and outros.\n"
+    "- For each NAMED ENTITY in the user prompt, plan at least one shot that features a real "
+    "photo of that entity. Use `image_prompt` keyed by the entity's `suggested_query` (e.g. "
+    "image_prompt='Donald Trump president 2026 oval office, news photo, sharp focus').\n\n"
+
+    "**PRODUCT_PROMO COMPOSITION RULES** — apply ONLY if the user prompt's `VIDEO TYPE: product_promo`:\n"
+    "- This is a brand ad / product reel, NOT an explainer. Treat the BRAND ANCHOR assets in "
+    "the user prompt as the hero — every shot must serve the product or the feeling around it.\n"
+    "- LEAN TOWARD cinematic, sensory shot types: PRODUCT_HERO, IMAGE_HERO, VIDEO_HERO, "
+    "ANIMATED_ASSET. Aim for these to cover **≥60% of total duration**.\n"
+    "- LIMIT explainer-coded shots: TEXT_DIAGRAM + KINETIC_TEXT + INFOGRAPHIC_SVG combined "
+    "**≤25% of total duration**. KINETIC_TITLE is **exempt** and ENCOURAGED for tagline beats.\n"
+    "- The OPEN must hook on the product — first shot is PRODUCT_HERO, IMAGE_HERO with the "
+    "brand image, or KINETIC_TITLE landing on the brand name. Never open on a TEXT_DIAGRAM, "
+    "DATA_STORY, or stat block.\n"
+    "- The CLOSE must land on the brand — tagline + product mark + CTA. Plan one final "
+    "KINETIC_TITLE or PRODUCT_HERO shot for this beat.\n"
+    "- For each shot's `image_prompt` / `video_query`, NAME THE PRODUCT/BRAND from the BRAND "
+    "ANCHOR context in the user prompt. Generic queries like 'happy family eating snack' are "
+    "forbidden when the brand is named — write 'Parle-G biscuit dipping in chai' instead.\n"
+    "- ZERO agency-boilerplate copy in any text overlay or `text_elements`. The following "
+    "phrases are FORBIDDEN: 'Advertising 360', 'Let's take your brand on an adventure', "
+    "'The volatile world of marketing', 'Elevate your business', 'Marketing made easy', "
+    "'Marketing without borders', 'Take your brand to the next level', or any variant of "
+    "these meta-marketing slogans. Every line of on-screen text must be specific to the "
+    "actual product.\n\n"
 
     "**RULES**:\n"
     "1. First shot is the hook — pick whichever shot type sells the topic best "
@@ -463,6 +525,7 @@ def build_act_planner_user_prompt(
     width: int,
     height: int,
     audio_duration: float,
+    visual_preferences: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Build the user prompt for the Act Planner (pass 1 of two-pass Director)."""
     aspect_label = "9:16 portrait" if width < height else "16:9 landscape"
@@ -476,7 +539,7 @@ def build_act_planner_user_prompt(
         }
         for i, b in enumerate(beat_outline)
     ]
-    return ACT_PLANNER_USER_PROMPT_TEMPLATE.format(
+    base = ACT_PLANNER_USER_PROMPT_TEMPLATE.format(
         script_text=script_text.strip(),
         beat_outline_json=json.dumps(beat_summary, indent=2, ensure_ascii=False),
         subject_domain=subject_domain,
@@ -484,6 +547,9 @@ def build_act_planner_user_prompt(
         height=height,
         aspect_label=aspect_label,
         audio_duration=audio_duration,
+    )
+    return base + build_visual_preferences_director_block(
+        visual_preferences, for_act_planner=True
     )
 
 
@@ -498,8 +564,10 @@ MUSIC_PLAN_EXTENSION = (
     "\n\n## 🎼 MUSIC PLAN (REQUIRED for this run)\n"
     "In addition to `shots`, you MUST emit a `music_plan` object describing a "
     "background score for this video. The score is generated by Google Lyria 3 "
-    "Pro and mixed under the narration at ~20% volume. Treat it as a subtle "
-    "cinematic bed — not a foreground element.\n\n"
+    "Pro and mixed under the narration at ~10% volume. Treat it as a barely-"
+    "perceptible underscore — not a foreground element. Lyria masters loud, so "
+    "favour sparse arrangements and avoid dense layered drums/brass that would "
+    "overpower the narration even at 10%.\n\n"
     "**You write ONE prose prompt with embedded `[mm:ss]` timestamp markers — "
     "the music model produces a single coherent piece with the mood/instrument "
     "transitions baked in at those timestamps.** This is much better than "
@@ -507,6 +575,35 @@ MUSIC_PLAN_EXTENSION = (
     "transitions (key changes, instrument hand-offs, dynamics) instead of hard "
     "cuts. Lyria can produce up to ~180 seconds in a single call. For longer "
     "videos, split the prompt into multiple `chunks`, each ≤ 180 seconds.\n\n"
+    "**MATCH THE MUSIC TO THE SHOTS (most important rule):**\n"
+    "Before you write the music prompt, look at the shots you just planned. "
+    "The music must reinforce the *visual* style and energy of those shots — "
+    "warm-piano cinematic ambient is NOT the right answer for every video. "
+    "Pick instrumentation, tempo, and mood from the shots themselves:\n"
+    "- Code-heavy / SaaS-demo / product-walkthrough shots (terminal, IDE, "
+    "  dashboards, fast UI cuts) → minimal lo-fi or modern electronic, "
+    "  muted synth pluck, soft drum machine, ~80–100 bpm. NOT orchestral.\n"
+    "- Marketing / promo / hook reels with bold text and snappy 3-5s shots → "
+    "  upbeat corporate electronic, driving synth pluck, four-on-the-floor "
+    "  kick, bright pad, ~110–125 bpm. Confident, not contemplative.\n"
+    "- Math / equation / chalkboard / minimal-text shots → sparse solo piano "
+    "  with a quiet warm pad, slow tempo (60–72 bpm). Contemplative.\n"
+    "- Science / discovery / wonder shots (cells, planets, particles, "
+    "  microscope imagery) → ambient cinematic with shimmering pads, glassy "
+    "  bell tones, subtle pulse, ~70–84 bpm.\n"
+    "- History / cinematic narrative shots (era visuals, timelines, hero "
+    "  imagery) → orchestral with warm strings + solo piano, soft horn "
+    "  swells, ~68–80 bpm. THIS is where warm-piano cinematic actually fits.\n"
+    "- Geography / nature / landscape shots → cinematic orchestral with "
+    "  ethereal pad and gentle world percussion (frame drum, shaker), ~72 bpm.\n"
+    "- Biology / nature / organic shots → organic ambient with fingerpicked "
+    "  acoustic guitar, marimba, soft cello, ~70 bpm.\n"
+    "- Chemistry / molecular / lab shots → ambient electronic with metallic "
+    "  shimmer textures and curious pulse, ~76 bpm.\n"
+    "Use the `subject_domain` and `style_guide.background_type` provided in "
+    "the user prompt as your primary signals, then refine from the shot "
+    "palette/energy you actually planned. If the shots are fast and bold, "
+    "the music must be too — and vice versa.\n\n"
     "**Authoring rules — read carefully:**\n"
     "- Use absolute `[mm:ss]` markers within each chunk (a chunk is one Lyria "
     "  call, so timestamps are relative to that chunk's start, not the whole video).\n"
@@ -517,11 +614,16 @@ MUSIC_PLAN_EXTENSION = (
     "- 4-8 markers per chunk is the sweet spot. Each marker introduces ONE "
     "  musical change (instrument enters, mood shifts, energy rises, etc.).\n"
     "- Describe instruments, mood, tempo, energy curve in natural prose. Lyria "
-    "  is best at instrumental/cinematic/ambient/electronic — favour those.\n"
+    "  is best at instrumental/cinematic/ambient/electronic/lo-fi/corporate-"
+    "  underscore — favour those.\n"
     "- Every prompt MUST include the phrase \"no vocals, no lyrics\" so the "
     "  model produces an instrumental score (it's a song model otherwise).\n"
     "- Do NOT name artists, bands, or copyrighted track titles.\n"
     "- Keep overall tempo between 60 and 140 bpm; transitions can step it.\n"
+    "- Keep arrangements sparse. Avoid dense layered drums + brass + strings "
+    "  + leads simultaneously — the bed sits at 10% volume under narration "
+    "  and over-arrangement turns to mush. 2-3 active instrument layers max "
+    "  at any moment.\n"
     "- Chunk transitions should feel like a continuation — last few seconds of "
     "  chunk N's prompt and first few seconds of chunk N+1's prompt should "
     "  share instrumentation/mood so the crossfade between Lyria calls "
@@ -530,27 +632,59 @@ MUSIC_PLAN_EXTENSION = (
     "`shots` and `continuity_notes`:**\n"
     "```json\n"
     "\"music_plan\": {\n"
-    "  \"overall_mood\": \"curious, uplifting, educational\",\n"
-    "  \"overall_genre\": \"cinematic ambient with piano and warm strings\",\n"
-    "  \"chunks\": [\n"
-    "    {\n"
-    "      \"start_time\": 0.0,\n"
-    "      \"end_time\": 180.0,\n"
-    "      \"timestamped_prompt\": \"[00:00] Begin with a soft warm cinematic instrumental — gentle solo piano melody, contemplative and curious mood, sparse arrangement, no vocals, no lyrics. [00:35] Slow warm string pads enter underneath the piano, adding depth and a sense of discovery. [01:10] Subtle low percussion (felt mallets, soft kick) joins, energy rising gently, pulse around 72 bpm. [01:50] Brass swells underneath as the strings build, building anticipation. [02:30] Triumphant resolution — strings and brass at peak warmth, piano returns to a confident melody, no vocals throughout.\"\n"
-    "    },\n"
-    "    {\n"
-    "      \"start_time\": 180.0,\n"
-    "      \"end_time\": 320.0,\n"
-    "      \"timestamped_prompt\": \"[00:00] Continue from triumphant peak — brass and strings sustained warmly, piano carrying the lead melody, instrumental, no vocals. [00:30] Gradually thin out — brass exits, strings soften. [01:20] Solo piano alone, gentle reflective coda, sparse and emotional. [02:15] Final sustained piano chord fading slowly to silence.\"\n"
-    "    }\n"
-    "  ]\n"
+    "  \"overall_mood\": \"<2-4 adjectives derived from your shot plan>\",\n"
+    "  \"overall_genre\": \"<genre + key instruments, picked to match shots>\",\n"
+    "  \"chunks\": [ { \"start_time\": 0.0, \"end_time\": <≤180>, \"timestamped_prompt\": \"...\" } ]\n"
     "}\n"
+    "```\n\n"
+    "**Three example chunks (different genres) — use them as style references, "
+    "do not copy verbatim:**\n\n"
+    "Example A — orchestral cinematic (good for: history, geography, hero/"
+    "narrative content):\n"
     "```\n"
+    "[00:00] Begin with a soft warm cinematic instrumental — gentle solo "
+    "piano melody, contemplative and curious mood, sparse arrangement, no "
+    "vocals, no lyrics. [00:35] Slow warm string pads enter underneath the "
+    "piano, adding depth and a sense of discovery. [01:10] A single soft "
+    "french horn swell joins briefly, then exits, leaving piano + strings, "
+    "pulse around 72 bpm. [01:50] Strings soften, piano returns to the "
+    "opening motif. [02:30] Final sustained piano chord with strings fading "
+    "slowly, no vocals throughout.\n"
+    "```\n\n"
+    "Example B — minimal lo-fi electronic (good for: coding, saas_demo, "
+    "tech walkthroughs, focused work content):\n"
+    "```\n"
+    "[00:00] Begin with a clean minimal lo-fi electronic groove — soft "
+    "analog synth pad, muted boom-bap drums at ~84 bpm, sparse rhodes chord "
+    "stabs, focused unobtrusive mood, instrumental, no vocals, no lyrics. "
+    "[00:40] Soft sub-bass enters, a muted melodic synth lead carries a "
+    "simple repeating motif over the lo-fi drums. [01:20] Drums drop to "
+    "just brushed hats and kick, rhodes pad sustains, low-key. [02:00] "
+    "Drums return, sub-bass deepens, pluck pattern continues. [02:40] "
+    "Strip back to the rhodes pad and brushed hats, simple resolved chord, "
+    "instrumental fade, no vocals.\n"
+    "```\n\n"
+    "Example C — upbeat corporate / promo electronic (good for: "
+    "saas_marketing, business_marketing, hook reels, product launch):\n"
+    "```\n"
+    "[00:00] Begin with an upbeat modern corporate electronic groove — "
+    "driving synth pluck, four-on-the-floor kick at ~118 bpm, bright clap "
+    "on 2 and 4, confident energetic mood, instrumental, no vocals, no "
+    "lyrics. [00:25] Bright melodic synth lead enters carrying a confident "
+    "hook, sub-bass thickens the low end. [01:00] Brief breakdown — kick "
+    "drops out, plucks and pad sustain, anticipation builds. [01:20] Full "
+    "groove returns with added shaker, lead synth resolves the hook. "
+    "[02:00] Synth lead simplifies to held chord stabs, kick softens. "
+    "[02:40] Bright chord held, pluck pattern resolves, instrumental fade, "
+    "no vocals.\n"
+    "```\n\n"
     "- For videos ≤ 180 seconds, emit a single chunk.\n"
     "- For videos > 180 seconds, split into N chunks each ≤ 180 seconds, "
     "  tiling the full duration with no gaps.\n"
     "- The `chunks[*].start_time` / `end_time` are absolute video timestamps; "
     "  the markers inside `timestamped_prompt` are CHUNK-RELATIVE.\n"
+    "- Pick the example closest to your shot plan as a style anchor, then "
+    "  rewrite — do not output any of the example text verbatim.\n"
 )
 
 
@@ -667,6 +801,194 @@ HOST_DIRECTOR_EXTENSION = (
 
 
 # ---------------------------------------------------------------------------
+# User visual preferences — Slice C helper (appended to Director / Act Planner)
+# ---------------------------------------------------------------------------
+#
+# Reads a *resolved* VisualPreferences dict (post-merge view from
+# IntentRouterService.merge_visual_preferences) and emits a markdown bias
+# block for the Director user prompt. The Director sees the full 14-type
+# shot catalog (vs the script's 5-type vocabulary) so the family→shot-type
+# mapping is richer than the Slice B helper. Returns "" when no preference
+# is actively expressed (all None / "auto") — zero token cost on no-op.
+#
+# Director must additionally emit `preference_override_reason` on shots
+# where it goes against a stated preference, so we can audit alignment.
+#
+# Mapping rationale (full Director catalog):
+#   stock_video       → VIDEO_HERO, IMAGE_HERO (no image_prompt → stock)
+#   ai_imagery        → IMAGE_HERO / IMAGE_SPLIT / PRODUCT_HERO with image_prompt
+#   svg_illustrated   → INFOGRAPHIC_SVG, KINETIC_TITLE, ANNOTATION_MAP
+#   motion_graphics   → TEXT_DIAGRAM, PROCESS_STEPS, DATA_STORY,
+#                       EQUATION_BUILD, ANIMATED_ASSET, KINETIC_TEXT
+#   app_ui_mockup     → DEVICE_MOCKUP
+
+_DIRECTOR_FAMILY_BIAS: Dict[str, Dict[str, str]] = {
+    "stock_video": {
+        "favor": (
+            "VIDEO_HERO, IMAGE_HERO with `video_query` or `image_prompt` "
+            "describing real-world / cinematic / documentary footage"
+        ),
+        "avoid": "VIDEO_HERO and IMAGE_HERO that rely on stock photo / video",
+        # Act-planner aggregation key — multiple families can collapse to the
+        # same style_direction (stock_video + ai_imagery → cinematic_photo);
+        # net bias is summed so contradictions cancel.
+        "act_style_direction": "cinematic_photo",
+    },
+    "ai_imagery": {
+        "favor": (
+            "IMAGE_HERO / IMAGE_SPLIT / PRODUCT_HERO with rich `image_prompt` "
+            "(AI-generated photography via Seedream)"
+        ),
+        "avoid": "AI-generated photo shots (prefer stock or pure motion-graphics types)",
+        "act_style_direction": "cinematic_photo",
+    },
+    "svg_illustrated": {
+        "favor": (
+            "INFOGRAPHIC_SVG, KINETIC_TITLE, ANNOTATION_MAP — pure SVG with "
+            "stroke-dashoffset draw-on, hand-drawn wobble, paper-grain canvas"
+        ),
+        "avoid": "pure-SVG infographic shots",
+        "act_style_direction": "illustrated_infographic",
+    },
+    "motion_graphics": {
+        "favor": (
+            "TEXT_DIAGRAM, PROCESS_STEPS, DATA_STORY, EQUATION_BUILD, "
+            "ANIMATED_ASSET, KINETIC_TEXT — GSAP-heavy motion-graphics types"
+        ),
+        "avoid": "motion-graphics types in favor of photo / video / SVG families",
+        # `kinetic_text` is the closest dedicated direction; `mixed` covers
+        # acts that blend it with other families. Picking the more specific
+        # one for aggregation; the planner's prompt explanation lists both.
+        "act_style_direction": "kinetic_text",
+    },
+    "app_ui_mockup": {
+        "favor": (
+            "DEVICE_MOCKUP — phone / browser / terminal / dashboard UI "
+            "constructed from HTML primitives (NOT stock photos of devices)"
+        ),
+        "avoid": "DEVICE_MOCKUP shots",
+        # DEVICE_MOCKUP lives inside motion-graphics-style acts; the Act
+        # Planner doesn't have a dedicated style_direction for it.
+        "act_style_direction": "mixed",
+    },
+}
+
+
+def build_visual_preferences_director_block(
+    prefs: Optional[Dict[str, Any]],
+    *,
+    for_act_planner: bool = False,
+) -> str:
+    """Build the visual-preferences bias block for the Director user prompt.
+
+    When ``for_act_planner`` is True the block is reframed for pass-1 use:
+    biases the act-level ``style_direction`` field instead of per-shot
+    ``shot_type``. Same family mappings, narrower output.
+
+    Returns "" when no preference is actively set (all None / "auto").
+    """
+    if not prefs:
+        return ""
+    active = {k: v for k, v in prefs.items() if v not in (None, "auto")}
+    if not active:
+        return ""
+
+    favor_lines: List[str] = []
+    avoid_lines: List[str] = []
+    if for_act_planner:
+        # Aggregate per style_direction so contradictions cancel (e.g.
+        # stock_video=high + ai_imagery=no both map to `cinematic_photo` —
+        # net 0 → emit nothing for that direction; per-shot bias still
+        # distinguishes stock vs AI inside the Director's pass-2 plan).
+        style_dir_net: Dict[str, int] = {}
+        for family, v in active.items():
+            if family == "text_density":
+                continue
+            bias = _DIRECTOR_FAMILY_BIAS.get(family)
+            if not bias:
+                continue
+            sd = bias.get("act_style_direction")
+            if not sd:
+                continue
+            delta = 1 if v == "high" else -1 if v == "no" else 0
+            style_dir_net[sd] = style_dir_net.get(sd, 0) + delta
+        for sd, n in sorted(style_dir_net.items()):
+            if n > 0:
+                favor_lines.append(f"- `{sd}` style_direction")
+            elif n < 0:
+                avoid_lines.append(f"- `{sd}` style_direction")
+    else:
+        for family, bias in _DIRECTOR_FAMILY_BIAS.items():
+            v = active.get(family)
+            if v == "high":
+                favor_lines.append(f"- {bias['favor']}")
+            elif v == "no":
+                avoid_lines.append(f"- {bias['avoid']}")
+
+    density = active.get("text_density")
+
+    parts: List[str] = ["\n\n## 🎨 USER VISUAL PREFERENCES (soft bias)"]
+    parts.append(
+        "The user has expressed visual treatment preferences. Honor them when "
+        "content allows; do NOT contort the narrative to fit them — content "
+        "always wins on conflict."
+    )
+
+    if for_act_planner:
+        parts.append(
+            "\nApply these to the act-level `style_direction` field. The "
+            "available values are: `cinematic_photo`, `illustrated_infographic`, "
+            "`product_stage`, `kinetic_text`, `mixed`. Map: "
+            "stock/ai → `cinematic_photo`; svg_illustrated → "
+            "`illustrated_infographic`; motion_graphics → `kinetic_text` or "
+            "`mixed`; app_ui_mockup → `mixed` (DEVICE_MOCKUP lives in motion-"
+            "graphics-style acts). Acts whose narration cleanly fits the "
+            "preference should use it; the rest can pick what content demands."
+        )
+    else:
+        parts.append(
+            "\nApply this to per-shot `shot_type` and `image_prompt` / "
+            "`video_query` choices. Where you go AGAINST a stated preference, "
+            "you MUST add `preference_override_reason` (one short sentence) "
+            "to that shot's JSON explaining why content forced your hand. Do "
+            "NOT silently override."
+        )
+
+    if favor_lines:
+        parts.append("\n**LEAN TOWARD:**")
+        parts.extend(favor_lines)
+    if avoid_lines:
+        parts.append(
+            "\n**LEAN AGAINST** (use only when content genuinely demands):"
+        )
+        parts.extend(avoid_lines)
+
+    if density == "minimal":
+        parts.append(
+            "\n**ON-SCREEN TEXT DENSITY: minimal** — viewer hears narration "
+            "but sees almost no on-screen text. KINETIC_TEXT is **FORBIDDEN** "
+            "(its entire point is on-screen text). LOWER_THIRD vocabulary "
+            "banners are FORBIDDEN. Per-shot `text_elements` ≤ 1 short phrase. "
+            "Headlines on hero shots: ≤ 4 words."
+        )
+    elif density == "low":
+        parts.append(
+            "\n**ON-SCREEN TEXT DENSITY: low** — keep on-screen text light. "
+            "KINETIC_TEXT is **FORBIDDEN** at this density. LOWER_THIRD: max "
+            "1 per 30s. Per-shot `text_elements` ≤ 2 short phrases. Headlines "
+            "≤ 7 words. Narration carries meaning; text is decorative."
+        )
+    elif density == "rich":
+        parts.append(
+            "\n**ON-SCREEN TEXT DENSITY: rich** — on-screen text is welcome. "
+            "Headlines + supporting labels are encouraged where they reinforce "
+            "the narration. KINETIC_TEXT and LOWER_THIRD are freely available."
+        )
+
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # Director user prompt template
 # ---------------------------------------------------------------------------
 
@@ -729,6 +1051,14 @@ Produce a shot plan JSON:
 IMPORTANT:
 - The `shots` array must be a proper list — wrap every shot in `{{"shots": [...]}}`, even a one-shot plan.
 - Every shot must have `start_time` and `end_time` that align with word timestamps.
+- **Pick boundaries at SILENCE GAPS between sentences/phrases, NOT at round seconds.**
+  Look at the WORD TIMESTAMPS table above. A good cut lands where there's a
+  pause (≥150ms gap between two words). Acceptable example: a sentence ends at
+  3.87s and the next starts at 4.12s — pick `end_time: 3.99` (mid-gap), NOT
+  `end_time: 4.0`. Round numbers like 4.0, 9.0, 14.0 almost always cut a word
+  in half because real speech doesn't pause on whole seconds.
+  *(The example plans below use round numbers ONLY for readability — your
+  output must use actual word-aligned values from the timestamp table.)*
 - Shots must be sequential: shot N's end_time == shot N+1's start_time (no gaps).
 - First shot starts at 0.0, last shot ends at {audio_duration:.1f}.
 - `narration_excerpt` is the EXACT text from the script for that time range.
@@ -757,6 +1087,12 @@ def build_director_user_prompt(
     quality_tier: str = "",
     target_audience: str = "General/Adult",
     include_music_plan: bool = False,
+    video_type: Optional[str] = None,
+    article_context: Optional[Dict[str, Any]] = None,
+    available_screenshots: Optional[List[Dict[str, Any]]] = None,
+    named_entities: Optional[List[Dict[str, Any]]] = None,
+    web_search_available: bool = False,
+    visual_preferences: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Assemble the Director user prompt from pipeline data."""
     aspect_label = "9:16 portrait" if width < height else "16:9"
@@ -877,14 +1213,50 @@ def build_director_user_prompt(
         # have to do arithmetic in-prompt.
         _chunk_cap = 180.0
         _chunks_needed = max(1, int(-(-audio_duration // _chunk_cap)))  # ceil
+        # Per-domain genre nudge — keeps the Director from defaulting every
+        # video to warm-piano cinematic. Aligned with the genre buckets in
+        # AutomationPipeline._MUSIC_MOOD_BY_DOMAIN for tier consistency.
+        _domain_genre_hint = {
+            "coding": "minimal lo-fi or modern electronic, muted synth pluck, soft drum machine, ~84 bpm — NOT orchestral",
+            "saas_demo": "minimal modern electronic, muted synth pluck and soft pad, focused/unobtrusive, ~96 bpm",
+            "saas_marketing": "upbeat corporate electronic, driving synth pluck, four-on-the-floor kick, bright pad, ~118 bpm",
+            "business_marketing": "modern corporate underscore, bright piano + soft drum loop + warm strings, confident driving, ~110 bpm",
+            "math": "sparse solo piano with quiet warm pad, contemplative, ~64 bpm — minimal arrangement",
+            "language": "warm acoustic — fingerpicked guitar, soft cello, felt piano, intimate contemplative, ~68 bpm",
+            "science": "ambient cinematic with shimmering synth pads, glassy bell tones, subtle pulse, ~72 bpm — curious/wondrous",
+            "biology": "organic ambient — soft acoustic guitar, marimba, warm pad, ~70 bpm — gently alive",
+            "chemistry": "ambient electronic with metallic shimmer textures, soft pulse, ~76 bpm — curious/precise",
+            "history": "orchestral cinematic with warm strings + solo piano, soft horn, ~70 bpm — reverent/contemplative",
+            "geography": "cinematic orchestral with ethereal pad and gentle world percussion (frame drum, shaker), ~72 bpm — expansive/awe-inspired",
+            "visual_storytelling": "cinematic narrative — felt piano, warm strings, subtle low percussion, ~74 bpm — emotive",
+            "general": "cinematic ambient with soft piano + warm strings, ~72 bpm — calm/attentive",
+        }
+        _genre_nudge = _domain_genre_hint.get(subject_domain, _domain_genre_hint["general"])
+        _bg_hint = (
+            "high-energy / cinematic / dramatic visuals — favour modern, "
+            "atmospheric, or driving palettes over warm-piano pretty"
+            if background_type == "black"
+            else "clean / professional / editorial visuals — favour minimal, "
+                 "modern underscore palettes over heavy orchestral"
+        )
         extras.append(
             f"\n\n**🎼 MUSIC PLAN REMINDER**: Total narration is {audio_duration:.1f}s. "
             f"Emit `music_plan.chunks` with {_chunks_needed} chunk(s), tiling "
             f"[0.0, {audio_duration:.1f}] with no gaps. Each chunk's "
             f"`timestamped_prompt` is a single prose string with `[mm:ss]` "
             f"markers (chunk-relative, starting at `[00:00]`). Every prompt "
-            f"must contain \"no vocals, no lyrics\". See the system prompt "
-            f"for the exact shape and authoring rules."
+            f"must contain \"no vocals, no lyrics\".\n\n"
+            f"**Match the music to THIS run's content:**\n"
+            f"- Subject domain: `{subject_domain}` — recommended palette: "
+            f"{_genre_nudge}.\n"
+            f"- Visual background: `{background_type}` ({_bg_hint}).\n"
+            f"- Cross-check against the shots you actually planned. If the "
+            f"shots are fast/bold, lean toward the modern-electronic side of "
+            f"the recommended palette; if reflective, lean toward the "
+            f"sparse/acoustic side. Do not default to warm-piano cinematic "
+            f"unless the recommended palette above explicitly is that.\n"
+            f"See the system prompt for the exact shape, authoring rules, "
+            f"and three genre examples (orchestral / lo-fi / corporate)."
         )
 
     if target_audience and target_audience.lower() not in ("general/adult", "general", "adult", ""):
@@ -896,4 +1268,107 @@ def build_director_user_prompt(
             "Expert/professional audiences: dense data layers, faster pacing, domain-specific visuals."
         )
 
+    # ── Video type signal (drives type-specific composition rules) ──
+    vt = (video_type or "").strip().lower()
+    if vt == "product_promo":
+        extras.append(
+            "\n\n**VIDEO TYPE**: `product_promo` (brand ad / product reel). "
+            "Apply the **PRODUCT_PROMO COMPOSITION RULES** from the system prompt: "
+            "cinematic shot types ≥60% of duration, explainer shots ≤25%, no agency "
+            "boilerplate, OPEN and CLOSE on the brand. Treat the BRAND ANCHOR assets "
+            "in the user prompt as the hero of every shot."
+        )
+    elif vt == "news_recap":
+        extras.append(
+            "\n\n**VIDEO TYPE**: `news_recap`. Apply the **NEWS_RECAP COMPOSITION RULES** "
+            "from the system prompt."
+        )
+    elif vt:
+        extras.append(f"\n\n**VIDEO TYPE**: `{vt}` — apply the matching composition rules from the system prompt.")
+
+    # ── Article context (only when scrape_url ran successfully) ──
+    if article_context:
+        src_url = (article_context.get("source_url") or "").strip()
+        title = (article_context.get("title") or "").strip()
+        excerpt = (article_context.get("text_excerpt") or "").strip()
+        if excerpt and len(excerpt) > 2000:
+            excerpt = excerpt[:2000].rsplit(" ", 1)[0] + "…"
+        ac_lines = ["\n\n**ARTICLE CONTEXT** (the page the user wants summarized):"]
+        if src_url:
+            ac_lines.append(f"- Source URL: {src_url}")
+        if title:
+            ac_lines.append(f"- Title: {title}")
+        if excerpt:
+            ac_lines.append(f"- Excerpt:\n  \"{excerpt}\"")
+        if len(ac_lines) > 1:
+            extras.append("\n".join(ac_lines))
+
+    # ── Available article screenshots (resolved by ARTICLE_FOCUS shots) ──
+    if available_screenshots:
+        as_lines = [
+            "\n\n**AVAILABLE ARTICLE SCREENSHOTS** (reference these by `screenshot_id` in ARTICLE_FOCUS shots):"
+        ]
+        for s in available_screenshots:
+            if not isinstance(s, dict):
+                continue
+            sid = (s.get("id") or "").strip()
+            if not sid:
+                continue
+            descriptor = s.get("description") or _default_screenshot_descriptor(sid)
+            as_lines.append(f"- `{sid}` — {descriptor}")
+        if len(as_lines) > 1:
+            as_lines.append(
+                "Use ARTICLE_FOCUS shots to display these. Set `template_id: \"article_focus_zoom_pan\"` "
+                "and `template_params.screenshot_id` to the chosen id."
+            )
+            extras.append("\n".join(as_lines))
+
+    # ── Named entities extracted from the script ──
+    if named_entities:
+        ne_lines = [
+            "\n\n**NAMED ENTITIES** (real people, places, organizations mentioned in the script — "
+            "prefer real photos via web search; emit `image_prompt` using the suggested_query):"
+        ]
+        for ent in named_entities[:24]:
+            if not isinstance(ent, dict):
+                continue
+            name = (ent.get("name") or "").strip()
+            if not name:
+                continue
+            kind = (ent.get("kind") or "subject").strip()
+            sq = (ent.get("suggested_query") or name).strip()
+            ne_lines.append(f"- `{name}` ({kind}) → suggested_query: \"{sq}\"")
+        if len(ne_lines) > 1:
+            extras.append("\n".join(ne_lines))
+
+    # ── Web search availability advisory ──
+    if web_search_available:
+        extras.append(
+            "\n\n**WEB SEARCH AVAILABLE**: yes — for real, named entities you MAY add "
+            "`data-img-source=\"web\"` hints to the per-shot HTML the Visual Designer will build, "
+            "or simply phrase `image_prompt` with the entity's name and the pipeline will route "
+            "to Google Images (Serper) automatically when a stock query falls back."
+        )
+
+    # ── User visual preferences (Slice C) ──
+    # Soft per-family bias on shot_type + on-screen text density. Returns ""
+    # when no preference is actively set, so the no-op case adds zero tokens.
+    _vp_block = build_visual_preferences_director_block(visual_preferences)
+    if _vp_block:
+        extras.append(_vp_block)
+
     return base + "".join(extras)
+
+
+def _default_screenshot_descriptor(screenshot_id: str) -> str:
+    """Human-readable hint for a screenshot id when the caller didn't supply one."""
+    sid = (screenshot_id or "").lower()
+    if sid == "above_fold":
+        return "top-of-page screenshot (article header + lede)"
+    if sid == "mid":
+        return "mid-page screenshot (article body / first inline image)"
+    if sid == "footer":
+        return "bottom-of-page screenshot (article tail / related links)"
+    if sid.startswith("inline_"):
+        return f"inline article image #{sid.split('_', 1)[1]}"
+    return "captured page asset"

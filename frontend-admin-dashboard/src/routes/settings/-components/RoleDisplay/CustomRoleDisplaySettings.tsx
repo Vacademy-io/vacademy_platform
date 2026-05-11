@@ -31,6 +31,7 @@ import type {
     StudentSideViewTabId,
     LearnerManagementSettings,
 } from '@/types/display-settings';
+import { DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS } from '@/types/display-settings';
 
 const COURSE_CREATION_DEFAULTS: CourseCreationSettings = {
     showCreateCourseWithAI: false,
@@ -55,6 +56,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     enquiryTab: false,
     applicationTab: false,
     leadTab: false,
+    fullHistoryTab: false,
 };
 
 const STUDENT_SIDE_VIEW_OPTIONS: Array<{
@@ -66,6 +68,11 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
         key: 'overviewTab',
         label: 'Overview Tab',
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.overviewTab,
+    },
+    {
+        key: 'coursesTab',
+        label: 'Courses Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.coursesTab,
     },
     { key: 'testTab', label: 'Test Tab', defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.testTab },
     {
@@ -124,12 +131,18 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
         label: 'Lead Profile Tab',
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.leadTab,
     },
+    {
+        key: 'fullHistoryTab',
+        label: 'Full History Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fullHistoryTab ?? false,
+    },
 ];
 
 const LEARNER_MANAGEMENT_DEFAULTS: LearnerManagementSettings = {
     allowPortalAccess: true,
     allowViewPassword: true,
     allowSendResetPasswordMail: true,
+    showApprovalToggle: false,
 };
 
 const LEARNER_MANAGEMENT_OPTIONS: Array<{
@@ -151,6 +164,11 @@ const LEARNER_MANAGEMENT_OPTIONS: Array<{
         key: 'allowSendResetPasswordMail',
         label: 'Allow Sending Reset Password Mail',
         defaultValue: LEARNER_MANAGEMENT_DEFAULTS.allowSendResetPasswordMail,
+    },
+    {
+        key: 'showApprovalToggle',
+        label: 'Show Approval Requests toggle on Learners list',
+        defaultValue: LEARNER_MANAGEMENT_DEFAULTS.showApprovalToggle,
     },
 ];
 
@@ -194,6 +212,7 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
             visible: true,
             subTabs: [],
             isCustom: true,
+            category: activeCategory,
         } as DisplaySettingsData['sidebar'][number];
         updateSettings((prev) => ({ ...prev, sidebar: [...prev.sidebar, newTab] }));
     };
@@ -312,7 +331,7 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
             const categoryTabs = prev.sidebar
                 .filter((t) => {
                     const baseItem = SidebarItemsData.find((i) => i.id === t.id);
-                    const cat = baseItem?.category || 'CRM';
+                    const cat = baseItem?.category || t.category || 'CRM';
                     return cat === activeCategory;
                 })
                 .sort((a, b) => a.order - b.order);
@@ -542,6 +561,33 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             />
                         </div>
                     ))}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Course List Card</CardTitle>
+                    <CardDescription>
+                        Control which details appear on each course card under Explore Courses.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">Show enrolled student count</div>
+                        <Switch
+                            checked={
+                                settings.courseListCard?.showEnrolledStudentCount === true
+                            }
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    courseListCard: {
+                                        showEnrolledStudentCount: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                 </CardContent>
             </Card>
 
@@ -1112,7 +1158,7 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             const categoryTabs = settings.sidebar
                                 .filter((tab) => {
                                     const baseItem = SidebarItemsData.find((i) => i.id === tab.id);
-                                    const cat = baseItem?.category || 'CRM';
+                                    const cat = baseItem?.category || tab.category || 'CRM';
                                     return cat === activeCategory;
                                 })
                                 .sort((a, b) => a.order - b.order);
@@ -1452,13 +1498,11 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             ));
                         })()}
                     </Tabs>
-                    {activeCategory === 'CRM' && (
-                        <div className="pt-2">
-                            <Button variant="outline" onClick={addCustomTab}>
-                                Add Custom Tab
-                            </Button>
-                        </div>
-                    )}
+                    <div className="pt-2">
+                        <Button variant="outline" onClick={addCustomTab}>
+                            Add Custom Tab
+                        </Button>
+                    </div>
                 </CardContent>
             </Card>
 
@@ -1474,6 +1518,7 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                     {(
                         [
                             ['pdf', 'PDF'],
+                            ['ppt', 'PPT Presentation'],
                             ['codeEditor', 'Code Editor'],
                             ['document', 'Document'],
                             ['question', 'Question'],
@@ -1481,6 +1526,9 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             ['assignment', 'Assignment'],
                             ['jupyterNotebook', 'Jupyter Notebook'],
                             ['scratch', 'Scratch'],
+                            ['audio', 'Audio'],
+                            ['scorm', 'SCORM Package'],
+                            ['assessment', 'Assessment'],
                         ] as const satisfies ReadonlyArray<
                             readonly [keyof Omit<CourseContentTypeSettings, 'video'>, string]
                         >
@@ -1504,6 +1552,10 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                             jupyterNotebook:
                                                 prev.contentTypes?.jupyterNotebook ?? true,
                                             scratch: prev.contentTypes?.scratch ?? true,
+                                            ppt: prev.contentTypes?.ppt ?? true,
+                                            audio: prev.contentTypes?.audio ?? true,
+                                            scorm: prev.contentTypes?.scorm ?? true,
+                                            assessment: prev.contentTypes?.assessment ?? true,
                                             video: {
                                                 enabled: prev.contentTypes?.video?.enabled ?? true,
                                                 showInVideoQuestion:
@@ -1540,6 +1592,10 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                             jupyterNotebook:
                                                 prev.contentTypes?.jupyterNotebook ?? true,
                                             scratch: prev.contentTypes?.scratch ?? true,
+                                            ppt: prev.contentTypes?.ppt ?? true,
+                                            audio: prev.contentTypes?.audio ?? true,
+                                            scorm: prev.contentTypes?.scorm ?? true,
+                                            assessment: prev.contentTypes?.assessment ?? true,
                                             video: {
                                                 enabled: prev.contentTypes?.video?.enabled ?? true,
                                                 showInVideoQuestion:
@@ -1580,6 +1636,10 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                                             jupyterNotebook:
                                                 prev.contentTypes?.jupyterNotebook ?? true,
                                             scratch: prev.contentTypes?.scratch ?? true,
+                                            ppt: prev.contentTypes?.ppt ?? true,
+                                            audio: prev.contentTypes?.audio ?? true,
+                                            scorm: prev.contentTypes?.scorm ?? true,
+                                            assessment: prev.contentTypes?.assessment ?? true,
                                             video: {
                                                 enabled: prev.contentTypes?.video?.enabled ?? true,
                                                 showInVideoQuestion:
@@ -1652,6 +1712,68 @@ export default function CustomRoleDisplaySettings({ roleId }: { roleId: string }
                             />
                         </div>
                     ))}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Live Class Scheduling</CardTitle>
+                    <CardDescription>
+                        Choose which scheduling entry points show up for this role. Both are
+                        on by default. Disabling a mode here hides it for this role even when
+                        the institute-level Live Session setting allows it.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div>
+                            <div className="text-sm font-medium">Single Class scheduling</div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                                The default flow for creating one class at a time.
+                            </div>
+                        </div>
+                        <Switch
+                            checked={
+                                settings.liveClassScheduling?.singleScheduleEnabled ??
+                                DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS.singleScheduleEnabled
+                            }
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    liveClassScheduling: {
+                                        ...DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS,
+                                        ...prev.liveClassScheduling,
+                                        singleScheduleEnabled: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div>
+                            <div className="text-sm font-medium">Bulk Schedule</div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">
+                                Spreadsheet-style grid for creating many independent classes
+                                in one go.
+                            </div>
+                        </div>
+                        <Switch
+                            checked={
+                                settings.liveClassScheduling?.bulkScheduleEnabled ??
+                                DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS.bulkScheduleEnabled
+                            }
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    liveClassScheduling: {
+                                        ...DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS,
+                                        ...prev.liveClassScheduling,
+                                        bulkScheduleEnabled: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                 </CardContent>
             </Card>
 

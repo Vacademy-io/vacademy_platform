@@ -47,6 +47,19 @@ import { toast } from 'sonner';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { LiveSessionParticipantsTab } from './LiveSessionParticipantsTab';
+import { SectionCard } from './SectionCard';
+import {
+    LiveSessionPreviewDialog,
+    type PreviewSessionRow,
+    type PreviewRecurrenceBanner,
+} from './LiveSessionPreviewDialog';
+import {
+    LockKey,
+    UsersThree,
+    Article,
+    LinkSimple,
+    BellRinging,
+} from '@phosphor-icons/react';
 
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 
@@ -76,11 +89,14 @@ const formatZohoStartTime = (dateStr?: string, timeStr?: string) => {
 };
 
 export default function ScheduleStep2() {
-    const { clearSessionId, clearStep1Data } = useLiveSessionStore();
+    const { clearSessionId, clearStep1Data, clearBulkSessionIds } = useLiveSessionStore();
+    const bulkSessionIds = useLiveSessionStore((state) => state.bulkSessionIds);
+    const isBulkFlow = bulkSessionIds.length > 0;
     const { studyLibraryData } = useStudyLibraryStore();
     const [addCustomFieldDialog, setAddCustomFieldDialog] = useState<boolean>(false);
     const queryClient = useQueryClient();
     const [previewDialog, setPreviewDialog] = useState<boolean>(false);
+    const [previewOpen, setPreviewOpen] = useState<boolean>(false);
     const { sessionId, step1Data } = useLiveSessionStore();
     const isEditState = useLiveSessionStore((state) => state.isEdit);
     const { sessionDetails } = useSessionDetailsStore();
@@ -102,10 +118,12 @@ export default function ScheduleStep2() {
     const hasInitialisedEditState = useRef(false);
 
     useEffect(() => {
-        if (!sessionId) {
+        // Allow either a single sessionId (normal flow) or a list of bulk
+        // sessionIds. Without either we can't link participants to anything.
+        if (!sessionId && bulkSessionIds.length === 0) {
             navigate({ to: '/study-library/live-session' });
         }
-    }, [sessionId, navigate]);
+    }, [sessionId, bulkSessionIds.length, navigate]);
 
     useEffect(() => {
         if (sessionDetails && !hasInitialisedEditState.current) {
@@ -499,18 +517,52 @@ export default function ScheduleStep2() {
                 return matchingBatch?.id || '';
             });
 
-            const body = transformFormToDTOStep2(data, sessionId, packageSessionIds);
+            // In bulk flow we fan out the same access/notification payload to
+            // every session created in step 1. Failures are tolerated per row
+            // so the user gets partial success feedback.
+            const targetSessionIds = isBulkFlow ? bulkSessionIds : [sessionId];
+            const fanOutResults: { id: string; ok: boolean; error?: unknown }[] = [];
 
-            const response = await createLiveSessionStep2(body);
-            console.log('API Response:', response);
+            for (const targetId of targetSessionIds) {
+                try {
+                    const body = transformFormToDTOStep2(data, targetId, packageSessionIds);
+                    await createLiveSessionStep2(body);
+                    fanOutResults.push({ id: targetId, ok: true });
+                } catch (err) {
+                    console.error(`Step 2 failed for sessionId=${targetId}`, err);
+                    fanOutResults.push({ id: targetId, ok: false, error: err });
+                }
+            }
 
-            // Show success toast
-            toast.success(
-                `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} created successfully!`
-            );
+            const okCount = fanOutResults.filter((r) => r.ok).length;
+            const failCount = fanOutResults.length - okCount;
+
+            if (isBulkFlow) {
+                if (okCount > 0 && failCount === 0) {
+                    toast.success(
+                        `Participants & access applied to ${okCount} ${getTerminology(
+                            ContentTerms.LiveSession,
+                            SystemTerms.LiveSession
+                        )}${okCount === 1 ? '' : 's'}.`
+                    );
+                } else if (okCount > 0 && failCount > 0) {
+                    toast.error(
+                        `Applied to ${okCount} session${okCount === 1 ? '' : 's'}, but ${failCount} failed. Check console for details.`
+                    );
+                } else {
+                    throw new Error('All bulk step 2 calls failed');
+                }
+            } else {
+                toast.success(
+                    `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} created successfully!`
+                );
+            }
 
             // Handle potential Zoho meeting creation
-            if (step1Data?.sessionPlatform === StreamingPlatform.ZOHO && instituteDetails?.id) {
+            // Skipped in bulk flow because per-row platforms/timings vary and
+            // the Zoho meeting creation is keyed off step1Data which is only
+            // representative in bulk mode.
+            if (!isBulkFlow && step1Data?.sessionPlatform === StreamingPlatform.ZOHO && instituteDetails?.id) {
                 try {
                     const sessionDetailsPayload = await getSessionBySessionId(sessionId);
                     const schedules = sessionDetailsPayload?.schedule?.added_schedules || [];
@@ -549,6 +601,7 @@ export default function ScheduleStep2() {
             await queryClient.invalidateQueries({ queryKey: ['draftSessions'] });
             clearSessionId();
             clearStep1Data();
+            clearBulkSessionIds();
             navigate({ to: '/study-library/live-session' });
         } catch (error) {
             console.error('Error submitting form:', error);
@@ -588,15 +641,97 @@ export default function ScheduleStep2() {
         });
     };
 
+    const previewSelectedLevels = watch('selectedLevels');
+    const isWeeklyRecurring =
+        (step1Data?.meetingType as string | undefined) === 'weekly' &&
+        !!step1Data?.recurringSchedule?.length;
+    const dayShort: Record<string, string> = {
+        monday: 'Mon',
+        tuesday: 'Tue',
+        wednesday: 'Wed',
+        thursday: 'Thu',
+        friday: 'Fri',
+        saturday: 'Sat',
+        sunday: 'Sun',
+    };
+    const recurrenceUntilLabel = step1Data?.endDate
+        ? (() => {
+              try {
+                  return new Date(step1Data.endDate).toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                  });
+              } catch {
+                  return step1Data.endDate;
+              }
+          })()
+        : undefined;
+
+    let previewSessions: PreviewSessionRow[] = [];
+    let previewRecurrenceBanner: PreviewRecurrenceBanner | undefined;
+
+    if (isWeeklyRecurring && step1Data?.recurringSchedule) {
+        const selectedDays: string[] = [];
+        const rows: PreviewSessionRow[] = [];
+        for (const day of step1Data.recurringSchedule) {
+            if (!day?.isSelect) continue;
+            const dayName = dayShort[day.day] ?? day.day;
+            selectedDays.push(dayName);
+            for (const s of day.sessions ?? []) {
+                rows.push({
+                    title: day.default_class_name?.trim() || step1Data?.title,
+                    subject: step1Data?.subject,
+                    whenLabel: dayName,
+                    whenSubLabel: s.startTime || '—',
+                    durationHours: s.durationHours ?? step1Data?.durationHours,
+                    durationMinutes: s.durationMinutes ?? step1Data?.durationMinutes,
+                    link: s.link || day.default_class_link || step1Data?.defaultLink,
+                    platform: step1Data?.sessionPlatform,
+                    selectedLevels: previewSelectedLevels,
+                });
+            }
+        }
+        if (rows.length > 0) {
+            previewSessions = rows;
+            previewRecurrenceBanner = {
+                pattern: 'Recurring weekly',
+                days: selectedDays,
+                until: recurrenceUntilLabel ? `Until ${recurrenceUntilLabel}` : undefined,
+                totalLabel: `${rows.length} slot${rows.length === 1 ? '' : 's'}/week`,
+            };
+        }
+    }
+
+    if (previewSessions.length === 0) {
+        const rawStartTime = step1Data?.startTime ?? '';
+        const [datePart, timePart] = rawStartTime.includes('T')
+            ? rawStartTime.split('T')
+            : ['', rawStartTime];
+        previewSessions = [
+            {
+                title: step1Data?.title,
+                subject: step1Data?.subject,
+                startDate: datePart,
+                startTime: timePart,
+                durationHours: step1Data?.durationHours,
+                durationMinutes: step1Data?.durationMinutes,
+                link: step1Data?.defaultLink,
+                platform: step1Data?.sessionPlatform,
+                selectedLevels: previewSelectedLevels,
+            },
+        ];
+    }
+
     return (
         <>
             <FormProvider {...form}>
                 <form
-                    onSubmit={handleSubmit(onSubmitClick, onError)}
-                    className="flex flex-col gap-4"
+                    onSubmit={handleSubmit(() => setPreviewOpen(true), onError)}
+                    className="flex flex-col gap-5"
                 >
-                    <div className="m-0 flex items-center justify-between p-0">
-                        <div className="flex items-center gap-4">
+                    <div className="sticky top-0 z-[9] -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 py-3 sm:-mx-0 sm:px-0">
+                        <div className="flex items-center gap-3">
                             <MyButton
                                 type="button"
                                 scale="large"
@@ -607,107 +742,143 @@ export default function ScheduleStep2() {
                             >
                                 Back
                             </MyButton>
+                            <div>
+                                <h1 className="text-lg font-semibold text-neutral-800">
+                                    Participants & Access
+                                </h1>
+                                <p className="text-xs text-neutral-500">
+                                    Choose who can join and how they get notified.
+                                </p>
+                            </div>
                         </div>
                         <MyButton
-                            type="submit"
+                            type="button"
                             scale="large"
                             buttonType="primary"
                             disable={isSubmitting}
+                            onClick={handleSubmit(
+                                () => setPreviewOpen(true),
+                                onError
+                            )}
                         >
                             {isSubmitting ? (
                                 <Loader2 className="animate-spin text-white" />
                             ) : (
-                                'Create'
+                                'Preview & create'
                             )}
                         </MyButton>
                     </div>
-                    <Separator className="my-4" />
 
-                    {/* Access Type */}
+                    {isBulkFlow && (
+                        <div className="flex items-start gap-2 rounded-md border border-primary-200 bg-primary-50/60 px-3 py-2 text-sm text-neutral-700">
+                            <span className="font-medium">
+                                Bulk mode:
+                            </span>
+                            <span>
+                                These access & notification settings will be applied to all{' '}
+                                {bulkSessionIds.length} sessions you just created.
+                            </span>
+                        </div>
+                    )}
 
-                    <div className="flex flex-col gap-4 font-medium">
-                        <div className="font-bold">Participant Access Settings</div>
+                    <SectionCard
+                        icon={<LockKey size={18} />}
+                        title="Participant Access"
+                        description="Who can join this class — restricted to selected learners or open via a shared link."
+                    >
+                        <div className="flex flex-col gap-4 font-medium">
+                            {isEditState && (
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                    <div className="font-bold">{accessType} : </div>
+                                    {accessType === AccessType.PRIVATE ? (
+                                        <div>
+                                            Restrict the class to specific participants by
+                                            assigning it to institute batches or selecting
+                                            individual learners.
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            Allow anyone to join this class via a shared link.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {!isEditState && (
+                                <FormField
+                                    control={control}
+                                    name="accessType"
+                                    render={({ field }) => (
+                                        <MyRadioButton
+                                            name="meetingType"
+                                            value={field.value ?? ''}
+                                            onChange={field.onChange}
+                                            disabled={isEditState}
+                                            options={[
+                                                {
+                                                    label: (
+                                                        <div className="flex flex-row gap-1">
+                                                            <div className="font-bold">
+                                                                Private Class:
+                                                            </div>
+                                                            Restrict the class to specific
+                                                            participants by assigning it to
+                                                            institute batches or selecting
+                                                            individual learners.
+                                                        </div>
+                                                    ),
+                                                    value: AccessType.PRIVATE,
+                                                },
+                                                {
+                                                    label: (
+                                                        <div className="flex flex-row gap-1">
+                                                            <div className="font-bold">
+                                                                Public Class:
+                                                            </div>
+                                                            Allow anyone to join this class via a
+                                                            shared link.
+                                                        </div>
+                                                    ),
+                                                    value: AccessType.PUBLIC,
+                                                },
+                                            ]}
+                                            className="flex flex-col gap-4"
+                                        />
+                                    )}
+                                />
+                            )}
+                        </div>
+                    </SectionCard>
 
-                        {isEditState && (
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                                <div className="font-bold">{accessType} : </div>
-                                {accessType === AccessType.PRIVATE ? (
-                                    <div>
-                                        Restrict the class to specific participants by assigning it
-                                        to institute batches or selecting individual learners.
-                                    </div>
-                                ) : (
-                                    <div>Allow anyone to join this class via a shared link.</div>
-                                )}
+                    <SectionCard
+                        icon={<UsersThree size={18} />}
+                        title="Select Participants"
+                        description="Pick a session, then choose batches or individual learners to enroll."
+                    >
+                        <div className="flex flex-col gap-4">
+                            <div className="w-full sm:max-w-[280px]">
+                                <MyDropdown
+                                    currentValue={currentSession ?? undefined}
+                                    dropdownList={sessionList}
+                                    placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`}
+                                    handleChange={handleSessionChange}
+                                />
                             </div>
-                        )}
-                        {!isEditState && (
-                            <FormField
-                                control={control}
-                                name="accessType"
-                                render={({ field }) => (
-                                    <MyRadioButton
-                                        name="meetingType"
-                                        value={field.value ?? ''}
-                                        onChange={field.onChange}
-                                        disabled={isEditState}
-                                        options={[
-                                            {
-                                                label: (
-                                                    <div className="flex flex-row gap-1">
-                                                        <div className="font-bold">
-                                                            Private Class:
-                                                        </div>
-                                                        Restrict the class to specific participants
-                                                        by assigning it to institute batches or
-                                                        selecting individual learners.
-                                                    </div>
-                                                ),
-                                                value: AccessType.PRIVATE,
-                                            },
-                                            {
-                                                label: (
-                                                    <div className="flex flex-row gap-1">
-                                                        <div className="font-bold">
-                                                            Public Class:
-                                                        </div>
-                                                        Allow anyone to join this class via a shared
-                                                        link.
-                                                    </div>
-                                                ),
-                                                value: AccessType.PUBLIC,
-                                            },
-                                        ]}
-                                        className="flex flex-col gap-4"
-                                    />
-                                )}
-                            />
-                        )}
-                    </div>
-
-                    {/* Participant Selection - Available for both Public and Private classes */}
-                    <div className="flex flex-col gap-4">
-                        <div className="font-bold">Select Participants</div>
-                        <div className="w-full sm:max-w-[260px]">
-                            <MyDropdown
-                                currentValue={currentSession ?? undefined}
-                                dropdownList={sessionList}
-                                placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`}
-                                handleChange={handleSessionChange}
+                            <LiveSessionParticipantsTab
+                                form={form}
+                                courses={courses}
+                                currentSession={currentSession}
                             />
                         </div>
-                        <LiveSessionParticipantsTab
-                            form={form}
-                            courses={courses}
-                            currentSession={currentSession}
-                        />
-                    </div>
+                    </SectionCard>
 
                     {/* Registration Form Fields - Only for Public classes */}
                     {accessType === AccessType.PUBLIC && (
-                        <>
-                            <div className="flex flex-col gap-4">
-                                <div className="font-bold">Registration Form Fields</div>
+                        <SectionCard
+                            icon={<Article size={18} />}
+                            title="Registration Form"
+                            description="Fields shown to learners on the public registration form. Drag to reorder."
+                        >
+                            <div className="flex flex-col gap-3">
                                 <Sortable
                                     value={fields}
                                     onMove={({ activeIndex, overIndex }) =>
@@ -829,18 +1000,23 @@ export default function ScheduleStep2() {
                                     </MyButton>
                                 </div>
                             </div>
-                        </>
+                        </SectionCard>
                     )}
 
-                    <Separator className="my-4" />
-                    <div
-                        className="flex flex-col gap-10 font-bold sm:flex-row sm:items-center sm:gap-20"
-                        id="join-link-qr-code"
+                    <SectionCard
+                        icon={<LinkSimple size={18} />}
+                        title="Join Link"
+                        description="Share this link or QR code with learners — it's auto-generated and read-only."
                     >
-                        <div className="flex flex-1 flex-col gap-2">
-                            <h1>Join Link</h1>
-                            <div className="flex w-full items-center gap-8">
-                                <div className="flex w-full items-center gap-4">
+                        <div
+                            className="flex flex-col gap-6 sm:flex-row sm:items-start sm:gap-10"
+                            id="join-link-qr-code"
+                        >
+                            <div className="flex flex-1 flex-col gap-2">
+                                <div className="text-xs font-medium text-neutral-500">
+                                    Share link
+                                </div>
+                                <div className="flex w-full items-center gap-2">
                                     <FormField
                                         control={control}
                                         name="joinLink"
@@ -871,15 +1047,13 @@ export default function ScheduleStep2() {
                                         className="h-10 min-w-10 shrink-0"
                                         onClick={() => copyToClipboard(getValues('joinLink'))}
                                     >
-                                        <Copy size={32} />
+                                        <Copy size={20} />
                                     </MyButton>
                                 </div>
                             </div>
-                        </div>
-                        <div className="flex flex-col gap-2">
-                            <h1>QR Code</h1>
-                            <div className="flex items-center gap-8">
-                                <div className="flex items-center gap-4">
+                            <div className="flex flex-col items-start gap-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                                <div className="text-xs font-medium text-neutral-500">QR Code</div>
+                                <div className="flex items-center gap-3">
                                     <FormField
                                         control={control}
                                         name="joinLink"
@@ -888,7 +1062,7 @@ export default function ScheduleStep2() {
                                                 <FormControl>
                                                     <QRCode
                                                         value={field.value ?? ''}
-                                                        className="size-16"
+                                                        className="size-20 rounded bg-white p-1"
                                                         id="qr-code-svg"
                                                     />
                                                 </FormControl>
@@ -899,37 +1073,44 @@ export default function ScheduleStep2() {
                                         type="button"
                                         scale="small"
                                         buttonType="secondary"
-                                        className="h-10 min-w-10"
+                                        className="h-9"
                                         onClick={() => handleDownloadQRCode('qr-code-svg')}
                                     >
-                                        <DownloadSimple size={32} />
+                                        <DownloadSimple size={16} />
+                                        <span className="ml-1 text-xs">Download</span>
                                     </MyButton>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    <Separator className="my-4" />
+                    </SectionCard>
 
-                    <div className="flex flex-col gap-4">
-                        <div className="font-bold">Notification Settings</div>
-
-                        <div className="flex flex-col gap-4 sm:flex-row sm:gap-8">
+                    <SectionCard
+                        icon={<BellRinging size={18} />}
+                        title="Notifications"
+                        description="Choose channels and the moments when participants get notified."
+                    >
+                        <div className="flex flex-col gap-5">
+                            <div>
+                                <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                    Channels
+                                </div>
+                                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
                             <FormField
                                 control={control}
                                 name={`notifyBy.mail`}
                                 render={({ field }) => (
-                                    <FormItem className="flex items-end gap-2">
+                                    <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
                                         <FormControl>
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
-                                                    ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
-                                                    : '' // Default styles when unchecked
+                                                className={`size-4 rounded-sm border-2 shadow-none ${field.value
+                                                    ? 'border-none bg-primary-500 text-white'
+                                                    : ''
                                                     }`}
                                             />
                                         </FormControl>
-                                        <FormLabel className="!mb-[3px] font-thin">
+                                        <FormLabel className="!m-0 text-sm font-normal">
                                             Notify Via Email
                                         </FormLabel>
                                     </FormItem>
@@ -939,18 +1120,18 @@ export default function ScheduleStep2() {
                                 control={control}
                                 name={`notifyBy.whatsapp`}
                                 render={({ field }) => (
-                                    <FormItem className="flex items-end gap-2">
+                                    <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
                                         <FormControl>
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
-                                                    ? 'border-none bg-primary-500 text-white' // Blue background and red tick when checked
-                                                    : '' // Default styles when unchecked
+                                                className={`size-4 rounded-sm border-2 shadow-none ${field.value
+                                                    ? 'border-none bg-primary-500 text-white'
+                                                    : ''
                                                     }`}
                                             />
                                         </FormControl>
-                                        <FormLabel className="!mb-[3px] font-thin">
+                                        <FormLabel className="!m-0 text-sm font-normal">
                                             Notify Via WhatsApp
                                         </FormLabel>
                                     </FormItem>
@@ -960,18 +1141,18 @@ export default function ScheduleStep2() {
                                 control={control}
                                 name={`notifyBy.push_notification`}
                                 render={({ field }) => (
-                                    <FormItem className="flex items-end gap-2">
+                                    <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
                                         <FormControl>
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
+                                                className={`size-4 rounded-sm border-2 shadow-none ${field.value
                                                     ? 'border-none bg-primary-500 text-white'
                                                     : ''
                                                     }`}
                                             />
                                         </FormControl>
-                                        <FormLabel className="!mb-[3px] font-thin">
+                                        <FormLabel className="!m-0 text-sm font-normal">
                                             Notify Via Push Notification
                                         </FormLabel>
                                     </FormItem>
@@ -981,28 +1162,36 @@ export default function ScheduleStep2() {
                                 control={control}
                                 name={`notifyBy.system_notification`}
                                 render={({ field }) => (
-                                    <FormItem className="flex items-end gap-2">
+                                    <FormItem className="flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-3 py-2">
                                         <FormControl>
                                             <Checkbox
                                                 checked={field.value}
                                                 onCheckedChange={field.onChange}
-                                                className={`size-5 rounded-sm border-2 shadow-none ${field.value
+                                                className={`size-4 rounded-sm border-2 shadow-none ${field.value
                                                     ? 'border-none bg-primary-500 text-white'
                                                     : ''
                                                     }`}
                                             />
                                         </FormControl>
-                                        <FormLabel className="!mb-[3px] font-thin">
+                                        <FormLabel className="!m-0 text-sm font-normal">
                                             Notify Via System Notification
                                         </FormLabel>
                                     </FormItem>
                                 )}
                             />
-                        </div>
+                                </div>
+                            </div>
 
-                        <div className="font-bold">Notify Participants</div>
+                            <Separator />
 
-                        <div className="flex flex-col gap-4">
+                            <div>
+                                <div className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                                    Triggers
+                                </div>
+                                <p className="mt-0.5 text-xs text-neutral-500">
+                                    Pick when notifications should fire on the channels above.
+                                </p>
+                                <div className="mt-3 flex flex-col gap-2">
                             <FormField
                                 control={control}
                                 name={`notifySettings.onCreate`}
@@ -1130,8 +1319,10 @@ export default function ScheduleStep2() {
                                     </FormItem>
                                 )}
                             />
+                                </div>
+                            </div>
                         </div>
-                    </div>
+                    </SectionCard>
                 </form>
                 {/* Preview Registration Form */}
                 <MyDialog
@@ -1178,6 +1369,39 @@ export default function ScheduleStep2() {
                         </MyButton>
                     </div>
                 </MyDialog>
+                <LiveSessionPreviewDialog
+                    open={previewOpen}
+                    onOpenChange={setPreviewOpen}
+                    submitting={isSubmitting}
+                    onConfirm={async () => {
+                        await handleSubmit(onSubmitClick, onError)();
+                        setPreviewOpen(false);
+                    }}
+                    timeZone={step1Data?.timeZone}
+                    accessType={accessType}
+                    sessionFeatures={{
+                        enableWaitingRoom: step1Data?.enableWaitingRoom,
+                        waitingRoomMinutes: step1Data?.openWaitingRoomBefore,
+                        allowRewind: step1Data?.allowRewind,
+                        allowPause: step1Data?.allowPause,
+                        enableFeedback: step1Data?.feedbackEnabled,
+                        recordSession: step1Data?.bbbRecord,
+                    }}
+                    notifications={{
+                        notifyBy: watch('notifyBy'),
+                        notifySettings: {
+                            onCreate: watch('notifySettings.onCreate'),
+                            beforeLiveTime: watch('notifySettings.beforeLiveTime'),
+                            onLive: watch('notifySettings.onLive'),
+                            onAttendance: watch('notifySettings.onAttendance'),
+                        },
+                    }}
+                    sessions={previewSessions}
+                    recurrenceBanner={previewRecurrenceBanner}
+                    topLevelDescription={step1Data?.description}
+                    courses={courses ?? []}
+                    sessionList={sessionList}
+                />
             </FormProvider>
             {/* Add Custom Field Dialog is now embedded inline via SharedAddCustomFieldDialog */}
         </>

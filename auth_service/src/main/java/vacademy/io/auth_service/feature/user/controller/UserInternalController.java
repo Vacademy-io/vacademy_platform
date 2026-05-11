@@ -7,6 +7,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.auth_service.core.util.CsvUtil;
 import vacademy.io.auth_service.feature.user.service.UserDetailService;
+import vacademy.io.auth_service.feature.user_resolution.service.UserResolutionService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.enums.UserRoleStatus;
@@ -24,6 +25,9 @@ public class UserInternalController {
 
     @Autowired
     private UserDetailService userDetailService;
+
+    @Autowired
+    private UserResolutionService userResolutionService;
 
     @PostMapping("/create-or-get-existing-by-id")
     @Transactional
@@ -88,6 +92,19 @@ public class UserInternalController {
             @RequestParam(value = "roles", required = false) List<String> roles,
             @RequestParam("query") String query) {
         return ResponseEntity.ok(userService.autoSuggestUsers(instituteId, roles, query));
+    }
+
+    /**
+     * Substring search on full_name / email / mobile_number, optionally scoped to
+     * an institute. Returns matching user IDs only — used by other services to
+     * pre-fetch IDs whose profile lives here, then join against their own tables
+     * (e.g. admin-core leads search). Capped at 500 ids by the underlying query.
+     */
+    @GetMapping("/search-ids")
+    public ResponseEntity<List<String>> searchUserIds(
+            @RequestParam("query") String query,
+            @RequestParam(value = "instituteId", required = false) String instituteId) {
+        return ResponseEntity.ok(userResolutionService.searchUserIdsByQuery(query, instituteId));
     }
 
 }

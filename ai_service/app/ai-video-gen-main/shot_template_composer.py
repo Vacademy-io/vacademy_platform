@@ -38,10 +38,15 @@ from shot_template_registry import get_registry, validate_params
 #   - KINETIC_TEXT  : word-by-word pipeline build (super_ultra)
 #   - KINETIC_TITLE : zoom-in convention with slam reveal
 #   - SOURCE_CLIP   : composites the user's uploaded video footage
+#   - IMAGE_CLIP    : LLM produces overlay HTML; post-Director injector
+#                     embeds the user's uploaded image URL. Templates
+#                     would produce generic HTML and bypass that injector,
+#                     leaving {{IMAGE_URL}} unsubstituted.
 _SPECIALIZED_SHOT_TYPES = frozenset({
     "KINETIC_TEXT",
     "KINETIC_TITLE",
     "SOURCE_CLIP",
+    "IMAGE_CLIP",
 })
 
 

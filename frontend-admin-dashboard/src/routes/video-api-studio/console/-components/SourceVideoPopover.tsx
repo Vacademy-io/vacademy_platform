@@ -2,10 +2,11 @@ import { useRef, useState } from 'react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Film, Upload, Loader2, Mic, Monitor } from 'lucide-react';
+import { Film, ImageIcon, Loader2, Mic, Monitor, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId } from '@/utils/userDetails';
+import type { InputAssetKind, InputAssetMode } from '../../-services/input-asset';
 import { IndexedVideoItem } from './ContextTray';
 
 interface SourceVideoPopoverProps {
@@ -20,8 +21,10 @@ interface SourceVideoPopoverProps {
 }
 
 const ACCEPTED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo'];
+const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024; // 500MB
-const MAX_SELECTED_SOURCES = 5;
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_SELECTED_SOURCES = 10;
 
 export function SourceVideoPopover({
     apiKey,
@@ -36,8 +39,9 @@ export function SourceVideoPopover({
     const { uploadFile, getPublicUrl } = useFileUpload();
 
     const [pendingFile, setPendingFile] = useState<File | null>(null);
+    const [pendingKind, setPendingKind] = useState<InputAssetKind>('video');
     const [pendingName, setPendingName] = useState('');
-    const [pendingMode, setPendingMode] = useState<'demo' | 'podcast'>('demo');
+    const [pendingMode, setPendingMode] = useState<InputAssetMode>('demo');
     const [isUploading, setIsUploading] = useState(false);
 
     const availableVideos = indexedVideos.filter((v) => !selectedIds.includes(v.id));
@@ -49,18 +53,27 @@ export function SourceVideoPopover({
         e.target.value = '';
         if (!file) return;
 
-        if (!ACCEPTED_VIDEO_TYPES.includes(file.type)) {
-            toast.error('Unsupported format. Use MP4, WebM, or MOV.');
-            return;
-        }
-        if (file.size > MAX_VIDEO_SIZE_BYTES) {
-            toast.error('File too large. Max 500MB.');
+        if (ACCEPTED_VIDEO_TYPES.includes(file.type)) {
+            if (file.size > MAX_VIDEO_SIZE_BYTES) {
+                toast.error('Video too large. Max 500MB.');
+                return;
+            }
+            setPendingKind('video');
+            setPendingMode('demo');
+        } else if (ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+            if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                toast.error('Image too large. Max 10MB.');
+                return;
+            }
+            setPendingKind('image');
+            setPendingMode('photo');
+        } else {
+            toast.error('Unsupported format. Use MP4/WebM/MOV or PNG/JPEG/WebP.');
             return;
         }
 
         setPendingFile(file);
         setPendingName(file.name.replace(/\.[^.]+$/, ''));
-        setPendingMode('demo');
     };
 
     const handleUploadConfirm = async () => {
@@ -71,7 +84,7 @@ export function SourceVideoPopover({
                 file: pendingFile,
                 setIsUploading: () => {},
                 userId: getUserId(),
-                source: 'AI_INPUT_VIDEO',
+                source: pendingKind === 'image' ? 'AI_INPUT_IMAGE' : 'AI_INPUT_VIDEO',
                 sourceId: 'ADMIN',
                 publicUrl: true,
             });
@@ -80,9 +93,10 @@ export function SourceVideoPopover({
             const sourceUrl = await getPublicUrl(fileId);
             if (!sourceUrl) throw new Error('Failed to get URL');
 
-            const { createInputVideo } = await import('../../-services/input-video');
-            await createInputVideo(apiKey, {
+            const { createInputAsset } = await import('../../-services/input-asset');
+            await createInputAsset(apiKey, {
                 name: pendingName.trim(),
+                kind: pendingKind,
                 mode: pendingMode,
                 source_url: sourceUrl,
             });
@@ -179,6 +193,11 @@ export function SourceVideoPopover({
                                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                         <span className="text-muted-foreground">+</span>
+                                        {v.kind === 'image' ? (
+                                            <ImageIcon className="size-3 shrink-0 text-muted-foreground" />
+                                        ) : (
+                                            <Film className="size-3 shrink-0 text-muted-foreground" />
+                                        )}
                                         <span className="flex-1 truncate">{v.name}</span>
                                         <span className="shrink-0 text-muted-foreground">
                                             {v.mode}
@@ -201,7 +220,7 @@ export function SourceVideoPopover({
                         )}
                     {atSelectionLimit && (
                         <p className="text-xs text-muted-foreground">
-                            Max {MAX_SELECTED_SOURCES} videos.
+                            Max {MAX_SELECTED_SOURCES} sources.
                         </p>
                     )}
 
@@ -210,7 +229,7 @@ export function SourceVideoPopover({
                         <input
                             ref={fileInputRef}
                             type="file"
-                            accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+                            accept="video/mp4,video/webm,video/quicktime,image/png,image/jpeg,image/webp,.mp4,.webm,.mov,.png,.jpg,.jpeg,.webp"
                             className="hidden"
                             onChange={handleFilePick}
                         />
@@ -224,32 +243,34 @@ export function SourceVideoPopover({
                                     className="w-full rounded-md border px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none"
                                     placeholder="Video name"
                                 />
-                                <div className="flex items-center gap-1">
+                                <div className="flex flex-wrap items-center gap-1">
                                     <span className="text-[10px] text-muted-foreground">Type:</span>
-                                    <button
-                                        type="button"
-                                        onClick={() => setPendingMode('demo')}
-                                        className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
-                                            pendingMode === 'demo'
-                                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
-                                                : 'text-muted-foreground hover:bg-muted'
-                                        }`}
-                                    >
-                                        <Monitor className="size-3" />
-                                        Demo
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setPendingMode('podcast')}
-                                        className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
-                                            pendingMode === 'podcast'
-                                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
-                                                : 'text-muted-foreground hover:bg-muted'
-                                        }`}
-                                    >
-                                        <Mic className="size-3" />
-                                        Podcast
-                                    </button>
+                                    {pendingKind === 'video' ? (
+                                        <>
+                                            <ModeButton
+                                                active={pendingMode === 'demo'}
+                                                onClick={() => setPendingMode('demo')}
+                                                Icon={Monitor}
+                                                label="Demo"
+                                            />
+                                            <ModeButton
+                                                active={pendingMode === 'podcast'}
+                                                onClick={() => setPendingMode('podcast')}
+                                                Icon={Mic}
+                                                label="Podcast"
+                                            />
+                                        </>
+                                    ) : (
+                                        (['photo', 'screenshot', 'diagram'] as const).map((m) => (
+                                            <ModeButton
+                                                key={m}
+                                                active={pendingMode === m}
+                                                onClick={() => setPendingMode(m)}
+                                                Icon={ImageIcon}
+                                                label={m.charAt(0).toUpperCase() + m.slice(1)}
+                                            />
+                                        ))
+                                    )}
                                 </div>
                                 <div className="flex gap-1.5">
                                     <button
@@ -282,12 +303,39 @@ export function SourceVideoPopover({
                                 className="flex w-full items-center justify-center gap-1.5 rounded-md border border-dashed p-2 text-xs text-muted-foreground transition-colors hover:border-indigo-400 hover:bg-indigo-50/50 hover:text-indigo-700 dark:hover:bg-indigo-950/30"
                             >
                                 <Upload className="size-3.5" />
-                                Upload new video (MP4 / WebM / MOV · max 500MB)
+                                Upload video (≤500MB) or image (≤10MB)
                             </button>
                         )}
                     </div>
                 </div>
             </PopoverContent>
         </Popover>
+    );
+}
+
+function ModeButton({
+    active,
+    onClick,
+    Icon,
+    label,
+}: {
+    active: boolean;
+    onClick: () => void;
+    Icon: typeof Mic;
+    label: string;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
+                active
+                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300'
+                    : 'text-muted-foreground hover:bg-muted'
+            }`}
+        >
+            <Icon className="size-3" />
+            {label}
+        </button>
     );
 }

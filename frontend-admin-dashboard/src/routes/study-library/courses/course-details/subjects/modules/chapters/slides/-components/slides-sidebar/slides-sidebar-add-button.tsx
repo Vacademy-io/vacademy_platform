@@ -40,7 +40,11 @@ import { useDialogStore } from '@/routes/study-library/courses/-stores/slide-add
 import { File, GameController, ClipboardText } from '@phosphor-icons/react';
 import { formatHTMLString } from '../slide-operations/formatHtmlString';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import { generateUniqueDocumentSlideTitle } from '../../-helper/slide-naming-utils';
+import {
+    buildAppendReorderPayload,
+    generateUniqueDocumentSlideTitle,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 import { toast } from 'sonner';
 import {
     createAssignmentSlidePayload,
@@ -143,27 +147,16 @@ export const ChapterSidebarAddButton = () => {
         closeVimeoDialog,
     } = useDialogStore();
 
-    // Function to reorder slides after adding a new one at the top
+    // Function to reorder slides after adding a new one at the bottom
     const reorderSlidesAfterNewSlide = async (newSlideId: string) => {
         try {
-            // Get current slides and reorder them
             const currentSlides = items || [];
             const newSlide = currentSlides.find((slide) => slide.id === newSlideId);
 
             if (!newSlide) return;
 
-            // Create new order: new slide at top (order 0), then existing slides
-            const reorderedSlides = [
-                { slide_id: newSlideId, slide_order: 0 },
-                ...currentSlides
-                    .filter((slide) => slide.id !== newSlideId)
-                    .map((slide, index) => ({
-                        slide_id: slide.id,
-                        slide_order: index + 1,
-                    })),
-            ];
+            const reorderedSlides = buildAppendReorderPayload(newSlideId, currentSlides);
 
-            // Update slide order in backend
             await updateSlideOrder({
                 chapterId: chapterId || '',
                 slideOrderPayload: reorderedSlides,
@@ -307,6 +300,8 @@ export const ChapterSidebarAddButton = () => {
             switch (val) {
                 case 'pdf':
                     return ct.pdf !== false;
+                case 'ppt':
+                    return ct.ppt !== false;
                 case 'doc':
                 case 'upload-doc':
                 case 'create-doc':
@@ -329,11 +324,11 @@ export const ChapterSidebarAddButton = () => {
                 case 'code-editor':
                     return ct.codeEditor !== false;
                 case 'audio':
-                    return true; // Audio slides are enabled by default
+                    return ct.audio !== false;
                 case 'scorm':
-                    return true; // SCORM slides are enabled by default
+                    return ct.scorm !== false;
                 case 'assessment':
-                    return true; // Assessment slides are enabled by default
+                    return ct.assessment !== false;
                 // presentation treated as a document-type control
                 case 'presentation':
                     return ct.document !== false;
@@ -399,7 +394,7 @@ export const ChapterSidebarAddButton = () => {
                         title: uniqueTitle,
                         image_file_id: '',
                         description: '',
-                        slide_order: 0, // Always insert at top
+                        slide_order: getNextSlideOrder(items || []),
                         document_slide: {
                             id: crypto.randomUUID(),
                             type: 'DOC',
@@ -468,7 +463,7 @@ export const ChapterSidebarAddButton = () => {
                         slides: null,
                     };
                     const payload = createPresentationSlidePayload(slideTypeObj, items || []);
-                    payload.slide_order = 0; // Always insert at top
+                    payload.slide_order = getNextSlideOrder(items || []);
 
                     const response = await addUpdateDocumentSlide(payload);
 
@@ -519,7 +514,7 @@ export const ChapterSidebarAddButton = () => {
                         title: uniqueTitle,
                         image_file_id: '',
                         description: 'Interactive Jupyter notebook environment',
-                        slide_order: 0, // Always insert at top
+                        slide_order: getNextSlideOrder(items || []),
                         document_slide: {
                             id: crypto.randomUUID(),
                             type: 'JUPYTER',
@@ -565,7 +560,7 @@ export const ChapterSidebarAddButton = () => {
                         title: uniqueTitle,
                         image_file_id: '',
                         description: 'Interactive Scratch programming environment',
-                        slide_order: 0, // Always insert at top
+                        slide_order: getNextSlideOrder(items || []),
                         document_slide: {
                             id: crypto.randomUUID(),
                             type: 'SCRATCH',
@@ -612,7 +607,7 @@ export const ChapterSidebarAddButton = () => {
                         title: uniqueTitle,
                         image_file_id: '',
                         description: 'Interactive code editing environment',
-                        slide_order: 0, // Always insert at top
+                        slide_order: getNextSlideOrder(items || []),
                         document_slide: {
                             id: crypto.randomUUID(),
                             type: 'CODE',
@@ -660,7 +655,7 @@ export const ChapterSidebarAddButton = () => {
                             image_file_id: payload.image_file_id || '',
                             description: payload.description,
                             status: payload.status,
-                            slide_order: 0,
+                            slide_order: payload.slide_order ?? 0,
                             video_slide: null,
                             document_slide: null,
                             question_slide: null,

@@ -208,6 +208,10 @@ export interface LiveCurrentGeneration {
     audioUrl?: string;
     wordsUrl?: string;
     scriptUrl?: string;
+    /** Final rendered MP4 URL — set when /urls/{video_id} returned video_url
+     *  (i.e. a previous render already completed). Lets the pipeline panel
+     *  show the "Download MP4" CTA on refresh without polling render status. */
+    videoMp4Url?: string;
     options: Omit<GenerateVideoRequest, 'prompt'>;
     tokenUsage?: TokenUsage | null;
     shotsCompleted?: number;
@@ -683,6 +687,7 @@ export function derivePipelineFromLive(
             audio: cg.audioUrl,
             words: cg.wordsUrl,
             timeline: cg.htmlUrl,
+            videoMp4: cg.videoMp4Url,
         },
     };
 }

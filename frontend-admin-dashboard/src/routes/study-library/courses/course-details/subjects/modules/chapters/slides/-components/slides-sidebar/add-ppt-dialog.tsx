@@ -18,6 +18,10 @@ import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
 import { CONVERT_PPT_TO_PDF_URL } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { useFileUpload } from '@/hooks/use-file-upload';
+import {
+    buildAppendReorderPayload,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
@@ -123,15 +127,7 @@ export const AddPptDialog = ({
             const newSlide = currentSlides.find((slide) => slide.id === newSlideId);
             if (!newSlide) return;
 
-            const reorderedSlides = [
-                { slide_id: newSlideId, slide_order: 0 },
-                ...currentSlides
-                    .filter((slide) => slide.id !== newSlideId)
-                    .map((slide, index) => ({
-                        slide_id: slide.id,
-                        slide_order: index + 1,
-                    })),
-            ];
+            const reorderedSlides = buildAppendReorderPayload(newSlideId, currentSlides);
 
             await updateSlideOrder({
                 chapterId: chapterId || '',
@@ -209,7 +205,7 @@ export const AddPptDialog = ({
                     title: form.getValues('pptTitle'),
                     image_file_id: '',
                     description: null,
-                    slide_order: 0,
+                    slide_order: getNextSlideOrder(items || []),
                     document_slide: {
                         id: crypto.randomUUID(),
                         type: 'PDF',

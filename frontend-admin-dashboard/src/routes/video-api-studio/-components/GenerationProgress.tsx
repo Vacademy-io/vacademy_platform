@@ -17,6 +17,7 @@ import {
     Volume2,
     Zap,
     AlertTriangle,
+    Square,
 } from 'lucide-react';
 
 interface GenerationProgressProps {
@@ -37,6 +38,9 @@ interface GenerationProgressProps {
     };
     recentErrors?: Array<{ shot_index: number; shot_type?: string; error: string; retrying: boolean }>;
     shotPlan?: Array<{ shot_index: number; shot_type: string; start_time: number; end_time: number; duration_s: number; narration_excerpt?: string }>;
+    /** Hand the workspace's `handleAbort` here to surface a Stop button.
+     *  Undefined → button is hidden (e.g. during completion / failure). */
+    onAbort?: () => void;
 }
 
 const STAGES: {
@@ -434,6 +438,7 @@ export function GenerationProgress({
     cumulativeTokens,
     recentErrors,
     shotPlan,
+    onAbort,
 }: GenerationProgressProps) {
     const currentIndex = getStageIndex(currentStage);
     const contentLabel = getContentTypeLabel(contentType);
@@ -445,15 +450,57 @@ export function GenerationProgress({
         currentStage === 'HTML' &&
         (shotsTotal != null || cumulativeTokens != null || (shotPlan?.length ?? 0) > 0);
 
+    const [stopping, setStopping] = useState(false);
+
+    const handleStopClick = () => {
+        if (!onAbort || stopping) return;
+        // Confirm so a stray click doesn't waste a generation. Refund makes
+        // it cheaper than a real loss but the user still pays in time and
+        // (for partial work) a small amount of unrefundable LLM cost on the
+        // ≤ 8 in-flight shots that finish after we send the stop.
+        const ok = window.confirm(
+            'Stop this generation? Any credits charged so far will be refunded.'
+        );
+        if (!ok) return;
+        setStopping(true);
+        onAbort();
+        // The workspace tears down state right after onAbort, which unmounts
+        // this component — so we don't need to reset `stopping` ourselves.
+    };
+
     return (
         <div className="w-full space-y-5">
             {/* ── Progress bar ── */}
             <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center justify-between gap-3 text-sm">
                     <span className="font-medium">
                         Generating {contentLabel.replace(/^[^\s]+\s/, '')}…
                     </span>
-                    <span className="tabular-nums text-muted-foreground">{percentage}%</span>
+                    <div className="flex items-center gap-2">
+                        <span className="tabular-nums text-muted-foreground">{percentage}%</span>
+                        {onAbort && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={handleStopClick}
+                                disabled={stopping}
+                                className="h-7 gap-1 border-red-200 px-2 text-xs text-red-600 hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                                title="Stop the in-flight generation and refund credits"
+                            >
+                                {stopping ? (
+                                    <>
+                                        <Loader2 className="size-3 animate-spin" />
+                                        Stopping…
+                                    </>
+                                ) : (
+                                    <>
+                                        <Square className="size-3 fill-current" />
+                                        Stop
+                                    </>
+                                )}
+                            </Button>
+                        )}
+                    </div>
                 </div>
                 <Progress value={percentage} className="h-1.5" />
             </div>

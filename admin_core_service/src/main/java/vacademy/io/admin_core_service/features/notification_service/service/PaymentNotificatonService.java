@@ -253,4 +253,100 @@ public class PaymentNotificatonService {
             return (T) "";
         return val;
     }
+
+    // ========================================================================
+    // AI Credit Pack confirmation email (v1: basic HTML body, no PDF attachment)
+    // ========================================================================
+
+    /**
+     * Send a confirmation email after a successful AI credit pack purchase.
+     * Called from {@code PlatformRazorpayWebHookService.handleCreditPackPayment}
+     * once the credits have been granted and the {@code platform_invoice} row
+     * persisted.
+     *
+     * v1 scope: minimal HTML body, no PDF attachment. v1.1 will attach the
+     * rendered invoice PDF once {@code PlatformInvoiceService} populates
+     * {@code platform_invoice.pdf_s3_url}.
+     *
+     * @param instituteId      buyer institute (for tenant routing in unified)
+     * @param recipientEmail   email to deliver to (buyer's clicker email)
+     * @param recipientUserId  user id of the recipient (for placeholders)
+     * @param invoiceNumber    e.g. "INV-AICRED-202605-0001"
+     * @param creditsGranted   credits added to the institute's balance
+     * @param totalAmountMajor "₹548.70" / "$25.00"
+     * @param packName         e.g. "Pro"
+     * @return true on success, false on any failure (Sentry-logged)
+     */
+    public boolean sendCreditPackConfirmation(
+            String instituteId,
+            String recipientEmail,
+            String recipientUserId,
+            String invoiceNumber,
+            String creditsGranted,
+            String totalAmountMajor,
+            String packName) {
+        if (instituteId == null || recipientEmail == null || invoiceNumber == null) {
+            return false;
+        }
+
+        Institute institute = instituteService.findById(instituteId);
+        if (institute == null) {
+            return false;
+        }
+
+        String body = buildCreditPackEmailBody(
+                institute.getInstituteName(), invoiceNumber, creditsGranted, totalAmountMajor, packName);
+
+        NotificationDTO notification = new NotificationDTO();
+        notification.setBody(body);
+        notification.setNotificationType(CommunicationType.EMAIL.name());
+        notification.setSubject("Your AI credits are ready — invoice " + invoiceNumber);
+
+        NotificationToUserDTO recipient = new NotificationToUserDTO();
+        recipient.setUserId(recipientUserId);
+        recipient.setChannelId(recipientEmail);
+        recipient.setPlaceholders(new HashMap<>());
+        notification.setUsers(List.of(recipient));
+
+        try {
+            notificationService.sendEmailViaUnified(notification, instituteId);
+            return true;
+        } catch (Exception e) {
+            SentryLogger.SentryEventBuilder.error(e)
+                    .withMessage("Failed to send AI credit pack confirmation email")
+                    .withTag("notification.type", "EMAIL")
+                    .withTag("email.type", "AI_CREDIT_PACK_CONFIRMATION")
+                    .withTag("institute.id", instituteId)
+                    .withTag("user.id", recipientUserId == null ? "anonymous" : recipientUserId)
+                    .withTag("user.email", recipientEmail)
+                    .withTag("invoice.number", invoiceNumber)
+                    .withTag("operation", "sendCreditPackConfirmation")
+                    .send();
+            return false;
+        }
+    }
+
+    private static String buildCreditPackEmailBody(
+            String instituteName, String invoiceNumber, String credits, String total, String packName) {
+        String safeInstitute = StringUtils.hasText(instituteName) ? instituteName : "your institute";
+        String safePack = StringUtils.hasText(packName) ? packName : "AI Credits";
+        return "<!DOCTYPE html><html><body style=\"font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:#111;\">"
+                + "<div style=\"max-width:560px;margin:24px auto;padding:24px;border:1px solid #e5e7eb;border-radius:12px;\">"
+                + "<h2 style=\"margin:0 0 16px;color:#7c3aed;\">Payment received</h2>"
+                + "<p>Thanks — your <strong>" + safePack + "</strong> purchase for <strong>" + safeInstitute
+                + "</strong> went through.</p>"
+                + "<table style=\"width:100%;border-collapse:collapse;margin:16px 0;\">"
+                + "<tr><td style=\"padding:6px 0;color:#6b7280;\">Credits added</td>"
+                + "<td style=\"padding:6px 0;text-align:right;font-weight:600;\">" + credits + "</td></tr>"
+                + "<tr><td style=\"padding:6px 0;color:#6b7280;\">Amount paid</td>"
+                + "<td style=\"padding:6px 0;text-align:right;font-weight:600;\">" + total + "</td></tr>"
+                + "<tr><td style=\"padding:6px 0;color:#6b7280;\">Invoice number</td>"
+                + "<td style=\"padding:6px 0;text-align:right;font-family:ui-monospace,monospace;font-size:13px;\">"
+                + invoiceNumber + "</td></tr>"
+                + "</table>"
+                + "<p style=\"color:#6b7280;font-size:13px;margin-top:24px;\">"
+                + "Your credits are already available in the AI Credits panel. "
+                + "A GST-compliant invoice will be available for download from your billing dashboard shortly.</p>"
+                + "</div></body></html>";
+    }
 }

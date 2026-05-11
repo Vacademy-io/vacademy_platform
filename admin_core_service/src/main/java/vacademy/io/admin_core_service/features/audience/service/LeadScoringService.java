@@ -55,6 +55,7 @@ public class LeadScoringService {
             "TWITTER_ADS", 70,
             "WEBSITE", 70,
             "WALK_IN", 85,
+            "AUDIENCE_CAMPAIGN", 70,
             "MANUAL", 40
     );
 
@@ -95,6 +96,17 @@ public class LeadScoringService {
                                             String enquiryId) {
         logger.debug("Calculating lead score for response: {}", audienceResponseId);
 
+        // Pre-fetch the response so engagement can also count cross-stage events
+        // (notes/calls logged from the lead-profile drawer carry student_user_id but
+        // not type='AUDIENCE_RESPONSE', so they would otherwise be missed).
+        AudienceResponse responseForScoring = audienceResponseRepository.findById(audienceResponseId).orElse(null);
+        String userIdForEngagement = null;
+        if (responseForScoring != null) {
+            userIdForEngagement = responseForScoring.getStudentUserId() != null
+                    ? responseForScoring.getStudentUserId()
+                    : responseForScoring.getUserId();
+        }
+
         // Factor 1: Source Quality (0-100)
         int sourceScore = calculateSourceScore(sourceType);
 
@@ -105,7 +117,7 @@ public class LeadScoringService {
         int recencyScore = calculateRecencyScore(audienceResponseId);
 
         // Factor 4: Engagement (0-100)
-        int engagementScore = calculateEngagementScore(enquiryId, audienceResponseId);
+        int engagementScore = calculateEngagementScore(enquiryId, audienceResponseId, userIdForEngagement);
 
         // Weighted sum
         int rawScore = (sourceScore * DEFAULT_SOURCE_WEIGHT
@@ -153,11 +165,10 @@ public class LeadScoringService {
 
         // Asynchronously update the user-level lead profile
         try {
-            AudienceResponse response = audienceResponseRepository.findById(audienceResponseId).orElse(null);
-            if (response != null) {
-                String profileUserId = response.getUserId() != null
-                        ? response.getUserId()
-                        : response.getStudentUserId();
+            if (responseForScoring != null) {
+                String profileUserId = responseForScoring.getUserId() != null
+                        ? responseForScoring.getUserId()
+                        : responseForScoring.getStudentUserId();
                 if (profileUserId != null) {
                     userLeadProfileService.buildOrUpdateProfile(profileUserId, instituteId);
                 }
@@ -307,10 +318,14 @@ public class LeadScoringService {
 
     /**
      * Factor 4: Engagement (0-100)
-     * Based on number of timeline events (notes, status changes, etc.)
-     * 0 events = 0, 1 event = 30, 2 events = 50, 3 events = 70, 5+ events = 100
+     * Counts timeline events from three sources:
+     *  - enquiry-tied events (type='ENQUIRY', type_id=enquiryId)
+     *  - response-tied events (type='AUDIENCE_RESPONSE', type_id=audienceResponseId)
+     *  - cross-stage events tagged on the student (student_user_id=userId) — this is
+     *    where notes/calls/meetings logged from the lead-profile drawer land.
+     * Curve: 0 events = 0, 1 event = 30, 2 events = 50, 3-4 events = 70, 5+ events = 100.
      */
-    private int calculateEngagementScore(String enquiryId, String audienceResponseId) {
+    private int calculateEngagementScore(String enquiryId, String audienceResponseId, String userId) {
         long eventCount = 0;
 
         // Count timeline events for the enquiry
@@ -320,6 +335,13 @@ public class LeadScoringService {
 
         // Also count timeline events for the audience response
         eventCount += timelineEventRepository.countByTypeAndTypeId("AUDIENCE_RESPONSE", audienceResponseId);
+
+        // Cross-stage events stamped with student_user_id (notes/calls/meetings from
+        // the lead-profile drawer). These are tagged with type='STUDENT' or similar
+        // and would otherwise be invisible to the count above.
+        if (StringUtils.hasText(userId)) {
+            eventCount += timelineEventRepository.countByStudentUserId(userId);
+        }
 
         if (eventCount == 0) return 0;
         if (eventCount == 1) return 30;

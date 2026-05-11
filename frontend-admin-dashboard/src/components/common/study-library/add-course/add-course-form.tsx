@@ -379,6 +379,10 @@ export const AddCourseForm = ({
                                 }
                             }
 
+                            // Always seed DEFAULT subject/module/chapter per depth.
+                            // Copy-from-batch is now a separate user action on the
+                            // course-details page (Outline / Content Structure tab),
+                            // scoped to the currently-viewed package_session.
                             if (formattedData.course_depth === 2) {
                                 const subjectResponse = await addSubjectMutation.mutateAsync({
                                     subject: newSubject,

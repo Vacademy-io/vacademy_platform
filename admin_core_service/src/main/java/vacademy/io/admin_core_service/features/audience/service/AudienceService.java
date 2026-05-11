@@ -22,8 +22,13 @@ import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendReque
 import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendResponse;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService;
+import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService.EffectiveAccess;
+import vacademy.io.admin_core_service.features.audience.service.AudienceRoleAccessService.Mode;
 import vacademy.io.common.auth.dto.ParentWithChildDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.UserRoleRepository;
+import org.springframework.security.core.GrantedAuthority;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
@@ -73,6 +78,9 @@ public class AudienceService {
 
     @Autowired
     private AudienceRepository audienceRepository;
+
+    @Autowired
+    private AudienceRoleAccessService audienceRoleAccessService;
 
     @Autowired
     private AudienceResponseRepository audienceResponseRepository;
@@ -312,14 +320,37 @@ public class AudienceService {
     }
 
     /**
-     * Get all campaigns for an institute with filters
+     * Get all campaigns for an institute with filters.
+     *
+     * <p>Caller-level access scoping mirrors {@link #getLeads}: a user whose
+     * effective access is {@code AUDIENCE_LIST} only sees the campaigns they
+     * were granted; admins / root see everything. {@code COUNSELOR} mode does
+     * not narrow the campaign list (counselors still see all campaign cards but
+     * only their own responses inside).
      */
     @Transactional(readOnly = true)
-    public Page<AudienceDTO> getCampaigns(AudienceFilterDTO filterDTO) {
+    public Page<AudienceDTO> getCampaigns(AudienceFilterDTO filterDTO, CustomUserDetails user) {
         Pageable pageable = PageRequest.of(
                 filterDTO.getPage() != null ? filterDTO.getPage() : 0,
                 filterDTO.getSize() != null ? filterDTO.getSize() : 20,
                 Sort.by(Sort.Direction.DESC, "createdAt"));
+
+        EffectiveAccess access = audienceRoleAccessService.resolveForCaller(
+                user, filterDTO.getInstituteId());
+
+        // JPQL `IN :collection` requires a non-null binding even when the
+        // predicate is gated by the boolean flag — pass empty list as default.
+        List<String> allowedAudienceIds = Collections.emptyList();
+        boolean restrictByList = false;
+        if (access.getMode() == Mode.AUDIENCE_LIST) {
+            List<String> allowed = access.getAllowedAudienceIds();
+            if (allowed == null || allowed.isEmpty()) {
+                // Admin granted no lists → user sees no campaigns.
+                return Page.empty(pageable);
+            }
+            allowedAudienceIds = allowed;
+            restrictByList = true;
+        }
 
         Page<Audience> audiences = audienceRepository.findAudiencesWithFilters(
                 filterDTO.getInstituteId(),
@@ -330,6 +361,8 @@ public class AudienceService {
                 filterDTO.getStartDateFromLocal() != null,
                 filterDTO.getStartDateToLocal(),
                 filterDTO.getStartDateToLocal() != null,
+                allowedAudienceIds,
+                restrictByList,
                 pageable);
 
         return audiences.map(audience -> AudienceDTO.builder()
@@ -413,6 +446,25 @@ public class AudienceService {
                             requestDTO.getCustomFieldValues(),
                             audience.getInstituteId(),
                             audience.getId());
+                }
+
+                // 3b. Calculate initial lead score (real-time).
+                // Custom fields are saved first so the completeness factor sees them.
+                // Without this call no LeadScore row is ever created — campaign_count
+                // and best_score on UserLeadProfile would stay at 0 forever for every
+                // lead that comes through this endpoint.
+                try {
+                    leadScoringService.calculateAndSaveScore(
+                            savedResponse.getId(),
+                            savedResponse.getAudienceId(),
+                            instituteId,
+                            savedResponse.getSourceType(),
+                            savedResponse.getEnquiryId()
+                    );
+                } catch (Exception e) {
+                    logger.error("Failed to calculate initial lead score for response {}: {}",
+                            savedResponse.getId(), e.getMessage());
+                    // Non-blocking — lead is still saved even if scoring fails
                 }
 
                 // 4. Build custom field map for email
@@ -698,6 +750,23 @@ public class AudienceService {
                             requestDTO.getCustomFieldValues(),
                             audience.getInstituteId(),
                             audience.getId());
+                }
+
+                // 3b. Calculate initial lead score (real-time).
+                // Same fix as v1 submitLead — without this, no LeadScore row is created
+                // and the user's profile shows campaign_count=0, best_score=0.
+                try {
+                    leadScoringService.calculateAndSaveScore(
+                            savedResponse.getId(),
+                            savedResponse.getAudienceId(),
+                            instituteId,
+                            savedResponse.getSourceType(),
+                            savedResponse.getEnquiryId()
+                    );
+                } catch (Exception e) {
+                    logger.error("[V2] Failed to calculate initial lead score for response {}: {}",
+                            savedResponse.getId(), e.getMessage());
+                    // Non-blocking
                 }
 
                 // 4. Build custom field map for email (to pass to workflow)
@@ -1382,10 +1451,21 @@ public class AudienceService {
     }
 
     /**
-     * Get all leads for a campaign with filters
+     * Get all leads for a campaign with filters.
+     * <p>
+     * Caller-level access scoping (Phase 1 of role-based filtering):
+     * <ul>
+     *   <li>ADMIN / root user → sees every lead, may explicitly filter by
+     *       {@code assignedCounselorId} or by lead tier.</li>
+     *   <li>COUNSELOR (without ADMIN) → automatically scoped to leads where the
+     *       linked counselor is the caller, regardless of what the request body
+     *       sent for {@code assignedCounselorId}.</li>
+     *   <li>Any other role → unchanged (no auto-scoping); per-resource list
+     *       access will land in a later phase.</li>
+     * </ul>
      */
     @Transactional(readOnly = true)
-    public Page<LeadDetailDTO> getLeads(LeadFilterDTO filterDTO) {
+    public Page<LeadDetailDTO> getLeads(LeadFilterDTO filterDTO, CustomUserDetails user) {
         Pageable pageable = PageRequest.of(
                 filterDTO.getPage() != null ? filterDTO.getPage() : 0,
                 filterDTO.getSize() != null ? filterDTO.getSize() : 50);
@@ -1394,9 +1474,63 @@ public class AudienceService {
         String overallStatusStr = filterDTO.getOverallStatuses() != null && !filterDTO.getOverallStatuses().isEmpty()
                 ? String.join(",", filterDTO.getOverallStatuses()) : null;
 
+        // Caller-level access scoping driven by the institute's
+        // AUDIENCE_ROLE_ACCESS setting. Admin / root resolve to DEFAULT;
+        // pure counselors are auto-scoped; AUDIENCE_LIST roles are restricted
+        // to their granted audience ids.
+        EffectiveAccess access = audienceRoleAccessService.resolveForCaller(
+                user, filterDTO.getInstituteId());
+
+        if (access.getMode() == Mode.COUNSELOR && user != null && user.getUserId() != null) {
+            // Force-scope: ignore whatever assignedCounselorId the request body
+            // sent — counselors only see leads they're linked to.
+            filterDTO.setAssignedCounselorId(user.getUserId());
+        }
+
+        String allowedAudienceIdsCsv = null;
+        if (access.getMode() == Mode.AUDIENCE_LIST) {
+            List<String> allowed = access.getAllowedAudienceIds();
+            if (allowed == null || allowed.isEmpty()) {
+                // Admin granted no lists → user sees nothing (intentional lock-out).
+                return Page.empty(pageable);
+            }
+            allowedAudienceIdsCsv = String.join(",", allowed);
+            String requestedAudienceId = filterDTO.getAudienceId();
+            if (requestedAudienceId != null && !requestedAudienceId.isBlank()
+                    && !allowed.contains(requestedAudienceId)) {
+                // Punching through to a campaign they weren't granted.
+                return Page.empty(pageable);
+            }
+        }
+
+        // Conversion-status filter — defaults to EXCLUDE_CONVERTED so leads
+        // that have been enrolled into a course don't clutter the active-leads
+        // listing. Callers must opt into ONLY_CONVERTED or ALL to see them.
+        String conversionStatusFilter = filterDTO.getConversionStatusFilter();
+
+        // Cross-service search expansion. Leads created via the simple submit flow
+        // store the user's name/email/mobile on the User row in auth_service, not
+        // on audience_response.parent_*. So a substring search like "cold" against
+        // ar.parent_* misses those users entirely. We resolve the gap by asking
+        // auth_service for matching user IDs first, then OR'ing them into the
+        // audience-response filter via :searchUserIdsCsv. Empty/blank search → null
+        // CSV → predicate behaves exactly as before for non-search queries.
+        String searchUserIdsCsv = null;
+        String rawSearch = filterDTO.getSearchQuery();
+        if (rawSearch != null && !rawSearch.isBlank()) {
+            try {
+                List<String> ids = authService.searchUserIdsByQuery(rawSearch, filterDTO.getInstituteId());
+                if (ids != null && !ids.isEmpty()) {
+                    searchUserIdsCsv = String.join(",", ids);
+                }
+            } catch (Exception e) {
+                logger.warn("auth-service user search failed for query='{}': {}", rawSearch, e.getMessage());
+            }
+        }
+
         // Cross-audience path: when no audienceId is supplied, return leads
         // across every campaign in the institute. Used by the "Recent Leads"
-        // view; only date range and search filter apply.
+        // view.
         boolean crossAudience = filterDTO.getAudienceId() == null
                 || filterDTO.getAudienceId().isBlank();
         if (crossAudience && filterDTO.getInstituteId() != null
@@ -1406,9 +1540,19 @@ public class AudienceService {
                     filterDTO.getSubmittedFromLocal(),
                     filterDTO.getSubmittedToLocal(),
                     filterDTO.getSearchQuery(),
+                    searchUserIdsCsv,
+                    filterDTO.getLeadTier(),
+                    filterDTO.getAssignedCounselorId(),
+                    allowedAudienceIdsCsv,
+                    conversionStatusFilter,
                     pageable);
             return mapResponsesToLeadDetails(all);
         }
+
+        // Serialize dropdown filters to a JSON array string the native query
+        // can introspect via jsonb_array_elements. Empty list / null both
+        // disable the predicate so existing behaviour is preserved.
+        String customFieldFiltersJson = serializeCustomFieldFilters(filterDTO.getCustomFieldFilters());
 
         Page<AudienceResponse> responses = audienceResponseRepository.findLeadsWithFilters(
                 filterDTO.getAudienceId(),
@@ -1418,17 +1562,42 @@ public class AudienceService {
                 filterDTO.getSubmittedToLocal(),
                 filterDTO.getExcludeDuplicates(),
                 filterDTO.getSearchQuery(),
+                searchUserIdsCsv,
                 filterDTO.getMinLeadScore(),
                 filterDTO.getMaxLeadScore(),
                 filterDTO.getLeadTier(),
                 filterDTO.getAssignedCounselorId(),
                 filterDTO.getIsUnassigned(),
                 overallStatusStr,
+                customFieldFiltersJson,
+                conversionStatusFilter,
                 filterDTO.getSortBy(),
                 filterDTO.getSortDirection(),
                 pageable);
 
         return mapResponsesToLeadDetails(responses);
+    }
+
+    private String serializeCustomFieldFilters(List<LeadFilterDTO.CustomFieldFilter> filters) {
+        if (filters == null || filters.isEmpty()) {
+            return null;
+        }
+        // Drop entries that are missing either side; the SQL EXISTS check
+        // would otherwise reduce the result set to zero on bad input.
+        List<LeadFilterDTO.CustomFieldFilter> sanitized = filters.stream()
+                .filter(f -> f != null
+                        && f.getFieldId() != null && !f.getFieldId().isBlank()
+                        && f.getValue() != null && !f.getValue().isEmpty())
+                .collect(Collectors.toList());
+        if (sanitized.isEmpty()) {
+            return null;
+        }
+        try {
+            return new ObjectMapper().writeValueAsString(sanitized);
+        } catch (Exception e) {
+            logger.warn("Failed to serialize customFieldFilters; ignoring filter", e);
+            return null;
+        }
     }
 
     private Page<LeadDetailDTO> mapResponsesToLeadDetails(Page<AudienceResponse> responses) {

@@ -1,5 +1,6 @@
 package vacademy.io.media_service.dto;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
@@ -109,7 +110,23 @@ public class AiGeneratedQuestionJsonDto {
     }
 
     public enum DifficultyLevel {
-        EASY, MEDIUM, HARD, easy, medium, hard
+        EASY, MEDIUM, HARD, easy, medium, hard;
+
+        @JsonCreator
+        public static DifficultyLevel fromValue(String value) {
+            if (value == null) return null;
+            switch (value.trim().toLowerCase()) {
+                case "easy":
+                    return EASY;
+                case "medium":
+                    return MEDIUM;
+                case "hard":
+                case "difficult":
+                    return HARD;
+                default:
+                    return null;
+            }
+        }
     }
 
     // Inner classes

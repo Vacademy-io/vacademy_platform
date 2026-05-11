@@ -22,6 +22,7 @@ import { StudentEnquiry } from './student-enquiry/student-enquiry';
 import { StudentApplication } from './student-application/student-application';
 import { StudentLeadProfile } from './student-lead-profile/student-lead-profile';
 import { StudentFullHistory } from './student-full-history/student-full-history';
+import { LeadFormResponseCard } from '@/routes/audience-manager/list/-components/campaign-users/lead-form-response-card';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ErrorBoundary } from '@/components/core/dashboard-loader';
@@ -371,6 +372,11 @@ export const StudentSidebar = ({
                             </div>
                         </div>
                     </div>
+                    {/* Audience-form responses card — only on the Lead tab.
+                        Renders only when the side view was opened from a lead
+                        row (campaign-users / recent-leads); manage-students
+                        rows don't carry the attached metadata. */}
+                    {category === 'lead' && <LeadFormResponseCard />}
                     <ErrorBoundary>
                         {category === 'courses' && tabSettings?.coursesTab && (
                             <StudentCourses

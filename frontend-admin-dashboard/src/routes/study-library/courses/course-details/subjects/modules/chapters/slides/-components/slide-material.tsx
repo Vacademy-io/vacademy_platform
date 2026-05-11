@@ -150,7 +150,6 @@ function estimatePageCount(htmlString: string): number {
     }
 }
 import ScormSlidePreview from './scorm-slide-preview';
-import AssessmentSlidePreview from './assessment-slide-preview';
 
 export const SlideMaterial = ({
     setGetCurrentEditorHTMLContent,
@@ -240,7 +239,6 @@ export const SlideMaterial = ({
             typeof msg === 'string' &&
             (msg.includes('Cannot resolve a DOM node from Slate node') ||
                 msg.includes('Cannot resolve a DOM point from Slate point'));
-        const controller = new AbortController();
         const handler = (event: ErrorEvent): void => {
             if (isStaleSlateDomError(event.error?.message)) {
                 event.preventDefault();
@@ -252,8 +250,8 @@ export const SlideMaterial = ({
                 console.warn('[Yoopta] Suppressed vendor DOM resolve error during paste/transform');
             }
         };
-        window.addEventListener('error', handler, { signal: controller.signal });
-        return () => controller.abort();
+        window.addEventListener('error', handler);
+        return () => window.removeEventListener('error', handler);
     }, [editor]);
 
     const selectionRef = useRef<HTMLDivElement | null>(null);
@@ -300,22 +298,17 @@ export const SlideMaterial = ({
             setSidebarOpen(true);
         }
     }, [openDoubt, setSidebarOpen]);
-    const {
-        addUpdateDocumentSlide,
-        addUpdateQuizSlide,
-        addUpdateAudioSlide,
-        addUpdateScormSlide,
-        addUpdateAssessmentSlide,
-    } = useSlidesMutations(
-        chapterId || '',
-        moduleId || '',
-        subjectId || '',
-        getPackageSessionId({
-            courseId: courseId || '',
-            levelId: levelId || '',
-            sessionId: sessionId || '',
-        }) || ''
-    );
+    const { addUpdateDocumentSlide, addUpdateQuizSlide, addUpdateAudioSlide, addUpdateScormSlide } =
+        useSlidesMutations(
+            chapterId || '',
+            moduleId || '',
+            subjectId || '',
+            getPackageSessionId({
+                courseId: courseId || '',
+                levelId: levelId || '',
+                sessionId: sessionId || '',
+            }) || ''
+        );
     const { addUpdateVideoSlide } = useSlidesMutations(
         chapterId || '',
         moduleId || '',
@@ -355,12 +348,6 @@ export const SlideMaterial = ({
     const EditorWithPlaceholder = ({ initialIsEmpty }: { initialIsEmpty: boolean }) => {
         const [showPlaceholder, setShowPlaceholder] = useState(initialIsEmpty);
         const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-        useEffect(() => {
-            return () => {
-                if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-            };
-        }, []);
 
         useEffect(() => {
             setShowPlaceholder(initialIsEmpty);
@@ -761,7 +748,7 @@ export const SlideMaterial = ({
                         ) {
                             return { ...slateEl, children: [{ text: '' }] };
                         }
-                        return processNode(slateEl);
+                        return slateEl;
                     });
                 }
             }
@@ -780,7 +767,7 @@ export const SlideMaterial = ({
                         }
                         return normalized;
                     }
-                    return processNode(child);
+                    return child;
                 });
                 if (newNode.children.length === 0) {
                     newNode.children = [{ text: '' }];
@@ -899,8 +886,9 @@ export const SlideMaterial = ({
     };
 
     const getCurrentEditorHTMLContent: () => string = () => {
+        const data = editor.getEditorValue();
         try {
-            const htmlString = html.serialize(editor, editor.children);
+            const htmlString = html.serialize(editor, data);
             const formatted = formatHTMLString(htmlString);
             // Keep the last-known-good snapshot in sync so future serialize
             // failures (e.g. the Yoopta accordion "Cannot find descendant
@@ -1062,7 +1050,7 @@ export const SlideMaterial = ({
                 // For non-admin users with hidePublishButtons=true, auto-publish presentations
                 if (hidePublishButtons) {
                     newStatus = 'PUBLISHED';
-
+                    console.log('🎨 Auto-publishing presentation for non-admin user');
                     // Show toast notification for auto-publish and trigger approval button
                     if (activeItem.status !== 'PUBLISHED') {
                         import('sonner').then(({ toast }) => {
@@ -1165,9 +1153,9 @@ export const SlideMaterial = ({
             // Process images in HTML content before saving
             let processedHtmlString = htmlString;
             if (containsBase64Images(htmlString)) {
-
+                console.log('Processing base64 images in DOC content...');
                 const imageSize = getBase64ImagesSize(htmlString);
-
+                console.log(`Base64 images size: ${Math.round(imageSize / 1024)}KB`);
 
                 const { processedHtml, uploadedImages, failedUploads } =
                     await processHtmlImages(htmlString);
@@ -1177,7 +1165,7 @@ export const SlideMaterial = ({
                     toast.error(`Warning: ${failedUploads} images failed to upload`);
                 }
                 if (uploadedImages > 0) {
-
+                    console.log(`Successfully processed ${uploadedImages} images`);
                 }
             }
 
@@ -1697,7 +1685,6 @@ export const SlideMaterial = ({
                         <CodeEditorSlide
                             key={`code-editor-${activeItem.id}`}
                             codeData={codeData}
-                            slideId={activeItem.id}
                             // Allow editing even in PUBLISHED when non-admin flow hides publish buttons
                             isEditable={!isLearnerView && (hidePublishButtons || true)}
                             onDataChange={async (updatedCodeData) => {
@@ -1931,18 +1918,6 @@ export const SlideMaterial = ({
             return;
         }
 
-        // Handle ASSESSMENT slides
-        if (activeItem.source_type?.toUpperCase() === 'ASSESSMENT') {
-            setContent(
-                <AssessmentSlidePreview
-                    key={activeItem.id}
-                    activeItem={activeItem}
-                    isLearnerView={isLearnerView}
-                />
-            );
-            return;
-        }
-
         // Fallback
         setContent(
             <div className="flex h-[500px] flex-col items-center justify-center rounded-lg py-10">
@@ -2167,7 +2142,7 @@ export const SlideMaterial = ({
                 try {
                     // For non-admin users, use custom save function if available
                     if (customSaveFunction && slide) {
-
+                        console.log('🎨 Using custom save function for presentation');
                         await customSaveFunction(slide);
                         return;
                     }
@@ -2303,9 +2278,9 @@ export const SlideMaterial = ({
             let processedHtmlString = currentHtml;
             let uploadedImagesCount = 0;
             if (containsBase64Images(currentHtml)) {
-
+                console.log('Processing base64 images in DOC content...');
                 const imageSize = getBase64ImagesSize(currentHtml);
-
+                console.log(`Base64 images size: ${Math.round(imageSize / 1024)}KB`);
 
                 const { processedHtml, uploadedImages, failedUploads } =
                     await processHtmlImages(currentHtml);
@@ -2316,7 +2291,7 @@ export const SlideMaterial = ({
                     toast.error(`Warning: ${failedUploads} images failed to upload`);
                 }
                 if (uploadedImages > 0) {
-
+                    console.log(`Successfully processed ${uploadedImages} images`);
                     toast.success(`Slide saved with ${uploadedImages} images uploaded!`);
                 }
             }
@@ -2509,7 +2484,7 @@ export const SlideMaterial = ({
 
             // Use custom save function if provided (for non-admin users)
             if (customSaveFunction && activeItem) {
-
+                console.log('🔄 Using custom save function for non-admin');
                 await customSaveFunction(activeItem);
                 return; // Don't show additional toast as custom function handles it
             }
@@ -2623,33 +2598,12 @@ export const SlideMaterial = ({
                 <div className="sticky top-0 z-50 -mx-2 -mt-2 flex flex-wrap items-center justify-between gap-1 border-b border-neutral-200 bg-white/80 px-2 py-1 shadow-sm backdrop-blur-sm sm:-mx-3 sm:-mt-3 sm:px-3 sm:py-1.5 md:-mx-4 md:-mt-4 md:flex-nowrap md:gap-3 md:px-4 md:py-2.5 lg:-mx-7 lg:-mt-7 lg:gap-4 lg:px-7 lg:py-3">
                     <div className="w-full min-w-0 md:w-auto md:flex-1">
                         {isEditing ? (
-                            <div className="flex min-w-0 items-center gap-2 duration-200 animate-in fade-in">
+                            <div className="flex items-center justify-center gap-2 duration-200 animate-in fade-in">
                                 <input
                                     type="text"
                                     value={heading}
                                     onChange={handleHeadingChange}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            updateHeading(
-                                                activeItem,
-                                                addUpdateVideoSlide,
-                                                SaveDraft,
-                                                heading,
-                                                setIsEditing,
-                                                addUpdateDocumentSlide,
-                                                addUpdateQuizSlide,
-                                                updateAssignmentOrder,
-                                                updateQuestionOrder,
-                                                addUpdateAudioSlide
-                                            );
-                                        } else if (e.key === 'Escape') {
-                                            e.preventDefault();
-                                            setHeading(activeItem?.title || '');
-                                            setIsEditing(false);
-                                        }
-                                    }}
-                                    className="min-w-0 flex-1 border-b border-neutral-300 bg-transparent text-lg font-semibold text-neutral-700 transition-colors duration-200 focus:border-primary-500 focus:outline-none"
+                                    className="w-fit border-b border-neutral-300 bg-transparent text-lg font-semibold text-neutral-700 transition-colors duration-200 focus:border-primary-500 focus:outline-none"
                                     autoFocus
                                 />
                                 <Check
@@ -2661,13 +2615,12 @@ export const SlideMaterial = ({
                                             heading,
                                             setIsEditing,
                                             addUpdateDocumentSlide,
-                                            addUpdateQuizSlide,
-                                            updateAssignmentOrder,
-                                            updateQuestionOrder,
-                                            addUpdateAudioSlide
+                                            addUpdateQuizSlide, // <-- pass this for QUIZ support
+                                            updateAssignmentOrder, // <-- pass for ASSIGNMENT
+                                            updateQuestionOrder // <-- pass for QUESTION
                                         )
                                     }
-                                    className="shrink-0 cursor-pointer hover:text-primary-500"
+                                    className="cursor-pointer hover:text-primary-500"
                                 />
                             </div>
                         ) : (
@@ -2795,8 +2748,7 @@ export const SlideMaterial = ({
                                                 addUpdateAudioSlide,
                                                 addUpdateScormSlide,
                                                 SaveDraft,
-                                                playerRef,
-                                                addUpdateAssessmentSlide
+                                                playerRef
                                             )
                                         }
                                     />
@@ -2848,8 +2800,7 @@ export const SlideMaterial = ({
                                                     addUpdateAudioSlide,
                                                     addUpdateScormSlide,
                                                     SaveDraft,
-                                                    playerRef,
-                                                    addUpdateAssessmentSlide
+                                                    playerRef
                                                 );
                                             }
                                         }}

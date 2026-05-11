@@ -15,6 +15,10 @@ import { useState } from 'react';
 import { UploadFileInS3 } from '@/services/upload_file';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
+import {
+    buildAppendReorderPayload,
+    getNextSlideOrder,
+} from '../../-helper/slide-naming-utils';
 
 const formSchema = z.object({
     videoName: z.string().min(1, 'File name is required'),
@@ -79,15 +83,7 @@ export const AddVideoFileDialog = ({ openState }: { openState?: (open: boolean) 
             const newSlide = currentSlides.find((slide) => slide.id === newSlideId);
             if (!newSlide) return;
 
-            const reorderedSlides = [
-                { slide_id: newSlideId, slide_order: 0 },
-                ...currentSlides
-                    .filter((slide) => slide.id !== newSlideId)
-                    .map((slide, index) => ({
-                        slide_id: slide.id,
-                        slide_order: index + 1,
-                    })),
-            ];
+            const reorderedSlides = buildAppendReorderPayload(newSlideId, currentSlides);
 
             await updateSlideOrder({
                 chapterId: chapterId || '',
@@ -124,7 +120,7 @@ export const AddVideoFileDialog = ({ openState }: { openState?: (open: boolean) 
                 title: data.videoName,
                 description: null,
                 image_file_id: null,
-                slide_order: 0,
+                slide_order: getNextSlideOrder(items || []),
                 video_slide: {
                     id: crypto.randomUUID(),
                     description: '',

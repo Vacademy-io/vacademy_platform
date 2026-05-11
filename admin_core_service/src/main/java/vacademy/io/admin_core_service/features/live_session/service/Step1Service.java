@@ -20,6 +20,7 @@ import java.sql.Time;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
@@ -42,6 +43,19 @@ public class Step1Service {
     private WorkflowTriggerService workflowTriggerService;
 
     public LiveSession step1AddService(LiveSessionStep1RequestDTO request, CustomUserDetails user) {
+        return step1AddService(request, user, true);
+    }
+
+    /**
+     * Overload that lets callers (e.g. {@code BulkLiveSessionService}) skip the
+     * synchronous {@code LIVE_SESSION_CREATE} workflow trigger so they can fire
+     * it asynchronously after the request returns. Single-class flow continues
+     * to use the default ({@code fireWorkflow = true}) and behaves exactly as
+     * before.
+     */
+    public LiveSession step1AddService(LiveSessionStep1RequestDTO request,
+                                       CustomUserDetails user,
+                                       boolean fireWorkflow) {
         LiveSession session = getOrCreateSession(request, user);
         updateSessionFields(session, request, user);
         LiveSession savedSession = sessionRepository.save(session);
@@ -57,18 +71,20 @@ public class Step1Service {
             handleUpdatedSchedules(request);
         }
 
-        // Trigger LIVE_SESSION_CREATE workflow
-        try {
-            Map<String, Object> contextData = new HashMap<>();
-            contextData.put("liveSession", savedSession);
-            contextData.put("createdBy", user.getUserId());
-            workflowTriggerService.handleTriggerEvents(
-                    WorkflowTriggerEvent.LIVE_SESSION_CREATE.name(),
-                    savedSession.getId(),
-                    request.getInstituteId(),
-                    contextData);
-        } catch (Exception e) {
-            log.warn("Failed to trigger LIVE_SESSION_CREATE workflow", e);
+        if (fireWorkflow) {
+            // Trigger LIVE_SESSION_CREATE workflow synchronously (single-class flow)
+            try {
+                Map<String, Object> contextData = new HashMap<>();
+                contextData.put("liveSession", savedSession);
+                contextData.put("createdBy", user.getUserId());
+                workflowTriggerService.handleTriggerEvents(
+                        WorkflowTriggerEvent.LIVE_SESSION_CREATE.name(),
+                        savedSession.getId(),
+                        request.getInstituteId(),
+                        contextData);
+            } catch (Exception e) {
+                log.warn("Failed to trigger LIVE_SESSION_CREATE workflow", e);
+            }
         }
 
         return savedSession;
@@ -358,6 +374,70 @@ public class Step1Service {
 
         // Always process updated_schedules if present (independent of added_schedules)
         handleUpdatedSchedules(request);
+
+        // ONCE-recurrence sync: when an admin edits a one-time session and only
+        // changes start_time / last_entry_time, the frontend often doesn't
+        // include the schedule update in added_schedules / updated_schedules.
+        // Without this, /get-sessions/search returns the stale schedule time
+        // even though the top-level session.start_time was updated correctly.
+        // Sync the single schedule's date + time fields from the session
+        // timestamps (interpreted in the session's stored timezone).
+        syncOnceRecurrenceSchedule(request, session);
+    }
+
+    /**
+     * For sessions whose recurrence_type is "once", keep the single
+     * SessionSchedule row in lock-step with the parent LiveSession's
+     * start_time / last_entry_time. This guards the read APIs (search list
+     * which reads ss.start_time) against drifting away from session.startTime
+     * after a time-only edit.
+     *
+     * No-op for other recurrence types and when the session has zero or more
+     * than one active schedule.
+     */
+    private void syncOnceRecurrenceSchedule(LiveSessionStep1RequestDTO request, LiveSession session) {
+        String recurrence = request.getRecurrenceType();
+        if (recurrence == null || !"once".equalsIgnoreCase(recurrence)) return;
+        if (request.getStartTime() == null) return;
+
+        List<SessionSchedule> currentSchedules = scheduleRepository.findBySessionId(session.getId())
+                .stream()
+                .filter(s -> !LiveSessionStatus.DELETED.name().equalsIgnoreCase(s.getStatus()))
+                .toList();
+        if (currentSchedules.size() != 1) return;
+
+        SessionSchedule sch = currentSchedules.get(0);
+
+        // session.startTime / lastEntryTime hold the user's wall-clock value;
+        // extract using the same .atZone(UTC) pattern used elsewhere in this
+        // file (see handleAddedSchedules date extraction). The previous code
+        // shifted by the session timezone, double-converting the value.
+        ZonedDateTime startZdt = request.getStartTime().toInstant().atZone(ZoneOffset.UTC);
+        Date newMeetingDate = Date.valueOf(startZdt.toLocalDate());
+        Time newStartTime = Time.valueOf(startZdt.toLocalTime());
+
+        boolean changed = false;
+        if (!newMeetingDate.equals(sch.getMeetingDate())) {
+            sch.setMeetingDate(newMeetingDate);
+            changed = true;
+        }
+        if (!newStartTime.equals(sch.getStartTime())) {
+            sch.setStartTime(newStartTime);
+            changed = true;
+        }
+        if (request.getLastEntryTime() != null) {
+            ZonedDateTime endZdt = request.getLastEntryTime().toInstant().atZone(ZoneOffset.UTC);
+            Time newLastEntryTime = Time.valueOf(endZdt.toLocalTime());
+            if (!newLastEntryTime.equals(sch.getLastEntryTime())) {
+                sch.setLastEntryTime(newLastEntryTime);
+                changed = true;
+            }
+        }
+        if (changed) {
+            scheduleRepository.save(sch);
+            log.info("Synced ONCE schedule {} to session {}: meetingDate={} startTime={}",
+                    sch.getId(), session.getId(), newMeetingDate, newStartTime);
+        }
     }
 
     /**

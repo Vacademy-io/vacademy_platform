@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import AdminDisplaySettings from './AdminDisplaySettings';
 import TeacherDisplaySettings from './TeacherDisplaySettings';
 import CustomRoleDisplaySettings from './CustomRoleDisplaySettings';
+import AudienceAccessCard from './AudienceAccessCard';
 import {
     Select,
     SelectContent,
@@ -67,8 +68,26 @@ export default function RoleDisplaySettingsMain() {
                 </Select>
             </div>
 
-            {selectedRole === 'admin' && <AdminDisplaySettings />}
-            {selectedRole === 'teacher' && <TeacherDisplaySettings />}
+            {selectedRole === 'admin' && (
+                <div className="space-y-4">
+                    <AdminDisplaySettings />
+                    <AudienceAccessCard
+                        key="audience-access-admin"
+                        roleName="ADMIN"
+                        roleLabel="Admin"
+                    />
+                </div>
+            )}
+            {selectedRole === 'teacher' && (
+                <div className="space-y-4">
+                    <TeacherDisplaySettings />
+                    <AudienceAccessCard
+                        key="audience-access-teacher"
+                        roleName="TEACHER"
+                        roleLabel="Teacher"
+                    />
+                </div>
+            )}
             {selectedRole === 'custom' && (
                 <div className="space-y-4">
                     <div className="flex items-center gap-4 py-2 border-b pb-4">
@@ -145,7 +164,32 @@ export default function RoleDisplaySettingsMain() {
                     </div>
 
                     {selectedCustomRoleId ? (
-                        <CustomRoleDisplaySettings key={selectedCustomRoleId} roleId={selectedCustomRoleId} />
+                        <div className="space-y-4">
+                            <CustomRoleDisplaySettings
+                                key={selectedCustomRoleId}
+                                roleId={selectedCustomRoleId}
+                            />
+                            {(() => {
+                                const selectedRoleName =
+                                    customRoles?.find(
+                                        (r: CustomRole) => r.id === selectedCustomRoleId
+                                    )?.name ?? '';
+                                if (!selectedRoleName) return null;
+                                return (
+                                    <AudienceAccessCard
+                                        // key forces a clean remount when the selected
+                                        // custom role changes, so the card hydrates
+                                        // from scratch instead of reusing stale local
+                                        // state from the previous role.
+                                        key={`audience-access-custom-${selectedCustomRoleId}`}
+                                        // Backend resolver matches against JWT authorities, which
+                                        // are uppercased by `CustomUserDetails`. Mirror that here.
+                                        roleName={selectedRoleName.toUpperCase()}
+                                        roleLabel={selectedRoleName}
+                                    />
+                                );
+                            })()}
+                        </div>
                     ) : (
                         <div className="text-sm text-gray-500 italic mt-4">Please select a custom role from the dropdown above to view or edit its settings.</div>
                     )}

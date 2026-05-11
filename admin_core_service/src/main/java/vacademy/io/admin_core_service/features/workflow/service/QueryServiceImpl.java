@@ -119,6 +119,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return fetchStudentAttendanceReport(params);
             case "fetch_batch_attendance_report":
                 return fetchBatchAttendanceReport(params);
+            case "fetch_live_session_attendance":
+                return fetchLiveSessionAttendance(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -1303,6 +1305,152 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             return Map.of("participants", participantList);
         } catch (Exception e) {
             log.error("Error in fetchLiveSessionParticipants", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    /**
+     * Fetches present + absent students for a single live class schedule, intended
+     * for the LIVE_SESSION_END workflow. Returns two ready-to-iterate lists:
+     * {@code presentStudents} and {@code absentStudents}, each item being a Map
+     * carrying {@code email}, {@code fullName}, {@code sessionTitle},
+     * {@code instituteName}, etc. — every key auto-becomes an email-template
+     * placeholder via SendEmailNodeHandler's per-item enrichment.
+     *
+     * <p>Params:
+     * <ul>
+     *   <li>{@code sessionId}  — required, live_session.id</li>
+     *   <li>{@code scheduleId} — required, session_schedules.id (used to look up
+     *       attendance in live_session_logs)</li>
+     * </ul>
+     *
+     * <p>Present = at least one ATTENDANCE_RECORDED row for the user with
+     * status="PRESENT". Absent = expected participant (per
+     * live_session_participants) without such a row.
+     */
+    private Map<String, Object> fetchLiveSessionAttendance(Map<String, Object> params) {
+        try {
+            String sessionId = (String) params.get("sessionId");
+            String scheduleId = (String) params.get("scheduleId");
+            if (sessionId == null || sessionId.isBlank()) {
+                return Map.of("error", "sessionId is required");
+            }
+            if (scheduleId == null || scheduleId.isBlank()) {
+                return Map.of("error", "scheduleId is required");
+            }
+
+            // 1. Look up session + schedule + institute for shared context vars.
+            LiveSession session = liveSessionRepository.findById(sessionId).orElse(null);
+            if (session == null) {
+                return Map.of("error", "live_session not found: " + sessionId);
+            }
+            SessionSchedule schedule = sessionScheduleRepository.findById(scheduleId).orElse(null);
+
+            String instituteId = session.getInstituteId();
+            String instituteName = "Your Institute";
+            if (instituteId != null && !instituteId.isBlank()) {
+                instituteName = instituteRepository.findById(instituteId)
+                        .map(vacademy.io.common.institute.entity.Institute::getInstituteName)
+                        .orElse("Your Institute");
+            }
+
+            String sessionTitle = session.getTitle() != null ? session.getTitle() : "Live Class";
+            String meetingDateStr = (schedule != null && schedule.getMeetingDate() != null)
+                    ? new java.text.SimpleDateFormat("EEEE, MMMM d, yyyy").format(schedule.getMeetingDate()) : "";
+            String startTimeStr = (schedule != null && schedule.getStartTime() != null)
+                    ? new java.text.SimpleDateFormat("h:mm a").format(schedule.getStartTime()) : "";
+
+            // 2. Fetch expected participants (BATCH + USER) and resolve to student rows.
+            //    Reuses the same row shape as LiveSessionNotificationProcessor.
+            List<LiveSessionParticipants> participants =
+                    liveSessionParticipantRepository.findBySessionId(sessionId);
+
+            List<String> batchIds = new ArrayList<>();
+            List<String> individualUserIds = new ArrayList<>();
+            for (LiveSessionParticipants p : participants) {
+                if ("BATCH".equalsIgnoreCase(p.getSourceType())) {
+                    batchIds.add(p.getSourceId());
+                } else if ("USER".equalsIgnoreCase(p.getSourceType())) {
+                    individualUserIds.add(p.getSourceId());
+                }
+            }
+
+            List<Object[]> studentRows = new ArrayList<>();
+            if (!batchIds.isEmpty() && instituteId != null) {
+                studentRows.addAll(ssigmRepo.findMappingsWithStudentContactsByInstitute(
+                        batchIds, instituteId, Arrays.asList("ACTIVE", "ENROLLED")));
+            }
+            if (!individualUserIds.isEmpty()) {
+                studentRows.addAll(ssigmRepo.findStudentContactsByUserIds(individualUserIds));
+            }
+
+            // 3. Build the set of userIds marked PRESENT for this schedule.
+            Set<String> presentUserIds = new HashSet<>();
+            List<vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs> logs =
+                    liveSessionLogsRepository.findAllAttendanceByScheduleId(scheduleId);
+            for (var l : logs) {
+                if ("PRESENT".equalsIgnoreCase(l.getStatus()) && l.getUserSourceId() != null) {
+                    presentUserIds.add(l.getUserSourceId());
+                }
+            }
+
+            // 4. Fan out into present/absent lists, deduping users that appear in both
+            //    a batch and an individual entry.
+            List<Map<String, Object>> presentStudents = new ArrayList<>();
+            List<Map<String, Object>> absentStudents = new ArrayList<>();
+            Set<String> seenUserIds = new HashSet<>();
+
+            for (Object[] r : studentRows) {
+                String userId, fullName, email, mobileNumber;
+                if (r.length >= 7) {
+                    // Batch row: [mapping_id, user_id, expiry_date, full_name, mobile_number, email, region, package_session_id]
+                    userId = (String) r[1];
+                    fullName = (String) r[3];
+                    mobileNumber = (String) r[4];
+                    email = (String) r[5];
+                } else {
+                    // Individual user row: [user_id, full_name, mobile_number, email, region]
+                    userId = (String) r[0];
+                    fullName = (String) r[1];
+                    mobileNumber = (String) r[2];
+                    email = (String) r[3];
+                }
+
+                if (userId == null || email == null || email.isBlank()) continue;
+                if (!seenUserIds.add(userId)) continue;
+
+                boolean isPresent = presentUserIds.contains(userId);
+
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("userId", userId);
+                row.put("email", email);
+                row.put("fullName", fullName != null ? fullName : "Student");
+                row.put("name", fullName != null ? fullName : "Student"); // alias for {{name}} placeholder
+                row.put("mobileNumber", mobileNumber);
+                row.put("attendanceStatus", isPresent ? "PRESENT" : "ABSENT");
+                row.put("sessionTitle", sessionTitle);
+                row.put("instituteName", instituteName);
+                row.put("date", meetingDateStr);
+                row.put("time", startTimeStr);
+                row.put("sessionId", sessionId);
+                row.put("scheduleId", scheduleId);
+
+                if (isPresent) presentStudents.add(row);
+                else absentStudents.add(row);
+            }
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("presentStudents", presentStudents);
+            result.put("absentStudents", absentStudents);
+            result.put("presentCount", presentStudents.size());
+            result.put("absentCount", absentStudents.size());
+            result.put("sessionTitle", sessionTitle);
+            result.put("instituteName", instituteName);
+            result.put("meetingDate", meetingDateStr);
+            result.put("startTime", startTimeStr);
+            return result;
+        } catch (Exception e) {
+            log.error("Error in fetchLiveSessionAttendance", e);
             return Map.of("error", e.getMessage());
         }
     }

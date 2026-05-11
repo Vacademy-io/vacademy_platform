@@ -162,21 +162,44 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   const restoreLocalStorageCompletions = useCallback((chapterId: string) => {
     queryClient.setQueryData<Slide[]>(["slides", chapterId], (oldSlides) => {
       if (!oldSlides) return oldSlides;
-      
+
       return oldSlides.map((slide) => {
         // Check if this slide has completed answers in localStorage
         const storageKey = `quiz_answers_${slide.id}_${chapterId}`;
         const hasStoredAnswers = localStorage.getItem(storageKey);
-        
+
         // If quiz is completed, ensure 100%
         if (hasStoredAnswers && slide.source_type === 'QUIZ') {
           return { ...slide, percentage_completed: 100 };
         }
-        
+
         return slide;
       });
     });
   }, [queryClient]);
+
+  // Refresh every progress-bearing cache after a quiz submit. The backend
+  // cascade (slide → chapter → module → subject → package_session) runs
+  // @Async, so we wait briefly before invalidating, then hit every key
+  // that feeds a progress UI: chapter sidebar (slides), module list
+  // (MODULES_WITH_CHAPTERS — both naming conventions exist in this codebase),
+  // and the course-level overall % (GET_COURSE_INIT).
+  const refreshProgressAfterSubmit = useCallback(async (chapterIdToRefresh: string) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await queryClient.invalidateQueries({
+      predicate: (q) => {
+        const k = q.queryKey;
+        if (!Array.isArray(k)) return false;
+        return (
+          k[0] === "MODULES_WITH_CHAPTERS" ||
+          k[0] === "GET_MODULES_WITH_CHAPTERS" ||
+          k[0] === "GET_COURSE_INIT" ||
+          (k[0] === "slides" && k[1] === chapterIdToRefresh)
+        );
+      },
+    });
+    restoreLocalStorageCompletions(chapterIdToRefresh);
+  }, [queryClient, restoreLocalStorageCompletions]);
 
   // Helpers: decode HTML entities and render KaTeX spans
   const decodeHtml = (input: string): string => {
@@ -570,19 +593,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         );
       });
 
-      setTimeout(async () => {
-        try {
-          await queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "GET_MODULES_WITH_CHAPTERS" });
-          await queryClient.refetchQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "GET_MODULES_WITH_CHAPTERS" });
-          setTimeout(async () => {
-            try {
-              await queryClient.invalidateQueries({ queryKey: ["slides", chapterId] });
-              await queryClient.refetchQueries({ queryKey: ["slides", chapterId] });
-              restoreLocalStorageCompletions(chapterId);
-            } catch { /* ignore */ }
-          }, 3000);
-        } catch { /* ignore */ }
-      }, 2000);
+      void refreshProgressAfterSubmit(chapterId);
 
       const card = computeScore(finalAnswers);
       setScoreCard(card);
@@ -722,66 +733,15 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         // ✅ STEP 2: Optimistic UI update - instantly show 100% in sidebar
         queryClient.setQueryData<Slide[]>(["slides", chapterId], (oldSlides) => {
           if (!oldSlides) return oldSlides;
-          console.log("🎯 [QuizViewer] Setting optimistic 100% for slideId:", slideId);
           return oldSlides.map((slide) =>
             slide.id === slideId
               ? { ...slide, percentage_completed: 100 }
               : slide
           );
         });
-        console.log("✅ [QuizViewer] Optimistic 100% set in React Query cache");
-        
-        // ✅ STEP 3: Background refresh (delayed to avoid overwriting optimistic update)
-        setTimeout(async () => {
-          try {
-            console.log("🔄 [QuizViewer] Background (3s): Updating course structure...");
-            
-            // Invalidate and refetch modules query - this updates course structure
-            await queryClient.invalidateQueries({
-                predicate: (query) => {
-                const queryKey = query.queryKey;
-                return Array.isArray(queryKey) && queryKey[0] === "GET_MODULES_WITH_CHAPTERS";
-                },
-            });
-              
-            await queryClient.refetchQueries({
-                predicate: (query) => {
-                const queryKey = query.queryKey;
-                return Array.isArray(queryKey) && queryKey[0] === "GET_MODULES_WITH_CHAPTERS";
-              },
-            });
-            
-            console.log("✅ [QuizViewer] Course structure updated successfully");
-            
-            // ✅ STEP 4: After another delay, sync slides with server data
-            setTimeout(async () => {
-              try {
-                console.log("🔄 [QuizViewer] Background (8s): Syncing slides with server...");
-                
-                // Now it's safe to refetch slides from server
-                await queryClient.invalidateQueries({
-                  queryKey: ["slides", chapterId],
-                });
-                
-                await queryClient.refetchQueries({
-                  queryKey: ["slides", chapterId],
-                });
-                
-                console.log("✅ [QuizViewer] Slides synced with server data");
-            
-                // ✅ CRITICAL: After refetch, restore localStorage completions again
-                console.log("🔄 [QuizViewer] Re-applying localStorage completions after server sync...");
-            restoreLocalStorageCompletions(chapterId);
-                console.log("✅ [QuizViewer] localStorage completions restored after server sync");
-              } catch (e) {
-                console.error("❌ [QuizViewer] Slides sync error:", e);
-              }
-            }, 3000); // Wait additional 5 seconds for slides sync (total 8s)
-            
-          } catch (e) {
-            console.error("❌ [QuizViewer] Background refresh error:", e);
-          }
-        }, 2000); // Wait 3 seconds before updating course structure
+
+        // ✅ STEP 3: Refresh every progress-bearing cache (slides + module rollup + course %)
+        void refreshProgressAfterSubmit(chapterId);
         if (celebrateOnQuizComplete) {
           try {
             // Confetti: multi-wave, spread across screen with streamers and bursts

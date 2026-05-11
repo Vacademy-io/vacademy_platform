@@ -27,6 +27,7 @@ from ..schemas.video_generation import (
     RegenerateFrameResponse,
     UpdateFrameRequest,
     AddFrameRequest,
+    DeleteFrameRequest,
     AddAudioTrackRequest,
     UpdateAudioTrackRequest,
     DeleteAudioTrackRequest,
@@ -39,6 +40,7 @@ from pydantic import BaseModel, Field
 from ..services.video_generation_service import VideoGenerationService
 from ..repositories.ai_video_repository import AiVideoRepository
 from ..services.s3_service import S3Service
+from ..services import cancellation_registry
 
 
 # ---------------------------------------------------------------------------
@@ -323,8 +325,16 @@ async def generate_video_external(
                         routing_overrides=p.routing_overrides,
                         host=p.host,
                         brand_kit_id=getattr(p, "brand_kit_id", None),
+                        visual_preferences=getattr(p, "visual_preferences", None),
                     ):
                         await q.put(json.dumps(event))
+            except asyncio.CancelledError:
+                # `task.cancel()` from POST /cancel/{video_id} fired. Cancel
+                # endpoint already handled CANCELLED status + refund + SSE
+                # event; we just unwind quietly. Re-raise so asyncio cleanup
+                # works correctly.
+                logger.info(f"[BG-Gen] Background task cancelled for {vid}")
+                raise
             except Exception as exc:
                 logger.error(f"[BG-Gen] Background task error for {vid}: {exc}")
                 # Refund all credits charged for this failed video
@@ -341,9 +351,15 @@ async def generate_video_external(
                 }))
             finally:
                 # Sentinel – tells the SSE generator the stream is done
-                await q.put(None)
+                try:
+                    await q.put(None)
+                except Exception:
+                    pass
                 _generation_tasks.pop(vid, None)
                 _generation_queues.pop(vid, None)
+                # Belt-and-suspenders: clear the cooperative-stop registry
+                # in case the pipeline didn't (e.g. unexpected exception path).
+                cancellation_registry.clear(vid)
                 # Remove from institute concurrency tracker
                 _institute_active_tasks.get(inst_id, set()).discard(vid)
                 logger.info(f"[BG-Gen] Background task finished for {vid}")
@@ -391,6 +407,98 @@ async def generate_video_external(
 
 
 # ---------------------------------------------------------------------------
+# Cancel a running generation
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/cancel/{video_id}",
+    summary="Cancel a running generation",
+)
+async def cancel_generation_external(
+    video_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> Dict[str, Any]:
+    """
+    Stop an in-flight generation pipeline cooperatively, transition the video
+    to ``CANCELLED``, and refund all credits charged so far for it.
+
+    Behavior:
+      1. Sets the per-video ``threading.Event`` so the pipeline thread breaks
+         out of its current stage / shot loop at the next safe checkpoint.
+      2. Cancels the asyncio task as a backstop so the SSE stream closes
+         cleanly even if no one is listening to the flag.
+      3. Marks the DB row ``CANCELLED`` immediately (don't wait for the
+         pipeline to unwind — the user's "stopped" status should be visible
+         right away).
+      4. Refunds every credit deduction recorded under ``batch_id=video_id``.
+      5. Pushes a final ``cancelled`` event onto any open SSE queue.
+
+    Returns 404 when no in-flight task matches ``video_id`` (already finished,
+    failed, or never existed). Idempotent for repeated calls within the brief
+    window before cleanup completes.
+    """
+    # Look up the video — 404 if it doesn't exist. Auth (X-Institute-Key) is
+    # already enforced by the dependency above; the existing endpoints follow
+    # the same pattern (no per-video ownership column on AiGenVideo).
+    with make_db_session() as session:
+        video = AiVideoRepository(session).get_by_video_id(video_id)
+        if not video:
+            raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+        already_done = video.status in ("COMPLETED", "FAILED", "CANCELLED")
+
+    if already_done:
+        # Idempotent: nothing in-flight to stop. Don't double-refund.
+        return {"status": video.status, "video_id": video_id, "stopped": False}
+
+    # 1. Cooperative stop signal — the pipeline checks this at safe points.
+    signaled = cancellation_registry.signal_stop(video_id)
+
+    # 2. Asyncio task backstop — closes the SSE stream cleanly even if the
+    #    pipeline hasn't yet hit a checkpoint that can raise PipelineCancelled.
+    task = _generation_tasks.get(video_id)
+    if task and not task.done():
+        task.cancel()
+
+    # 3. Persist CANCELLED state right now so /status reflects it.
+    try:
+        with make_db_session() as session:
+            AiVideoRepository(session).update_stage(
+                video_id, stage="CANCELLED", status="CANCELLED"
+            )
+    except Exception as e:
+        logger.error(f"[Cancel] Failed to mark {video_id} CANCELLED: {e}")
+
+    # 4. Refund all credits charged to this video so far.
+    try:
+        with make_db_session() as session:
+            from ..services.token_usage_service import TokenUsageService
+            TokenUsageService(session).refund_video_credits(video_id, institute_id)
+    except Exception as e:
+        logger.error(f"[Cancel] Failed to refund credits for {video_id}: {e}")
+
+    # 5. Notify any still-listening SSE clients.
+    queue = _generation_queues.get(video_id)
+    if queue is not None:
+        try:
+            await queue.put(
+                json.dumps({
+                    "type": "cancelled",
+                    "video_id": video_id,
+                    "message": "Stopped by user",
+                })
+            )
+            await queue.put(None)  # sentinel — closes the SSE generator
+        except Exception:
+            pass
+
+    logger.info(
+        f"[Cancel] {video_id} cancelled by user "
+        f"(signaled={signaled}, task_was_running={task is not None})"
+    )
+    return {"status": "CANCELLED", "video_id": video_id, "stopped": True}
+
+
+# ---------------------------------------------------------------------------
 # Resume generation after script review
 # ---------------------------------------------------------------------------
 
@@ -418,6 +526,16 @@ async def resume_video_external(
     video_record = repo.get_by_video_id(video_id)
     if not video_record:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    # A cancelled video is intentionally terminated — refusing resume keeps
+    # the user's "stopped" semantic clean (otherwise hitting Resume would
+    # silently bring it back from the dead). User can start a new generation
+    # from the same prompt instead.
+    if video_record.status == "CANCELLED":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Video {video_id} was cancelled — start a new generation instead of resuming.",
+        )
 
     # Overwrite script in S3 if the user edited it
     if payload.modified_script is not None:
@@ -488,6 +606,7 @@ async def resume_video_external(
                         background_music_enabled=_meta.get("background_music_enabled"),
                         background_music_volume=_meta.get("background_music_volume"),
                         sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
+                        visual_preferences=_meta.get("visual_preferences"),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -614,6 +733,7 @@ async def retry_video_external(
                     background_music_enabled=_meta.get("background_music_enabled"),
                     background_music_volume=_meta.get("background_music_volume"),
                     sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
+                    visual_preferences=_meta.get("visual_preferences"),
                 ):
                     await q.put(json.dumps(event))
         except Exception as exc:
@@ -879,6 +999,42 @@ async def update_frame_external(
             exit_time=payload.exit_time,
             z=payload.z,
             entry_id=payload.entry_id,
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except IndexError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/frame/delete",
+    summary="Delete a frame from the timeline (External)"
+)
+async def delete_frame_external(
+    payload: DeleteFrameRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key)
+):
+    """
+    Remove a frame from the timeline. Prefer `entry_id` (order-independent);
+    `frame_index` is accepted as a fallback.
+
+    meta.total_duration and meta.sentences[] are not modified — trimming the
+    timeline's effective length is a separate concern, since the renderer
+    drives audio mixing off total_duration and sentences are tied to the
+    global narration audio rather than to entries.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    try:
+        result = await service.delete_video_frame(
+            video_id=payload.video_id,
+            entry_id=payload.entry_id,
+            frame_index=payload.frame_index,
         )
         return result
     except ValueError as e:
@@ -1415,6 +1571,29 @@ async def request_video_render(
             except Exception:
                 pass
 
+    # Build the render → AI server callback URL. The render worker POSTs
+    # progress + terminal updates here; the AI server records them in the
+    # video's extra_metadata.render_status (see /render-callback below). When
+    # AI_SERVICE_PUBLIC_URL is unset (dev), the render worker can't reach us,
+    # so we fall back to a DB-only response with no live progress.
+    #
+    # Path construction: AI_SERVICE_PUBLIC_URL is the public host (e.g.
+    # https://backend-stage.vacademy.io). The full path includes the
+    # gateway-mounted prefix `settings.api_base_path` (default `/ai-service`)
+    # plus the router prefix `/external/video/v1`. We strip a trailing
+    # `/api_base_path` if the user accidentally included it in the env so
+    # both `https://host` and `https://host/ai-service` work.
+    _callback_url: Optional[str] = None
+    if settings.ai_service_public_url:
+        _public = settings.ai_service_public_url.rstrip("/")
+        _prefix = settings.api_base_path.rstrip("/")
+        if _prefix and _public.endswith(_prefix):
+            _public = _public[: -len(_prefix)]
+        _callback_url = (
+            f"{_public}{_prefix}/external/video/v1/render-callback/{video_id}"
+        )
+        logger.info(f"[render] callback_url for video {video_id}: {_callback_url}")
+
     try:
         job_id = render_svc.submit(
             video_id=video_id,
@@ -1423,6 +1602,7 @@ async def request_video_render(
             words_url=s3_urls.get("words"),
             branding_meta_url=s3_urls.get("branding_meta"),
             avatar_video_url=s3_urls.get("avatar"),
+            callback_url=_callback_url,
             show_captions=_show_captions,
             show_branding=_show_branding,
             width=_render_width,
@@ -1440,7 +1620,24 @@ async def request_video_render(
 
     # Store render job_id + start timestamp in metadata so frontend can resume
     # progress tracking after reload, AND so the watchdog in /render/status/
-    # can detect stuck jobs.
+    # can detect stuck jobs. Also probe the timeline once to record the
+    # planned video duration; the watchdog uses it to scale the timeout
+    # (longer videos legitimately take longer to render).
+    _planned_duration: Optional[float] = None
+    try:
+        from urllib.request import urlopen as _urlopen
+        with _urlopen(s3_urls["timeline"], timeout=10) as _resp:
+            _tl_json = json.loads(_resp.read().decode("utf-8", "replace"))
+        _tl_entries = (
+            _tl_json.get("entries", []) if isinstance(_tl_json, dict) else (_tl_json or [])
+        )
+        if _tl_entries:
+            _planned_duration = max(
+                float(e.get("exitTime", 0) or 0) for e in _tl_entries
+            )
+    except Exception as _td_err:
+        logger.info(f"[render] timeline duration probe failed (non-fatal): {_td_err}")
+
     try:
         repo = AiVideoRepository(session=db)
         video_record = repo.get_by_video_id(video_id)
@@ -1448,41 +1645,29 @@ async def request_video_render(
             meta = dict(video_record.extra_metadata or {})
             meta["render_job_id"] = job_id
             from datetime import datetime, timezone
-            meta["render_started_at"] = datetime.now(timezone.utc).isoformat()
+            _now_iso = datetime.now(timezone.utc).isoformat()
+            meta["render_started_at"] = _now_iso
+            if _planned_duration is not None:
+                meta["render_planned_duration"] = _planned_duration
+            # Seed the push-based status cache. The render worker overwrites
+            # this with each callback (running progress + terminal). Until
+            # the first callback arrives, the FE sees status=queued with
+            # last_seen_at=now so the watchdog has a baseline.
+            meta["render_status"] = {
+                "status": "queued",
+                "progress": 0,
+                "video_url": None,
+                "error": None,
+                "last_seen_at": _now_iso,
+            }
             repo.update_metadata(video_id, meta)
     except Exception as e:
         logger.warning(f"[render] Failed to store render_job_id in metadata: {e}")
 
-    # Poll the render worker in background and update DB on completion
-    async def _poll_render(vid: str, jid: str):
-        import asyncio as _aio
-        try:
-            deadline = 5400  # 90 min
-            elapsed = 0
-            while elapsed < deadline:
-                await _aio.sleep(15)
-                elapsed += 15
-                status_resp = render_svc.check_status(jid)
-                rs = status_resp.get("status", "")
-                if rs == "completed":
-                    video_url = status_resp.get("video_url", "")
-                    if video_url:
-                        with make_db_session() as bg_session:
-                            repo = AiVideoRepository(session=bg_session)
-                            repo.update_files(
-                                video_id=vid,
-                                file_ids={"video": f"{vid}-video"},
-                                s3_urls={"video": video_url},
-                            )
-                        logger.info(f"[render-poll] Video {vid} render done, DB updated: {video_url}")
-                    return
-                elif rs == "failed":
-                    logger.error(f"[render-poll] Video {vid} render failed: {status_resp.get('error')}")
-                    return
-        except Exception as e:
-            logger.error(f"[render-poll] Polling error for {vid}: {e}")
-
-    asyncio.create_task(_poll_render(video_id, job_id))
+    # No background poller — the render worker pushes progress/terminal
+    # updates directly to /render-callback/{video_id}. The watchdog runs
+    # off render_status.last_seen_at inside /render/status/{job_id} and
+    # is triggered by the FE's existing 10s poll cadence.
 
     return {"job_id": job_id, "status": "queued", "video_id": video_id}
 
@@ -1495,93 +1680,117 @@ async def get_render_status(
     db: Session = Depends(db_dependency),
 ):
     """
-    Check the status and progress of a render job.
+    Check the status and progress of a render job — DB-only read.
+
+    Returns the cached render_status the render worker pushed to
+    /render-callback. Does NOT contact the render server, so a slow or
+    unreachable render server cannot make the FE-visible status endpoint
+    time out.
+
+    Watchdog runs off `render_status.last_seen_at`: if no callback has
+    arrived in `timeout_seconds` (clamp(planned * 5 + 180, 900, 5400)),
+    the response is rewritten to status=failed with credits refunded, and
+    the stale render_job_id is cleared.
 
     Returns:
-        - status: queued | running | completed | failed | unknown
+        - status: queued | running | completed | failed
         - progress: 0-100
         - video_url: S3 URL when completed
         - error: error message when failed
-
-    Watchdog: when `video_id` is provided AND the job has been queued for
-    longer than `RENDER_TIMEOUT_SECONDS` (default 600s, settable via env)
-    AND the upstream status is still queued/running/unknown, the route
-    synthesizes a "failed (timeout)" response, clears the stale render_job_id
-    from the video metadata, and refunds the institute's render credits so
-    the user can retry. This fires per-poll — the frontend's existing polling
-    triggers it without a separate scheduler.
     """
-    from ..config import get_settings
-    from ..services.render_service import RenderService
+    from datetime import datetime, timezone
 
-    settings = get_settings()
-    if not settings.render_server_url:
-        raise HTTPException(status_code=503, detail="Render server not configured.")
+    if not video_id:
+        raise HTTPException(
+            status_code=400,
+            detail="video_id query param is required (push-based status is keyed off the video record).",
+        )
 
-    render_svc = RenderService(
-        render_server_url=settings.render_server_url,
-        render_key=settings.render_server_key,
-    )
+    repo = AiVideoRepository(session=db)
+    video_record = repo.get_by_video_id(video_id)
+    if not video_record:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
-    result = render_svc.check_status(job_id)
+    meta = dict(video_record.extra_metadata or {})
+    rs = dict(meta.get("render_status") or {})
+    cur_status = rs.get("status", "queued")
+    progress = rs.get("progress", 0)
+    video_url = rs.get("video_url")
+    error = rs.get("error")
+    last_seen = rs.get("last_seen_at") or meta.get("render_started_at")
 
-    # Watchdog: detect renders stuck past the timeout threshold and fail them
-    # out so the frontend stops polling and the user can re-render.
-    if video_id:
+    # Watchdog — fires on stale last_seen_at, not synchronous render polling.
+    # If the render worker stops pushing (crashed / network partition), we
+    # detect via this and free the user's credits.
+    if cur_status not in ("completed", "failed") and last_seen:
         try:
-            from datetime import datetime, timezone
-            timeout_seconds = int(os.environ.get("RENDER_TIMEOUT_SECONDS", "600"))
-            cur_status = (result or {}).get("status", "")
-            if cur_status not in ("completed", "failed"):
-                repo = AiVideoRepository(session=db)
-                video_record = repo.get_by_video_id(video_id)
-                if video_record and video_record.extra_metadata:
-                    started_iso = video_record.extra_metadata.get("render_started_at")
-                    if started_iso:
-                        try:
-                            started_at = datetime.fromisoformat(started_iso)
-                            if started_at.tzinfo is None:
-                                started_at = started_at.replace(tzinfo=timezone.utc)
-                            age_seconds = (datetime.now(timezone.utc) - started_at).total_seconds()
-                            if age_seconds > timeout_seconds:
-                                logger.error(
-                                    f"[render-watchdog] Job {job_id} for video {video_id} "
-                                    f"stuck for {age_seconds:.0f}s (> {timeout_seconds}s) "
-                                    f"with status={cur_status} — marking failed and refunding credits"
-                                )
-                                # Clear the stale render_job_id so the user can re-render
-                                new_meta = dict(video_record.extra_metadata)
-                                new_meta.pop("render_job_id", None)
-                                new_meta.pop("render_started_at", None)
-                                new_meta["render_last_failed_at"] = datetime.now(timezone.utc).isoformat()
-                                new_meta["render_last_failure_reason"] = (
-                                    f"watchdog timeout after {age_seconds:.0f}s"
-                                )
-                                repo.update_metadata(video_id, new_meta)
-                                # Best-effort credit refund — non-fatal if it errors
-                                try:
-                                    from ..services.token_usage_service import TokenUsageService
-                                    TokenUsageService(db).refund_video_credits(video_id, institute_id)
-                                except Exception as _refund_err:
-                                    logger.warning(
-                                        f"[render-watchdog] Refund failed for {video_id}: {_refund_err}"
-                                    )
-                                # Override the response so the frontend stops polling
-                                result = {
-                                    "status": "failed",
-                                    "error": (
-                                        f"Render timed out after {age_seconds:.0f}s "
-                                        f"(threshold {timeout_seconds}s). Credits refunded; "
-                                        f"please retry."
-                                    ),
-                                    "watchdog": True,
-                                }
-                        except (ValueError, TypeError) as _ts_err:
-                            logger.debug(f"[render-watchdog] start timestamp parse error: {_ts_err}")
+            _floor = int(os.environ.get("RENDER_TIMEOUT_FLOOR", "900"))
+            _ceiling = int(os.environ.get("RENDER_TIMEOUT_CEILING", "5400"))
+            _override = os.environ.get("RENDER_TIMEOUT_SECONDS")
+            _planned = meta.get("render_planned_duration")
+            if _override:
+                timeout_seconds = int(_override)
+            elif _planned:
+                # 5× ratio + 180s startup/encode overhead, clamped.
+                timeout_seconds = int(min(_ceiling, max(_floor, float(_planned) * 5 + 180)))
+            else:
+                timeout_seconds = _floor
+            try:
+                last_seen_at = datetime.fromisoformat(last_seen)
+                if last_seen_at.tzinfo is None:
+                    last_seen_at = last_seen_at.replace(tzinfo=timezone.utc)
+                age_seconds = (datetime.now(timezone.utc) - last_seen_at).total_seconds()
+                if age_seconds > timeout_seconds:
+                    logger.error(
+                        f"[render-watchdog] Job {job_id} for video {video_id} "
+                        f"silent for {age_seconds:.0f}s (> {timeout_seconds}s) "
+                        f"with status={cur_status} — marking failed and refunding credits"
+                    )
+                    new_meta = dict(meta)
+                    new_meta.pop("render_job_id", None)
+                    new_meta.pop("render_started_at", None)
+                    new_meta["render_last_failed_at"] = datetime.now(timezone.utc).isoformat()
+                    new_meta["render_last_failure_reason"] = (
+                        f"watchdog timeout after {age_seconds:.0f}s of silence"
+                    )
+                    new_rs = dict(rs)
+                    new_rs["status"] = "failed"
+                    new_rs["error"] = (
+                        f"Render timed out after {age_seconds:.0f}s of silence "
+                        f"(threshold {timeout_seconds}s). Credits refunded; "
+                        f"please retry."
+                    )
+                    new_meta["render_status"] = new_rs
+                    repo.update_metadata(video_id, new_meta)
+                    try:
+                        from ..services.token_usage_service import TokenUsageService
+                        TokenUsageService(db).refund_video_credits(video_id, institute_id)
+                    except Exception as _refund_err:
+                        logger.warning(
+                            f"[render-watchdog] Refund failed for {video_id}: {_refund_err}"
+                        )
+                    return {
+                        "job_id": job_id,
+                        "video_id": video_id,
+                        "status": "failed",
+                        "progress": progress,
+                        "video_url": None,
+                        "error": new_rs["error"],
+                        "watchdog": True,
+                    }
+            except (ValueError, TypeError) as _ts_err:
+                logger.debug(f"[render-watchdog] last_seen parse error: {_ts_err}")
         except Exception as _wd_err:
             logger.warning(f"[render-watchdog] errored (non-fatal): {_wd_err}")
 
-    return result
+    return {
+        "job_id": job_id,
+        "video_id": video_id,
+        "status": cur_status,
+        "progress": progress,
+        "video_url": video_url,
+        "error": error,
+    }
 
 
 @router.delete("/render/{video_id}")
@@ -1612,9 +1821,17 @@ async def render_callback(
     db: Session = Depends(db_dependency),
 ):
     """
-    Callback from the render worker when a render job completes or fails.
+    Callback from the render worker. Receives BOTH progress updates
+    (status="running") and terminal updates (status="completed"/"failed").
+
+    Records every update in `extra_metadata.render_status` so the FE-facing
+    `/render/status/{job_id}` endpoint can serve a fast DB read without
+    contacting the render server. `last_seen_at` is stamped on every
+    callback and powers the watchdog.
+
     Auth: X-Render-Key header must match RENDER_SERVER_KEY.
     """
+    from datetime import datetime, timezone
     from ..config import get_settings
 
     settings = get_settings()
@@ -1626,9 +1843,29 @@ async def render_callback(
     if not video:
         raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
 
-    cb_status = payload.get("status")
+    cb_status = payload.get("status") or "running"
+    progress = payload.get("progress")
     video_url = payload.get("video_url")
     error = payload.get("error")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Always update render_status in metadata so the watchdog and FE see a
+    # fresh last_seen_at.
+    new_meta = dict(video.extra_metadata or {})
+    rs = dict(new_meta.get("render_status") or {})
+    rs["status"] = cb_status
+    if progress is not None:
+        try:
+            rs["progress"] = float(progress)
+        except (TypeError, ValueError):
+            pass
+    if video_url:
+        rs["video_url"] = video_url
+    if error:
+        rs["error"] = error
+    rs["last_seen_at"] = now_iso
+    new_meta["render_status"] = rs
+    repo.update_metadata(video_id, new_meta)
 
     if cb_status == "completed" and video_url:
         repo.update_files(
@@ -1642,6 +1879,10 @@ async def render_callback(
         logger.error(f"[render-callback] Video {video_id} render failed: {error}")
         return {"status": "ok", "note": "failure recorded"}
     else:
+        # Running progress update — already persisted above.
+        logger.debug(
+            f"[render-callback] Video {video_id} progress={progress} status={cb_status}"
+        )
         return {"status": "ok"}
 
 

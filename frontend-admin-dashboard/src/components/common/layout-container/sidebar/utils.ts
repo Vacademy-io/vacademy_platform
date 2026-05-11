@@ -419,6 +419,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'create-live-session',
             },
             {
+                subItem: 'Bulk Schedule',
+                subItemLink: '/study-library/live-session/schedule/bulk',
+                subItemId: 'bulk-schedule-live-session',
+            },
+            {
                 subItem: `${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)} Attendance`,
                 subItemLink: '/study-library/attendance-tracker',
                 subItemId: 'session-attendance',

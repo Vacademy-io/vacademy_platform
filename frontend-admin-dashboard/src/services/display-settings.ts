@@ -10,6 +10,7 @@ import {
 import { StorageKey } from '@/constants/storage/storage';
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
+import { SidebarItemsData } from '@/components/common/layout-container/sidebar/utils';
 
 const CACHE_EXPIRY_HOURS = 24;
 const LEGACY_ADMIN_KEY = StorageKey.ADMIN_DISPLAY_SETTINGS;
@@ -114,6 +115,7 @@ function mergeDisplayWithDefaults(
             visible: tab.visible ?? defTab.visible ?? true,
             locked: tab.locked ?? defTab.locked ?? false,
             isCustom: tab.isCustom ?? (defTab as Partial<typeof defTab>).isCustom ?? false,
+            category: tab.category ?? (defTab as Partial<typeof defTab>).category,
             subTabs: subTabsMerged.map((s) => {
                 const defSub =
                     (defTab.subTabs || []).find((d) => d.id === s.id) ||
@@ -284,6 +286,10 @@ function mergeDisplayWithDefaults(
         assignment: true,
         jupyterNotebook: true,
         scratch: true,
+        ppt: true,
+        audio: true,
+        scorm: true,
+        assessment: true,
     };
     merged.contentTypes = {
         pdf: incoming?.contentTypes?.pdf ?? defCT.pdf,
@@ -300,6 +306,10 @@ function mergeDisplayWithDefaults(
         assignment: incoming?.contentTypes?.assignment ?? defCT.assignment,
         jupyterNotebook: incoming?.contentTypes?.jupyterNotebook ?? defCT.jupyterNotebook,
         scratch: incoming?.contentTypes?.scratch ?? defCT.scratch,
+        ppt: incoming?.contentTypes?.ppt ?? defCT.ppt ?? true,
+        audio: incoming?.contentTypes?.audio ?? defCT.audio ?? true,
+        scorm: incoming?.contentTypes?.scorm ?? defCT.scorm ?? true,
+        assessment: incoming?.contentTypes?.assessment ?? defCT.assessment ?? true,
     };
 
     // Course Page Settings
@@ -399,6 +409,7 @@ function mergeDisplayWithDefaults(
         enquiryTab: false,
         applicationTab: false,
         leadTab: false,
+        fullHistoryTab: false,
     };
     merged.studentSideView = {
         overviewTab: incoming?.studentSideView?.overviewTab ?? defStudentSideView.overviewTab,
@@ -421,6 +432,8 @@ function mergeDisplayWithDefaults(
         enquiryTab: incoming?.studentSideView?.enquiryTab ?? defStudentSideView.enquiryTab,
         applicationTab: incoming?.studentSideView?.applicationTab ?? defStudentSideView.applicationTab,
         leadTab: incoming?.studentSideView?.leadTab ?? defStudentSideView.leadTab,
+        fullHistoryTab:
+            incoming?.studentSideView?.fullHistoryTab ?? defStudentSideView.fullHistoryTab ?? false,
         // Preserve user-supplied ordering and default-tab choice; fall back to
         // the role's defaults so older saved settings (which lacked these
         // fields) still render in a sensible order.
@@ -432,6 +445,7 @@ function mergeDisplayWithDefaults(
         allowPortalAccess: true,
         allowViewPassword: true,
         allowSendResetPasswordMail: true,
+        showApprovalToggle: false,
     };
     // Learner Management ...
     merged.learnerManagement = {
@@ -444,6 +458,23 @@ function mergeDisplayWithDefaults(
         allowSendResetPasswordMail:
             incoming?.learnerManagement?.allowSendResetPasswordMail ??
             defLearnerManagement.allowSendResetPasswordMail,
+        showApprovalToggle:
+            incoming?.learnerManagement?.showApprovalToggle ??
+            defLearnerManagement.showApprovalToggle,
+    };
+
+    // Live class scheduling (role-level overlay on top of institute-level
+    // Live Session Settings). Both flags default ON so existing roles aren't
+    // suddenly locked out of either flow.
+    merged.liveClassScheduling = {
+        bulkScheduleEnabled:
+            incoming?.liveClassScheduling?.bulkScheduleEnabled ??
+            defaults.liveClassScheduling?.bulkScheduleEnabled ??
+            true,
+        singleScheduleEnabled:
+            incoming?.liveClassScheduling?.singleScheduleEnabled ??
+            defaults.liveClassScheduling?.singleScheduleEnabled ??
+            true,
     };
 
     // Sidebar Categories
@@ -731,4 +762,80 @@ export async function saveDisplaySettings(
 // Synchronous accessor for router usage
 export function getDisplaySettingsFromCache(role: RoleKey): DisplaySettingsData | null {
     return readCache(role);
+}
+
+type CategoryId = 'CRM' | 'LMS' | 'AI';
+
+/**
+ * Resolve the effective post-login redirect URL for a role.
+ *
+ * If the candidate URL points into a sidebar category that is hidden for the
+ * role (e.g. CRM is disabled but `/dashboard` is the default redirect), this
+ * returns the first visible tab in the role's default visible category instead.
+ * Otherwise the candidate is returned unchanged.
+ */
+export function resolveEffectivePostLoginRoute(
+    candidate: string,
+    ds: DisplaySettingsData | null | undefined
+): string {
+    if (!candidate || !ds) return candidate || '/dashboard';
+    const cats = ds.sidebarCategories;
+    if (!cats || cats.length === 0) return candidate;
+
+    const tabCategory = (tabId: string, fallback?: CategoryId): CategoryId => {
+        const base = SidebarItemsData.find((i) => i.id === tabId);
+        return (base?.category as CategoryId) || fallback || 'CRM';
+    };
+
+    // Determine the category that the candidate URL belongs to.
+    let candidateCategory: CategoryId | null = null;
+    for (const t of ds.sidebar) {
+        const base = SidebarItemsData.find((i) => i.id === t.id);
+        const tabRoute = t.route || base?.to;
+        if (tabRoute && candidate.startsWith(tabRoute)) {
+            candidateCategory = tabCategory(t.id, t.category as CategoryId | undefined);
+            break;
+        }
+        const subRoutes: string[] = [
+            ...(t.subTabs || []).map((s) => s.route),
+            ...(base?.subItems || []).map((s) => s.subItemLink || ''),
+        ].filter(Boolean) as string[];
+        if (subRoutes.some((r) => candidate.startsWith(r))) {
+            candidateCategory = tabCategory(t.id, t.category as CategoryId | undefined);
+            break;
+        }
+    }
+
+    if (!candidateCategory) return candidate;
+
+    const candidateCatCfg = cats.find((c) => c.id === candidateCategory);
+    const candidateVisible = candidateCatCfg ? candidateCatCfg.visible !== false : true;
+    if (candidateVisible) return candidate;
+
+    // Candidate lands in a hidden category — pick the default visible one.
+    const sortedCats = cats.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const defaultCat =
+        sortedCats.find((c) => c.default && c.visible !== false) ||
+        sortedCats.find((c) => c.visible !== false);
+    if (!defaultCat) return candidate;
+
+    const tabsInCat = ds.sidebar
+        .filter((t) => {
+            if (t.visible === false) return false;
+            const cat = tabCategory(t.id, t.category as CategoryId | undefined);
+            return cat === defaultCat.id;
+        })
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+
+    for (const t of tabsInCat) {
+        const base = SidebarItemsData.find((i) => i.id === t.id);
+        const tabRoute = t.route || base?.to;
+        if (tabRoute) return tabRoute;
+        const firstVisibleSub = (t.subTabs || []).find((s) => s.visible !== false);
+        if (firstVisibleSub?.route) return firstVisibleSub.route;
+        const firstBaseSub = base?.subItems?.[0]?.subItemLink;
+        if (firstBaseSub) return firstBaseSub;
+    }
+
+    return candidate;
 }

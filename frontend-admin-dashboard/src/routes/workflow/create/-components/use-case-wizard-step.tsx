@@ -201,17 +201,24 @@ function QuestionField({
                     ? 'Select at least one campaign.'
                     : 'No selection — runs across all campaigns.'
             )}
-            {question.type === 'template_select' && (
+            {question.type === 'template_select' && (() => {
+                // Resolve which sample (if any) to offer for this specific
+                // question. Per-question override (sampleTemplateKey) takes
+                // precedence over the use-case-wide default — needed when one
+                // use-case has multiple template_select questions that need
+                // different samples (e.g. LIVE_SESSION_END recap: present vs absent).
+                const sampleKey = question.sampleTemplateKey ?? useCaseId;
+                const sample = sampleKey ? SAMPLE_TEMPLATES[sampleKey] : undefined;
+                return (
                 <div className="space-y-2">
                     {renderDropdown(templateOptions, templateLoading, '-- Select an email template --')}
                     {/* Sample template option */}
-                    {useCaseId && SAMPLE_TEMPLATES[useCaseId] && (
+                    {sample && (
                         <button
                             type="button"
                             disabled={creatingSample}
                             className="flex items-center gap-2 w-full rounded-lg border-2 border-dashed border-primary-200 bg-primary-50/50 px-3 py-2.5 text-left transition-all hover:border-primary-400 hover:bg-primary-50 disabled:opacity-50"
                             onClick={async () => {
-                                const sample = SAMPLE_TEMPLATES[useCaseId!];
                                 if (!sample) return;
                                 setCreatingSample(true);
                                 try {
@@ -230,6 +237,22 @@ function QuestionField({
                                     }
 
                                     if (!alreadyExists) {
+                                        // Convert ['fullName','username','password','instituteName']
+                                        // → { fullName: 'Full Name', username: 'Username', ... }.
+                                        // The workflow builder reads dynamicParameters off the
+                                        // template entity to render the per-placeholder mapping
+                                        // dropdowns; an empty map means "no variables to map" and
+                                        // the Template Variables section won't show up at all.
+                                        const dynamicParameters: Record<string, string> = {};
+                                        for (const v of sample.variables ?? []) {
+                                            // camelCase / snake_case → "Camel Case" / "Snake Case"
+                                            const label = v
+                                                .replace(/[_-]+/g, ' ')
+                                                .replace(/([a-z])([A-Z])/g, '$1 $2')
+                                                .replace(/\b\w/g, (c) => c.toUpperCase());
+                                            dynamicParameters[v] = label;
+                                        }
+
                                         await authenticatedAxiosInstance.post(
                                             CREATE_MESSAGE_TEMPLATE,
                                             {
@@ -245,7 +268,7 @@ function QuestionField({
                                                     isDefault: false,
                                                     templateType: 'utility',
                                                 },
-                                                dynamicParameters: {},
+                                                dynamicParameters,
                                                 canDelete: true,
                                                 createdBy: 'current-user',
                                                 updatedBy: 'current-user',
@@ -276,7 +299,7 @@ function QuestionField({
                             <Sparkle size={16} weight="fill" className="text-primary-500 shrink-0" />
                             <div className="flex-1">
                                 <div className="text-xs font-semibold text-primary-700">
-                                    {creatingSample ? 'Creating...' : `Use sample: "${SAMPLE_TEMPLATES[useCaseId!]!.name}"`}
+                                    {creatingSample ? 'Creating...' : `Use sample: "${sample.name}"`}
                                 </div>
                                 <div className="text-[10px] text-primary-400 mt-0.5">
                                     Pre-built template with the right variables — added to your template library
@@ -285,7 +308,8 @@ function QuestionField({
                         </button>
                     )}
                 </div>
-            )}
+                );
+            })()}
             {question.type === 'live_session_select' && renderDropdown([], false, '-- Select a live session --', !question.required)}
             {question.type === 'invite_select' && renderDropdown([], false, '-- Select an invite --', !question.required)}
 

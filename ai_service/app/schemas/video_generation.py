@@ -67,6 +67,11 @@ AvatarModelLiteral = Literal[
     "veed/fabric-1.0",
 ]
 
+# Provider for studio_avatar / saved-avatar resolution. Single source of truth —
+# referenced by HostAvatarPlan.provider in routing.py and by
+# vimotion_resolver._ALLOWED_PROVIDERS so the resolver allow-list cannot drift.
+AvatarProviderLiteral = Literal["custom", "argil", "veed"]
+
 
 class HostAvatarConfig(BaseModel):
     """Avatar-host inputs. Required when host.type='avatar'.
@@ -155,6 +160,63 @@ class HostConfig(BaseModel):
                     "or saved_avatar_id (resolved server-side)."
                 )
         return self
+
+
+# ---------------------------------------------------------------------------
+# Visual preferences — soft per-family bias hints + on-screen text density.
+#
+# Set either by the FE Advanced Settings sliders OR detected from the user's
+# prompt by the IntentRouter free-text scanner (free-text wins on overlap).
+# Slice A only PERSISTS these signals into extra_metadata; Slices B/C/D
+# inject them into the Script LLM, Director, and per-shot HTML prompts.
+# ---------------------------------------------------------------------------
+
+FamilyBias = Literal["no", "auto", "high"]
+TextDensity = Literal["minimal", "low", "auto", "rich"]
+
+
+class VisualPreferences(BaseModel):
+    """Soft per-family bias hints + on-screen text density.
+
+    All fields are optional. None = "field not set" (caller can treat as
+    "auto"). Slices B/C/D distinguish "explicitly set to auto" from
+    "untouched" so logging/observability can show what the user actually
+    requested vs what we inferred.
+    """
+    stock_video: Optional[FamilyBias] = Field(
+        default=None,
+        description="Bias for VIDEO_HERO + IMAGE_HERO with stock footage / real video.",
+    )
+    ai_imagery: Optional[FamilyBias] = Field(
+        default=None,
+        description="Bias for shots with AI-generated images (Seedream).",
+    )
+    svg_illustrated: Optional[FamilyBias] = Field(
+        default=None,
+        description="Bias for INFOGRAPHIC_SVG / KINETIC_TITLE / ANNOTATION_MAP.",
+    )
+    motion_graphics: Optional[FamilyBias] = Field(
+        default=None,
+        description=(
+            "Bias for TEXT_DIAGRAM / PROCESS_STEPS / DATA_STORY / "
+            "EQUATION_BUILD / ANIMATED_ASSET / KINETIC_TEXT."
+        ),
+    )
+    app_ui_mockup: Optional[FamilyBias] = Field(
+        default=None,
+        description="Bias for DEVICE_MOCKUP (HTML-rendered app/web/mobile UI).",
+    )
+    text_density: Optional[TextDensity] = Field(
+        default=None,
+        description=(
+            "On-screen visible text density (does NOT affect narration length). "
+            "minimal = title-only on hooks, no body anywhere. "
+            "low = short headlines, no body, drop subtitles. "
+            "auto = pipeline default. "
+            "rich = full headlines + supporting labels (current behavior). "
+            "On minimal/low, KINETIC_TEXT is forbidden by the Director."
+        ),
+    )
 
 
 # Content types supported by the generation pipeline
@@ -348,6 +410,15 @@ class VideoGenerationRequest(BaseModel):
             "in `host_in_video_percentage`%% of shots, full-frame, with motion "
             "graphics overlaid in free regions."
         )
+    )
+    visual_preferences: Optional[VisualPreferences] = Field(
+        default=None,
+        description=(
+            "Soft per-family bias hints + on-screen text density. Set by the FE "
+            "Advanced Settings sliders. Free-text phrases in the prompt "
+            "(e.g. 'use more SVG diagrams', 'less text on screen') override "
+            "individual fields via the IntentRouter free-text scanner."
+        ),
     )
 
     @model_validator(mode="after")
@@ -569,6 +640,28 @@ class AddFrameResponse(BaseModel):
     status: str
     video_id: str
     entry_id: str
+    frame_index: int
+    message: str
+
+
+class DeleteFrameRequest(BaseModel):
+    """Request for removing a frame from the timeline.
+
+    Prefer `entry_id` — it's order-independent. `frame_index` is accepted as
+    a fallback for callers that only know the position. If both are given,
+    `entry_id` wins and `frame_index` is treated as a hint.
+    """
+    video_id: str = Field(..., description="Video ID")
+    entry_id: Optional[str] = Field(None, description="Stable entry ID to remove")
+    frame_index: Optional[int] = Field(
+        None, description="Position of the frame to remove (fallback when entry_id is missing)"
+    )
+
+
+class DeleteFrameResponse(BaseModel):
+    status: str
+    video_id: str
+    entry_id: Optional[str]
     frame_index: int
     message: str
 

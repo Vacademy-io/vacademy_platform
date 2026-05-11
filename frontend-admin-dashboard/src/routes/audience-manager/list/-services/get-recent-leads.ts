@@ -24,6 +24,13 @@ export interface RecentLeadDetail {
         email?: string;
         mobile_number?: string;
     };
+    /** Form answers indexed by custom_field_id. */
+    custom_field_values?: Record<string, string | null>;
+    /** Field metadata keyed by custom_field_id (name + type). */
+    custom_field_metadata?: Record<
+        string,
+        { fieldName?: string; field_name?: string; fieldType?: string; field_type?: string }
+    >;
 }
 
 export interface RecentLeadsResponse {
@@ -44,7 +51,13 @@ export interface RecentLeadsRequest {
     audience_id?: string;
     submitted_from_local?: string; // ISO-8601 timestamp
     submitted_to_local?: string;
+    // Substring match against parent_name / parent_email / parent_mobile.
     search_query?: string;
+    // Lead temperature bucket — 'HOT' | 'WARM' | 'COLD'. Omitted = all tiers.
+    lead_tier?: string;
+    // Conversion-state filter — defaults to EXCLUDE_CONVERTED on the backend so
+    // leads that have been enrolled into a course don't pollute the active list.
+    conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
     page: number;
     size: number;
 }

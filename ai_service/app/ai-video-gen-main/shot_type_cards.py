@@ -984,6 +984,7 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
             "CONTINUOUS MOTION: apply a 8–12s slow GSAP scale (1→1.05) on the subject and a slow drift on bg-mark.",
             "COLOR ACTS: bg-base starts as light/neutral. bg-texture (halftone layer) can be brand-primary for a bold act 2.",
             "DO NOT move the subject between acts — only the background layers change.",
+            "BRAND-ANCHOR: when a BRAND ANCHOR block appears in the user prompt, slam-text + tracking-label MUST reference the named product/brand. 'THE ICON' in the template is an EXAMPLE — replace with the actual brand (e.g. 'PARLE-G' as slam-text, 'INDIA'S BISCUIT' as tracking-label). For PRODUCT_HERO shots, the subject `<img>` SHOULD use `data-img-source=\"reference\"` with a brand image URL when one is provided.",
         ],
     },
 
@@ -1249,6 +1250,7 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
             "SECTION BADGE: `<div style='overflow:hidden;display:inline-block'><div id='badge' style='background:var(--brand-accent);transform:translateX(-110%)'>1. THE PASS</div></div>` + `gsap.to('#badge',{x:'0%',duration:0.45,ease:'expo.out'});`.",
             "KEEP IT MINIMAL: one phrase, 2-5 words. No body text, no diagrams, no images.",
             "Ideal duration: 1.5-3s. The words should all be visible by the 1s mark.",
+            "BRAND-ANCHOR: when a BRAND ANCHOR block appears in the user prompt, the word(s) MUST reference the named product/brand. The 'GET OUT THERE AND PLAY' template above is an EXAMPLE only — replace with brand-specific copy (e.g. 'PARLE-G — TASTE THE MOMENT'). Never ship generic agency taglines like 'Let's take your brand on an adventure'.",
         ],
     },
 
@@ -1414,6 +1416,80 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
     },
 
     # ------------------------------------------------------------------
+    # IMAGE_CLIP — display an indexed source image full-frame with HTML
+    # overlays on top. Unlike SOURCE_CLIP, the image URL is embedded
+    # directly in the HTML (no render-worker compositing needed) — the
+    # planner reads source_public_url from the image asset context and
+    # places it as the background <img>.
+    # ------------------------------------------------------------------
+    "IMAGE_CLIP": {
+        "id": "IMAGE_CLIP",
+        "name": "Source Image Clip",
+        "category": "static",
+        "description": (
+            "Display a user-uploaded image full-frame with HTML overlays "
+            "(captions, lower thirds, callouts, annotations). Use for "
+            "presenting photographs, screenshots, diagrams, or any uploaded "
+            "still image as a beat in the generated video."
+        ),
+        "use_for": (
+            "Showing a photograph during narration about a person/place, "
+            "displaying a screenshot while explaining a UI, "
+            "presenting a diagram while walking through a concept."
+        ),
+        "requires_image": False,  # the image is supplied via the asset context, not requested
+        "requires_video": False,
+        # NOT included in 'general' — IMAGE_CLIP is only useful when an
+        # image asset is provided; without one, the {{IMAGE_URL}} placeholder
+        # has no real URL to substitute and the shot would render broken.
+        "preferred_domains": [
+            "input_image_photo", "input_image_screenshot", "input_image_diagram",
+            "input_mixed_assets",
+        ],
+        "html_template": (
+            "<!-- IMAGE_CLIP: full-frame image with HTML overlays.\n"
+            "     Replace {{IMAGE_URL}} with the source_public_url from the\n"
+            "     image asset context. Image renders as background; overlays\n"
+            "     stack on top with z-index. -->\n"
+            "<div style='width:100%; height:100%; position:relative; background:#000;'>\n"
+            "  <img src='{{IMAGE_URL}}'\n"
+            "       style='position:absolute; inset:0; width:100%; height:100%;\n"
+            "              object-fit:cover; z-index:0;' />\n"
+            "\n"
+            "  <!-- Optional dim layer for caption legibility -->\n"
+            "  <div style='position:absolute; inset:0; background:linear-gradient(\n"
+            "       180deg, transparent 50%, rgba(0,0,0,0.55) 100%); z-index:1;'></div>\n"
+            "\n"
+            "  <!-- Lower-third caption -->\n"
+            "  <div style='position:absolute; bottom:8%; left:5%; right:5%; z-index:2;\n"
+            "       background:rgba(0,0,0,0.7); padding:1.2rem 2rem; border-radius:0.5rem;\n"
+            "       border-left:4px solid var(--brand-accent);'>\n"
+            "    <div id='caption-text' style='font-family:Inter,sans-serif; font-size:1.8rem;\n"
+            "         color:#fff; font-weight:600; opacity:0; transform:translateY(10px);'>\n"
+            "      A timely caption goes here\n"
+            "    </div>\n"
+            "  </div>\n"
+            "</div>\n"
+        ),
+        "script_block": (
+            "// Animate caption in\n"
+            "gsap.to('#caption-text', {opacity:1, y:0, duration:0.5, delay:0.3, ease:'power3.out'});\n"
+        ),
+        "guidelines": [
+            "Use the source_public_url from the asset context as the <img> src — "
+            "do NOT use data-img-prompt or data-video-query (the image is supplied).",
+            "Image fills the frame via object-fit:cover. Overlays render on top via z-index.",
+            "Keep overlays in the BOTTOM 30% of the screen so the image's subject stays visible.",
+            "Use semi-transparent dark backgrounds (rgba(0,0,0,0.7)) for caption readability.",
+            "Suggested elements: captions, lower thirds, name titles, OCR-derived callouts.",
+            "Default duration suggestions: photo 4s, screenshot 6s, diagram 8s. Override "
+            "via planner timing if narration warrants longer dwell.",
+            "For screenshots/diagrams: feel free to draw attention to OCR-detected regions "
+            "with annotation arrows or boxes positioned relative to the image's bbox_norm coords.",
+        ],
+    },
+
+    # ------------------------------------------------------------------
     # SOURCE_CLIP — play a clip from the indexed source video with
     # transparent HTML overlays on top (captions, lower thirds, callouts)
     # ------------------------------------------------------------------
@@ -1476,6 +1552,61 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
             "DO NOT use data-video-query — the source video is already playing.",
             "Animations should be subtle — the video content is the star, overlays support it.",
         ],
+    },
+
+    # ------------------------------------------------------------------
+    # ARTICLE_FOCUS — show the actual scraped article page as evidence,
+    # zoom-pan toward a quote pulled from the article body. ONLY available
+    # for news_recap videos when scrape_url captured page screenshots.
+    # Renders deterministically via the article_focus_zoom_pan template;
+    # the per-shot HTML LLM is bypassed.
+    # ------------------------------------------------------------------
+    "ARTICLE_FOCUS": {
+        "id": "ARTICLE_FOCUS",
+        "name": "Article Focus",
+        "category": "evidence",
+        "description": (
+            "Showcase the source article — the actual web page screenshot from scrape_url — "
+            "with a slow GSAP zoom-pan toward a highlighted quote box. Tells the viewer "
+            "'this is real, here is the source.' Optionally pairs the screenshot with an "
+            "animated pull-quote overlay carrying the verbatim sentence from the article."
+        ),
+        "use_for": (
+            "news_recap videos where a URL was scraped. Use 1–2 ARTICLE_FOCUS shots per "
+            "video — typically one early (above_fold) to anchor the source, and optionally "
+            "one mid-video (mid/footer) to cite a quote."
+        ),
+        "requires_image": False,
+        "requires_video": False,
+        "preferred_domains": ["news_recap", "documentary", "general"],
+        # Renders via the deterministic template registry; no per-shot LLM call.
+        "default_template_id": "article_focus_zoom_pan",
+        "html_template": (
+            "<!-- ARTICLE_FOCUS: rendered by template article_focus_zoom_pan. -->\n"
+            "<!-- The Director sets template_id and template_params; the pipeline -->\n"
+            "<!-- bypasses the per-shot LLM and composes the HTML deterministically. -->\n"
+        ),
+        "script_block": "",
+        "guidelines": [
+            "Set `template_id`: 'article_focus_zoom_pan' on the shot to bypass per-shot LLM.",
+            "Required `template_params`: { screenshot_id, quote_text, highlight_box_pct, accent_color }.",
+            "`screenshot_id` MUST match one of the AVAILABLE ARTICLE SCREENSHOTS in the user prompt "
+            "(typically 'above_fold' for the hero anchor, 'mid' or 'footer' for evidence beats, "
+            "'inline_0..N' for inline article images).",
+            "`quote_text` is the verbatim sentence from the article you want overlaid (≤ 120 chars).",
+            "`highlight_box_pct`: { x_pct, y_pct, w_pct, h_pct } — rect in 0–100 scale to zoom toward. "
+            "Default to {x_pct:5, y_pct:8, w_pct:90, h_pct:50} if you don't have a precise location.",
+            "Best at 3–5s shot duration. Long enough to read the quote; short enough to keep pace.",
+        ],
+        "director_inputs": {
+            "template_id": "article_focus_zoom_pan",
+            "template_params": [
+                "screenshot_id",
+                "quote_text",
+                "highlight_box_pct",
+                "accent_color",
+            ],
+        },
     },
 }
 
@@ -1557,6 +1688,25 @@ DOMAIN_SHOT_TYPES: Dict[str, List[str]] = {
     # Input video modes — SOURCE_CLIP is the primary shot type
     "input_video_podcast": ["SOURCE_CLIP", "KINETIC_TITLE", "TEXT_DIAGRAM", "DATA_STORY", "LOWER_THIRD"],
     "input_video_demo": ["SOURCE_CLIP", "DEVICE_MOCKUP", "KINETIC_TITLE", "TEXT_DIAGRAM", "PROCESS_STEPS", "ANNOTATION_MAP", "LOWER_THIRD"],
+    # Input image modes — IMAGE_CLIP is the primary shot type. Each mode's
+    # secondary catalog matches what the image's metadata can support:
+    #   photo      → caption-driven storytelling (lower thirds, kinetic titles)
+    #   screenshot → UI walkthrough (annotation, process steps)
+    #   diagram    → concept exposition (text diagram, data story)
+    "input_image_photo": ["IMAGE_CLIP", "KINETIC_TITLE", "LOWER_THIRD", "TEXT_DIAGRAM"],
+    "input_image_screenshot": ["IMAGE_CLIP", "ANNOTATION_MAP", "PROCESS_STEPS", "LOWER_THIRD", "KINETIC_TITLE"],
+    "input_image_diagram": ["IMAGE_CLIP", "TEXT_DIAGRAM", "DATA_STORY", "KINETIC_TITLE", "LOWER_THIRD"],
+    # Mixed assets — user picked at least one video AND at least one image.
+    # Catalog is the union of the two primary clip types plus every shot
+    # type that appears in either input_video_demo or input_image_diagram —
+    # this preserves the secondary catalog options (DEVICE_MOCKUP, PROCESS_STEPS,
+    # DATA_STORY) that single-asset domains have, so mixed flows aren't a
+    # downgrade vs picking one kind alone.
+    "input_mixed_assets": [
+        "SOURCE_CLIP", "IMAGE_CLIP",
+        "KINETIC_TITLE", "TEXT_DIAGRAM", "LOWER_THIRD",
+        "DEVICE_MOCKUP", "PROCESS_STEPS", "ANNOTATION_MAP", "DATA_STORY",
+    ],
 }
 
 

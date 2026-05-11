@@ -48,6 +48,12 @@ class ReferenceContext:
     """Processed reference material ready for pipeline injection."""
     text_context: str = ""  # combined extracted text + descriptions (for script)
     embeddable_images: List[Dict[str, str]] = field(default_factory=list)
+    # Web-capture artifacts from scrape_url tool: {urls_attempted, files_captured,
+    # text_excerpt, files_count, screenshot_count, inline_image_count, ...}.
+    # Each entry in files_captured carries a stable `id` ("above_fold", "mid",
+    # "footer", "inline_0..N") that ARTICLE_FOCUS shots reference by name.
+    # Empty dict when scrape_url didn't run.
+    scrape_artifacts: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -57,6 +63,7 @@ class ReferenceContext:
         return cls(
             text_context=data.get("text_context", ""),
             embeddable_images=data.get("embeddable_images", []),
+            scrape_artifacts=data.get("scrape_artifacts", {}) or {},
         )
 
 

@@ -300,10 +300,11 @@ def apply_user_override(plan: VideoTypePlan, override: Optional[str]) -> VideoTy
     """If the user explicitly picked a type via the request, that wins."""
     if not override:
         return plan
-    valid = {
-        "explainer", "tutorial", "news_recap", "product_promo", "case_study",
-        "documentary", "story", "listicle", "reel", "demo_walkthrough", "pitch",
-    }
+    # Derive the allow-list from VideoTypeLabel so the override validator can't
+    # drift behind the schema. Adding a new label to the Literal automatically
+    # extends the override path.
+    from ..schemas.routing import VideoTypeLabel
+    valid = set(VideoTypeLabel.__args__)  # type: ignore[attr-defined]
     if override not in valid:
         return plan
     if override != plan.type:

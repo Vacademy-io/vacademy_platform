@@ -38,10 +38,24 @@ export interface TimelineAudioTrack {
     fadeOut?: number;
 }
 
+/**
+ * Style-guide palette pulled out of the LLM's design pass. `processHtmlContent`
+ * uses this to seed CSS variables (`--background-color`, `--primary-color`,
+ * etc.) so embedded iframes match the theme of the rendered video.
+ */
+export interface TimelinePalette {
+    background?: string;
+    text?: string;
+    text_secondary?: string;
+    primary?: string;
+    accent?: string;
+}
+
 export interface TimelineJson {
     entries?: TimelineEntry[];
     meta?: {
         audio_tracks?: TimelineAudioTrack[];
+        palette?: TimelinePalette;
         [key: string]: unknown;
     };
 }
@@ -51,6 +65,12 @@ export interface SceneThumbnails {
     imageUrl?: string;
     /** First `<video src>` in the entry — used as a moving thumbnail when present. */
     videoUrl?: string;
+    /**
+     * Full rendered HTML for the shot. Surfaced so the pipeline view can
+     * embed an iframe-based preview that's playable for text-driven scenes
+     * (no image/video) and gives a richer side-sheet preview for everything else.
+     */
+    html?: string;
 }
 
 /**
@@ -89,9 +109,20 @@ export function parseTimelineThumbnails(
     const out: Record<number, SceneThumbnails> = {};
     timeline.entries.forEach((entry, position) => {
         const idx = typeof entry.index === 'number' ? entry.index : position;
-        out[idx] = extractSceneThumbnails(entry.html);
+        out[idx] = { ...extractSceneThumbnails(entry.html), html: entry.html };
     });
     return out;
+}
+
+/**
+ * Pull the style-guide palette out of `meta.palette`. Used to seed
+ * `processHtmlContent` so embedded scene previews render with the same
+ * theme variables the final MP4 was rendered against.
+ */
+export function pickPalette(
+    timeline: TimelineJson | null | undefined
+): TimelinePalette | undefined {
+    return timeline?.meta?.palette;
 }
 
 /**

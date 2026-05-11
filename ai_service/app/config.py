@@ -130,9 +130,21 @@ class Settings(BaseSettings):
     # Pixabay API Configuration (comma-separated keys for round-robin rotation)
     pixabay_api_keys: str = ""
 
+    # Serper API Configuration (Google Image / Video / Web search; comma-separated
+    # keys for round-robin rotation). Used by news_recap and other videos that
+    # need real photos of named entities (people, places, brands, events).
+    serper_api_keys: str = ""
+
     # Render Worker (dedicated Hetzner server for video rendering)
     render_server_url: str = os.getenv("RENDER_SERVER_URL", "")
     render_server_key: str = os.getenv("RENDER_SERVER_KEY", "")
+    # Public URL of THIS AI service (used as the callback target the render
+    # worker POSTs progress/completion to). Defaults to the stage gateway so
+    # production-like deployments work out of the box; override in prod /
+    # dev with AI_SERVICE_PUBLIC_URL. Empty string disables push entirely.
+    ai_service_public_url: str = os.getenv(
+        "AI_SERVICE_PUBLIC_URL", "https://backend-stage.vacademy.io/"
+    )
 
     # Internal Auth Configuration
     client_name: str = os.getenv("CLIENT_NAME", "ai_service")
@@ -144,6 +156,14 @@ class Settings(BaseSettings):
     jwt_secret_key: str = os.getenv("JWT_SECRET_KEY", "357638792F423F4428472B4B6250655368566D597133743677397A2443264629")
     jwt_algorithm: str = "HS256"
     jwt_token_expiry_minutes: int = 43200  # 30 days in minutes (matching Java 2592000000ms)
+
+    # Internal service-to-service auth.
+    # Used by admin_core_service when calling /credits/v1/internal/* endpoints
+    # (credit-pack purchase fulfillment from the Razorpay webhook handler).
+    # Compared in constant time inside require_internal_service_token().
+    # MUST be set in production; if unset, the internal endpoints reject all
+    # requests (no implicit fallback).
+    internal_service_token: Optional[str] = os.getenv("INTERNAL_SERVICE_TOKEN")
 
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 

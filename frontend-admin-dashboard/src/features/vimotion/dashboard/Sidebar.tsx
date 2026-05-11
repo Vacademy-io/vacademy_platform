@@ -1,9 +1,12 @@
 import { useNavigate } from '@tanstack/react-router';
-import { Clapperboard, LogOut, Palette, Sparkles, UserSquare2, Wand2, Coins } from 'lucide-react';
+import { forwardRef } from 'react';
+import { Clapperboard, FolderOpen, LogOut, Palette, Sparkles, UserSquare2, Wand2, Coins } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiCreditsQuery } from '@/services/ai-credits/get-ai-credits';
+import { AiCreditsPanel } from '@/components/common/ai-credits/AiCreditsPanel';
 import { removeCookiesAndLogout } from '@/lib/auth/sessionUtility';
 import { useStudioName } from './hooks/useStudioName';
+import { HelpMenu } from '../tour/HelpMenu';
 import type { DashboardTab } from './tabsConfig';
 
 interface SidebarProps {
@@ -15,6 +18,7 @@ interface SidebarProps {
 const NAV_ITEMS: { id: DashboardTab; label: string; Icon: typeof Clapperboard }[] = [
     { id: 'create', label: 'Create', Icon: Wand2 },
     { id: 'recent', label: 'Recent', Icon: Clapperboard },
+    { id: 'assets', label: 'Assets', Icon: FolderOpen },
     { id: 'avatars', label: 'Avatars', Icon: UserSquare2 },
     { id: 'brand-kits', label: 'Brand Kits', Icon: Palette },
 ];
@@ -30,7 +34,10 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
     };
 
     return (
-        <aside className="flex w-60 shrink-0 flex-col border-r border-neutral-200 bg-white">
+        <aside
+            data-tour="vim-sidebar"
+            className="flex w-60 shrink-0 flex-col border-r border-neutral-200 bg-white"
+        >
             {/* Brand + studio name */}
             <div className="flex items-center gap-2.5 p-5">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
@@ -53,6 +60,7 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
                             <li key={id}>
                                 <button
                                     type="button"
+                                    data-tour={`vim-sidebar-${id}`}
                                     onClick={() => onTabChange(id)}
                                     aria-current={active ? 'page' : undefined}
                                     className={cn(
@@ -71,9 +79,17 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
                 </ul>
             </nav>
 
-            {/* Credits + Logout */}
+            {/* Credits + Help + Logout */}
             <div className="space-y-2 border-t border-neutral-100 p-3">
-                {credits.data && <CreditsCard data={credits.data} />}
+                {credits.data && (
+                    <AiCreditsPanel
+                        popoverSide="right"
+                        popoverAlign="end"
+                        popoverSideOffset={12}
+                        trigger={<CreditsCardTrigger data={credits.data} />}
+                    />
+                )}
+                <HelpMenu />
                 <button
                     type="button"
                     onClick={handleLogout}
@@ -95,14 +111,26 @@ interface CreditsCardProps {
     };
 }
 
-function CreditsCard({ data }: CreditsCardProps) {
+const CreditsCardTrigger = forwardRef<
+    HTMLButtonElement,
+    CreditsCardProps & React.ButtonHTMLAttributes<HTMLButtonElement>
+>(({ data, className, ...rest }, ref) => {
     const balance = Number(data.current_balance) || 0;
     const total = Number(data.total_credits) || 0;
     const used = Math.max(0, total - balance);
     const usedPct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
 
     return (
-        <div className="rounded-lg border border-neutral-200 bg-neutral-50/60 px-3 py-2.5">
+        <button
+            ref={ref}
+            type="button"
+            data-tour="vim-credits"
+            className={cn(
+                'w-full rounded-lg border border-neutral-200 bg-neutral-50/60 px-3 py-2.5 text-left outline-none transition-colors hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-primary-500',
+                className
+            )}
+            {...rest}
+        >
             <div className="flex items-center gap-1.5 text-xs font-medium text-neutral-600">
                 <Coins className="size-3.5 text-primary-500" />
                 AI credits
@@ -125,9 +153,10 @@ function CreditsCard({ data }: CreditsCardProps) {
             {data.is_low_balance && (
                 <p className="mt-1.5 text-[11px] font-medium text-red-600">Low balance</p>
             )}
-        </div>
+        </button>
     );
-}
+});
+CreditsCardTrigger.displayName = 'CreditsCardTrigger';
 
 export function formatCredits(value: number): string {
     if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;

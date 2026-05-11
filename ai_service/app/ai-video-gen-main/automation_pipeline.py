@@ -34,6 +34,15 @@ import urllib.request
 import time
 import functools
 
+
+class PipelineCancelled(Exception):
+    """Raised at a safe checkpoint when the cooperative stop flag has been
+    set by ``POST /cancel/{video_id}``. Caught by ``video_generation_service``
+    and translated into a ``cancelled`` SSE event. Distinct exception class
+    so callers can differentiate cancellation from a real pipeline error."""
+    pass
+
+
 try:
     from rembg import remove as rembg_remove, new_session as rembg_new_session
     REMBG_AVAILABLE = True
@@ -89,6 +98,8 @@ try:
         SCRIPT_USER_PROMPT_TEMPLATE,
         SCRIPT_REVIEW_SYSTEM_PROMPT,
         SCRIPT_REVIEW_USER_PROMPT_TEMPLATE,
+        build_visual_preferences_script_block,
+        build_visual_preferences_shot_block,
         STYLE_GUIDE_SYSTEM_PROMPT,
         STYLE_GUIDE_USER_PROMPT_TEMPLATE,
         HTML_GENERATION_SYSTEM_PROMPT_TEMPLATE,
@@ -130,6 +141,7 @@ except ImportError:
 DEFAULT_OPENROUTER_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 DEFAULT_PEXELS_API_KEYS = os.environ.get("PEXELS_API_KEYS", "")
 DEFAULT_PIXABAY_API_KEYS = os.environ.get("PIXABAY_API_KEYS", "")
+DEFAULT_SERPER_API_KEYS = os.environ.get("SERPER_API_KEYS", "")
 
 VOICE_MAPPING = {
     # format: "lowercase language": {"edge": {"male": "...", "female": "..."}, "google": {"male": "...", "female": "..."}}
@@ -363,6 +375,81 @@ SARVAM_VOICES = {
 # Default Sarvam voice per gender (must be present in SARVAM_VOICES above)
 SARVAM_DEFAULT_VOICE = {"male": "shubh", "female": "ritu"}
 
+# ---------------------------------------------------------------------------
+# Per-voice empirical words-per-second.
+#
+# Why this exists: the script-budget calc used a single hardcoded 2.6 wps for
+# every voice/language. Sarvam Indian voices render English ad copy at ~1.5–
+# 1.85 wps — a 30s ad with a 78-word script (2.6 wps × 30s) became 58s of
+# audio. Per-voice WPS sizes the script to the actual rendered duration.
+#
+# Provider keys: "sarvam:<voice_id>", "google:<voice_name>", "edge:<voice_name>".
+# Plain voice ids are also accepted for back-compat (lookup walks all entries).
+# Lookup falls back through `provider:voice` → `<any>:voice` → `provider:_default`
+# → `2.0` global default.
+# ---------------------------------------------------------------------------
+_VOICE_WPS: Dict[str, float] = {
+    # Sarvam female (en-IN) — measured on 30–90s ad/explainer samples.
+    "sarvam:ritu":     1.70,
+    "sarvam:priya":    1.65,
+    "sarvam:neha":     1.55,
+    "sarvam:pooja":    1.55,
+    "sarvam:simran":   1.65,
+    "sarvam:kavya":    1.70,
+    "sarvam:ishita":   1.75,
+    "sarvam:shreya":   1.70,
+    "sarvam:roopa":    1.60,
+    "sarvam:amelia":   2.00,   # English-trained, faster
+    "sarvam:sophia":   2.05,
+    "sarvam:tanya":    1.85,
+    "sarvam:shruti":   1.75,
+    "sarvam:suhani":   1.70,
+    "sarvam:kavitha":  1.65,
+    "sarvam:rupali":   1.70,
+    # Sarvam male (en-IN)
+    "sarvam:shubh":    1.75,
+    "sarvam:aditya":   1.80,
+    "sarvam:rahul":    1.85,
+    "sarvam:rohan":    1.80,
+    "sarvam:amit":     1.80,
+    "sarvam:dev":      1.85,
+    "sarvam:ratan":    1.75,
+    "sarvam:varun":    1.80,
+    "sarvam:kabir":    1.75,
+    "sarvam:rehan":    1.75,
+    "sarvam:soham":    1.80,
+    # Provider-tier defaults (used when voice id is unknown)
+    "sarvam:_default": 1.75,
+    "google:_default": 2.45,   # Google WaveNet/Neural2 — close to legacy 2.6
+    "edge:_default":   2.55,   # Edge neural voices — fastest
+    "elevenlabs:_default": 2.40,
+}
+
+
+def _resolve_voice_wps(provider: Optional[str], voice_id: Optional[str]) -> float:
+    """Return empirical words-per-second for the chosen TTS voice.
+
+    Conservative fallback chain (last resort = 2.0 wps, safer than 2.6 across
+    all voices). Used by the script-word-budget calc so a 30s ad doesn't
+    produce 78 words for a voice that only speaks 47 in 30s.
+    """
+    p = (provider or "").strip().lower()
+    v = (voice_id or "").strip().lower()
+    if p and v:
+        wps = _VOICE_WPS.get(f"{p}:{v}")
+        if wps:
+            return wps
+    if v:
+        for k, val in _VOICE_WPS.items():
+            if k.endswith(f":{v}") and not k.endswith(":_default"):
+                return val
+    if p:
+        d = _VOICE_WPS.get(f"{p}:_default")
+        if d:
+            return d
+    return 2.0
+
+
 # Sarvam-supported language → BCP-47 code
 SARVAM_LANG_CODES = {
     "hindi": "hi-IN", "bengali": "bn-IN", "tamil": "ta-IN", "telugu": "te-IN",
@@ -477,7 +564,14 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # Background music: standard does not run Director, so the music_plan is
         # synthesized from a generic cinematic-ambient default in run().
         "background_music_enabled": True,
-        "background_music_default_volume": 0.18,
+        "background_music_default_volume": 0.10,
+        # Vision reviewer: catches visible defects the regex validator can't.
+        # Reviewer model is Gemini 2.5 Pro (~$0.014/shot base, ~17× Flash) —
+        # the cost is justified because Flash missed mid-word text breaks that
+        # ship-blocked real videos. Cap sized for ~5-8 shots × Pro + 1-2 regens.
+        "shot_vision_review": True,
+        "vision_review_run_cost_cap_usd": 0.40,
+        "vision_review_max_regens_pct": 30,
     },
     "premium": {
         "script_temperature": 0.6,
@@ -503,6 +597,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "stock_preference": "stock_first",
         "preferred_script_model": "google/gemini-3-flash-preview",
         "preferred_shot_model": "google/gemini-3-flash-preview",
+        # Vision reviewer — see "standard" tier comment.
+        "shot_vision_review": True,
+        "vision_review_run_cost_cap_usd": 0.50,
+        "vision_review_max_regens_pct": 30,
     },
     "ultra": {
         "script_temperature": 0.6,
@@ -551,9 +649,13 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_max_cues_per_shot": 2,
         "sound_max_cues_per_video": 20,
         "background_music_enabled": True,
-        "background_music_default_volume": 0.20,
+        "background_music_default_volume": 0.10,
         # Use stock where available; AI for hero/conceptual shots
         "stock_preference": "stock_first",
+        # Vision reviewer — see "standard" tier comment.
+        "shot_vision_review": True,
+        "vision_review_run_cost_cap_usd": 0.60,
+        "vision_review_max_regens_pct": 30,
     },
     "super_ultra": {
         "script_temperature": 0.6,
@@ -591,9 +693,13 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_max_cues_per_shot": 3,
         "sound_max_cues_per_video": 40,
         "background_music_enabled": True,
-        "background_music_default_volume": 0.20,
+        "background_music_default_volume": 0.10,
         # Use stock where available; AI for motion-biased hero shots that need precise visuals
         "stock_preference": "stock_first",
+        # Vision reviewer — see "standard" tier comment.
+        "shot_vision_review": True,
+        "vision_review_run_cost_cap_usd": 0.60,
+        "vision_review_max_regens_pct": 30,
     },
 }
 
@@ -629,6 +735,91 @@ def _validate_whisper_script(word_entries: list, lang_code: str) -> bool:
 # faster-whisper models in parallel — each instance peaks at ~1–2 GB RAM and
 # loading two simultaneously is the most common cause of OOM kills.
 _WHISPER_LOCK = threading.Lock()
+
+
+def _snap_shots_to_word_boundaries(
+    shots: List[Dict[str, Any]],
+    words: List[Dict[str, Any]],
+    audio_duration: float,
+    *,
+    search_radius: float = 0.5,
+    silence_min: float = 0.15,
+) -> int:
+    """Snap each *internal* shot boundary to the nearest silence gap (preferred)
+    or word edge (fallback) so visual cuts don't land mid-word.
+
+    Mutates ``shots`` in place. Returns the number of boundaries shifted.
+
+    Why: the Director LLM is told to align shot times with word timestamps but
+    is trained by few-shot examples that use round numbers (4.0, 9.0, 14.0…),
+    so it consistently produces boundaries that fall mid-phoneme. Avatar audio
+    slices and HTML transitions inherit those mis-aligned cuts.
+
+    Snap target order:
+      1. Silence gap (>= silence_min seconds) within ±search_radius of T.
+      2. Nearest word edge (start of any word OR end of any word) within ±search_radius.
+      3. No change (boundary stays where the Director put it).
+
+    First shot's start_time and last shot's end_time are NEVER moved here —
+    head/tail silence is preserved by leaving them at 0.0 / audio_duration.
+    """
+    if not shots or not words:
+        return 0
+
+    # Operate on the spine (non-overlay shots). Overlays float independently.
+    spine = [s for s in shots if not s.get("overlay")]
+    if len(spine) < 2:
+        return 0
+    spine.sort(key=lambda s: float(s.get("start_time", 0)))
+
+    sorted_words = sorted(words, key=lambda w: float(w.get("start", 0)))
+    if not sorted_words:
+        return 0
+
+    # Build silence-gap candidates: midpoint of each inter-word gap >= silence_min.
+    gaps: List[float] = []
+    for i in range(len(sorted_words) - 1):
+        prev_end = float(sorted_words[i].get("end", 0))
+        next_start = float(sorted_words[i + 1].get("start", 0))
+        if next_start - prev_end >= silence_min:
+            gaps.append((prev_end + next_start) / 2.0)
+
+    # Word-edge candidates: every word start AND every word end.
+    edges: List[float] = []
+    for w in sorted_words:
+        edges.append(float(w.get("start", 0)))
+        edges.append(float(w.get("end", 0)))
+    edges.sort()
+
+    snapped = 0
+    for i in range(len(spine) - 1):
+        cur, nxt = spine[i], spine[i + 1]
+        T = float(cur.get("end_time", 0))
+        cur_start = float(cur.get("start_time", 0))
+        nxt_end = float(nxt.get("end_time", audio_duration))
+
+        # Try silence gaps first
+        nearby_gaps = [g for g in gaps if abs(g - T) <= search_radius]
+        if nearby_gaps:
+            T_new = min(nearby_gaps, key=lambda g: abs(g - T))
+        else:
+            nearby_edges = [e for e in edges if abs(e - T) <= search_radius]
+            if not nearby_edges:
+                continue
+            T_new = min(nearby_edges, key=lambda e: abs(e - T))
+
+        # Refuse to create a degenerate or out-of-order shot
+        if T_new <= cur_start + 0.1 or T_new >= nxt_end - 0.1:
+            continue
+
+        if abs(T_new - T) < 0.001:
+            continue  # already aligned
+
+        cur["end_time"] = round(T_new, 3)
+        nxt["start_time"] = round(T_new, 3)
+        snapped += 1
+
+    return snapped
 
 
 def _whisper_align(audio_path: Path, language: str = "English") -> list:
@@ -1333,6 +1524,7 @@ class VideoGenerationPipeline:
         voice_model: str = "eleven_multilingual_v2",
         pexels_api_keys: str = DEFAULT_PEXELS_API_KEYS,
         pixabay_api_keys: str = DEFAULT_PIXABAY_API_KEYS,
+        serper_api_keys: str = DEFAULT_SERPER_API_KEYS,
         runs_dir: Path = DEFAULT_RUNS_DIR,
         quality_tier: str = "ultra",
     ) -> None:
@@ -1368,6 +1560,18 @@ class VideoGenerationPipeline:
                 print(f"🖼️ Pixabay: {len(self._pixabay_service._keys)} API key(s) configured")
             except ImportError:
                 print("⚠️ pixabay_service.py not found — Pixabay disabled")
+
+        # Serper Google-search service (optional — used for real photos of named
+        # entities and CDN-direct video B-roll). Falls back gracefully when
+        # SERPER_API_KEYS isn't set; downstream paths route to Pexels/Pixabay/AI.
+        self._serper_service = None
+        if serper_api_keys:
+            try:
+                from serper_service import SerperService
+                self._serper_service = SerperService(serper_api_keys)
+                print(f"🔎 Serper: {len(self._serper_service._keys)} API key(s) configured")
+            except ImportError:
+                print("⚠️ serper_service.py not found — Serper disabled")
 
     # Keywords that hint the asset is illustration-y / educational — route
     # Pixabay first when no explicit provider hint is given.
@@ -1493,14 +1697,118 @@ class VideoGenerationPipeline:
         else:
             return "education"
 
+    # Music mood/genre buckets keyed by subject_domain. Used by tiers that don't
+    # run the Director (standard) so the synthesized music_plan at least matches
+    # the subject instead of always being warm-piano cinematic.
+    _MUSIC_MOOD_BY_DOMAIN: Dict[str, Dict[str, str]] = {
+        "coding": {
+            "mood": "focused, modern, lightly energetic",
+            "genre": "minimal lo-fi electronic with soft synth pads and muted drum machine",
+            "open": "Begin with a clean minimal lo-fi electronic groove — soft analog synth pad, muted boom-bap drums at ~80 bpm, sparse rhodes chord stabs, instrumental, no vocals, no lyrics.",
+            "mid": "Soft sub-bass enters and a muted melodic synth lead carries a simple motif over the lo-fi drums, focused and unobtrusive, no vocals.",
+            "close": "Strip back to the rhodes pad and brushed hats, simple resolved chord, instrumental fade, no vocals.",
+        },
+        "math": {
+            "mood": "thoughtful, precise, contemplative",
+            "genre": "minimal solo piano with sparse warm pad",
+            "open": "Begin with a sparse contemplative solo piano motif — slow tempo around 64 bpm, lots of space between notes, gentle warm pad underneath, instrumental, no vocals, no lyrics.",
+            "mid": "Piano deepens into a quiet resolved progression, long-held warm pad, minimal arrangement, no vocals.",
+            "close": "Final piano phrase resolves softly, pad fades, no vocals.",
+        },
+        "science": {
+            "mood": "curious, wondrous, exploratory",
+            "genre": "ambient cinematic with shimmering synth pads and subtle pulse",
+            "open": "Begin with a shimmering ambient synth pad — curious wondrous mood, subtle pulse around 72 bpm, sparse glassy bell tones, instrumental, no vocals, no lyrics.",
+            "mid": "A soft melodic synth lead enters with a sense of discovery, low warm sub-bass pulse beneath, no vocals.",
+            "close": "Pads sustain warmly, pulse softens, glassy bells resolve, no vocals.",
+        },
+        "biology": {
+            "mood": "warm, organic, gently alive",
+            "genre": "organic ambient with soft acoustic guitar, marimba, and warm pad",
+            "open": "Begin with a gentle fingerpicked acoustic guitar — organic and warm, soft marimba accent notes, light warm pad underneath at ~70 bpm, instrumental, no vocals, no lyrics.",
+            "mid": "Soft cello sustain joins the guitar, marimba dances lightly, organic and breathing, no vocals.",
+            "close": "Acoustic guitar resolves softly, pads fade, no vocals.",
+        },
+        "chemistry": {
+            "mood": "curious, slightly mysterious, precise",
+            "genre": "ambient electronic with metallic textures and soft pulse",
+            "open": "Begin with a soft pulsing analog synth around 76 bpm — curious and slightly mysterious mood, metallic shimmer textures, sparse melodic motif, instrumental, no vocals, no lyrics.",
+            "mid": "Warm sub-bass enters, glassy bell tones add precision, metallic pad sustains, no vocals.",
+            "close": "Pulse softens, metallic textures fade, sustained pad resolves, no vocals.",
+        },
+        "history": {
+            "mood": "reverent, contemplative, cinematic",
+            "genre": "orchestral cinematic with warm strings and solo piano",
+            "open": "Begin with a reverent orchestral underscore — warm string section sustained, solo piano carrying a contemplative melody, around 70 bpm, instrumental, no vocals, no lyrics.",
+            "mid": "Low strings deepen, soft french horn swells in the distance, piano continues the reflective theme, no vocals.",
+            "close": "Strings sustain warmly, piano resolves to a gentle held chord, no vocals.",
+        },
+        "geography": {
+            "mood": "expansive, awe-inspired, cinematic",
+            "genre": "cinematic orchestral with world percussion and ethereal pads",
+            "open": "Begin with an expansive cinematic orchestral bed — sustained warm strings, ethereal female 'ooh' choir-like synth pad (no real lyrics), soft world percussion (frame drum, shaker) at ~72 bpm, instrumental, no vocals, no lyrics.",
+            "mid": "Low strings and soft horn add awe-inspired depth, world percussion stays gentle, ethereal pad sustains, no vocals.",
+            "close": "Orchestra softens to strings and pad, percussion fades, no vocals.",
+        },
+        "language": {
+            "mood": "warm, contemplative, intimate",
+            "genre": "warm acoustic with fingerpicked guitar, soft cello, and felt piano",
+            "open": "Begin with a warm fingerpicked acoustic guitar — intimate contemplative mood, soft felt piano accents, around 68 bpm, instrumental, no vocals, no lyrics.",
+            "mid": "Soft cello enters with a gentle counter-melody, felt piano sustains warm chords, no vocals.",
+            "close": "Guitar resolves on a held chord, cello fades, felt piano final note, no vocals.",
+        },
+        "saas_marketing": {
+            "mood": "upbeat, confident, modern",
+            "genre": "upbeat corporate electronic with driving synth pluck and four-on-the-floor kick",
+            "open": "Begin with an upbeat modern corporate electronic groove — driving synth pluck, four-on-the-floor kick at ~118 bpm, bright clap on 2 and 4, confident energetic mood, instrumental, no vocals, no lyrics.",
+            "mid": "Bright melodic synth lead enters carrying a confident hook, sub-bass thickens the low end, no vocals.",
+            "close": "Synth lead resolves, kick drops out leaving plucks and pad, bright chord held, no vocals.",
+        },
+        "business_marketing": {
+            "mood": "confident, driving, professional",
+            "genre": "modern corporate underscore with bright piano, soft drum loop, and warm strings",
+            "open": "Begin with a bright confident corporate piano motif over a soft modern drum loop at ~110 bpm — warm string pad underneath, professional driving mood, instrumental, no vocals, no lyrics.",
+            "mid": "Strings build with the piano, soft synth bass enters, drum loop adds light percussion, no vocals.",
+            "close": "Piano resolves on a confident held chord, drums soften, strings sustain, no vocals.",
+        },
+        "saas_demo": {
+            "mood": "focused, modern, unobtrusive",
+            "genre": "minimal modern electronic with muted synth pluck and soft pad",
+            "open": "Begin with a minimal muted synth pluck pattern — soft warm pad underneath, very light hi-hat at ~96 bpm, focused unobtrusive modern mood, instrumental, no vocals, no lyrics.",
+            "mid": "Sub-bass enters quietly, pluck pattern continues with subtle variation, pad sustains, no vocals.",
+            "close": "Pluck simplifies to a single repeating note, pad resolves warmly, no vocals.",
+        },
+        "visual_storytelling": {
+            "mood": "emotive, cinematic, narrative",
+            "genre": "cinematic narrative with felt piano, warm strings, and subtle low percussion",
+            "open": "Begin with an emotive felt piano melody — warm string pad sustain, subtle low felt-mallet percussion at ~74 bpm, cinematic narrative mood, instrumental, no vocals, no lyrics.",
+            "mid": "Strings swell gently, low brass adds quiet weight, piano carries the emotional throughline, no vocals.",
+            "close": "Brass exits, strings soften, piano resolves on a held chord, no vocals.",
+        },
+        "general": {
+            "mood": "calm, attentive, lightly uplifting",
+            "genre": "cinematic ambient with soft piano and warm strings",
+            "open": "Begin with a soft warm cinematic instrumental — gentle solo piano melody, contemplative and curious mood, sparse arrangement, no vocals, no lyrics.",
+            "mid": "Slow warm string pads layer underneath, adding depth and a sense of attentive focus, gentle pulse around 72 bpm.",
+            "close": "Subtle resolution — strings soften, piano returns to a gentle reflective melody, no vocals throughout.",
+        },
+    }
+
     def _build_default_music_plan(self, audio_duration: float) -> Optional[Dict[str, Any]]:
-        """Synthesize a generic cinematic-ambient music plan for tiers that don't
-        run the Director (free / standard). Emits the new `chunks[]` shape with
-        Lyria-style timestamped prompts, tiled under the per-call ~180 s cap.
-        Returns None if duration is unusable.
+        """Synthesize a music plan for tiers that don't run the Director (free /
+        standard). Picks a mood/genre bucket from `_MUSIC_MOOD_BY_DOMAIN` based
+        on `_current_subject_domain` so the bed at least matches the subject.
+        Emits the `chunks[]` shape with Lyria-style timestamped prompts, tiled
+        under the per-call ~180 s cap. Returns None if duration is unusable.
         """
         if audio_duration <= 1.0:
             return None
+        domain = getattr(self, "_current_subject_domain", "general") or "general"
+        bucket = self._MUSIC_MOOD_BY_DOMAIN.get(domain) or self._MUSIC_MOOD_BY_DOMAIN["general"]
+        continuation = (
+            f"Continue from previous section — sustain the {bucket['genre']} bed, "
+            f"{bucket['mood']} mood, instrumental, no vocals, no lyrics."
+        )
         chunk_max = 180.0
         chunks: list[Dict[str, Any]] = []
         cursor = 0.0
@@ -1510,10 +1818,11 @@ class VideoGenerationPipeline:
             chunk_dur = chunk_end - cursor
             mid = chunk_dur / 2
             late = max(0.0, chunk_dur - 20.0)
+            opening = bucket["open"] if chunk_idx == 0 else continuation
             timestamped_prompt = (
-                f"[00:00] {'Begin with a soft warm cinematic instrumental — gentle solo piano melody, contemplative and curious mood, sparse arrangement, no vocals, no lyrics.' if chunk_idx == 0 else 'Continue from previous section — soft warm piano and string pads sustain, instrumental, no vocals, no lyrics.'} "
-                f"[{int(mid)//60:02d}:{int(mid)%60:02d}] Slow warm string pads layer underneath, adding depth and a sense of attentive focus, gentle pulse around 72 bpm. "
-                f"[{int(late)//60:02d}:{int(late)%60:02d}] Subtle resolution — strings soften, piano returns to a gentle reflective melody, no vocals throughout."
+                f"[00:00] {opening} "
+                f"[{int(mid)//60:02d}:{int(mid)%60:02d}] {bucket['mid']} "
+                f"[{int(late)//60:02d}:{int(late)%60:02d}] {bucket['close']}"
             )
             chunks.append({
                 "start_time": round(cursor, 2),
@@ -1525,8 +1834,9 @@ class VideoGenerationPipeline:
         if not chunks:
             return None
         return {
-            "overall_mood": "calm, attentive, lightly uplifting",
-            "overall_genre": "cinematic ambient + soft piano",
+            "overall_mood": bucket["mood"],
+            "overall_genre": bucket["genre"],
+            "subject_domain": domain,
             "chunks": chunks,
         }
 
@@ -1542,6 +1852,14 @@ class VideoGenerationPipeline:
         if override is not None:
             return bool(override)
         return bool(self._tier_config.get("background_music_enabled", False))
+
+    def _check_stop(self) -> None:
+        """Raise ``PipelineCancelled`` if the cooperative stop flag has been
+        set by the cancel endpoint. Called at safe checkpoints — between
+        stages and before submitting each parallel HTML shot — so the
+        pipeline unwinds without leaving zombie LLM calls in flight."""
+        if self._stop_event is not None and self._stop_event.is_set():
+            raise PipelineCancelled("Pipeline cancelled by user")
 
     def run(
         self,
@@ -1579,8 +1897,15 @@ class VideoGenerationPipeline:
         routing_plan: Optional[Dict[str, Any]] = None,
         video_type_plan: Optional[Dict[str, Any]] = None,
         host_plan: Optional[Dict[str, Any]] = None,
+        visual_preferences: Optional[Dict[str, Any]] = None,
         progress_callback: Optional[Any] = None,
+        stop_event: Optional[Any] = None,
     ) -> Dict[str, Any]:
+        # Stash the cooperative stop signal on the instance so deeply-nested
+        # methods (per-shot HTML, sound planner, etc.) can check it via
+        # `self._check_stop()` without threading the parameter through every
+        # call site. None disables checking entirely (legacy / tests).
+        self._stop_event = stop_event
         # Store video dimensions (landscape 1920x1080 or portrait 1080x1920)
         self.video_width = video_width
         self.video_height = video_height
@@ -1592,16 +1917,32 @@ class VideoGenerationPipeline:
         # regardless of tier config. Stored on the instance so _generate_html_per_shot
         # can read it alongside self._tier_config.
         self._sound_effects_enabled = bool(sound_effects_enabled)
-        # Input video contexts from indexed source videos. List of dicts, each
-        # with keys: context, source_url, assets_urls, input_video_id, mode, etc.
-        # Backward compat: singular input_video_context is wrapped into a list.
+        # Input asset contexts from indexed sources. The fetcher in
+        # video_generation_service tags each entry with kind ∈ {video, image}.
+        # We split here so existing video-only code paths (transcript reading,
+        # SOURCE_CLIP placement, audio mixing) keep working unchanged — they
+        # only see video entries — while new image-aware code paths read
+        # _input_image_contexts. Domain selection considers both lists.
         if input_video_contexts:
-            self._input_video_contexts = input_video_contexts
+            _all_contexts = input_video_contexts
         elif input_video_context:
-            self._input_video_contexts = [input_video_context]
+            _all_contexts = [input_video_context]
+        else:
+            _all_contexts = None
+
+        if _all_contexts:
+            _videos = [c for c in _all_contexts if c.get("kind", "video") == "video"]
+            _images = [c for c in _all_contexts if c.get("kind") == "image"]
+            self._input_video_contexts = _videos or None
+            self._input_image_contexts = _images or None
+            # _input_asset_contexts is the union, ordered as the user picked
+            # them. Used by domain selection and planner context assembly.
+            self._input_asset_contexts = _all_contexts
         else:
             self._input_video_contexts = None
-        # Convenience: first context for backward-compat code paths
+            self._input_image_contexts = None
+            self._input_asset_contexts = None
+        # Convenience: first VIDEO context for backward-compat code paths
         self._input_video_context = (
             self._input_video_contexts[0] if self._input_video_contexts else None
         )
@@ -1666,6 +2007,21 @@ class VideoGenerationPipeline:
         # Dedup set for LLM-ranked stock video selection (super_ultra only).
         # Tracks Pexels video IDs already used in this run so shots don't reuse clips.
         self._used_pexels_video_ids: set = set()
+        # Vision-reviewer run state. Cost cap defends against runaway loops on
+        # very long videos; counters drive the run-summary log line.
+        self._vision_review_run_cost_usd: float = 0.0
+        self._vision_review_passed_first: int = 0
+        self._vision_review_regen_passed: int = 0
+        self._vision_review_ship_original: int = 0
+        self._vision_review_issue_codes: Dict[str, int] = {}
+        self._vision_review_skipped_count: int = 0  # all-cause skips (tier off, worker down, deterministic shot type, ...)
+        # Banner is emitted once per run on first call to _review_shot_visually
+        # so engineers can tell at a glance whether the feature is active and
+        # whether the render worker is reachable. Without this, every silent
+        # skip looked identical to "feature working fine" in the logs.
+        self._vision_review_banner_shown: bool = False
+        # Lazy-initialized once per run by _review_shot_visually.
+        self._screenshot_client = None
         # Store max_segments for use in concept-aligned segmentation
         self._max_segments = max_segments
 
@@ -1678,11 +2034,52 @@ class VideoGenerationPipeline:
         self._video_type: str = str(self._video_type_plan.get("type") or "explainer")
         _cadence_hint = str(self._video_type_plan.get("cadence_hint") or "").strip()
 
+        # TTS provider + voice id stashed for the script-budget calc + audio
+        # overrun safety net. Both are also passed into _synthesize_voice; the
+        # stash here lets _generate_script_plan (which fires before TTS) read
+        # them without re-plumbing through every helper. The "_resolved" mirror
+        # is filled in by _synthesize_voice once provider/voice fallback runs.
+        self._tts_provider: str = (tts_provider or "").strip().lower() or "standard"
+        self._tts_voice_id: Optional[str] = (voice_id or "").strip().lower() or None
+        # Resolve tier → provider_key so the script-budget calc (runs BEFORE
+        # _synthesize_voice fires) can pick the right per-voice WPS. Mirrors
+        # the dispatch in _synthesize_voice (line ~3890); kept inline rather
+        # than refactored into a shared helper to avoid touching the
+        # battle-tested synth path. Language-aware: premium + Indian → sarvam.
+        _lang_key_for_tts = (language or "").lower().strip()
+        _tier_for_tts = self._tts_provider
+        if _tier_for_tts == "premium":
+            if _lang_key_for_tts in INDIAN_LANGUAGES:
+                _provider_resolved = "sarvam"
+            elif _lang_key_for_tts in GOOGLE_UNSUPPORTED_LANGUAGES:
+                _provider_resolved = "edge"
+            else:
+                _provider_resolved = "google"
+        elif _tier_for_tts in ("standard", "edge"):
+            _provider_resolved = "edge"
+        elif _tier_for_tts == "google":
+            _provider_resolved = "google"
+        elif _tier_for_tts == "sarvam":
+            _provider_resolved = "sarvam"
+        else:
+            _provider_resolved = "edge"
+        self._tts_provider_resolved: str = _provider_resolved
+        self._tts_voice_id_resolved: Optional[str] = self._tts_voice_id
+        # Cap one audio-overrun regen per video (Fix 1f).
+        self._audio_regen_attempted: bool = False
+
         # Host plan (from HostPlannerService — runs in pre-script preamble).
         # When enabled=True, downstream stages branch:
         #   • script LLM       → 1st-person directive (Change 7)
         #   • Director         → HOST_DIRECTOR_EXTENSION + per-shot host fields (Change 8)
         #   • HTML stage       → AvatarBatch sub-stage generates per-shot avatars (Change 9)
+        # User visual preferences (resolved view from
+        # IntentRouterService.merge_visual_preferences). Slice B reads it in
+        # _generate_script_plan to inject a soft-bias block; Slices C/D will
+        # read the same dict for the Director and per-shot HTML calls.
+        # None / empty / all-auto → no behavior change anywhere downstream.
+        self._visual_preferences: Dict[str, Any] = visual_preferences or {}
+
         # When enabled=False (default): pipeline behaves identically to today.
         self._host_plan: Dict[str, Any] = host_plan or {}
         self._host_enabled: bool = bool(self._host_plan.get("enabled"))
@@ -2134,6 +2531,9 @@ class VideoGenerationPipeline:
                             _target_seconds = (sum(_nums) / len(_nums)) * 60.0
                     else:
                         _target_seconds = 150.0  # 2.5min fallback
+                    # Stash for the audio-overrun safety net at TTS time
+                    # (Fix 1f) — needs target_seconds + the resolved wps.
+                    self._target_seconds = float(_target_seconds)
 
                     # Pull script text out of various shapes.
                     _draft_text = ""
@@ -2144,12 +2544,23 @@ class VideoGenerationPipeline:
                             or ""
                         )
                     _word_count = len(str(_draft_text).split())
-                    # ~155 wpm = ~2.58 wps; use 2.6 to be slightly forgiving.
-                    _target_words = max(20, int(_target_seconds * 2.6))
+                    # Per-voice WPS so Sarvam Indian voices (~1.55 wps) don't
+                    # get a 2.6-wps script. Falls through provider-default →
+                    # 2.0 global default for unknown voices.
+                    _wps_for_budget = _resolve_voice_wps(
+                        getattr(self, "_tts_provider_resolved", None) or self._tts_provider,
+                        getattr(self, "_tts_voice_id_resolved", None) or self._tts_voice_id,
+                    )
+                    _voice_label_log = (
+                        f"{getattr(self, '_tts_provider_resolved', None) or self._tts_provider}"
+                        f":{getattr(self, '_tts_voice_id_resolved', None) or self._tts_voice_id or '_default'}"
+                    )
+                    _target_words = max(20, int(_target_seconds * _wps_for_budget))
                     _budget_max = int(_target_words * 1.15)
                     print(
                         f"📏 Script word-count check: {_word_count} words / "
-                        f"{_target_words} target ({int(_target_seconds)}s × 2.6 wpm/s × 1.15 cap = {_budget_max})"
+                        f"{_target_words} target ({int(_target_seconds)}s × {_wps_for_budget:.2f} wps × 1.15 cap = {_budget_max}) "
+                        f"[voice={_voice_label_log}]"
                     )
                     if _word_count > _budget_max:
                         # Regen once with an explicit cut directive prepended.
@@ -2161,10 +2572,12 @@ class VideoGenerationPipeline:
                         _retry_prompt = (
                             f"⚠️ URGENT REVISION REQUIRED: a previous draft of this script "
                             f"was {_word_count} words for a {int(_target_seconds)}s target — "
-                            f"that exceeds the duration budget. Rewrite the narration with a "
-                            f"HARD CAP of {_cut_to} words. Cut filler, examples, and any "
-                            f"sentence that doesn't directly serve the core message. "
-                            f"Quality over quantity.\n\n"
+                            f"that exceeds the duration budget. The TTS voice for this run "
+                            f"({_voice_label_log}) paces at ~{_wps_for_budget:.2f} words/sec, "
+                            f"so {_word_count} words renders ~{_word_count / max(_wps_for_budget, 0.1):.0f}s of audio. "
+                            f"Rewrite the narration with a HARD CAP of {_cut_to} words. "
+                            f"Cut filler, examples, and any sentence that doesn't directly "
+                            f"serve the core message. Quality over quantity.\n\n"
                             f"---\n\n{base_prompt}"
                         )
                         try:
@@ -2273,6 +2686,102 @@ class VideoGenerationPipeline:
                 # Track TTS character count for credit deduction
                 _tts_chars = tts_outputs.get("tts_character_count", 0)
                 accumulate_usage({"tts_character_count": _tts_chars})
+
+                # ── Audio-overrun safety net (Fix 1f) ────────────────────
+                # If the rendered audio overshoots target_duration by >25%
+                # the per-voice WPS table mis-estimated this voice (or the
+                # script LLM produced denser-than-expected copy). Regenerate
+                # the script ONCE at the empirically-observed wps × 0.95
+                # then re-run TTS. Capped at one regen per video by
+                # self._audio_regen_attempted to avoid infinite loops.
+                _ts_target = float(getattr(self, "_target_seconds", 0) or 0)
+                if (
+                    content_type == "VIDEO"
+                    and _ts_target > 0
+                    and not getattr(self, "_user_had_script", False)
+                    and not self._audio_regen_attempted
+                ):
+                    try:
+                        _audio_dur_after_tts = 0.0
+                        _ap = tts_outputs.get("audio_path")
+                        if _ap and Path(_ap).exists():
+                            try:
+                                _probe = subprocess.run(
+                                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                                     "-of", "default=noprint_wrappers=1:nokey=1", str(_ap)],
+                                    capture_output=True, text=True, timeout=10,
+                                )
+                                _audio_dur_after_tts = float(_probe.stdout.strip())
+                            except Exception:
+                                try:
+                                    from mutagen.mp3 import MP3
+                                    _audio_dur_after_tts = MP3(str(_ap)).info.length
+                                except Exception:
+                                    _audio_dur_after_tts = 0.0
+                        if _audio_dur_after_tts > 0:
+                            _overshoot = _audio_dur_after_tts / _ts_target
+                            _script_text_for_count = ""
+                            try:
+                                _script_text_for_count = Path(script_plan["script_path"]).read_text(encoding="utf-8")
+                            except Exception:
+                                pass
+                            _wc_after = len(_script_text_for_count.split())
+                            _measured_wps = (_wc_after / _audio_dur_after_tts) if _audio_dur_after_tts else 0.0
+                            print(
+                                f"   📐 Audio-overrun check: {_audio_dur_after_tts:.1f}s vs {_ts_target:.0f}s target "
+                                f"({_overshoot:.2f}×); measured={_measured_wps:.2f} wps"
+                            )
+                            if _overshoot > 1.25 and _measured_wps > 0:
+                                self._audio_regen_attempted = True
+                                _new_words = max(20, int(_ts_target * _measured_wps * 0.95))
+                                print(
+                                    f"⚠️  Audio overrun {_overshoot:.2f}× target — "
+                                    f"regenerating script with hard cap = {_new_words} words "
+                                    f"at empirical {_measured_wps:.2f} wps, then re-running TTS."
+                                )
+                                _retry_audio_prompt = (
+                                    f"⚠️ URGENT REVISION REQUIRED: the previous script rendered as "
+                                    f"{_audio_dur_after_tts:.1f}s of audio for a {int(_ts_target)}s target — "
+                                    f"the chosen TTS voice paces at ~{_measured_wps:.2f} words/sec, slower than "
+                                    f"a generic narrator. Rewrite the narration with a HARD CAP of "
+                                    f"{_new_words} words. Cut filler, examples, and any sentence that doesn't "
+                                    f"directly serve the core message. Quality over quantity.\n\n"
+                                    f"---\n\n{base_prompt}"
+                                )
+                                try:
+                                    _retry_audio_out = self._draft_script(
+                                        _retry_audio_prompt, run_dir,
+                                        language=language,
+                                        target_audience=target_audience,
+                                        target_duration=target_duration,
+                                        content_type=content_type,
+                                    )
+                                    _retry_audio_plan = _retry_audio_out.get("result")
+                                    accumulate_usage(_retry_audio_out.get("usage", {}) or {})
+                                    if _retry_audio_plan:
+                                        # _draft_script already overwrote script.txt and
+                                        # script_plan.json on disk. Replace the in-memory
+                                        # script_plan wholesale so downstream stages
+                                        # (segmentation, Director) read the new beat_outline.
+                                        # Mirrors the word-budget regen pattern at
+                                        # line 2608-2612.
+                                        script_plan = _retry_audio_plan
+                                        print("🔁 Re-running TTS on regenerated script ...")
+                                        tts_outputs = self._synthesize_voice(
+                                            script_plan["script_path"],
+                                            run_dir,
+                                            language=language,
+                                            voice_gender=voice_gender,
+                                            tts_provider=tts_provider,
+                                            voice_id=voice_id,
+                                        )
+                                        _tts_chars = tts_outputs.get("tts_character_count", 0)
+                                        accumulate_usage({"tts_character_count": _tts_chars})
+                                except Exception as _audio_regen_err:
+                                    print(f"⚠️  Audio-overrun regen failed (non-fatal): {_audio_regen_err}")
+                    except Exception as _ovrn_err:
+                        print(f"⚠️  Audio-overrun check failed (non-fatal): {_ovrn_err}")
+
                 self._emit_progress({"type": "sub_stage", "sub_stage": "tts_done",
                                       "message": "Voice narration ready",
                                       "tts_character_count": _tts_chars,
@@ -2354,6 +2863,9 @@ class VideoGenerationPipeline:
                 print("🖼️  Checking for visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
+                # Vision-review persistence runs before _process_stock_videos
+                # because the latter strips `_vision_review` from each entry.
+                self._persist_vision_review_cases(html_segments, run_dir, video_id=getattr(self, "_current_video_id", None))
                 html_segments, stock_usage = self._process_stock_videos(html_segments)
                 accumulate_usage(stock_usage)
             else:
@@ -2740,6 +3252,9 @@ class VideoGenerationPipeline:
                 print("🖼️  Checking for any remaining visual assets to generate ...")
                 html_segments, image_usage = self._process_generated_images(html_segments, run_dir)
                 accumulate_usage(image_usage)
+                # Vision-review persistence runs before _process_stock_videos
+                # because the latter strips `_vision_review` from each entry.
+                self._persist_vision_review_cases(html_segments, run_dir, video_id=getattr(self, "_current_video_id", None))
                 html_segments, stock_usage = self._process_stock_videos(html_segments)
                 accumulate_usage(stock_usage)
 
@@ -2775,7 +3290,7 @@ class VideoGenerationPipeline:
                         _music_vol = (
                             self._background_music_volume_override
                             if self._background_music_volume_override is not None
-                            else float(self._tier_config.get("background_music_default_volume", 0.20))
+                            else float(self._tier_config.get("background_music_default_volume", 0.10))
                         )
                         self._background_music_track = {
                             "id": "background-music",
@@ -2800,7 +3315,7 @@ class VideoGenerationPipeline:
                             _music_vol = (
                                 self._background_music_volume_override
                                 if self._background_music_volume_override is not None
-                                else float(self._tier_config.get("background_music_default_volume", 0.20))
+                                else float(self._tier_config.get("background_music_default_volume", 0.10))
                             )
                             self._background_music_track = {
                                 "id": "background-music",
@@ -2953,12 +3468,35 @@ class VideoGenerationPipeline:
                 getattr(self, 'video_height', 1080)
             )
             _aspect = getattr(self, 'aspect_label', '16:9 landscape')
+            # Per-voice duration calibration: pull WPS for the resolved voice
+            # so the duration table inside the user prompt matches what the
+            # actual TTS will render. Without this, Sarvam Indian voices saw
+            # the legacy "~155 wpm" table and produced 78 words for 30s →
+            # 58s of audio (1.94× target).
+            _wps_for_prompt = _resolve_voice_wps(
+                getattr(self, "_tts_provider_resolved", None) or getattr(self, "_tts_provider", None),
+                getattr(self, "_tts_voice_id_resolved", None) or getattr(self, "_tts_voice_id", None),
+            )
+            _voice_label_for_prompt = (
+                f"{getattr(self, '_tts_provider_resolved', None) or getattr(self, '_tts_provider', 'edge')}"
+                f":{getattr(self, '_tts_voice_id_resolved', None) or getattr(self, '_tts_voice_id', None) or '_default'}"
+            )
             user_prompt = SCRIPT_USER_PROMPT_TEMPLATE.format(
                 base_prompt=base_prompt.strip(),
                 language=language,
                 target_audience=target_audience,
                 target_duration=target_duration,
                 aspect_label=_aspect,
+                voice_label=_voice_label_for_prompt,
+                wps_per_sec=_wps_for_prompt,
+                wps_int=int(round(_wps_for_prompt * 60)),
+                ex_30s=int(round(30 * _wps_for_prompt)),
+                ex_60s=int(round(60 * _wps_for_prompt)),
+                ex_120s=int(round(120 * _wps_for_prompt)),
+                ex_180s=int(round(180 * _wps_for_prompt)),
+                ex_300s=int(round(300 * _wps_for_prompt)),
+                ex_420s=int(round(420 * _wps_for_prompt)),
+                ex_600s=int(round(600 * _wps_for_prompt)),
             ).strip()
 
             # Detect if user's prompt already contains a script (NARRATOR lines,
@@ -3024,6 +3562,56 @@ class VideoGenerationPipeline:
                         "  Use this only to keep tone consistent — don't describe their appearance in narration.\n"
                     )
                 user_prompt = user_prompt + _host_block
+
+            # User visual preferences (Slice B). Soft bias on `visual_type`,
+            # `visual_style`, and on-screen text density. The helper returns
+            # "" when no preference is actively expressed (all None / "auto"),
+            # so the no-op case adds zero tokens to the user prompt.
+            _vp_block = build_visual_preferences_script_block(
+                getattr(self, "_visual_preferences", None)
+            )
+            if _vp_block:
+                user_prompt = user_prompt + _vp_block
+                _flagged_vp = {
+                    k: v for k, v in (self._visual_preferences or {}).items()
+                    if v not in (None, "auto")
+                }
+                print(
+                    f"🎨 Script: applying user visual preferences "
+                    f"({_flagged_vp})"
+                )
+
+            # Ad-style narration bias for product_promo (Fix 3c). The default
+            # script LLM writes explainer-tone copy even for ads — this block
+            # flips the tone to punchy, sensory, brand-anchored copy. Gated on
+            # video_type so explainers/tutorials are unaffected.
+            _vt_for_script = (getattr(self, "_video_type", "") or "").strip().lower()
+            if _vt_for_script == "product_promo":
+                _ad_block = (
+                    "\n\n🛍️ AD-STYLE NARRATION (PRODUCT_PROMO):\n"
+                    "This is a product/brand ad, NOT an explainer. Write the script as ad copy:\n"
+                    "- 3-act structure: HOOK (sensory image, ≤6 words) → PROMISE (one specific "
+                    "product benefit) → CALL (tagline + CTA). All three must fit inside the "
+                    "target word count.\n"
+                    "- Speak in punchy fragments, not long sentences. 'Snap. Crunch. Smile.' "
+                    "is ad copy. 'Parle-G is a popular biscuit that has been enjoyed for "
+                    "decades' is NOT — that's an encyclopedia entry.\n"
+                    "- Use the user's reference brand assets verbatim — name the product, "
+                    "quote claims from the user's text. Do not paraphrase the brand into "
+                    "generic categories ('a snack', 'a beverage', 'a service').\n"
+                    "- BANNED phrases: 'in today's fast-paced world', 'have you ever wondered', "
+                    "'let's take your brand on an adventure', 'advertising 360', 'the volatile "
+                    "world of marketing', 'elevate your business', 'marketing without borders', "
+                    "'take your brand to the next level'. These are agency boilerplate and "
+                    "explicitly forbidden — the LLM will be re-prompted if any appear.\n"
+                    "- Close on a tagline, not a recap. Last 5 words should be brand + verb "
+                    "(e.g. 'Parle-G — taste the moment.').\n"
+                    "- Match the target duration tightly. Ad copy is short by definition; do "
+                    "NOT pad to fill time — leave room for pauses, brand stings, and product "
+                    "reveals.\n"
+                )
+                user_prompt = user_prompt + _ad_block
+                print("🛍️  Script: applying product_promo ad-style narration bias")
         else:
             # Use content-type-specific prompts
             system_prompt = ct_prompts["system"]
@@ -3349,12 +3937,23 @@ class VideoGenerationPipeline:
         print("🔍 Running two-pass script review (Premium/Ultra tier)...")
         script_json_str = json.dumps(script_data, indent=2, ensure_ascii=False)
 
+        # Voice-aware pacing for the review's "Pacing" checklist item — without
+        # this, the review LLM still nudges toward "~155 wpm" and tries to
+        # expand correctly-sized scripts back over budget for slow voices.
+        _wps_review = _resolve_voice_wps(
+            getattr(self, "_tts_provider_resolved", None) or getattr(self, "_tts_provider", None),
+            getattr(self, "_tts_voice_id_resolved", None) or getattr(self, "_tts_voice_id", None),
+        )
+
         try:
             raw, usage = self.script_client.chat(
                 messages=[
                     {"role": "system", "content": SCRIPT_REVIEW_SYSTEM_PROMPT},
                     {"role": "user", "content": SCRIPT_REVIEW_USER_PROMPT_TEMPLATE.format(
-                        script_json=script_json_str
+                        script_json=script_json_str,
+                        wps_int=int(round(_wps_review * 60)),
+                        ex_30s=int(round(30 * _wps_review)),
+                        ex_60s=int(round(60 * _wps_review)),
                     )},
                 ],
                 temperature=0.5,
@@ -4844,6 +5443,487 @@ class VideoGenerationPipeline:
 
         return issues
 
+    # ------------------------------------------------------------------
+    # Vision reviewer — sees the rendered frame, flags blocking defects
+    # the regex-based animation density validator cannot catch (legibility,
+    # face overlap, palette violation, sync drift, etc.). Persists every
+    # flagged shot to vision_review_cases for prompt-tuning analysis.
+    # ------------------------------------------------------------------
+
+    # Skip these shot types entirely — they're built deterministically and
+    # the visible content is constructed by-construction-correct.
+    # IMAGE_CLIP shows user-uploaded imagery — vision review treats off-brand
+    # photos as low-quality and would regenerate the HTML, losing the image
+    # URL injected by the IMAGE_CLIP post-processor (see L10334+).
+    _VISION_REVIEW_SKIP_SHOT_TYPES = frozenset({"KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP", "IMAGE_CLIP"})
+
+    def _vision_review_emit_banner_once(self) -> None:
+        """Emit a once-per-run banner showing the configured state of vision
+        review. Quiet skip paths are the #1 reason 'no entries in the case
+        bank' goes undiagnosed — this banner makes the configuration visible
+        at run start so engineers can tell ENABLED-but-unreachable from
+        legitimately-disabled-by-tier from never-actually-fired.
+        """
+        if self._vision_review_banner_shown:
+            return
+        self._vision_review_banner_shown = True
+        tier_on = bool(self._tier_config.get("shot_vision_review"))
+        if not tier_on:
+            print(f"   🔍 Vision review: DISABLED (tier={self._quality_tier})")
+            return
+        cap = self._tier_config.get("vision_review_run_cost_cap_usd", 0.15)
+        url = os.environ.get("RENDER_SERVER_URL", "")
+        key_set = bool(os.environ.get("RENDER_SERVER_KEY", ""))
+        if not url:
+            print(
+                f"   🔍 Vision review: tier flag ON (tier={self._quality_tier}) but "
+                f"RENDER_SERVER_URL is UNSET — every shot will skip silently. "
+                f"Set RENDER_SERVER_URL on the AI service env to enable."
+            )
+            return
+        print(
+            f"   🔍 Vision review: ENABLED (tier={self._quality_tier}, "
+            f"model=google/gemini-2.5-pro, cap=${cap:.2f}/run, "
+            f"target={url}, key={'set' if key_set else 'UNSET'})"
+        )
+
+    def _vision_review_pick_timestamps(self, duration_s: float) -> List[float]:
+        """Pick screenshot timestamps for one shot. Three frames (early/middle/exit)
+        for normal-length shots; degrade gracefully on very short shots."""
+        d = max(0.0, float(duration_s))
+        if d < 0.6:
+            return [d * 0.5]
+        if d < 1.2:
+            return [d * 0.3, d * 0.85]
+        # Standard 3-frame sample. The exit frame is slightly inside the shot
+        # (95%) rather than at exactly d so transitions that finish at d are
+        # captured fully tear-down rather than mid-flight.
+        return [round(d * 0.30, 3), round(d * 0.60, 3), round(d * 0.95, 3)]
+
+    def _review_shot_visually(
+        self,
+        *,
+        html: str,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        start_time: float,
+        end_time: float,
+        system_prompt: str,
+        user_prompt: str,
+        last_raw_response: str,
+        usage: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Run vision review on `html`. Returns a record dict for entry stash, or
+        None when the review was skipped (tier off, render worker down, cost cap
+        exceeded). Mutates `html` indirectly through the returned record's
+        `regen_html` field — the caller substitutes when present.
+
+        Never raises. Every failure path returns either None (skip) or a record
+        with `error` set, leaving the original HTML intact.
+        """
+        # Per-run banner first — fires on every call until shown=True.
+        self._vision_review_emit_banner_once()
+
+        if not self._tier_config.get("shot_vision_review"):
+            # Silent — tier-off is obvious from the banner already.
+            return None
+        shot_type = (shot.get("shot_type") or shot.get("type") or "").upper()
+        if shot_type in self._VISION_REVIEW_SKIP_SHOT_TYPES:
+            print(f"   🔍 Shot {shot_idx + 1}: review SKIPPED (shot type {shot_type} is deterministic)")
+            self._vision_review_skipped_count += 1
+            return None
+        duration_s = float(end_time - start_time)
+        if duration_s < 1.5:
+            print(f"   🔍 Shot {shot_idx + 1}: review SKIPPED (duration {duration_s:.2f}s < 1.5s)")
+            self._vision_review_skipped_count += 1
+            return None
+
+        # Per-run cost circuit-breaker. _vision_review_run_cost_usd accumulates
+        # across all shots in this run; once we cross the cap we silently skip
+        # remaining shots to defend against runaway loops.
+        cap = float(self._tier_config.get("vision_review_run_cost_cap_usd", 0.15))
+        if getattr(self, "_vision_review_run_cost_usd", 0.0) >= cap:
+            print(f"   🔍 Shot {shot_idx + 1}: review SKIPPED (run cost cap ${cap:.2f} reached at ${self._vision_review_run_cost_usd:.4f})")
+            self._vision_review_skipped_count += 1
+            return None
+
+        # Lazy imports — keeps module load fast for free-tier runs.
+        try:
+            from shot_screenshot_service import ShotScreenshotClient, ScreenshotClientError
+            from shot_visual_reviewer import review_shot, PROMPT_VERSION
+        except ImportError as exc:
+            print(f"   ⚠️ Shot {shot_idx + 1}: review SKIPPED — vision modules not importable: {exc}")
+            self._vision_review_skipped_count += 1
+            return None
+
+        client = getattr(self, "_screenshot_client", None)
+        if client is None:
+            client = ShotScreenshotClient()
+            self._screenshot_client = client
+        if not client.is_configured:
+            # Banner already explained why; just count and return.
+            self._vision_review_skipped_count += 1
+            return None
+
+        timestamps = self._vision_review_pick_timestamps(duration_s)
+        canvas = "portrait" if getattr(self, "video_width", 1920) < getattr(self, "video_height", 1080) else "landscape"
+
+        # Take the pre-review screenshots.
+        try:
+            frames = client.take_shot_screenshots(
+                html=html,
+                width=int(getattr(self, "video_width", 1920)),
+                height=int(getattr(self, "video_height", 1080)),
+                timestamps=timestamps,
+                background=str(
+                    shot.get("background")
+                    or shot.get("bg")
+                    or ((getattr(self, "_current_style_guide", None) or {}).get("palette") or {}).get("background")
+                    or "#0a0e27"
+                ),
+            )
+        except ScreenshotClientError as exc:
+            # Loud — render worker reachability is the #1 way the whole
+            # feature dies silently. Surface every per-shot failure.
+            print(f"   ⚠️ Shot {shot_idx + 1}: review SKIPPED — render worker /screenshot failed: {exc}")
+            self._vision_review_skipped_count += 1
+            return None
+
+        screenshots_pre = [f.image_bytes for f in frames]
+
+        host_meta = shot.get("host") if isinstance(shot.get("host"), dict) else None
+        if not host_meta and shot.get("host_present"):
+            host_meta = {
+                "host_present": True,
+                "host_layout": shot.get("host_layout"),
+            }
+
+        # Resolve the actual brand palette (hex values) — shot_pack stores
+        # CSS var refs which the vision model can't compare against pixels.
+        _palette = (getattr(self, "_current_style_guide", None) or {}).get("palette") or {}
+        review = review_shot(
+            screenshots=screenshots_pre,
+            shot=shot,
+            shot_pack=getattr(self, "_current_shot_pack", None),
+            canvas=canvas,
+            timestamps=[float(t) for t in timestamps],
+            host_meta=host_meta,
+            palette=_palette,
+            llm_chat=self.html_client.chat,
+        )
+
+        # Tally cost on the run-level accumulator regardless of outcome.
+        self._vision_review_run_cost_usd = (
+            getattr(self, "_vision_review_run_cost_usd", 0.0) + float(review.get("cost_usd") or 0.0)
+        )
+
+        # Per-shot summary — fires on every reviewed shot regardless of pass/fail.
+        # Without this the user has no way to confirm review actually ran.
+        _sev = int(review.get("severity_max") or 0)
+        _issues = review.get("issues") or []
+        _err = review.get("error")
+        if _err:
+            print(
+                f"   🔍 Shot {shot_idx + 1}: review ERRORED ({_err[:120]}) "
+                f"— ${float(review.get('cost_usd') or 0.0):.4f}, {int(review.get('review_ms') or 0)}ms — shipping original"
+            )
+        elif review.get("passes") and not _issues:
+            print(
+                f"   🔍 Shot {shot_idx + 1}: review PASSED "
+                f"— ${float(review.get('cost_usd') or 0.0):.4f}, {int(review.get('review_ms') or 0)}ms"
+            )
+        else:
+            _codes = ",".join(str(it.get("code")) for it in _issues[:4])
+            print(
+                f"   🔍 Shot {shot_idx + 1}: review FOUND {len(_issues)} issue(s) "
+                f"sev_max={_sev} [{_codes}] "
+                f"— ${float(review.get('cost_usd') or 0.0):.4f}, {int(review.get('review_ms') or 0)}ms"
+            )
+
+        record: Dict[str, Any] = {
+            "passed_first": bool(review.get("passes")),
+            "issues_pre": list(review.get("issues") or []),
+            "severity_max_pre": int(review.get("severity_max") or 0),
+            "review_ms_pre": int(review.get("review_ms") or 0),
+            "review_cost_usd_pre": float(review.get("cost_usd") or 0.0),
+            "prompt_version": review.get("prompt_version") or PROMPT_VERSION,
+            "model": review.get("model"),
+            "shipped": "first_try",
+            "regen_html": None,
+            "screenshots_pre_count": len(screenshots_pre),
+            "host_present": bool(host_meta and host_meta.get("host_present")),
+            # raw screenshots are kept on the record for the persistence layer
+            # to upload to S3; the entry-stripper drops them before timeline ship.
+            "_screenshots_pre_bytes": screenshots_pre,
+            "_screenshots_post_bytes": None,
+            # Preserve BOTH original and (when present) regen HTML so the case
+            # bank can show before/after even when the regen was rejected.
+            # Without these, the persistence sweep falls back to entry["html"]
+            # which is whichever version actually shipped — losing the other side.
+            "original_html": html,
+            "regen_html_attempt": None,
+            "raw_pre": review.get("raw"),
+            "error_pre": review.get("error"),
+        }
+
+        # Severity-3 → fire one corrective regen, then re-screenshot + re-review.
+        if review.get("severity_max", 0) >= 3 and review.get("issues"):
+            corrective = self._build_vision_corrective_prompt(
+                review.get("issues") or [],
+                html=html,
+            )
+            try:
+                raw2, usage2 = self.html_client.chat(
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                        {"role": "assistant", "content": (last_raw_response or "")[:4000]},
+                        {"role": "user", "content": corrective},
+                    ],
+                    temperature=0.4,
+                    max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+                )
+                data2 = _extract_json_blob(raw2)
+                html2 = (data2 or {}).get("html", "")
+                if usage2:
+                    usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)
+                    usage["completion_tokens"] = usage.get("completion_tokens", 0) + usage2.get("completion_tokens", 0)
+                    usage["total_tokens"] = usage.get("total_tokens", 0) + usage2.get("total_tokens", 0)
+
+                if html2:
+                    candidate = self._sanitize_html_content(html2)
+                    # Compute the shot's runtime to scale the entry-animation clamp.
+                    try:
+                        _shot_dur = max(0.5, float(shot.get("end_time", 0) or 0) - float(shot.get("start_time", 0) or 0))
+                    except (TypeError, ValueError):
+                        _shot_dur = 4.0
+                    candidate = self._clamp_entry_animations(candidate, _shot_dur)
+                    # Stash the regen candidate up-front — even if we end up
+                    # shipping the original, the case bank shows what the
+                    # corrective regen attempted. Critical for prompt-tuning.
+                    record["regen_html_attempt"] = candidate
+                    # Re-screenshot + re-review. A regen that replaces the original
+                    # severity-3 with a fresh severity-3 is a regression — ship
+                    # original. Mirrors the animation-validator policy.
+                    try:
+                        frames2 = client.take_shot_screenshots(
+                            html=candidate,
+                            width=int(getattr(self, "video_width", 1920)),
+                            height=int(getattr(self, "video_height", 1080)),
+                            timestamps=timestamps,
+                            background=str(
+                    shot.get("background")
+                    or shot.get("bg")
+                    or ((getattr(self, "_current_style_guide", None) or {}).get("palette") or {}).get("background")
+                    or "#0a0e27"
+                ),
+                        )
+                        screenshots_post = [f.image_bytes for f in frames2]
+                        review2 = review_shot(
+                            screenshots=screenshots_post,
+                            shot=shot,
+                            shot_pack=getattr(self, "_current_shot_pack", None),
+                            canvas=canvas,
+                            timestamps=[float(t) for t in timestamps],
+                            host_meta=host_meta,
+                            palette=_palette,
+                            llm_chat=self.html_client.chat,
+                        )
+                        self._vision_review_run_cost_usd += float(review2.get("cost_usd") or 0.0)
+                        record["issues_post"] = list(review2.get("issues") or [])
+                        record["severity_max_post"] = int(review2.get("severity_max") or 0)
+                        record["review_ms_post"] = int(review2.get("review_ms") or 0)
+                        record["review_cost_usd_post"] = float(review2.get("cost_usd") or 0.0)
+                        record["raw_post"] = review2.get("raw")
+                        record["error_post"] = review2.get("error")
+                        record["_screenshots_post_bytes"] = screenshots_post
+
+                        if review2.get("severity_max", 0) < 3 and review2.get("passes", False):
+                            record["regen_html"] = candidate
+                            record["shipped"] = "regen"
+                            print(f"   👁️  Shot {shot_idx + 1} vision regen passed.")
+                        elif review2.get("severity_max", 0) < review.get("severity_max", 0):
+                            record["regen_html"] = candidate
+                            record["shipped"] = "regen"
+                            print(f"   👁️  Shot {shot_idx + 1} vision regen improved severity — shipping regen.")
+                        else:
+                            record["shipped"] = "ship_original"
+                            print(f"   ⏪ Shot {shot_idx + 1} vision regen no better — shipping original.")
+                    except ScreenshotClientError as exc:
+                        record["shipped"] = "ship_original"
+                        record["regen_screenshot_error"] = str(exc)
+                else:
+                    record["shipped"] = "ship_original"
+                    record["regen_error"] = "regen returned empty html"
+            except Exception as exc:
+                print(f"   ⚠️ Shot {shot_idx + 1} vision corrective regen failed: {exc}")
+                record["shipped"] = "ship_original"
+                record["regen_error"] = str(exc)
+
+        return record
+
+    def _build_vision_corrective_prompt(
+        self,
+        issues: List[Dict[str, Any]],
+        html: str = "",
+    ) -> str:
+        """Compose the corrective user message for the regen LLM call. Each
+        sev-3 issue contributes its description + the reviewer's suggestion.
+
+        When the reviewer flagged ``IRRELEVANT_MEDIA``, the corrective prompt
+        also tells the LLM to **escalate the image source** (e.g. switch from
+        AI generation to Serper Web search, or to an article screenshot). The
+        previous version asked the LLM to regenerate without changing source —
+        which produced equally-irrelevant images on retry. ddnews.gov.in test
+        run shipped 7 IRRELEVANT_MEDIA shots because the regen path produced
+        "no better" results. The escalation closes that loop.
+        """
+        lines = [
+            "Your previous shot HTML had visible quality issues that block shipping.",
+            "Issues identified by the vision reviewer:",
+        ]
+        sev3 = [it for it in issues if int(it.get("severity") or 0) >= 3]
+        for it in sev3:
+            lines.append(f"- [{it.get('code', '?')}] {it.get('description', '')}".rstrip())
+            sug = (it.get("suggestion") or "").strip()
+            if sug:
+                lines.append(f"  → {sug}")
+        lines.append("")
+
+        # ── Source-escalation guidance for IRRELEVANT_MEDIA ──
+        # Detect what data-img-source the previous attempt used so we can tell
+        # the LLM to *change* it. If the current shot already used `web` and
+        # still got flagged, we tell it to refine the query or fall back to
+        # stock; if `generate`, we push it toward web/stock; if `stock`, we
+        # push toward web. The LLM gets concrete options based on what the
+        # pipeline can actually serve.
+        has_irrelevant = any(
+            (it.get("code") or "").upper() == "IRRELEVANT_MEDIA" for it in sev3
+        )
+        if has_irrelevant:
+            current_sources = self._extract_img_sources_from_html(html)
+            serper_ok = bool(
+                getattr(self, '_serper_service', None)
+                and getattr(self._serper_service, 'is_available', False)
+            )
+            entities = getattr(self, '_named_entities_cache', None) or []
+            article_screenshots: List[Dict[str, Any]] = []
+            ref_ctx = getattr(self, '_reference_context', None)
+            if isinstance(ref_ctx, dict):
+                _sa = ref_ctx.get('scrape_artifacts') or {}
+                _files = _sa.get('files_captured') if isinstance(_sa, dict) else None
+                if isinstance(_files, list):
+                    article_screenshots = [
+                        f for f in _files
+                        if isinstance(f, dict) and (f.get('id') or '').strip()
+                    ]
+
+            esc_lines: List[str] = [
+                "**SOURCE ESCALATION REQUIRED** — the previous image was off-topic. "
+                "Do NOT regenerate with the same `data-img-source` value. Switch the "
+                "source to something that gives a contextually correct image:"
+            ]
+            if "web" in current_sources:
+                esc_lines.append(
+                    "- Your previous attempt used `data-img-source=\"web\"` — the search "
+                    "query was probably too generic. Refine `data-img-query` with the "
+                    "EXACT named entity + a disambiguator (year, role, location). If still "
+                    "off, switch to `data-img-source=\"stock\"`."
+                )
+            elif "generate" in current_sources or not current_sources:
+                if article_screenshots:
+                    _ids = ", ".join(f"`{f.get('id')}`" for f in article_screenshots[:6])
+                    esc_lines.append(
+                        f"- Prefer `<img data-img-source=\"article_screenshot\" "
+                        f"data-screenshot-id=\"<id>\">` using one of: {_ids}. The vision "
+                        f"reviewer caught your AI-generated image as off-topic; an actual "
+                        f"article screenshot is guaranteed on-topic."
+                    )
+                if serper_ok:
+                    if entities:
+                        _eg = next(
+                            (e.get('suggested_query') for e in entities[:3]
+                             if isinstance(e, dict) and e.get('suggested_query')),
+                            None,
+                        )
+                        eg = f' (e.g. data-img-query="{_eg}")' if _eg else ""
+                        esc_lines.append(
+                            "- Switch `<img data-img-source=\"web\" "
+                            "data-img-query=\"<entity-friendly query>\">`" + eg + ". "
+                            "Google Image search returns real news photos of the named "
+                            "entities in this video — do not stay on AI generation, "
+                            "which produced the off-topic result you were just flagged for."
+                        )
+                    else:
+                        esc_lines.append(
+                            "- Switch `<img data-img-source=\"web\" "
+                            "data-img-query=\"<concrete subject + topical keywords>\">` "
+                            "for a real photo via Google Image search."
+                        )
+                esc_lines.append(
+                    "- Failing the above, switch to `<img data-img-source=\"stock\" "
+                    "data-img-prompt=\"<topical scene description>\">` (Pexels/Pixabay)."
+                )
+            elif "stock" in current_sources:
+                if serper_ok:
+                    esc_lines.append(
+                        "- Switch to `<img data-img-source=\"web\" "
+                        "data-img-query=\"<entity-friendly query>\">` for a real news "
+                        "photo. Stock libraries lack the specific subjects this beat needs."
+                    )
+                else:
+                    esc_lines.append(
+                        "- Refine the `data-img-prompt` with much more specific keywords. "
+                        "Generic stock returned an off-topic image."
+                    )
+            elif "article_screenshot" in current_sources:
+                # Already on article screenshots and STILL irrelevant — likely
+                # the wrong screenshot id was chosen. Suggest switching id or
+                # falling back to web.
+                if article_screenshots:
+                    _ids = ", ".join(f"`{f.get('id')}`" for f in article_screenshots[:6])
+                    esc_lines.append(
+                        f"- The article-screenshot id you chose didn't fit. Try a "
+                        f"different one: {_ids}."
+                    )
+                if serper_ok:
+                    esc_lines.append(
+                        "- Or switch to `<img data-img-source=\"web\" "
+                        "data-img-query=\"<entity-friendly query>\">`."
+                    )
+            else:
+                # No img tag detected (might be a video shot or unknown source).
+                if article_screenshots or serper_ok:
+                    esc_lines.append(
+                        "- Add an `<img>` with a concrete source: prefer "
+                        "`data-img-source=\"article_screenshot\"` if available, else "
+                        "`data-img-source=\"web\"` for real photos."
+                    )
+
+            lines.extend(esc_lines)
+            lines.append("")
+
+        lines.append(
+            "Regenerate the shot HTML to address each issue specifically. Keep "
+            "the shot pack tokens (palette, fonts, spacing) and the narration "
+            "unchanged. Return only the JSON shot object."
+        )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _extract_img_sources_from_html(html: str) -> set:
+        """Return the set of distinct `data-img-source` values seen on <img>
+        tags in `html`. Empty set when no `<img data-img-source=...>` exists.
+
+        Used by the vision-regen escalation logic to decide which source the
+        LLM should switch TO based on what it used last attempt.
+        """
+        if not html or not isinstance(html, str):
+            return set()
+        return {m.lower() for m in re.findall(
+            r'<img[^>]+data-img-source=["\']([^"\']+)["\']', html
+        )}
+
     def _build_director_reference_image_block(self) -> List[Dict[str, Any]]:
         """Return OpenRouter-vision content parts for any user-uploaded reference images.
 
@@ -4949,6 +6029,403 @@ class VideoGenerationPipeline:
         print(f"   ✅ Act Planner produced {len(parsed['acts'])} acts")
         return parsed, _usage or {}
 
+    def _extract_named_entities(self, script_text: str) -> List[Dict[str, Any]]:
+        """One-shot Gemini Flash call to pull real proper-noun subjects from the script.
+
+        Returns a list of {name, kind, suggested_query} dicts. The Director uses
+        these to plan IMAGE_HERO/IMAGE_SPLIT shots with real photos via Google
+        Image search (Serper); the per-shot HTML LLM uses them to bias its
+        `data-img-source` choices. Empty list on failure — pipeline degrades to
+        today's text-only behavior. Cached on the instance so the per-shot path
+        can reuse without re-paying.
+        """
+        cached = getattr(self, '_named_entities_cache', None)
+        if cached is not None:
+            return cached
+        try:
+            from subject_extractor import extract_named_entities_from_script
+            entities = extract_named_entities_from_script(
+                script_text or "",
+                self.html_client.chat,
+                max_entities=10,
+            )
+        except Exception as e:
+            print(f"   ⚠️ _extract_named_entities failed ({e}) — proceeding without entity hints")
+            entities = []
+        # Stash on the instance — per-shot HTML prompts read it from here.
+        self._named_entities_cache = entities
+        return entities
+
+    def _build_article_director_context(
+        self,
+    ) -> Tuple[Optional[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Read scrape_url artifacts off self._reference_context and shape them
+        into the (article_context, available_screenshots) pair the director
+        prompt expects. Returns (None, []) when scrape_url didn't run.
+
+        Cross-references `embeddable_images` (vision-captioned by
+        reference_file_service) by S3 URL so each available_screenshot carries
+        a `description` of what's actually depicted — without descriptions the
+        Director sees opaque ids (`inline_0`, `inline_1`) and can't tell the
+        Strait of Hormuz map from a stray "More from BBC" recommended-content
+        thumbnail.
+        """
+        ref_ctx = getattr(self, '_reference_context', None)
+        if not isinstance(ref_ctx, dict):
+            return None, []
+        sa = ref_ctx.get('scrape_artifacts') or {}
+        if not isinstance(sa, dict) or not sa:
+            return None, []
+        files = sa.get('files_captured') or []
+        if not isinstance(files, list):
+            files = []
+        # Build a description lookup from embeddable_images (vision-captioned
+        # by reference_file_service). Match by s3_url so we don't depend on
+        # filenames lining up.
+        emb_images = ref_ctx.get('embeddable_images') or []
+        desc_by_url: Dict[str, str] = {}
+        if isinstance(emb_images, list):
+            for ei in emb_images:
+                if not isinstance(ei, dict):
+                    continue
+                _url = (ei.get('s3_url') or ei.get('url') or '').strip()
+                _desc = (ei.get('description') or '').strip()
+                if _url and _desc:
+                    desc_by_url[_url] = _desc
+        # available_screenshots: {id, url, type, description} for the prompt
+        available: List[Dict[str, Any]] = []
+        for f in files:
+            if not isinstance(f, dict):
+                continue
+            sid = (f.get('id') or '').strip()
+            url = (f.get('url') or '').strip()
+            if not sid or not url:
+                continue
+            entry: Dict[str, Any] = {
+                "id": sid,
+                "url": url,
+                "type": f.get('type') or 'image',
+            }
+            _desc = desc_by_url.get(url) or ''
+            if _desc:
+                # Cap to keep the director prompt budget sane — first sentence
+                # is usually enough to tell the director what's in the image.
+                if len(_desc) > 240:
+                    _desc = _desc[:240].rsplit(' ', 1)[0] + '…'
+                entry["description"] = _desc
+            available.append(entry)
+        # article_context: source URL + title + excerpt
+        urls_attempted = sa.get('urls_attempted') or []
+        source_url = urls_attempted[0] if urls_attempted else ""
+        # Title isn't currently captured separately — pull the first non-empty
+        # line from the text excerpt as a best-effort title.
+        excerpt = (sa.get('text_excerpt') or '').strip()
+        title = ""
+        if excerpt:
+            for line in excerpt.splitlines():
+                ls = line.strip()
+                # Skip the standard "--- Captured from URL ---" header and the
+                # "Title:" and "Description:" prefix lines emitted by the
+                # web_content_capture_service text formatter.
+                if not ls or ls.startswith("---"):
+                    continue
+                if ls.lower().startswith("title:"):
+                    title = ls.split(":", 1)[1].strip()
+                    break
+                if not title:
+                    title = ls
+                    break
+        article_context = {
+            "source_url": source_url,
+            "title": title,
+            "text_excerpt": excerpt,
+        }
+        return article_context, available
+
+    @staticmethod
+    def _shot_real_photo_dur(shot: Dict[str, Any]) -> float:
+        """Return the shot's duration if it counts as a 'real photo' shot for
+        the news_recap floor calculation, else 0.
+
+        Counts: ARTICLE_FOCUS (always), and IMAGE_HERO / VIDEO_HERO / IMAGE_SPLIT
+        whose director plan requested a real-world photo (image_prompt or
+        video_query that names an entity, or img_source ∈ {web, article_screenshot}).
+        For director plans that don't yet expose img_source we conservatively
+        count all IMAGE/VIDEO_HERO and IMAGE_SPLIT — they will likely render with
+        a real photo or stock B-roll either way.
+        """
+        st = (shot.get('shot_type') or '').upper()
+        try:
+            dur = max(0.0, float(shot.get('end_time', 0)) - float(shot.get('start_time', 0)))
+        except (TypeError, ValueError):
+            dur = 0.0
+        if st in ("ARTICLE_FOCUS", "IMAGE_HERO", "VIDEO_HERO", "IMAGE_SPLIT"):
+            return dur
+        return 0.0
+
+    @staticmethod
+    def _shot_text_dur(shot: Dict[str, Any]) -> float:
+        """Duration of shots that count toward the text-shot cap."""
+        st = (shot.get('shot_type') or '').upper()
+        try:
+            dur = max(0.0, float(shot.get('end_time', 0)) - float(shot.get('start_time', 0)))
+        except (TypeError, ValueError):
+            dur = 0.0
+        if st in ("KINETIC_TEXT", "TEXT_DIAGRAM"):
+            return dur
+        return 0.0
+
+    def _enforce_news_recap_floors(
+        self,
+        director_plan: Optional[Dict[str, Any]],
+        video_type: str,
+        available_screenshots: List[Dict[str, Any]],
+        named_entities: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Deterministic post-pass: rewrite shot types in place so the plan
+        meets the news_recap floors (≥1 ARTICLE_FOCUS, ≥40% real-photo duration,
+        ≤25% combined KINETIC_TEXT+TEXT_DIAGRAM).
+
+        Preserves shot timing (start/end), shot_index, narration_excerpt, and
+        sync_points. Mutates only shot_type, image_prompt, video_query,
+        template_id, and template_params for the shots it converts.
+
+        No-op for video_type != "news_recap". Logs all mutations to
+        director_plan["news_recap_floor_mutations"] for observability.
+        """
+        if not director_plan or video_type != "news_recap":
+            return director_plan
+        shots = director_plan.get("shots") or []
+        if not isinstance(shots, list) or not shots:
+            return director_plan
+
+        total_dur = 0.0
+        for s in shots:
+            try:
+                total_dur += max(0.0, float(s.get("end_time", 0)) - float(s.get("start_time", 0)))
+            except (TypeError, ValueError):
+                continue
+        if total_dur <= 0:
+            return director_plan
+
+        mutations: List[Dict[str, Any]] = []
+
+        # ── 1. Ensure ≥1 ARTICLE_FOCUS shot when screenshots exist ──
+        if available_screenshots:
+            has_af = any((s.get("shot_type") or "").upper() == "ARTICLE_FOCUS" for s in shots)
+            if not has_af:
+                target = self._pick_shot_for_article_focus(shots)
+                if target is not None:
+                    self._convert_shot_to_article_focus(target, available_screenshots)
+                    mutations.append({
+                        "shot_index": target.get("shot_index"),
+                        "from": target.get("_prev_shot_type"),
+                        "to": "ARTICLE_FOCUS",
+                        "reason": "news_recap requires ≥1 ARTICLE_FOCUS when screenshots are available",
+                    })
+
+        # Recompute coverage after possible ARTICLE_FOCUS injection.
+        def _real_pct() -> float:
+            return sum(self._shot_real_photo_dur(s) for s in shots) / total_dur
+
+        def _text_pct() -> float:
+            return sum(self._shot_text_dur(s) for s in shots) / total_dur
+
+        # ── 2. Real-photo coverage ≥ 0.40 ──
+        guard = 0
+        while _real_pct() < 0.40 and guard < len(shots):
+            guard += 1
+            target = self._pick_shot_for_image_hero(shots, named_entities)
+            if target is None:
+                break
+            entity = self._best_entity_for_shot(target, named_entities)
+            if entity is None and not named_entities:
+                break
+            self._convert_shot_to_image_hero(target, entity)
+            mutations.append({
+                "shot_index": target.get("shot_index"),
+                "from": target.get("_prev_shot_type"),
+                "to": "IMAGE_HERO",
+                "reason": f"news_recap real-photo floor (entity={entity.get('name') if entity else 'n/a'})",
+            })
+
+        # ── 3. Text-shot coverage ≤ 0.25 ──
+        guard = 0
+        while _text_pct() > 0.25 and guard < len(shots):
+            guard += 1
+            target = self._pick_longest_text_shot(shots)
+            if target is None:
+                break
+            entity = self._best_entity_for_shot(target, named_entities)
+            if entity is None and not named_entities:
+                break
+            self._convert_shot_to_image_hero(target, entity)
+            mutations.append({
+                "shot_index": target.get("shot_index"),
+                "from": target.get("_prev_shot_type"),
+                "to": "IMAGE_HERO",
+                "reason": f"news_recap text-shot cap (entity={entity.get('name') if entity else 'n/a'})",
+            })
+
+        if mutations:
+            director_plan["news_recap_floor_mutations"] = mutations
+            print(
+                f"   📐 news_recap floors enforced: {len(mutations)} shot(s) rewritten — "
+                f"real-photo={_real_pct():.0%}, text={_text_pct():.0%}"
+            )
+        return director_plan
+
+    @staticmethod
+    def _pick_shot_for_article_focus(shots: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Pick the longest KINETIC_TEXT/TEXT_DIAGRAM shot to convert; if none
+        exist, pick the longest non-real-photo shot. Returns None if every
+        shot is already real-photo (in which case no need for ARTICLE_FOCUS,
+        though the floor still adds one — caller has already early-returned).
+        """
+        candidates = [s for s in shots if (s.get("shot_type") or "").upper() in ("KINETIC_TEXT", "TEXT_DIAGRAM")]
+        if not candidates:
+            candidates = [
+                s for s in shots
+                if (s.get("shot_type") or "").upper() not in
+                ("ARTICLE_FOCUS", "SOURCE_CLIP", "KINETIC_TITLE")
+            ]
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda s: float(s.get("end_time", 0)) - float(s.get("start_time", 0)),
+            reverse=True,
+        )
+        return candidates[0]
+
+    @staticmethod
+    def _pick_shot_for_image_hero(
+        shots: List[Dict[str, Any]], named_entities: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Find the next non-real-photo shot whose narration mentions a named
+        entity. Falls back to the longest non-real-photo shot if none match.
+        """
+        eligible = [
+            s for s in shots
+            if (s.get("shot_type") or "").upper() not in
+            ("ARTICLE_FOCUS", "IMAGE_HERO", "VIDEO_HERO", "IMAGE_SPLIT", "SOURCE_CLIP", "KINETIC_TITLE")
+        ]
+        if not eligible:
+            return None
+        if named_entities:
+            entity_names = [(e.get("name") or "").lower() for e in named_entities if e.get("name")]
+            with_match = [
+                s for s in eligible
+                if any(en and en in (s.get("narration_excerpt") or "").lower() for en in entity_names)
+            ]
+            if with_match:
+                with_match.sort(
+                    key=lambda s: float(s.get("end_time", 0)) - float(s.get("start_time", 0)),
+                    reverse=True,
+                )
+                return with_match[0]
+        eligible.sort(
+            key=lambda s: float(s.get("end_time", 0)) - float(s.get("start_time", 0)),
+            reverse=True,
+        )
+        return eligible[0]
+
+    @staticmethod
+    def _pick_longest_text_shot(shots: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        candidates = [
+            s for s in shots
+            if (s.get("shot_type") or "").upper() in ("KINETIC_TEXT", "TEXT_DIAGRAM")
+        ]
+        if not candidates:
+            return None
+        candidates.sort(
+            key=lambda s: float(s.get("end_time", 0)) - float(s.get("start_time", 0)),
+            reverse=True,
+        )
+        return candidates[0]
+
+    @staticmethod
+    def _best_entity_for_shot(
+        shot: Dict[str, Any], named_entities: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Return the entity whose name appears in the shot's narration; else
+        the first entity in the list (still likely thematically related).
+        """
+        if not named_entities:
+            return None
+        narration = (shot.get("narration_excerpt") or "").lower()
+        for ent in named_entities:
+            name = (ent.get("name") or "").lower()
+            if name and name in narration:
+                return ent
+        return named_entities[0]
+
+    @staticmethod
+    def _convert_shot_to_article_focus(
+        shot: Dict[str, Any], available_screenshots: List[Dict[str, Any]]
+    ) -> None:
+        """Rewrite `shot` in place to ARTICLE_FOCUS, preserving timing.
+
+        Picks the first available screenshot id (above_fold preferred). The
+        quote_text is derived from the shot's narration_excerpt so the overlay
+        stays sync'd to what the viewer is hearing.
+        """
+        shot["_prev_shot_type"] = shot.get("shot_type")
+        shot["shot_type"] = "ARTICLE_FOCUS"
+        # Prefer above_fold; fall back to mid, footer, then any inline.
+        preferred = ["above_fold", "mid", "footer"]
+        screenshot_id = ""
+        for pref in preferred:
+            for s in available_screenshots:
+                if (s.get("id") or "") == pref:
+                    screenshot_id = pref
+                    break
+            if screenshot_id:
+                break
+        if not screenshot_id and available_screenshots:
+            screenshot_id = available_screenshots[0].get("id") or "above_fold"
+
+        # Truncate narration to a quote-sized line (≤ 120 chars); strip
+        # trailing partial words so the overlay reads cleanly.
+        narration = (shot.get("narration_excerpt") or "").strip()
+        if len(narration) > 120:
+            narration = narration[:120].rsplit(" ", 1)[0] + "…"
+
+        shot["template_id"] = "article_focus_zoom_pan"
+        shot["template_params"] = {
+            "screenshot_id": screenshot_id or "above_fold",
+            "quote_text": narration,
+            "highlight_box_pct": {"x_pct": 5, "y_pct": 8, "w_pct": 90, "h_pct": 50},
+        }
+        # Drop image/video prompts that no longer apply.
+        shot.pop("image_prompt", None)
+        shot.pop("video_query", None)
+
+    @staticmethod
+    def _convert_shot_to_image_hero(
+        shot: Dict[str, Any], entity: Optional[Dict[str, Any]]
+    ) -> None:
+        """Rewrite `shot` in place to IMAGE_HERO with a real-photo image_prompt
+        keyed off `entity.suggested_query`. Preserves timing, transition_in,
+        and narration. Falls back to narration-keyword prompt when no entity.
+        """
+        shot["_prev_shot_type"] = shot.get("shot_type")
+        shot["shot_type"] = "IMAGE_HERO"
+        if entity and entity.get("suggested_query"):
+            shot["image_prompt"] = entity["suggested_query"]
+        elif entity and entity.get("name"):
+            shot["image_prompt"] = entity["name"]
+        else:
+            # Last resort — extract a short keyword span from narration so the
+            # web/stock dispatcher has something to query.
+            narration = (shot.get("narration_excerpt") or "").strip()
+            shot["image_prompt"] = narration[:80] if narration else "news photograph"
+        # Hint downstream dispatch toward web search for named entities.
+        shot["img_source"] = "web" if entity else "stock"
+        # Drop incompatible fields from the prior shot type.
+        shot.pop("template_id", None)
+        shot.pop("template_params", None)
+        shot.pop("video_query", None)
+
     def _run_director(
         self,
         script_plan: Dict[str, Any],
@@ -4981,11 +6458,23 @@ class VideoGenerationPipeline:
         script_text = str(plan_data.get("script") or script_plan.get("script_text", "")).strip()
         beat_outline = plan_data.get("beat_outline", [])
         subject_domain = getattr(self, '_current_subject_domain', 'general')
-        # Override domain for input video modes so Director gets SOURCE_CLIP
-        if self._input_video_contexts:
-            # Use first video's mode as primary domain; mixed modes are fine
-            _iv_mode = self._input_video_contexts[0].get("mode", "podcast")
-            subject_domain = f"input_video_{_iv_mode}"
+        # Override domain for input asset modes so Director gets the right
+        # shot-type catalog (SOURCE_CLIP for videos, IMAGE_CLIP for images,
+        # both for mixed selections). When user picked only one kind, follow
+        # the first asset's mode for the most specific catalog. When mixed,
+        # use the synthetic 'input_mixed_assets' domain that registers both
+        # primary clip types — otherwise the secondary kind would be silently
+        # unusable to the Director.
+        if self._input_asset_contexts:
+            _has_video = bool(self._input_video_contexts)
+            _has_image = bool(self._input_image_contexts)
+            if _has_video and _has_image:
+                subject_domain = "input_mixed_assets"
+            else:
+                _ia_first = self._input_asset_contexts[0]
+                _ia_kind = _ia_first.get("kind", "video")
+                _ia_mode = _ia_first.get("mode", "podcast" if _ia_kind == "video" else "photo")
+                subject_domain = f"input_{_ia_kind}_{_ia_mode}"
             self._current_subject_domain = subject_domain
         _w = getattr(self, 'video_width', 1920)
         _h = getattr(self, 'video_height', 1080)
@@ -5040,6 +6529,7 @@ class VideoGenerationPipeline:
                     width=_w,
                     height=_h,
                     audio_duration=audio_duration,
+                    visual_preferences=getattr(self, "_visual_preferences", None) or None,
                 ),
             )
             if act_usage:
@@ -5053,6 +6543,30 @@ class VideoGenerationPipeline:
             emphasis_map = build_emphasis_map(words)
         # Store so per-shot HTML generation can highlight narrator stress peaks
         self._emphasis_map = emphasis_map
+
+        # Build news/article context for the Director:
+        # - article_context: source URL + title + text excerpt, when scrape_url ran.
+        # - available_screenshots: stable-id list for ARTICLE_FOCUS shots.
+        # - named_entities: real proper-noun subjects to bias real-photo shots.
+        # - web_search_available: tells the Director it can request `img_source=web`.
+        _article_context, _available_screenshots = self._build_article_director_context()
+        _named_entities: List[Dict[str, Any]] = []
+        try:
+            _named_entities = self._extract_named_entities(script_text)
+        except Exception as _ne_err:
+            print(f"   ⚠️ Named-entity extraction errored ({_ne_err}); proceeding without entity hints")
+            _named_entities = []
+        _web_search_available = bool(
+            getattr(self, '_serper_service', None)
+            and getattr(self._serper_service, 'is_available', False)
+        )
+        # Wire the Serper per-run cache once the run_dir is known.
+        if _web_search_available:
+            try:
+                self._serper_service.set_run_dir(run_dir)
+                self._serper_service.reset_usage()
+            except Exception:
+                pass
 
         user_prompt = build_director_user_prompt(
             script_text=script_text,
@@ -5072,7 +6586,19 @@ class VideoGenerationPipeline:
             quality_tier=self._quality_tier,
             target_audience=target_audience,
             include_music_plan=self._is_background_music_enabled(),
+            video_type=getattr(self, '_video_type', None),
+            article_context=_article_context,
+            available_screenshots=_available_screenshots,
+            named_entities=_named_entities,
+            web_search_available=_web_search_available,
+            visual_preferences=getattr(self, "_visual_preferences", None) or None,
         )
+        # Stash for the floor-enforcer post-pass (avoids re-reading scrape artifacts).
+        self._director_news_recap_inputs = {
+            "video_type": getattr(self, '_video_type', None),
+            "available_screenshots": _available_screenshots,
+            "named_entities": _named_entities,
+        }
 
         # ── Input video context for Director ──────────────────────────
         # Give the Director access to source video transcripts, scenes,
@@ -5215,6 +6741,91 @@ class VideoGenerationPipeline:
             )
             user_prompt = user_prompt + _source_video_block
 
+        # ── Input image context for Director ──────────────────────────
+        # Give the Director access to image captions, OCR, colors, and faces
+        # so it can plan IMAGE_CLIP shots with informed overlays. The image
+        # URL itself is in source_public_url — Director embeds it as <img src>
+        # in the IMAGE_CLIP HTML (no render-worker compositing).
+        if self._input_image_contexts:
+            _img_labels = "ABCDEFGHIJ"
+            _image_sections = []
+            for _iidx, _ictx in enumerate(self._input_image_contexts):
+                _label = _img_labels[_iidx] if _iidx < len(_img_labels) else str(_iidx)
+                _img_meta_blob = _ictx.get("context", {})  # parsed image_metadata.json
+                _img_meta = _img_meta_blob.get("meta", {})
+                _img_caption = _img_meta_blob.get("caption") or {}
+                _img_colors = _img_meta_blob.get("colors", {}).get("dominant", [])
+                _img_ocr_blocks = _img_meta_blob.get("ocr", {}).get("blocks", [])
+                _img_faces = _img_meta_blob.get("faces") or {}
+
+                _i_name = _ictx.get("name", f"Image {_label}")
+                _i_mode = _ictx.get("mode", "photo")
+                _i_url = _ictx.get("source_public_url") or _ictx.get("source_url", "")
+                _i_w = _img_meta.get("width", _ictx.get("width", 0))
+                _i_h = _img_meta.get("height", _ictx.get("height", 0))
+                _i_default_dur = _ictx.get("duration_seconds", 5.0)
+
+                _color_swatches = ", ".join(
+                    f"{c.get('hex', '#000')} ({int(c.get('weight', 0) * 100)}%)"
+                    for c in _img_colors[:5]
+                )
+                _ocr_lines = [
+                    f"  \"{b.get('text', '')}\" @ bbox_norm={b.get('bbox_norm', [])}"
+                    for b in _img_ocr_blocks[:15]
+                ]
+                _tags_line = ", ".join(_img_caption.get("tags", [])[:10])
+                _ui_elements = _img_caption.get("ui_elements") or []
+
+                _section = (
+                    f"\n### Image {_label}: \"{_i_name}\" ({_i_mode}, {_i_w}x{_i_h})\n"
+                    f"image_index: {_iidx}\n"
+                    f"source_public_url: {_i_url}\n"
+                    f"default_duration_s: {_i_default_dur}  "
+                    f"(use as IMAGE_CLIP duration unless narration warrants otherwise)\n"
+                )
+                if _img_caption.get("short"):
+                    _section += f"\nCaption: {_img_caption['short']}\n"
+                if _img_caption.get("long"):
+                    _section += f"Detail: {_img_caption['long']}\n"
+                if _tags_line:
+                    _section += f"Tags: {_tags_line}\n"
+                if _ui_elements:
+                    _section += f"UI elements visible: {', '.join(_ui_elements[:10])}\n"
+                if _color_swatches:
+                    _section += f"Dominant colors: {_color_swatches}\n"
+                if _ocr_lines:
+                    _section += "\nOCR text blocks (with normalized bboxes 0-1):\n" + "\n".join(_ocr_lines) + "\n"
+                if _img_faces.get("detected"):
+                    _free = _img_faces.get("free_regions", [])
+                    _section += (
+                        f"Face detected (count={_img_faces.get('face_count', 0)}). "
+                        f"Safe overlay zones: {', '.join(_free) or 'none'}\n"
+                    )
+
+                _image_sections.append(_section)
+
+            _image_clip_rules = (
+                "**IMAGE_CLIP RULES**:\n"
+                "- Use IMAGE_CLIP to display each user-uploaded image as a beat in the video.\n"
+                "- Each IMAGE_CLIP shot MUST include:\n"
+                "  - `image_index`: integer (0 = Image A, 1 = Image B, ...)\n"
+                "  - The HTML must embed `<img src='{source_public_url}'>` from the image's context.\n"
+                "- Pick caption text from the image's `Caption` and `Tags` fields above when relevant.\n"
+                "- For screenshots/diagrams: when overlaying annotations or callouts, use the OCR\n"
+                "  bbox_norm coordinates (0-1) to position arrows/boxes near the right text.\n"
+                "- For photos with detected faces: keep overlays in the listed safe zones so the\n"
+                "  subject is not obscured.\n"
+                "- Default durations: photo 4s, screenshot 6s, diagram 8s. Lengthen if the narration\n"
+                "  beat at this image needs more time.\n"
+            )
+            _source_image_block = (
+                "\n\n## SOURCE IMAGE CONTEXTS\n"
+                f"You have {len(self._input_image_contexts)} source image(s) available.\n"
+                + "".join(_image_sections) + "\n"
+                + _image_clip_rules
+            )
+            user_prompt = user_prompt + _source_image_block
+
         # Super Ultra: bias the Director toward motion-graphics shot types
         director_system = DIRECTOR_SYSTEM_PROMPT
         # Shot template catalog (premium / ultra / super_ultra).
@@ -5345,6 +6956,66 @@ class VideoGenerationPipeline:
             # call, so we never burn a paid avatar render on a frame the user
             # explicitly said should be text-only.
             self._user_authored_no_host_indices = list(set(_no_host_frame_indices))
+
+            # PR 3 — USER PLACEMENT PREFERENCE EXTRACTION
+            # Scan the base prompt for layout/placement cues and surface them
+            # to the Director as a hint. The Director still decides per-shot,
+            # but the hint biases its choices: a user who wrote "host always
+            # on screen" gets centered/full-frame; "split screen with diagram"
+            # gets free_left/free_right; "minimal host" gets fewer host shots
+            # in dense-content beats. Soft preference, not hard rule —
+            # Director can override when content forces it.
+            _user_layout_preference: Optional[str] = None   # "full_screen" | "split_bias" | "minimal_host" | None
+            _layout_pref_phrase: str = ""
+            try:
+                import re as _re_pref
+                _bp_pref = (getattr(self, "_base_prompt", None) or "").lower()
+                _full_screen_patterns = [
+                    "host always visible", "host always on screen",
+                    "host throughout", "to camera throughout",
+                    "full[- ]screen presenter", "full[- ]screen host",
+                    "presenter throughout", "always show host",
+                    "host on screen the whole", "host on screen for the whole",
+                    "host fills the screen", "talking head throughout",
+                ]
+                _split_bias_patterns = [
+                    "split[- ]screen", "side[- ]by[- ]side",
+                    "host on the (left|right)", "host on (left|right)",
+                    "host with (a )?diagram", "host alongside",
+                    "presenter with overlay", "presenter with chart",
+                    "host plus (a )?graphic", "two[- ]up layout",
+                ]
+                _minimal_host_patterns = [
+                    "minimal host", "host sparingly", "few host shots",
+                    "host only at", "host bookend", "diagram[- ]heavy",
+                    "lots of (diagrams|charts|visuals)",
+                    "focus on (the )?(diagrams|visuals|graphics|data)",
+                ]
+                for _pat in _full_screen_patterns:
+                    if _re_pref.search(_pat, _bp_pref):
+                        _user_layout_preference = "full_screen"
+                        _layout_pref_phrase = _pat
+                        break
+                if _user_layout_preference is None:
+                    for _pat in _split_bias_patterns:
+                        if _re_pref.search(_pat, _bp_pref):
+                            _user_layout_preference = "split_bias"
+                            _layout_pref_phrase = _pat
+                            break
+                if _user_layout_preference is None:
+                    for _pat in _minimal_host_patterns:
+                        if _re_pref.search(_pat, _bp_pref):
+                            _user_layout_preference = "minimal_host"
+                            _layout_pref_phrase = _pat
+                            break
+                if _user_layout_preference:
+                    print(
+                        f"🎙️ Director: user placement preference detected — "
+                        f"'{_user_layout_preference}' (matched: {_layout_pref_phrase!r})"
+                    )
+            except Exception as _pref_err:
+                print(f"⚠️  Layout preference scan failed (non-fatal): {_pref_err}")
+            self._user_layout_preference = _user_layout_preference
             # Orientation-aware host_layout vocabulary. Portrait videos can't
             # use side-by-side splits (free_left/free_right) — there isn't
             # enough horizontal real estate for a half-frame talking head and
@@ -5356,6 +7027,15 @@ class VideoGenerationPipeline:
             else:
                 _layout_vocab = '"free_left" | "free_right" | "free_top" | "free_bottom" | "centered"'
                 _orientation_label = "16:9 LANDSCAPE — all five layouts allowed"
+            # PR 3 — 100% mode override. When the user asks for host on EVERY
+            # shot, the prompt's per-shot prioritisation rules ("Hook, Recap,
+            # CTA, emphasis beats, opinion stretches") become irrelevant —
+            # every shot gets host. Recompute the target so the Director's
+            # internal arithmetic ("never exceed N+1") still works.
+            _is_full_host = (self._host_pct >= 100)
+            if _is_full_host:
+                _host_target = _est_total_shots
+
             _ext = HOST_DIRECTOR_EXTENSION.format(
                 host_pct=self._host_pct,
                 host_target=_host_target,
@@ -5364,6 +7044,69 @@ class VideoGenerationPipeline:
                 orientation_label=_orientation_label,
                 layout_vocabulary=_layout_vocab,
             )
+
+            # PR 3 — 100% mode hard directive. The base extension's rules
+            # are for the % < 100 case. At 100%, override with a single hard
+            # rule so cheap planners don't drop coverage on dense diagram
+            # shots out of habit.
+            if _is_full_host:
+                _ext += (
+                    "\n\n## 🎙️ 100% HOST MODE — OVERRIDE\n"
+                    "User has requested host on EVERY shot (host_in_video_percentage=100). "
+                    "The per-shot prioritisation rules above are SUPERSEDED. Every shot "
+                    "MUST have `host_present=true`. Layout still varies per shot — pick "
+                    "`centered` for hooks/CTAs/emotional beats, `free_left`/`free_right`/"
+                    "`free_top`/`free_bottom` for shots that need overlay graphics. "
+                    "Even dense diagram beats keep the host on screen — use `free_left` or "
+                    "`free_right` so the diagram has a half-canvas to live in. The 'shots "
+                    "that stay host_present=false' list above does NOT apply at 100%.\n"
+                )
+
+            # PR 3 — bookend hint for partial-host mode. Even when the
+            # Director is left to its prioritisation, shots 0 and N-1 are
+            # SUPPOSED to be host (Hook + CTA per the existing rule list).
+            # Cheap planners sometimes skip them. The post-validation step
+            # will hard-insert host on bookends if missing, but a clear
+            # prompt rule makes that fallback rare.
+            if 0 < self._host_pct < 100:
+                _ext += (
+                    "\n\n## 🎙️ BOOKEND RULE (mandatory)\n"
+                    "Regardless of distribution, shot 0 (Hook) and the FINAL shot (CTA / "
+                    "Conclusion) MUST have `host_present=true` unless they are explicitly "
+                    "in the user's no-imagery deny-list above. The viewer should see the "
+                    "host open AND close the video.\n"
+                )
+
+            # PR 3 — surface user placement preference to the Director.
+            # Soft hint — Director still decides per-shot but biases choices.
+            if _user_layout_preference == "full_screen":
+                _ext += (
+                    "\n\n## 🎙️ USER PLACEMENT PREFERENCE — FULL-SCREEN PRESENTER\n"
+                    "User prompt suggests the host should dominate the frame. Bias toward "
+                    "`centered` layout for emphasis beats and use `free_top`/`free_bottom` "
+                    "(host fills 60% of the frame) instead of side splits where reasonable. "
+                    "Avoid `free_left`/`free_right` unless the shot has a heavy diagram or "
+                    "data callout that genuinely needs the half-canvas overlay zone.\n"
+                )
+            elif _user_layout_preference == "split_bias":
+                _ext += (
+                    "\n\n## 🎙️ USER PLACEMENT PREFERENCE — SPLIT-SCREEN BIAS\n"
+                    "User prompt suggests host should share frame with overlay graphics. "
+                    "Bias toward `free_left`/`free_right` (landscape) or `free_top`/"
+                    "`free_bottom` (portrait or short overlays). Reserve `centered` for "
+                    "the Hook, the CTA, and any genuinely emotional beat where to-camera "
+                    "delivery matters more than the diagram.\n"
+                )
+            elif _user_layout_preference == "minimal_host":
+                _ext += (
+                    "\n\n## 🎙️ USER PLACEMENT PREFERENCE — MINIMAL HOST\n"
+                    "User prompt emphasises diagrams/visuals over the presenter. Honor the "
+                    "host_in_video_percentage target, but skew host_present=true toward the "
+                    "Hook, the CTA, and 1-2 emphasis moments — leave the body of the video "
+                    "diagram-driven. Prefer `centered` when the host does appear, since "
+                    "those moments are now scarce and emotional.\n"
+                )
+
             if _user_authored:
                 _ext += (
                     "\n\n## ⚠️ USER-AUTHORED FRAME SPEC OVERRIDE\n"
@@ -5596,14 +7339,14 @@ class VideoGenerationPipeline:
                 pass
             return None, total_usage
 
-        # Validate shot types
-        valid_types = {
-            "IMAGE_HERO", "VIDEO_HERO", "IMAGE_SPLIT", "TEXT_DIAGRAM",
-            "LOWER_THIRD", "ANNOTATION_MAP", "DATA_STORY", "PROCESS_STEPS",
-            "EQUATION_BUILD", "ANIMATED_ASSET", "KINETIC_TEXT",
-            "INFOGRAPHIC_SVG", "KINETIC_TITLE", "PRODUCT_HERO",
-            "SOURCE_CLIP",
-        }
+        # Validate shot types — derive the allow-list from SHOT_TYPE_CARDS so
+        # the validator can't drift behind the catalog. Previously this was a
+        # hand-maintained set that missed DEVICE_MOCKUP, causing every Director-
+        # picked DEVICE_MOCKUP shot (recommended for coding/saas/saas_demo
+        # domains) to be silently downgraded to TEXT_DIAGRAM, throwing away
+        # the purpose-built phone/browser/terminal/dashboard HTML template.
+        from shot_type_cards import SHOT_TYPE_CARDS
+        valid_types = set(SHOT_TYPE_CARDS.keys())
         for i, shot in enumerate(shots):
             if shot.get("shot_type") not in valid_types:
                 print(f"   ⚠️ Director shot {i} has invalid type '{shot.get('shot_type')}' — defaulting to TEXT_DIAGRAM")
@@ -5629,6 +7372,15 @@ class VideoGenerationPipeline:
                 gap = float(non_overlay[i + 1]["start_time"]) - float(non_overlay[i]["end_time"])
                 if gap > 0.5:
                     non_overlay[i]["end_time"] = non_overlay[i + 1]["start_time"]
+
+        # Snap internal shot boundaries to silence gaps (or word edges) so
+        # visual cuts don't land mid-word. The Director picks round numbers
+        # because its few-shot examples use round numbers — this corrects
+        # that bias against the actual word timings from words.json.
+        if words:
+            _snapped = _snap_shots_to_word_boundaries(shots, words, audio_duration)
+            if _snapped:
+                print(f"   ⏱️  Snapped {_snapped} shot boundary/boundaries to word timings")
 
         # ── Transition picker (premium / ultra / super_ultra) ──
         # Replace the Director's blind `transition_in` choices with deterministic
@@ -5733,6 +7485,138 @@ class VideoGenerationPipeline:
             print(f"   🎯 Density: self-reported='{density}' | actual avg={avg_shot:.2f}s/shot → '{expected_bucket}'{mismatch}")
             if rationale:
                 print(f"   📝 Rationale: {rationale}")
+
+        # ── Visual-preferences telemetry (Slice C log + Slice F persistence) ──
+        # Compare what the user asked for to what the Director actually picked.
+        # The shot→family mapping is best-effort; HERO shots are split by whether
+        # the Director set image_prompt (AI-generated) vs video_query / nothing
+        # (stock or ambiguous). Persisted to run_dir/visual_preferences_realized
+        # .json; video_generation_service merges it into
+        # extra_metadata.intent_outcomes.visual_preferences_realized after
+        # the HTML stage completes.
+        _vp = getattr(self, "_visual_preferences", None) or {}
+        if any(v not in (None, "auto") for v in _vp.values()):
+            _shot_to_family = {
+                "VIDEO_HERO":      "stock_video",  # refined by image_prompt below
+                "IMAGE_HERO":      "stock_video",  # refined by image_prompt below
+                "IMAGE_SPLIT":     "ai_imagery",
+                "PRODUCT_HERO":    "ai_imagery",
+                "INFOGRAPHIC_SVG": "svg_illustrated",
+                "KINETIC_TITLE":   "svg_illustrated",
+                "ANNOTATION_MAP":  "svg_illustrated",
+                "TEXT_DIAGRAM":    "motion_graphics",
+                "PROCESS_STEPS":   "motion_graphics",
+                "DATA_STORY":      "motion_graphics",
+                "EQUATION_BUILD":  "motion_graphics",
+                "ANIMATED_ASSET":  "motion_graphics",
+                "KINETIC_TEXT":    "motion_graphics",
+                "DEVICE_MOCKUP":   "app_ui_mockup",
+            }
+            _family_counts: Dict[str, int] = {}
+            _override_count = 0
+            _override_shots: List[int] = []
+            _shots_iterable = director_plan.get("shots", []) or []
+            _shot_total = max(1, len(_shots_iterable))
+            for _idx, _s in enumerate(_shots_iterable):
+                _st = (_s.get("shot_type") or "").upper()
+                _fam = _shot_to_family.get(_st)
+                # HERO shots with image_prompt are AI imagery, not stock.
+                if _st in ("VIDEO_HERO", "IMAGE_HERO") and _s.get("image_prompt"):
+                    _fam = "ai_imagery"
+                if _fam:
+                    _family_counts[_fam] = _family_counts.get(_fam, 0) + 1
+                if _s.get("preference_override_reason"):
+                    _override_count += 1
+                    _override_shots.append(_idx)
+            _declared = {
+                k: v for k, v in _vp.items()
+                if v not in (None, "auto") and k != "text_density"
+            }
+            _td = _vp.get("text_density")
+            _td_str = f" text={_td}" if _td and _td != "auto" else ""
+            _realized_sorted = dict(sorted(_family_counts.items(), key=lambda kv: -kv[1]))
+            print(
+                f"   🎨 Visual prefs: declared={_declared}{_td_str} | "
+                f"realized={_realized_sorted} | "
+                f"{_override_count} preference_override_reason shot(s)"
+            )
+
+            # Mismatch warnings — declared "high" but realized 0 (or <20% of
+            # shots) → loud warning so we can tune keyword tables / prompt
+            # rules later. Conversely declared "no" but realized >30% of
+            # shots → also a warning. Both are soft signals, not failures.
+            _mismatches: List[str] = []
+            for _fam_name, _decl in _declared.items():
+                _realized = _family_counts.get(_fam_name, 0)
+                _pct = _realized / _shot_total
+                if _decl == "high" and _realized == 0:
+                    _mismatches.append(
+                        f"{_fam_name}=high but 0/{_shot_total} shots realized"
+                    )
+                elif _decl == "high" and _pct < 0.20 and _shot_total >= 5:
+                    _mismatches.append(
+                        f"{_fam_name}=high but only {_realized}/{_shot_total} "
+                        f"shots ({_pct:.0%}) realized"
+                    )
+                elif _decl == "no" and _pct > 0.30 and _shot_total >= 5:
+                    # Gate on shot_total to suppress noise on tiny videos —
+                    # a single shot in a 3-shot timeline is 33% which doesn't
+                    # signal real Director defiance.
+                    _mismatches.append(
+                        f"{_fam_name}=no but {_realized}/{_shot_total} shots "
+                        f"({_pct:.0%}) realized"
+                    )
+            for _m in _mismatches:
+                print(f"   ⚠️  Visual prefs mismatch: {_m}")
+
+            # Persist for Slice F merge into extra_metadata.intent_outcomes.
+            # Pure JSON (json.dumps via Path.write_text) — keyed by run_dir so
+            # video_generation_service can find it deterministically after the
+            # HTML stage. Best-effort: a write failure is non-fatal.
+            try:
+                (run_dir / "visual_preferences_realized.json").write_text(
+                    json.dumps(
+                        {
+                            "declared": dict(_declared),
+                            "text_density_declared": _td if _td and _td != "auto" else None,
+                            "family_counts": _realized_sorted,
+                            "override_count": _override_count,
+                            "override_shots": _override_shots,
+                            "mismatches": _mismatches,
+                            "shot_total": len(_shots_iterable),
+                        },
+                        indent=2,
+                        ensure_ascii=False,
+                    ),
+                    encoding="utf-8",
+                )
+            except Exception as _vp_err:
+                print(f"   ⚠️  Failed to persist visual_preferences_realized.json: {_vp_err}")
+
+        # PR 3 — post-Director host coverage enforcement. Mutates
+        # director_plan["shots"] in place. Three rules:
+        #   1. 100% mode: every shot must have host_present=true (skip deny-list)
+        #   2. Bookend rule (0 < pct < 100): shot 0 + final shot must have host_present=true (skip deny-list)
+        #   3. Deny-list always wins (user's frame-by-frame "no imagery" markers)
+        # Cheap planners ignore the system-prompt rules — this is the
+        # authoritative gate. AvatarBatch's run-based renderer reads what we
+        # write here.
+        self._enforce_host_coverage_rules(director_plan)
+
+        # news_recap composition floors — deterministic post-pass that rewrites
+        # text-heavy shots to ARTICLE_FOCUS / IMAGE_HERO with real-photo prompts
+        # so the director's natural bias toward TEXT_DIAGRAM doesn't tank
+        # visual storytelling. No-op for video_type != "news_recap".
+        try:
+            _nr_inputs = getattr(self, '_director_news_recap_inputs', {}) or {}
+            director_plan = self._enforce_news_recap_floors(
+                director_plan,
+                video_type=str(_nr_inputs.get("video_type") or getattr(self, '_video_type', '') or ""),
+                available_screenshots=_nr_inputs.get("available_screenshots") or [],
+                named_entities=_nr_inputs.get("named_entities") or [],
+            )
+        except Exception as _nr_err:
+            print(f"   ⚠️ news_recap floor enforcement failed ({_nr_err}); using director plan unchanged")
 
         return director_plan, total_usage
 
@@ -5960,6 +7844,105 @@ class VideoGenerationPipeline:
         except Exception as e:
             print(f"[BrandBrief] ⚠️ extraction failed (non-fatal): {e}")
         return result
+
+    # ------------------------------------------------------------------
+    # PR 3 — Post-Director host coverage enforcement
+    # ------------------------------------------------------------------
+    # Authoritative gate that flips host_present=true on shots Director
+    # missed. Cheap planner models routinely ignore the prompt rules
+    # (HOST_DIRECTOR_EXTENSION + 100% override + bookend rule). This
+    # method is the last layer before AvatarBatch — what we write here
+    # is what gets billed for Seedream + fal.
+
+    def _enforce_host_coverage_rules(self, director_plan: Dict[str, Any]) -> None:
+        """Mutate director_plan["shots"] to enforce host coverage rules.
+
+        Rules (in priority order):
+          1. Deny-list always wins — `self._user_authored_no_host_indices`
+             shots NEVER get host_present=true regardless of % or bookend.
+          2. 100% mode — every non-deny shot gets host_present=true.
+          3. Bookend rule (0 < pct < 100) — shot 0 + final shot get
+             host_present=true if not already, with a default `centered`
+             layout (Hook / CTA convention).
+
+        Idempotent — safe to call repeatedly. Logs every flip.
+        """
+        if not getattr(self, "_host_enabled", False):
+            return
+        if getattr(self, "_host_type", "") != "avatar":
+            return
+        host_pct = int(getattr(self, "_host_pct", 0) or 0)
+        if host_pct <= 0:
+            return
+
+        shots = director_plan.get("shots") or []
+        if not shots:
+            return
+
+        deny_list = set(getattr(self, "_user_authored_no_host_indices", []) or [])
+
+        def _ensure_host(idx: int, layout_default: str, label: str) -> bool:
+            """Flip host_present=true on shots[idx] if not already set and
+            not in deny-list. Returns True if a flip happened."""
+            if idx < 0 or idx >= len(shots):
+                return False
+            if idx in deny_list:
+                return False
+            s = shots[idx]
+            if s.get("host_present"):
+                return False
+            s["host_present"] = True
+            if not s.get("host_layout"):
+                s["host_layout"] = layout_default
+            # Director would normally provide this; supply a default the
+            # AvatarBatch's Seedream prompt builder can fall back on.
+            if not s.get("host_image_prompt"):
+                s["host_image_prompt"] = (
+                    "Cinematic medium-shot portrait, host facing camera, neutral expression."
+                )
+            print(f"🎙️ Coverage: inserted host_present=true on shot {idx} ({label})")
+            return True
+
+        flipped = 0
+
+        if host_pct >= 100:
+            # 100% mode: every non-deny shot.
+            for idx in range(len(shots)):
+                if idx in deny_list:
+                    continue
+                # Pick a sane layout default if Director didn't provide one.
+                # Centered for Hook (idx=0) and CTA (last); split-bias for
+                # body shots when overlay text is present.
+                if idx == 0 or idx == len(shots) - 1:
+                    _layout_default = "centered"
+                else:
+                    # If the shot has text_elements / visual_description, use
+                    # a side split so the overlay zone is reserved.
+                    _has_overlay = bool(shots[idx].get("text_elements") or shots[idx].get("visual_description"))
+                    _layout_default = "free_right" if _has_overlay else "centered"
+                if _ensure_host(idx, _layout_default, "100% mode"):
+                    flipped += 1
+            if flipped:
+                print(f"🎙️ Coverage: 100% mode inserted host on {flipped} shot(s) (deny-list excluded {len(deny_list)})")
+        else:
+            # Bookend rule for 0 < pct < 100.
+            if _ensure_host(0, "centered", "bookend Hook"):
+                flipped += 1
+            if _ensure_host(len(shots) - 1, "centered", "bookend CTA"):
+                flipped += 1
+            if flipped:
+                print(f"🎙️ Coverage: bookend rule inserted host on {flipped} shot(s)")
+
+        # Final defense: re-strip deny-list from the result. Even if rule
+        # logic above is correct, a Director that pre-set host_present=true
+        # on a deny-list shot would slip through. Belt-and-braces.
+        stripped = []
+        for idx in deny_list:
+            if 0 <= idx < len(shots) and shots[idx].get("host_present"):
+                shots[idx]["host_present"] = False
+                stripped.append(idx)
+        if stripped:
+            print(f"🎙️ Coverage: deny-list strip — host_present=false on {stripped}")
 
     def _pick_host_set_description(self, brand_brief: Dict[str, Any]) -> str:
         """One-shot LLM call: compose a single cinematic studio-set description
@@ -6304,6 +8287,719 @@ class VideoGenerationPipeline:
         # `_split_` in the name precisely to avoid colliding.
         return results
 
+    # ------------------------------------------------------------------
+    # PR 2 — Run-based renderer for CUSTOM providers (Kling / Veed Fabric)
+    # ------------------------------------------------------------------
+    # Replaces the per-shot Seedream + per-shot fal call model with:
+    #   - Plan host shots into runs (contiguous + same host_layout)
+    #   - One Seedream image per run (kills cross-shot identity drift)
+    #   - One fal call per ≤cap-second segment within the run
+    #   - ffmpeg concat segment MP4s → continuous run MP4
+    #   - ffmpeg split run MP4 → per-shot MP4s mapped back to shot indices
+    #
+    # Returns the SAME shape as render_batch (List[AvatarShotResult]) so the
+    # post-fal loop in _run_avatar_batch_sync needs no changes.
+
+    # ------------------------------------------------------------------
+    # PR 4 — L1 enrichment tables (emotion → expression, layout → eyeline,
+    # deterministic gesture rotation per run). Module-level constants
+    # would be cleaner but the existing pattern in this file keeps
+    # host-related helpers as instance methods, so we colocate.
+    # ------------------------------------------------------------------
+    _EMOTION_EXPRESSION = {
+        "excited":       "warm energetic smile, eyebrows slightly raised",
+        "energetic":     "warm energetic smile, eyebrows slightly raised",
+        "enthusiastic":  "warm energetic smile, eyebrows slightly raised",
+        "serious":       "thoughtful expression, slight brow furrow, mouth set",
+        "concerned":     "thoughtful expression, slight brow furrow, mouth set",
+        "thoughtful":    "thoughtful expression, slight brow furrow, mouth set",
+        "curious":       "one eyebrow subtly raised, head tilted slightly",
+        "intrigued":     "one eyebrow subtly raised, head tilted slightly",
+        "confident":     "calm steady gaze, slight knowing half-smile",
+        "authoritative": "calm steady gaze, slight knowing half-smile",
+        "humorous":      "crinkled-eye smile, gentle amusement around the mouth",
+        "playful":       "crinkled-eye smile, gentle amusement around the mouth",
+        "urgent":        "eyes a touch wider, brows lifted, forward-leaning energy",
+        "dramatic":      "eyes a touch wider, brows lifted, forward-leaning energy",
+        "calm":          "soft relaxed expression, eyes settled",
+        "warm":          "soft relaxed expression, eyes settled",
+        "reassuring":    "soft relaxed expression, eyes settled",
+        "neutral":       "subtle approachable smile, eyes alert",
+    }
+    _DEFAULT_EXPRESSION = "subtle approachable smile, eyes alert"
+
+    # Deterministic gesture rotation indexed by run_index. Same person,
+    # different micro-poses across runs → kills the "wax figure in the same
+    # pose for 5 minutes" look without spending a model upgrade.
+    _GESTURE_ROTATION = (
+        "right hand at chest level mid-gesture, palm half-open",
+        "both hands relaxed near chest, slight forward lean toward camera",
+        "left hand raised mid-gesture, fingers slightly spread",
+        "subtle nod conveyed by a small forward shoulder tilt",
+        "hands settled at sides, shoulders slightly squared",
+        "right hand near chin in a thoughtful pose",
+        "open-palm gesture extending slightly toward the camera",
+        "hands clasped low, body angled three-quarters toward camera",
+    )
+
+    # Layout → eyeline. The free_X layouts reserve the *opposite* half of
+    # the canvas for overlays — eyes drift toward that overlay zone so the
+    # host appears to be referencing the diagram instead of staring past it.
+    _LAYOUT_EYELINE = {
+        "centered":    "eyes meeting camera directly, level gaze",
+        "free_left":   "eyes drifting subtly toward LEFT of frame (toward the overlay zone)",
+        "free_right":  "eyes drifting subtly toward RIGHT of frame (toward the overlay zone)",
+        "free_top":    "eyes very slightly raised toward TOP of frame (toward the overlay banner)",
+        "free_bottom": "eyes very slightly lowered toward BOTTOM of frame (toward the lower-third)",
+    }
+    _DEFAULT_EYELINE = "eyes meeting camera directly, level gaze"
+
+    @staticmethod
+    def _emphasis_action_keywords(run_shots: List[Dict[str, Any]]) -> List[str]:
+        """Pull action verbs from sync_points across the run. Used to amp
+        gesture energy when the run contains emphasis beats (annotate /
+        underline / highlight / emphasize / reveal).
+        """
+        actions: List[str] = []
+        for s in run_shots or []:
+            for sp in (s.get("sync_points") or []):
+                a = str(sp.get("action") or "").lower()
+                if a:
+                    actions.append(a)
+        return actions
+
+    def _resolve_run_expression(self, run_shots: List[Dict[str, Any]]) -> str:
+        """Pick the dominant emotion across run shots → expression directive.
+
+        Modal emotion wins (most-common); ties broken by first-occurrence so
+        the result is deterministic. Falls back to the neutral default if no
+        shot in the run carries an `emotion` field.
+        """
+        from collections import Counter
+        emotions = []
+        for s in run_shots or []:
+            e = str(s.get("emotion") or "").strip().lower()
+            if e:
+                emotions.append(e)
+        if not emotions:
+            return self._DEFAULT_EXPRESSION
+        ranked = Counter(emotions).most_common()
+        for emo, _count in ranked:
+            if emo in self._EMOTION_EXPRESSION:
+                return self._EMOTION_EXPRESSION[emo]
+        return self._DEFAULT_EXPRESSION
+
+    def _resolve_run_gesture(
+        self,
+        run_index: int,
+        run_shots: List[Dict[str, Any]],
+    ) -> str:
+        """Deterministic gesture for this run, optionally amped if the run
+        contains emphasis sync_points.
+
+        Why deterministic + run-keyed: two adjacent runs in the same video
+        get DIFFERENT gestures (different `_GESTURE_ROTATION` slots), so a
+        viewer doesn't see the same hand pose recur shot-to-shot. The
+        rotation is also stable across resumes.
+        """
+        base = self._GESTURE_ROTATION[run_index % len(self._GESTURE_ROTATION)]
+        amp_keywords = ("emphasize", "highlight", "annotate", "underline", "reveal", "stress")
+        actions = self._emphasis_action_keywords(run_shots)
+        if any(any(k in a for k in amp_keywords) for a in actions):
+            return f"{base} (mid-emphasis energy — slight forward weight)"
+        return base
+
+    def _resolve_run_eyeline(self, layout: str) -> str:
+        return self._LAYOUT_EYELINE.get(layout, self._DEFAULT_EYELINE)
+
+    def _build_host_run_seedream_prompt(
+        self,
+        *,
+        layout: str,
+        lead_shot: Dict[str, Any],
+        run_shots: List[Dict[str, Any]],   # PR 4 — full shot list for emotion/sync aggregation
+        run_index: int,                    # PR 4 — drives deterministic gesture rotation
+        run_total_duration_s: float,
+        run_segment_count: int,
+        details_prompt: str,
+        global_style_brief: str,
+        host_set: str,
+    ) -> str:
+        """Compose the Seedream image prompt for ONE run.
+
+        Run-level (not shot-level) — the same image is reused across every
+        segment of the run, so the prompt must produce a still that works
+        as the locked frame for `run_total_duration_s` of talking-head
+        across `run_segment_count` segments.
+
+        PR 4 enrichment threaded into the prompt:
+          - EXPRESSION ← dominant `emotion` across `run_shots`
+          - GESTURE   ← deterministic rotation by `run_index` + emphasis amp
+          - EYELINE   ← derived from `layout` (drift toward overlay zone)
+        """
+        # Lead shot drives layout-specific framing — text_elements +
+        # visual_description tell Seedream what the reserved zone will hold.
+        _shot_text_elems = lead_shot.get("text_elements") or []
+        if isinstance(_shot_text_elems, list):
+            _overlay_hint = ", ".join(str(e) for e in _shot_text_elems[:3])
+        else:
+            _overlay_hint = str(_shot_text_elems)[:120]
+        _overlay_hint = _overlay_hint.strip()
+        _vis_desc = (lead_shot.get("visual_description") or "").strip()
+        if _vis_desc and len(_vis_desc) > 120:
+            _vis_desc = _vis_desc[:120].rsplit(" ", 1)[0] + "…"
+        _reserved_for = (
+            f' (reserved for: "{_overlay_hint}")' if _overlay_hint
+            else (f' (reserved for: {_vis_desc})' if _vis_desc else "")
+        )
+
+        # Layout framing table — same as the deprecated per-shot path.
+        _layout_framing = {
+            "free_left":   f"Subject framed on the RIGHT half of the canvas; LEFT half intentionally empty{_reserved_for} — keep this zone visually plain so a coloured overlay reads cleanly against it.",
+            "free_right":  f"Subject framed on the LEFT half of the canvas; RIGHT half intentionally empty{_reserved_for} — keep this zone visually plain so a coloured overlay reads cleanly against it.",
+            "free_top":    f"Subject framed in the BOTTOM 60% of the canvas; TOP 40% intentionally empty{_reserved_for} — keep this zone clean for a headline/banner.",
+            "free_bottom": f"Subject framed in the TOP 60%; BOTTOM 40% empty{_reserved_for} — keep this zone clean for a lower-third banner.",
+            "centered":    "Subject centered in the frame, looking just past camera. Pure to-camera shot, no overlay zones reserved.",
+        }.get(layout, "")
+
+        _scene_directive = (
+            f"SET (locked across all host shots in this video): {host_set} "
+            "Do NOT invent new environmental scenes per shot. The set is fixed."
+        ) if host_set else (
+            "SET: minimalist cinematic studio with brand-color rim light, "
+            "subtle atmospheric depth, NO factory/office/outdoor/architectural detail."
+        )
+
+        _framing_directive = (
+            "FRAMING: MEDIUM SHOT — head AND shoulders both visible. Face occupies "
+            "AT MOST 30% of frame height. Eyes positioned at 25–35% from top of frame. "
+            "NOT an extreme close-up. NOT a face-only crop."
+        )
+
+        # Optional prop from the lead shot. Kling Standard animates lips/face
+        # only — props stay static and survive cleanly into the final video.
+        _prop = (lead_shot.get("host_prop") or "").strip() if isinstance(lead_shot.get("host_prop"), str) else ""
+        _prop_directive = (
+            f"Subject is holding a {_prop} in their hand, visible in the frame."
+            if _prop and len(_prop) < 80
+            else ""
+        )
+
+        # Run-level directive — distinct from per-shot. Tells Seedream this
+        # image will be reused across multiple talking-head segments so the
+        # pose/expression should be neutral enough to work as a locked still
+        # for the whole run, not a one-off snapshot.
+        _run_directive = (
+            f"This portrait will be the LOCKED still for {run_total_duration_s:.0f}s of "
+            f"continuous talking-head footage ({run_segment_count} stitched segment"
+            f"{'s' if run_segment_count != 1 else ''}). "
+            "Pose and expression must work as the anchor for the entire run — "
+            "the EXPRESSION / GESTURE / EYELINE directives below define that anchor."
+        )
+
+        # PR 4 — L1 enrichment. Three new lines drive the still away from
+        # "neutral wax figure" toward something that matches the run's
+        # actual narrative beat.
+        _expression = self._resolve_run_expression(run_shots)
+        _gesture = self._resolve_run_gesture(run_index, run_shots)
+        _eyeline = self._resolve_run_eyeline(layout)
+        _expression_directive = f"EXPRESSION: {_expression}."
+        _gesture_directive = f"GESTURE / POSTURE: {_gesture}."
+        _eyeline_directive = f"EYELINE: {_eyeline}."
+
+        _img_prompt_parts = [
+            "PHOTOREAL CINEMATIC PORTRAIT — medium-shot of the EXACT same person shown in the reference image. "
+            "Identity is non-negotiable: keep the reference face's structure (jawline, eyes, brows, nose, "
+            "skin tone, beard pattern, hair style) IDENTICAL. Slight pose / expression variation only.",
+            f"Persona / clothing: {details_prompt}. Same outfit and accessories across all shots." if details_prompt else "Same outfit and accessories across all shots.",
+            f"Global brand visual brief (apply consistently every shot): {global_style_brief}." if global_style_brief else "",
+            _layout_framing,
+            _framing_directive,
+            _scene_directive,
+            _prop_directive,
+            _run_directive,
+            _expression_directive,
+            _gesture_directive,
+            _eyeline_directive,
+            "Soft natural lighting, neutral camera angle.",
+            "DO NOT render any text, logos, captions, lower-thirds, charts, or graphic overlays — those are added downstream by the renderer.",
+            "DO NOT change the person's apparent age, ethnicity, or facial structure from the reference image.",
+        ]
+        return " ".join(p for p in _img_prompt_parts if p).strip()
+
+    def _render_single_host_run(
+        self,
+        *,
+        run: Any,                        # HostRun from host_run_planner
+        shots: List[Dict[str, Any]],
+        master_audio: "Path",
+        host_assets_dir: "Path",
+        s3_service: Any,
+        fal_key: str,
+        host_model: str,
+        host_quality: str,
+        details_prompt: str,
+        face_image_url: str,
+        global_style_brief: str,
+        host_set: str,
+        FalAvatarClient: Any,
+        AvatarShotResult: Any,
+    ) -> List[Any]:
+        """Render ONE run end-to-end. Returns a list of AvatarShotResult — one
+        per shot in the run, with `.video_url` pointing at the per-shot S3 MP4
+        (audio-stripped, trimmed). All-or-nothing semantics: any internal
+        failure marks every shot in the run as errored.
+        """
+        from pathlib import Path as _Path
+        import subprocess as _sp_local
+        import asyncio as _asyncio_local
+        import urllib.request as _urlreq
+
+        run_idx = run.run_index
+        layout = run.layout
+        run_name = getattr(self, "_run_name", "run")
+
+        def _fail_all(reason: str, error_stage: str = "run") -> List[Any]:
+            print(f"[AvatarBatch] run={run_idx} ❌ {reason}")
+            return [
+                AvatarShotResult(
+                    shot_index=idx,
+                    model=host_model,
+                    quality=host_quality,
+                    error=reason,
+                    error_stage=error_stage,
+                )
+                for idx in run.shot_indices
+            ]
+
+        # ── Stage 1 — Seedream (one image per run) ────────────────────────
+        lead_shot = shots[run.shot_indices[0]] if run.shot_indices else {}
+        # PR 4 — pass the FULL run shot list (not just lead) + run_index so
+        # the prompt builder can aggregate emotion across the run and pick
+        # a deterministic gesture slot.
+        run_shots = [shots[i] for i in run.shot_indices if 0 <= i < len(shots)]
+        img_prompt = self._build_host_run_seedream_prompt(
+            layout=layout,
+            lead_shot=lead_shot,
+            run_shots=run_shots,
+            run_index=run_idx,
+            run_total_duration_s=run.total_duration_s,
+            run_segment_count=len(run.segments),
+            details_prompt=details_prompt,
+            global_style_brief=global_style_brief,
+            host_set=host_set,
+        )
+
+        try:
+            img_bytes, _ = self._call_image_generation_llm(
+                img_prompt,
+                width=self.video_width,
+                height=self.video_height,
+                reference_image_url=face_image_url,
+            )
+        except Exception as e:
+            return _fail_all(f"Seedream raised: {e}", error_stage="seedream")
+        if not img_bytes:
+            return _fail_all("Seedream returned no bytes", error_stage="seedream")
+
+        local_img = host_assets_dir / f"host_run_{run_idx:03d}.png"
+        local_img.write_bytes(img_bytes)
+        img_s3_key = f"ai-videos/host-assets/{run_name}/host_run_{run_idx:03d}.png"
+        img_s3_url = s3_service.upload_file(local_img, s3_key=img_s3_key, content_type="image/png")
+        if not img_s3_url:
+            return _fail_all("S3 upload failed for run host image", error_stage="s3_image")
+
+        # Cache the image URL onto every shot in the run — useful for the FE
+        # debugger and matches the legacy per-shot field name.
+        for idx in run.shot_indices:
+            if idx < len(shots):
+                shots[idx]["host_image_url"] = img_s3_url
+
+        # SSE — image+audio ready (per run). Per-segment SSE fires below.
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "avatar_run_image_ready",
+            "stage": "html",
+            "message": (
+                f"Host run {run_idx + 1} image ready — "
+                f"{len(run.shot_indices)} shot(s), {len(run.segments)} segment(s)"
+            ),
+            "run_index": run_idx,
+            "run_shot_count": len(run.shot_indices),
+            "run_segment_count": len(run.segments),
+        })
+
+        # ── Stage 2 — slice each segment's audio + upload ─────────────────
+        seg_audio_urls: List[str] = []
+        for seg in run.segments:
+            local_audio = host_assets_dir / f"host_run_{run_idx:03d}_seg_{seg.segment_index:03d}.mp3"
+            slice_cmd = [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-ss", f"{seg.audio_start_s:.3f}",
+                "-i", str(master_audio),
+                "-t", f"{seg.duration_s:.3f}",
+                "-vn",
+                "-acodec", "libmp3lame", "-q:a", "4",
+                "-ac", "2", "-ar", "44100",
+                str(local_audio),
+            ]
+            r = _sp_local.run(slice_cmd, capture_output=True, text=True)
+            if r.returncode != 0 or not local_audio.exists():
+                return _fail_all(
+                    f"ffmpeg slice failed for seg {seg.segment_index}: {(r.stderr or '<no stderr>').strip()[:200]}",
+                    error_stage="ffmpeg_slice",
+                )
+            audio_s3_key = (
+                f"ai-videos/host-assets/{run_name}/"
+                f"host_run_{run_idx:03d}_seg_{seg.segment_index:03d}.mp3"
+            )
+            audio_s3_url = s3_service.upload_file(
+                local_audio, s3_key=audio_s3_key, content_type="audio/mpeg"
+            )
+            if not audio_s3_url:
+                return _fail_all(
+                    f"S3 upload failed for seg {seg.segment_index} audio",
+                    error_stage="s3_audio",
+                )
+            seg_audio_urls.append(audio_s3_url)
+
+        # ── Stage 3 — fal calls in parallel (one per segment) ─────────────
+        client = FalAvatarClient(api_key=fal_key, concurrency=4)
+        seg_inputs = [
+            {
+                "shot_index": seg.segment_index,   # used as fal "shot_index" within this run
+                "image_url": img_s3_url,
+                "audio_url": url,
+            }
+            for seg, url in zip(run.segments, seg_audio_urls)
+        ]
+        try:
+            seg_results = _asyncio_local.run(
+                client.render_batch(
+                    seg_inputs,
+                    model=host_model,
+                    quality=host_quality,
+                    details_prompt=details_prompt,
+                    provider="custom",
+                    external_avatar_id=None,
+                )
+            )
+        except Exception as e:
+            return _fail_all(f"fal.ai segment batch raised: {e}", error_stage="fal_batch")
+
+        # Any segment failure → whole run reverts (can't concat with a hole).
+        for sr in seg_results:
+            if sr.error:
+                return _fail_all(
+                    f"segment {sr.shot_index} fal failed: {sr.error}",
+                    error_stage=sr.error_stage or "fal_segment",
+                )
+            if not sr.video_url:
+                return _fail_all(
+                    f"segment {sr.shot_index} fal returned no video_url",
+                    error_stage="fal_segment",
+                )
+
+        # ── Stage 4 — download segment MP4s + ffmpeg concat (audio strip) ─
+        local_seg_paths: List[_Path] = []
+        for seg, sr in zip(run.segments, seg_results):
+            seg_local = host_assets_dir / f"host_run_{run_idx:03d}_seg_{seg.segment_index:03d}.mp4"
+            try:
+                _urlreq.urlretrieve(sr.video_url, str(seg_local))
+            except Exception as e:
+                return _fail_all(
+                    f"download failed for seg {seg.segment_index}: {e}",
+                    error_stage="download",
+                )
+            if not seg_local.exists():
+                return _fail_all(
+                    f"download missing for seg {seg.segment_index}", error_stage="download"
+                )
+            local_seg_paths.append(seg_local)
+
+        run_mp4 = host_assets_dir / f"host_run_{run_idx:03d}.mp4"
+        # Concat with audio strip + re-encode (Kling bakes lipsynced audio
+        # into the segment MP4; we don't want that audio in the final video
+        # since the timeline plays master TTS continuously). Re-encoding
+        # also normalizes per-segment encoding params for clean concat at
+        # non-keyframe boundaries.
+        concat_list = host_assets_dir / f"host_run_{run_idx:03d}_concat.txt"
+        concat_list.write_text(
+            "\n".join(f"file '{p.absolute()}'" for p in local_seg_paths),
+            encoding="utf-8",
+        )
+        concat_cmd = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_list),
+            "-an",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            str(run_mp4),
+        ]
+        r = _sp_local.run(concat_cmd, capture_output=True, text=True)
+        if r.returncode != 0 or not run_mp4.exists():
+            return _fail_all(
+                f"ffmpeg concat failed: {(r.stderr or '<no stderr>').strip()[:200]}",
+                error_stage="ffmpeg_concat",
+            )
+
+        # ── Stage 5 — split run MP4 to per-shot MP4s + upload ─────────────
+        out_results: List[Any] = []
+        # Build a flat (shot_idx, offset_in_run, length) list across all segs.
+        for seg in run.segments:
+            seg_offset_in_run = seg.audio_start_s - run.audio_start_s
+            for shot_idx, offset_in_seg, length_in_seg in seg.shot_offsets_in_segment:
+                shot_offset_in_run = seg_offset_in_run + offset_in_seg
+                if length_in_seg < 0.3:
+                    # Too short to render a useful talking-head clip.
+                    out_results.append(AvatarShotResult(
+                        shot_index=shot_idx,
+                        model=host_model,
+                        quality=host_quality,
+                        error=f"shot duration {length_in_seg:.2f}s below 0.3s minimum",
+                        error_stage="split_too_short",
+                    ))
+                    continue
+                shot_local = host_assets_dir / f"host_video_{shot_idx:03d}.mp4"
+                split_cmd = [
+                    "ffmpeg", "-y", "-loglevel", "error",
+                    "-ss", f"{shot_offset_in_run:.3f}",
+                    "-i", str(run_mp4),
+                    "-t", f"{length_in_seg:.3f}",
+                    "-c", "copy",                # safe — concat just re-encoded uniformly
+                    "-movflags", "+faststart",
+                    str(shot_local),
+                ]
+                rs = _sp_local.run(split_cmd, capture_output=True, text=True)
+                if rs.returncode != 0 or not shot_local.exists():
+                    out_results.append(AvatarShotResult(
+                        shot_index=shot_idx,
+                        model=host_model,
+                        quality=host_quality,
+                        error=f"ffmpeg split failed: {(rs.stderr or '<no stderr>').strip()[:200]}",
+                        error_stage="ffmpeg_split",
+                    ))
+                    continue
+                shot_s3_key = (
+                    f"ai-videos/host-assets/{run_name}/host_video_{shot_idx:03d}.mp4"
+                )
+                shot_s3_url = s3_service.upload_file(
+                    shot_local, s3_key=shot_s3_key, content_type="video/mp4"
+                )
+                if not shot_s3_url:
+                    out_results.append(AvatarShotResult(
+                        shot_index=shot_idx,
+                        model=host_model,
+                        quality=host_quality,
+                        error="S3 upload failed for split shot MP4",
+                        error_stage="s3_split",
+                    ))
+                    continue
+                # Synthetic fal_request_id encodes provenance for debugging.
+                synth_id = f"run-{run_idx}-seg-{seg.segment_index}-shot-{shot_idx}"
+                out_results.append(AvatarShotResult(
+                    shot_index=shot_idx,
+                    fal_request_id=synth_id,
+                    video_url=shot_s3_url,
+                    duration_s=length_in_seg,
+                    model=host_model,
+                    quality=host_quality,
+                ))
+
+        ok = sum(1 for r in out_results if not r.error)
+        print(
+            f"[AvatarBatch] run={run_idx} ({layout}): "
+            f"{ok}/{len(out_results)} shot(s) OK, "
+            f"{len(run.segments)} segment(s), "
+            f"{run.total_duration_s:.1f}s total"
+        )
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "avatar_run_done",
+            "stage": "html",
+            "message": f"Host run {run_idx + 1} rendered ({ok}/{len(run.shot_indices)} shots OK)",
+            "run_index": run_idx,
+            "shots_ok": ok,
+            "shots_total": len(run.shot_indices),
+        })
+        return out_results
+
+    def _render_host_runs(
+        self,
+        *,
+        shots: List[Dict[str, Any]],
+        master_audio: "Path",
+        host_assets_dir: "Path",
+        s3_service: Any,
+        fal_key: str,
+        host_model: str,
+        host_quality: str,
+        details_prompt: str,
+        face_image_url: str,
+        global_style_brief: str,
+        host_set: str,
+        words: List[Dict[str, Any]],
+        prior_artifacts: Dict[int, Dict[str, Any]],
+        FalAvatarClient: Any,
+        AvatarShotResult: Any,
+    ) -> Tuple[List[Any], List[Dict[str, Any]]]:
+        """Top-level run-based renderer for custom providers.
+
+        Plans runs, renders each (Seedream once + N fal segments + concat +
+        split). Returns (fal_results, shot_artifacts) — same shape the
+        legacy per-shot dispatch would have produced, so the post-fal loop
+        in `_run_avatar_batch_sync` consumes them with no changes.
+
+        Resume semantics: a run is skipped entirely iff EVERY shot in it
+        already has a cached `avatar_video_url`. Partial-run cache misses
+        re-render the WHOLE run — Seedream + segment fal calls are tied to
+        the run's identity coherence, so re-rendering only some shots would
+        produce a face that drifts mid-run.
+        """
+        try:
+            from host_run_planner import plan_host_runs as _plan  # type: ignore
+        except Exception:
+            from .host_run_planner import plan_host_runs as _plan  # type: ignore[no-redef]
+        try:
+            from app.services.fal_avatar_client import get_audio_cap_s as _get_cap
+        except Exception:
+            import importlib as _imp
+            _get_cap = _imp.import_module("app.services.fal_avatar_client").get_audio_cap_s
+
+        audio_cap_s = _get_cap(host_model)
+        if audio_cap_s <= 0:
+            # Unknown model in the cap table — pick a conservative default
+            # (38s) so we don't ship 60s+ runs to a model that may reject.
+            # Add the model to MODEL_AUDIO_CAP_S to bypass this fallback.
+            print(
+                f"[AvatarBatch] ⚠️  Model {host_model!r} not in audio cap table — "
+                f"falling back to 38s segments. Add it to MODEL_AUDIO_CAP_S."
+            )
+            audio_cap_s = 38.0
+
+        runs = _plan(shots=shots, audio_cap_s=audio_cap_s, words=words or [])
+        if not runs:
+            return [], []
+
+        print(
+            f"[AvatarBatch] Run-based rendering: {len(runs)} run(s), "
+            f"{sum(len(r.shot_indices) for r in runs)} shot(s) total, "
+            f"{sum(len(r.segments) for r in runs)} segment(s) total, "
+            f"cap={audio_cap_s:.1f}s/segment"
+        )
+
+        all_results: List[Any] = []
+        all_artifacts: List[Dict[str, Any]] = []
+
+        for run in runs:
+            # Resume short-circuit: if every shot in this run is already
+            # cached + completed, reuse and skip the whole run (no Seedream,
+            # no fal). Partial cache → re-render the whole run.
+            all_cached = bool(run.shot_indices) and all(
+                idx in prior_artifacts for idx in run.shot_indices
+            )
+            if all_cached:
+                print(
+                    f"[AvatarBatch] run={run.run_index} ♻️  fully cached "
+                    f"({len(run.shot_indices)} shot(s)) — skipping"
+                )
+                # Mirror the legacy per-shot resume short-circuit at L8141 —
+                # write directly to the shot dict + artifact list, do NOT
+                # add to fal_results. Otherwise the post-fal loop would
+                # re-download / re-trim / re-upload the cached MP4 (correct
+                # but ~150-300ms × N shots of wasted work, plus a redundant
+                # S3 PUT for every cached run on every resume).
+                for idx in run.shot_indices:
+                    cached = prior_artifacts[idx]
+                    if idx < len(shots) and cached.get("avatar_video_url"):
+                        shots[idx]["avatar_video_url"] = cached["avatar_video_url"]
+                        if cached.get("host_image_url"):
+                            shots[idx]["host_image_url"] = cached["host_image_url"]
+                        # Strip background-visual fields — host video IS
+                        # the background, the per-shot HTML LLM would
+                        # otherwise layer a stock image under it. Same
+                        # logic as the post-fal success path.
+                        shots[idx].pop("image_prompt", None)
+                        shots[idx].pop("video_query", None)
+                    all_artifacts.append(cached)
+                continue
+
+            self._emit_progress({
+                "type": "sub_stage",
+                "sub_stage": "avatar_run_start",
+                "stage": "html",
+                "message": (
+                    f"Host run {run.run_index + 1}/{len(runs)} starting — "
+                    f"layout={run.layout}, {len(run.shot_indices)} shot(s), "
+                    f"{len(run.segments)} segment(s)"
+                ),
+                "run_index": run.run_index,
+                "run_count": len(runs),
+                "run_layout": run.layout,
+                "run_shot_count": len(run.shot_indices),
+                "run_segment_count": len(run.segments),
+            })
+
+            run_results = self._render_single_host_run(
+                run=run,
+                shots=shots,
+                master_audio=master_audio,
+                host_assets_dir=host_assets_dir,
+                s3_service=s3_service,
+                fal_key=fal_key,
+                host_model=host_model,
+                host_quality=host_quality,
+                details_prompt=details_prompt,
+                face_image_url=face_image_url,
+                global_style_brief=global_style_brief,
+                host_set=host_set,
+                FalAvatarClient=FalAvatarClient,
+                AvatarShotResult=AvatarShotResult,
+            )
+
+            # Build per-shot artifacts. The Seedream image URL is shared
+            # across all shots in the run; segment offsets identify which
+            # segment each shot's frame range came from.
+            run_image_url = ""
+            for idx in run.shot_indices:
+                if idx < len(shots) and shots[idx].get("host_image_url"):
+                    run_image_url = shots[idx]["host_image_url"]
+                    break
+            seg_for_shot: Dict[int, Any] = {}
+            for seg in run.segments:
+                for s_idx, _, _ in seg.shot_offsets_in_segment:
+                    seg_for_shot[s_idx] = seg
+
+            for r in run_results:
+                seg = seg_for_shot.get(r.shot_index)
+                artifact: Dict[str, Any] = {
+                    "shot_index": r.shot_index,
+                    "model": host_model,
+                    "quality": host_quality,
+                    "provider": "custom",
+                    "external_avatar_id": None,
+                    "status": "failed" if r.error else "pending",
+                    "host_image_url": run_image_url,
+                    "duration_s": r.duration_s,
+                    "run_id": f"run_{run.run_index:03d}",
+                    "run_index": run.run_index,
+                    "run_total": len(runs),
+                    "run_layout": run.layout,
+                    "run_shot_count": len(run.shot_indices),
+                    "segment_index_within_run": (seg.segment_index if seg else None),
+                    "segment_count_in_run": len(run.segments),
+                    "segment_boundary_tier": (seg.boundary_tier if seg else None),
+                }
+                if r.error:
+                    artifact["error"] = r.error
+                    artifact["error_stage"] = r.error_stage
+                all_artifacts.append(artifact)
+            all_results.extend(run_results)
+
+        return all_results, all_artifacts
+
     def _run_avatar_batch_sync(
         self,
         director_plan: Dict[str, Any],
@@ -6524,7 +9220,90 @@ class VideoGenerationPipeline:
             except Exception as _re_err:
                 print(f"[AvatarBatch] ⚠️  Could not load prior host_outputs.json on resume: {_re_err}")
 
-        for shot_idx, shot in host_shots:
+        # Declared early so both the run-based path (custom providers) and
+        # the per-shot built-in path can populate them. Downstream dispatch
+        # gates on `used_concat_path` and `_used_run_based_path` to avoid
+        # double-rendering.
+        fal_results: List[Any] = []
+        used_concat_path = False
+        _used_run_based_path = False
+
+        # ── PR 2 — RUN-BASED RENDERER (custom providers only) ────────────
+        # Replaces the per-shot Seedream + per-shot fal model with one
+        # Seedream call per run + one fal call per ≤cap-second segment +
+        # ffmpeg concat → continuous run MP4 → ffmpeg split per shot.
+        # Built-in catalog providers (argil/veed) keep their existing
+        # concat path below.
+        if not is_builtin_provider:
+            # Resolve fal_key + clients EAGERLY so we fail before Seedream
+            # if the API key is missing (saves money on Seedream calls that
+            # feed unreachable fal calls). The legacy per-shot path checks
+            # this AFTER pre-render — fine for it because each shot's
+            # Seedream is small, but run-based generates one Seedream + N
+            # audio slices per run BEFORE any fal call, so failing late
+            # would burn more.
+            try:
+                from app.config import get_settings as _get_settings_rb
+            except Exception:
+                from ..config import get_settings as _get_settings_rb  # type: ignore[no-redef]
+            try:
+                _settings_rb = _get_settings_rb()
+                fal_key = getattr(_settings_rb, "fal_api_key", None) or ""
+            except Exception:
+                fal_key = ""
+            if not fal_key:
+                print("[AvatarBatch] ❌ FAL_API_KEY not set — disabling host shots")
+                for _, s in host_shots:
+                    s["host_present"] = False
+                return {
+                    "host_shot_count": 0,
+                    "shot_artifacts": per_shot_artifacts,
+                    "errors": errors + [{"stage": "fal_submit", "error": "FAL_API_KEY not set"}],
+                    "total_host_seconds": 0.0,
+                }
+            try:
+                from app.services.fal_avatar_client import FalAvatarClient, AvatarShotResult
+            except Exception:
+                import importlib as _imp_rb
+                _mod_rb = _imp_rb.import_module("app.services.fal_avatar_client")
+                FalAvatarClient = _mod_rb.FalAvatarClient
+                AvatarShotResult = _mod_rb.AvatarShotResult
+
+            # Load Whisper word timestamps for sentence-boundary detection
+            # in the run planner. Soft-fail: missing words.json just means
+            # the planner falls back to word-target splits (cascade tier 4).
+            _words_for_runs: List[Dict[str, Any]] = []
+            _words_path = _Path(run_dir) / "narration.words.json"
+            if _words_path.exists():
+                try:
+                    _words_for_runs = self._load_words(_words_path)
+                except Exception as _wer:
+                    print(f"[AvatarBatch] ⚠️  could not load words for run planner: {_wer}")
+
+            fal_results, per_shot_artifacts = self._render_host_runs(
+                shots=shots,
+                master_audio=master_audio,
+                host_assets_dir=host_assets_dir,
+                s3_service=s3_service,
+                fal_key=fal_key,
+                host_model=host_model,
+                host_quality=host_quality,
+                details_prompt=details_prompt,
+                face_image_url=face_image_url,
+                global_style_brief=_global_style_brief,
+                host_set=_host_set,
+                words=_words_for_runs,
+                prior_artifacts=_prior_artifacts,
+                FalAvatarClient=FalAvatarClient,
+                AvatarShotResult=AvatarShotResult,
+            )
+            _used_run_based_path = True
+            used_concat_path = True   # signals "skip parallel render_batch dispatch"
+
+        # Per-shot pre-render loop runs ONLY for built-in catalog providers
+        # (argil / veed audio-to-video). Custom providers were handled by
+        # the run-based path above.
+        for shot_idx, shot in host_shots if is_builtin_provider else []:
             # Resume short-circuit: already-completed shot — reuse the URL,
             # skip Seedream + ffmpeg + fal.ai.
             if shot_idx in _prior_artifacts:
@@ -6804,7 +9583,10 @@ class VideoGenerationPipeline:
             finally:
                 per_shot_artifacts.append(artifact)
 
-        if not per_shot_inputs:
+        # Empty pre-render guard — only meaningful for the built-in catalog
+        # path. The run-based path populates `fal_results` directly so its
+        # `per_shot_inputs` is empty by design.
+        if not per_shot_inputs and not _used_run_based_path:
             print("[AvatarBatch] No shots survived pre-render — disabling all host shots")
             return {
                 "host_shot_count": 0,
@@ -6814,31 +9596,38 @@ class VideoGenerationPipeline:
             }
 
         # --- 2. fal.ai render in parallel with bounded concurrency ---
-        try:
-            from app.config import get_settings as _get_settings_p
-        except Exception:
-            from ..config import get_settings as _get_settings_p  # type: ignore[no-redef]
-        try:
-            _settings_p = _get_settings_p()
-            fal_key = getattr(_settings_p, "fal_api_key", None) or ""
-        except Exception:
-            fal_key = ""
-        if not fal_key:
-            print("[AvatarBatch] ❌ FAL_API_KEY not set — disabling host shots")
-            for inp in per_shot_inputs:
-                idx = inp["shot_index"]
-                shots[idx]["host_present"] = False
-                for art in per_shot_artifacts:
-                    if art.get("shot_index") == idx:
-                        art["status"] = "failed"
-                        art["error"] = "FAL_API_KEY not set"
-                        art["error_stage"] = "fal_submit"
-            return {
-                "host_shot_count": 0,
-                "shot_artifacts": per_shot_artifacts,
-                "errors": errors + [{"stage": "fal_submit", "error": "FAL_API_KEY not set"}],
-                "total_host_seconds": 0.0,
-            }
+        # Skip this entire block when the run-based path has already
+        # rendered + collected fal_results (custom providers). The
+        # run-based branch resolved fal_key + imported FalAvatarClient
+        # eagerly so it could fail before Seedream — re-doing that work
+        # here would be redundant and the empty-`per_shot_inputs` disable
+        # loop below would incorrectly mark zero host shots.
+        if not _used_run_based_path:
+            try:
+                from app.config import get_settings as _get_settings_p
+            except Exception:
+                from ..config import get_settings as _get_settings_p  # type: ignore[no-redef]
+            try:
+                _settings_p = _get_settings_p()
+                fal_key = getattr(_settings_p, "fal_api_key", None) or ""
+            except Exception:
+                fal_key = ""
+            if not fal_key:
+                print("[AvatarBatch] ❌ FAL_API_KEY not set — disabling host shots")
+                for inp in per_shot_inputs:
+                    idx = inp["shot_index"]
+                    shots[idx]["host_present"] = False
+                    for art in per_shot_artifacts:
+                        if art.get("shot_index") == idx:
+                            art["status"] = "failed"
+                            art["error"] = "FAL_API_KEY not set"
+                            art["error_stage"] = "fal_submit"
+                return {
+                    "host_shot_count": 0,
+                    "shot_artifacts": per_shot_artifacts,
+                    "errors": errors + [{"stage": "fal_submit", "error": "FAL_API_KEY not set"}],
+                    "total_host_seconds": 0.0,
+                }
 
         try:
             from app.services.fal_avatar_client import FalAvatarClient
@@ -6863,8 +9652,10 @@ class VideoGenerationPipeline:
         # equivalent to N separate renders — we just split the result back
         # at recorded shot offsets and the existing post-processing trims
         # each per-shot file as before.
-        fal_results: List[Any] = []
-        used_concat_path = False
+        # Note: `fal_results` and `used_concat_path` were already declared
+        # at the top of this stage (alongside `_used_run_based_path`) so
+        # the run-based path can populate them. Re-declaring here would
+        # clobber the run-based renderer's results.
         if is_builtin_provider and len(per_shot_inputs) > 1:
             try:
                 fal_results = self._run_builtin_concat_render(
@@ -7263,6 +10054,21 @@ class VideoGenerationPipeline:
             end_time = float(shot.get("end_time", start_time + 8))
             duration = max(1.0, end_time - start_time)
 
+            # ── Slice D safety net: KINETIC_TEXT incompatible with low/minimal ──
+            # The Director was told to forbid KINETIC_TEXT at low/minimal text
+            # density (Slice C). Cheap planners ignore long forbid-lists; this
+            # belt-and-braces swap converts any KINETIC_TEXT shot that slipped
+            # through into a compatible alternative before any prompt build.
+            _vp_shot = getattr(self, "_visual_preferences", None) or {}
+            _td_shot = (_vp_shot.get("text_density") or "auto").lower()
+            if shot_type == "KINETIC_TEXT" and _td_shot in ("minimal", "low"):
+                _swap_to = "KINETIC_TITLE" if _td_shot == "low" else "TEXT_DIAGRAM"
+                print(
+                    f"   🎨 {_log_label} swap: KINETIC_TEXT → {_swap_to} "
+                    f"(text_density={_td_shot}; KINETIC_TEXT is text-only by design)"
+                )
+                shot_type = _swap_to
+
             # ── Shot template bypass (premium / ultra / super_ultra) ──
             # When the Director sets `template_id` on a shot AND the template
             # renders successfully, we skip the LLM call entirely and use the
@@ -7271,6 +10077,16 @@ class VideoGenerationPipeline:
             if _template_enabled and _template_compose_fn is not None and shot.get("template_id"):
                 _t_transition_in = shot.get("transition_in") or "fade"
                 _t_transition_block = TRANSITION_CSS_BLOCKS.get(_t_transition_in, "")
+                # Pull captured-page artifacts off the reference context so the
+                # ARTICLE_FOCUS template can resolve `screenshot_id` → URL.
+                # _reference_context arrives as a dict (ReferenceContext.to_dict()).
+                _t_scrape_artifacts: List[Dict[str, Any]] = []
+                _ref_ctx = getattr(self, '_reference_context', None)
+                if isinstance(_ref_ctx, dict):
+                    _sa = _ref_ctx.get('scrape_artifacts') or {}
+                    _files = _sa.get('files_captured') if isinstance(_sa, dict) else None
+                    if isinstance(_files, list):
+                        _t_scrape_artifacts = _files
                 _t_ctx = {
                     "shot_index": shot_idx,
                     "canvas_w": _w,
@@ -7280,6 +10096,7 @@ class VideoGenerationPipeline:
                     "shot_pack": getattr(self, "_current_shot_pack", None) or {},
                     "transition_in": _t_transition_in,
                     "transition_css_block": _t_transition_block,
+                    "scrape_artifacts": _t_scrape_artifacts,
                 }
                 try:
                     _t_result = _template_compose_fn(shot, _t_ctx)
@@ -7480,6 +10297,211 @@ class VideoGenerationPipeline:
             }.get(_stock_pref, "")
             if _stock_instruction:
                 user_prompt = user_prompt + _stock_instruction
+
+            # ── Per-shot text-density caps (Slice D) ──
+            # Caps headline length, forbids body paragraphs / supporting captions
+            # when the user picked text_density=minimal/low. Helper returns ""
+            # for auto/rich/None — zero token cost on no-op. The Director was
+            # already nudged via Slice C, but cheap planners build text-heavy
+            # shots anyway; this is the per-shot enforcement.
+            _shot_vp_block = build_visual_preferences_shot_block(
+                getattr(self, "_visual_preferences", None) or None,
+                shot_type,
+            )
+            if _shot_vp_block:
+                user_prompt = user_prompt + _shot_vp_block
+
+            # ── Named-entity / web-search / article-screenshot hints ──
+            # Gate on shot type — text-heavy shots don't use embedded media so
+            # they don't need ~500 extra tokens of policy.
+            if shot_type in ("IMAGE_HERO", "VIDEO_HERO", "IMAGE_SPLIT", "ANNOTATION_MAP", "ANIMATED_ASSET"):
+                _entities = getattr(self, '_named_entities_cache', None) or []
+                _serper_ok = bool(
+                    getattr(self, '_serper_service', None)
+                    and getattr(self._serper_service, 'is_available', False)
+                )
+                # Pull article screenshots + their vision-captioned descriptions
+                # from the reference context. Each block (entity / web / article)
+                # is gated INDEPENDENTLY — without that, an article with no
+                # extracted named entities AND no Serper key would silently drop
+                # the article-screenshot manifest, which is exactly how the
+                # original BBC render lost the captured Hormuz map.
+                _files_list: List[Dict[str, Any]] = []
+                _desc_by_url: Dict[str, str] = {}
+                _ref_ctx_dict = getattr(self, '_reference_context', None) if hasattr(self, '_reference_context') else None
+                if isinstance(_ref_ctx_dict, dict):
+                    _sa_dict = _ref_ctx_dict.get('scrape_artifacts') or {}
+                    _files_raw = _sa_dict.get('files_captured') if isinstance(_sa_dict, dict) else None
+                    if isinstance(_files_raw, list):
+                        _files_list = [f for f in _files_raw if isinstance(f, dict) and (f.get('id') or '').strip()]
+                    _emb_imgs = _ref_ctx_dict.get('embeddable_images') or []
+                    if isinstance(_emb_imgs, list):
+                        for _ei in _emb_imgs:
+                            if not isinstance(_ei, dict):
+                                continue
+                            _u = (_ei.get('s3_url') or _ei.get('url') or '').strip()
+                            _d = (_ei.get('description') or '').strip()
+                            if _u and _d:
+                                _desc_by_url[_u] = _d
+                _has_article = bool(_files_list)
+
+                if _entities or _serper_ok or _has_article:
+                    _media_block_parts: List[str] = ["\n\n**MEDIA SOURCING POLICY** (per the Director's plan):"]
+                    if _has_article:
+                        _media_block_parts.append(
+                            "- For article evidence (the page the user asked you to summarize): "
+                            "embed via `<img data-img-source=\"article_screenshot\" data-screenshot-id=\"<id>\">` "
+                            "using one of the AVAILABLE ARTICLE SCREENSHOTS / IMAGES listed below. "
+                            "Prefer this over generic stock whenever an inline image's description matches the beat."
+                        )
+                    if _serper_ok:
+                        _media_block_parts.append(
+                            "- For real, **named** subjects NOT covered by an article inline (people, places, "
+                            "brands, events you can NAME): emit `<img data-img-source=\"web\" "
+                            "data-img-query=\"<entity-friendly query>\" data-img-prompt=\"<descriptive caption>\">`. "
+                            "The pipeline routes this to Google Image search (Serper) and substitutes a real photo."
+                        )
+                    _media_block_parts.append(
+                        "- For generic real-world B-roll (cityscape, ocean, lab beakers): "
+                        "`<img data-img-source=\"stock\" data-img-prompt=\"...\">` or "
+                        "`<video data-video-query=\"...\">`."
+                    )
+                    _media_block_parts.append(
+                        "- For abstract/conceptual visuals (gradients, isolated cutouts, illustrations): "
+                        "`<img data-img-source=\"generate\" data-img-prompt=\"...\">` (AI generation)."
+                    )
+                    if _entities:
+                        _ent_lines: List[str] = []
+                        for e in _entities[:8]:
+                            if not isinstance(e, dict):
+                                continue
+                            name = (e.get('name') or '').strip()
+                            if not name:
+                                continue
+                            sq = (e.get('suggested_query') or name).strip()
+                            _ent_lines.append(f"  - {name} → web image query: \"{sq}\"")
+                        if _ent_lines:
+                            _media_block_parts.append(
+                                "\n**NAMED ENTITIES IN THIS VIDEO** (prefer article inlines if an inline matches; "
+                                "else use web search):"
+                            )
+                            _media_block_parts.extend(_ent_lines)
+                    if _has_article:
+                        _media_block_parts.append(
+                            "\n**AVAILABLE ARTICLE SCREENSHOTS / IMAGES** "
+                            "(reference these by `data-screenshot-id`):"
+                        )
+                        for _f in _files_list:
+                            _fid = (_f.get('id') or '').strip()
+                            _u = (_f.get('url') or '').strip()
+                            _d = _desc_by_url.get(_u, '')
+                            if _d and len(_d) > 200:
+                                _d = _d[:200].rsplit(' ', 1)[0] + '…'
+                            if _d:
+                                _media_block_parts.append(f"  - id: `{_fid}` — {_d}")
+                            else:
+                                _media_block_parts.append(f"  - id: `{_fid}`")
+                    user_prompt = user_prompt + "\n".join(_media_block_parts)
+
+            # ── BRAND ANCHOR — user-uploaded reference assets (Fix 2a) ──
+            # Mirrors the AVAILABLE ARTICLE SCREENSHOTS block above.
+            # The Director already sees these multimodally; the per-shot HTML
+            # LLM never did, which is why the Parle-G ad shipped with
+            # "Advertising 360" / "Let's take your brand on an adventure"
+            # boilerplate that has nothing to do with the actual brand. This
+            # block hands the per-shot LLM (a) the brand image URLs so it can
+            # embed them via `<img data-img-source="reference">`, (b) the
+            # vision-captioned text description so copy can name the brand,
+            # and (c) an explicit forbidden-phrases rule against agency boilerplate.
+            _ref_ctx_brand = getattr(self, '_reference_context', None)
+            _brand_images: List[Dict[str, Any]] = []
+            _brand_text_excerpt = ""
+            if isinstance(_ref_ctx_brand, dict):
+                _bi_list = _ref_ctx_brand.get('embeddable_images') or []
+                if isinstance(_bi_list, list):
+                    for _img in _bi_list[:4]:  # cap at 4 to bound prompt length
+                        if not isinstance(_img, dict):
+                            continue
+                        _u = (_img.get('s3_url') or _img.get('url') or '').strip()
+                        if not _u:
+                            continue
+                        _brand_images.append({
+                            "url": _u,
+                            "description": (_img.get('description') or '').strip(),
+                            "source_file": (_img.get('source_file') or '').strip(),
+                        })
+                _bt = (_ref_ctx_brand.get('text_context') or '').strip()
+                if _bt:
+                    _brand_text_excerpt = _bt[:1500] + ('…' if len(_bt) > 1500 else '')
+
+            if _brand_images or _brand_text_excerpt:
+                # The image-embed instruction only makes sense for shots that
+                # actually host an `<img>` element. Text-only shots (KINETIC_TITLE,
+                # KINETIC_TEXT, LOWER_THIRD) would otherwise be told to add an
+                # image they aren't designed to host. The ANCHORING RULES below
+                # apply to ALL shot types — text overlays must name the brand
+                # whether or not the shot has an image.
+                _shot_uses_image = shot_type not in (
+                    "KINETIC_TITLE", "KINETIC_TEXT", "LOWER_THIRD",
+                )
+                _brand_parts: List[str] = [
+                    "\n\n**🏷️ BRAND ANCHOR — REFERENCE ASSETS PROVIDED BY THE USER** "
+                    "(this video is ABOUT these assets; copy must be specific to them, not generic):"
+                ]
+                if _brand_text_excerpt:
+                    _brand_parts.append(
+                        f"User-provided context (extracted from uploaded files):\n  {_brand_text_excerpt}"
+                    )
+                if _brand_images and _shot_uses_image:
+                    _brand_parts.append(
+                        "\nUploaded brand/product images — when this shot includes an `<img>` "
+                        "element, prefer embedding via "
+                        "`<img data-img-source=\"reference\" data-reference-url=\"<url>\" "
+                        "data-img-prompt=\"<short alt>\" src='placeholder.png'>`. The "
+                        "`src='placeholder.png'` is REQUIRED — the pipeline rewrites that "
+                        "src attribute to the actual brand URL after generation. Do NOT "
+                        "regenerate or replace these with stock photos when the brand asset "
+                        "itself is the subject."
+                    )
+                    for _bi in _brand_images:
+                        _line = f"  - url: `{_bi['url']}`"
+                        if _bi.get('description'):
+                            _d = _bi['description']
+                            if len(_d) > 200:
+                                _d = _d[:200].rsplit(' ', 1)[0] + '…'
+                            _line += f" — {_d}"
+                        _brand_parts.append(_line)
+                elif _brand_images and not _shot_uses_image:
+                    # Text-only shot — surface the brand image descriptions so
+                    # the typography copy can quote them, but skip the embed
+                    # instruction (the shot isn't designed to render <img>).
+                    _brand_parts.append(
+                        "\nBrand assets (for reference — do NOT embed in this text-only shot, "
+                        "use them only to inform copy choices):"
+                    )
+                    for _bi in _brand_images:
+                        if _bi.get('description'):
+                            _d = _bi['description']
+                            if len(_d) > 200:
+                                _d = _d[:200].rsplit(' ', 1)[0] + '…'
+                            _brand_parts.append(f"  - {_d}")
+                _brand_parts.append(
+                    "\n**ANCHORING RULES — NON-NEGOTIABLE**:"
+                    "\n- Headlines, taglines, and any text overlay on this shot MUST reference "
+                    "the actual product/brand from the assets above. Do NOT write generic "
+                    "agency copy. The following phrases are FORBIDDEN: 'Advertising 360', "
+                    "'Let's take your brand on an adventure', 'The volatile world of marketing', "
+                    "'Elevate your business', 'Marketing made easy', 'Marketing without borders', "
+                    "or any variant of these meta-marketing slogans."
+                    "\n- If an asset is product packaging, copy must show, name, or describe "
+                    "THAT product."
+                    "\n- Use the user's text context above as the source of truth for product "
+                    "name, key claims, and tone."
+                    "\n- For any stock or AI-generated image you emit, the `data-img-prompt` "
+                    "MUST include the product/brand name verbatim (e.g. 'Parle-G biscuit "
+                    "packaging on a vintage Indian tea stall')."
+                )
+                user_prompt = user_prompt + "\n".join(_brand_parts)
 
             # ── Fix B + Fix E: Hex-code-as-CSS rule + Global brand directives ──
             # Both apply to EVERY shot (host or non-host). Surfaces:
@@ -8263,6 +11285,7 @@ class VideoGenerationPipeline:
                 return [], usage
 
             html = self._sanitize_html_content(html)
+            html = self._clamp_entry_animations(html, duration)
 
             # ── Skill composer (ultra / super_ultra) ──
             # Scan for <skill data-skill-id=... data-params=...> tags the LLM may
@@ -8395,6 +11418,7 @@ class VideoGenerationPipeline:
                         html2 = data2.get("html", "")
                         if html2:
                             _candidate = self._sanitize_html_content(html2)
+                            _candidate = self._clamp_entry_animations(_candidate, duration)
                             if usage2:
                                 usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)
                                 usage["completion_tokens"] = usage.get("completion_tokens", 0) + usage2.get("completion_tokens", 0)
@@ -8447,6 +11471,27 @@ class VideoGenerationPipeline:
                 if issues:
                     _validator_record_for_entry = _validator_record
 
+            # ── Vision reviewer — sees the rendered frame ──
+            # Catches defects the regex validator can't (legibility, face
+            # overlap, palette violation, sync drift). Fires AFTER the density
+            # validator so cheap regex catches dead-air shots before we pay
+            # for screenshots. May trigger one corrective regen with a
+            # ship-original-on-regression policy. Persists every flagged shot
+            # to vision_review_cases for prompt-tuning analysis.
+            _vision_review_record: Optional[Dict[str, Any]] = self._review_shot_visually(
+                html=html,
+                shot=shot,
+                shot_idx=shot_idx,
+                start_time=start_time,
+                end_time=end_time,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                last_raw_response=raw,
+                usage=usage,
+            )
+            if _vision_review_record and _vision_review_record.get("regen_html"):
+                html = _vision_review_record["regen_html"]
+
             html = self._ensure_fonts(html)
 
             entry = {
@@ -8471,6 +11516,11 @@ class VideoGenerationPipeline:
             # is serialized to S3 — same strip path as other underscore fields.
             if _validator_record_for_entry is not None:
                 entry["_validator_record"] = _validator_record_for_entry
+            # Vision-reviewer telemetry. Same strip path. The persistence
+            # service (called at end of HTML stage) reads this off the entry
+            # and writes a row to vision_review_cases.
+            if _vision_review_record is not None:
+                entry["_vision_review"] = _vision_review_record
             # SOURCE_CLIP: propagate source video time range + inject <video> into
             # the HTML so the FE player (iframe preview) shows the actual footage
             # instead of a black rectangle. The render worker will composite
@@ -8557,6 +11607,58 @@ class VideoGenerationPipeline:
                             f'</div></div>'
                         )
                     entry["html"] = html
+
+            # IMAGE_CLIP: substitute the {{IMAGE_URL}} placeholder with the
+            # actual image URL OR inject a background <img> if the LLM forgot
+            # to include one. Mirrors SOURCE_CLIP's safety-net injection above —
+            # without this, the Director's HTML may render literal "{{IMAGE_URL}}"
+            # as a broken image src.
+            if shot_type == "IMAGE_CLIP" and html and self._input_image_contexts:
+                _img_idx_raw = shot.get("image_index", 0)
+                try:
+                    _img_idx = int(_img_idx_raw)
+                except (TypeError, ValueError):
+                    _img_idx = 0
+                # Bounds check — fall back to first image if out of range so
+                # we never silently emit a broken shot just because the LLM
+                # picked an invalid index.
+                if _img_idx < 0 or _img_idx >= len(self._input_image_contexts):
+                    print(
+                        f"   ⚠️ IMAGE_CLIP shot has invalid image_index={_img_idx_raw} "
+                        f"(have {len(self._input_image_contexts)} images); falling back to 0"
+                    )
+                    _img_idx = 0
+                _img_ctx = self._input_image_contexts[_img_idx]
+                _img_url = (
+                    _img_ctx.get("source_public_url")
+                    or _img_ctx.get("source_url", "")
+                )
+                entry["image_index"] = _img_idx
+                if _img_url:
+                    # Step 1: replace any literal placeholder the LLM left in.
+                    if "{{IMAGE_URL}}" in html:
+                        html = html.replace("{{IMAGE_URL}}", _img_url)
+                    # Step 2: if no <img> tag points at our URL, inject a
+                    # full-frame background <img> the same way SOURCE_CLIP
+                    # injects a background <video>. This is the safety net
+                    # for the case where the LLM forgot the image entirely.
+                    import re as _re_img
+                    if not _re_img.search(rf'<img\s[^>]*src=[\'"]{_re_img.escape(_img_url)}', html):
+                        _img_tag = (
+                            f'<img data-image-clip="true" '
+                            f'src="{_img_url}" '
+                            f'style="position:absolute;top:0;left:0;width:100%;height:100%;'
+                            f'object-fit:cover;z-index:0;pointer-events:none;" />'
+                        )
+                        html = (
+                            f'<div style="position:relative;width:100%;height:100%;overflow:hidden;background:#000;">'
+                            f'{_img_tag}'
+                            f'<div style="position:relative;z-index:1;width:100%;height:100%;">'
+                            f'{html}'
+                            f'</div></div>'
+                        )
+                    entry["html"] = html
+
             if "z" in data:
                 try:
                     entry["z"] = int(data["z"])
@@ -8624,18 +11726,32 @@ class VideoGenerationPipeline:
 
             return entries, usage
 
-        # Run all shots in parallel using ThreadPoolExecutor
+        # Run all shots in parallel using ThreadPoolExecutor.
+        # Cooperative-stop checkpoint: don't submit more shots if the user
+        # has cancelled, and bail out of the result-collection loop early
+        # if cancellation comes mid-batch. In-flight shots (≤ max_workers)
+        # complete naturally; everything queued behind them is skipped.
         all_entries: List[Dict[str, Any]] = []
         max_workers = min(8, max(1, total_shots))
 
         print(f"   🎬 Generating HTML for {total_shots} shots (parallel, max {max_workers} workers)...")
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_map = {
-                executor.submit(_shot_task, i, shot): i
-                for i, shot in enumerate(shots)
-            }
+            future_map: Dict[Any, int] = {}
+            for i, shot in enumerate(shots):
+                # Check before each submission so cancellation midway through
+                # the queue-up phase saves submissions for the remaining shots.
+                self._check_stop()
+                future_map[executor.submit(_shot_task, i, shot)] = i
+
             for future in concurrent.futures.as_completed(future_map):
+                # Check between completions too — if cancellation comes after
+                # all shots are queued but only some have run, the remaining
+                # in-flight ones still have to finish (ThreadPoolExecutor has
+                # no per-future cancel for already-running tasks), but we
+                # stop collecting their results so the pipeline can unwind.
+                if self._stop_event is not None and self._stop_event.is_set():
+                    raise PipelineCancelled("Pipeline cancelled by user during shot generation")
                 shot_idx = future_map[future]
                 try:
                     entries, usage = future.result()
@@ -9250,6 +12366,80 @@ class VideoGenerationPipeline:
             f'</div>'
             f'<script>\n{triggers_js}\n</script>'
         )
+
+    @staticmethod
+    def _clamp_entry_animations(html: str, shot_duration_s: float) -> str:
+        """Clamp GSAP entry-animation `delay:` and `duration:` to a shot-aware
+        budget so short shots don't waste their first 1–3 seconds in pure black.
+
+        The original BBC and ddnews.gov.in renders had 6–9% of total runtime
+        as black-screen because LLMs frequently wrote tweens like
+        ``gsap.to('#hero', {opacity:1, delay:1.0, duration:1.5})`` on
+        IMAGE_HERO / KINETIC_TITLE shots that were only 3.5–6.5s long. The
+        viewer saw 1–3s of opaque black before the visual faded in.
+
+        Clamp budget by shot duration:
+          - shot ≤3s: max delay 0.20, max duration 0.50
+          - shot ≤5s: max delay 0.40, max duration 0.80
+          - shot ≤7s: max delay 0.70, max duration 1.20
+          - longer shots: not clamped (long zooms / Ken Burns are intentional)
+
+        Implementation: regex pass over the HTML/JS body, matching
+        ``delay:N.N`` and ``duration:N.N`` literals (with optional whitespace
+        and a quoted-string guard) and rewriting the numeric value when it
+        exceeds the budget. Preserves the surrounding formatting.
+
+        SAFE for all GSAP variants — `gsap.to`, `gsap.fromTo`, `gsap.timeline`,
+        `tl.to`, `tl.from` — because they all use the same ``delay:`` /
+        ``duration:`` keys inside the tween-vars object literal.
+
+        UNSAFE inside string literals (e.g. a CSS ``transition: opacity 1.5s``
+        attribute), but those are uncommon in LLM-generated shot HTML and the
+        regex requires a JSON-like ``key:value`` shape, which CSS transitions
+        don't have (CSS uses ``s`` suffix and no colon-key prefix).
+        """
+        if not html or not isinstance(html, str):
+            return html
+        try:
+            dur = float(shot_duration_s)
+        except (TypeError, ValueError):
+            return html
+        if dur <= 0:
+            return html
+        if dur > 7.0:
+            return html  # long shots: trust the LLM's choreography
+
+        if dur <= 3.0:
+            max_delay, max_duration = 0.20, 0.50
+        elif dur <= 5.0:
+            max_delay, max_duration = 0.40, 0.80
+        else:
+            max_delay, max_duration = 0.70, 1.20
+
+        # Match `delay: 1.5,` or `delay:1` etc. The lookbehind avoids
+        # matching CSS strings like `transitionDelay`. We require the key to
+        # be the literal `delay` (case-sensitive) preceded by `{`, `,`, or
+        # whitespace — i.e. inside an object literal.
+        delay_pat = re.compile(r'(?P<pre>[\{\s,])delay\s*:\s*(?P<val>\d+(?:\.\d+)?)')
+        dur_pat = re.compile(r'(?P<pre>[\{\s,])duration\s*:\s*(?P<val>\d+(?:\.\d+)?)')
+
+        def _clamp_factory(cap: float):
+            def _replace(m: re.Match) -> str:
+                try:
+                    cur = float(m.group('val'))
+                except (TypeError, ValueError):
+                    return m.group(0)
+                if cur > cap:
+                    pre = m.group('pre')
+                    # Preserve the matched key name so we don't mix up delay/duration.
+                    key = m.group(0).split(':', 1)[0].lstrip('{,\n\r\t ')
+                    return f"{pre}{key}: {cap}"
+                return m.group(0)
+            return _replace
+
+        out = delay_pat.sub(_clamp_factory(max_delay), html)
+        out = dur_pat.sub(_clamp_factory(max_duration), out)
+        return out
 
     @staticmethod
     def _sanitize_html_content(html: str) -> str:
@@ -10927,13 +14117,29 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 f"{i}. id={c.get('id')} | {c.get('duration', 0)}s | "
                 f"{(c.get('alt') or '')[:120]}"
             )
+        # Brand-context for the ranker (Fix 2e). Without this, the ranker
+        # didn't know whether the video was about Parle-G biscuits or a
+        # luxury car and would happily pick contradictory stock.
+        _brand_ctx_line = ""
+        _ref_for_rank = getattr(self, '_reference_context', None)
+        if isinstance(_ref_for_rank, dict):
+            _bt_rank = (_ref_for_rank.get('text_context') or '').strip()
+            if _bt_rank:
+                _brand_ctx_line = (
+                    f"Brand context (REJECT candidates that contradict this): "
+                    f"{_bt_rank[:200]}\n"
+                )
         ctx = (
             f"Shot query: {query}\n"
             f"Narration: {narration_excerpt[:200]}\n"
-            f"Visual direction: {visual_description[:200]}\n\n"
+            f"Visual direction: {visual_description[:200]}\n"
+            + _brand_ctx_line
+            + "\n"
             "Candidate stock clips:\n" + "\n".join(lines) + "\n\n"
             "Pick the candidate that best matches the narration and visual direction. "
-            "Return JSON: {\"best_index\": N, \"reason\": \"short\"}."
+            + ("If brand context is given, the candidate MUST not contradict it. "
+               if _brand_ctx_line else "")
+            + "Return JSON: {\"best_index\": N, \"reason\": \"short\"}."
         )
         try:
             raw, _usage = self.html_client.chat(
@@ -10966,6 +14172,235 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             print(f"    ⚠️ Candidate ranker failed ({e}) — falling back to first candidate")
         return candidates[0], usage
 
+    # ------------------------------------------------------------------
+    # Vision-review persistence sweep — runs after the HTML stage finishes
+    # but before _process_stock_videos's strip helper drops `_vision_review`
+    # from each entry. Uploads screenshots + before/after HTML to S3 and
+    # writes one row per flagged shot to vision_review_cases.
+    # ------------------------------------------------------------------
+
+    def _persist_vision_review_cases(
+        self,
+        html_segments: List[Dict[str, Any]],
+        run_dir: Path,
+        video_id: Optional[str] = None,
+    ) -> None:
+        """Walk html_segments, upload artifacts, write DB rows. Updates the
+        in-memory record in place so the run-summary log can read normalized
+        counters from the entries afterwards. Never raises — DB / S3 failures
+        log + skip; the shot still ships."""
+        # NOTE: do NOT early-return when html_segments has no _vision_review
+        # records — the summary logic at the bottom of this method needs to
+        # run even when every shot was skipped (so the user sees a clear
+        # "0 reviewed / N skipped" diagnostic). The S3 / DB import paths
+        # below are gated separately on whether there are flagged entries.
+
+        # Lazy imports — keeps module load fast for free-tier runs that never
+        # touch this code path.
+        repo = None
+        try:
+            from app.repositories.vision_review_repository import VisionReviewRepository
+            repo = VisionReviewRepository()
+        except Exception as exc:
+            print(f"   ⚠️ vision-review persistence: repository unavailable ({exc}) — skipping DB writes")
+
+        try:
+            import boto3 as _boto3_vrc
+            import os as _os_vrc
+            s3 = _boto3_vrc.client(
+                "s3",
+                aws_access_key_id=_os_vrc.environ.get("AWS_ACCESS_KEY_ID") or None,
+                aws_secret_access_key=_os_vrc.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                region_name=_os_vrc.environ.get("AWS_REGION", "ap-south-1"),
+            )
+            bucket = "vacademy-media-storage-public"
+        except Exception as exc:
+            print(f"   ⚠️ vision-review persistence: S3 client unavailable ({exc}) — skipping artifact uploads")
+            s3 = None
+            bucket = None
+
+        run_id = run_dir.name or "run"
+        vid = video_id or run_id
+
+        def _upload_png(idx: int, kind: str, ts_idx: int, png: bytes) -> Optional[str]:
+            if s3 is None or bucket is None:
+                return None
+            key = f"VISION_REVIEW/{vid}/shot{idx:03d}/{kind}_{ts_idx}.png"
+            try:
+                s3.put_object(Bucket=bucket, Key=key, Body=png, ContentType="image/png", ACL="public-read")
+                return f"https://{bucket}.s3.amazonaws.com/{key}"
+            except Exception as exc:
+                print(f"   ⚠️ vision-review S3 upload failed ({key}): {exc}")
+                return None
+
+        def _upload_html(idx: int, kind: str, html_str: str) -> Optional[str]:
+            if s3 is None or bucket is None or not html_str:
+                return None
+            key = f"VISION_REVIEW/{vid}/shot{idx:03d}/{kind}.html"
+            try:
+                s3.put_object(
+                    Bucket=bucket, Key=key, Body=html_str.encode("utf-8"),
+                    ContentType="text/html; charset=utf-8", ACL="public-read",
+                )
+                return f"https://{bucket}.s3.amazonaws.com/{key}"
+            except Exception as exc:
+                print(f"   ⚠️ vision-review HTML upload failed ({key}): {exc}")
+                return None
+
+        for entry in html_segments:
+            rec = entry.get("_vision_review")
+            if not rec:
+                continue
+
+            shot_idx = int(entry.get("index", 0))
+            shipped = rec.get("shipped") or "first_try"
+            issues_pre = rec.get("issues_pre") or []
+            issues_post = rec.get("issues_post") or []
+            severity_max = max(
+                int(rec.get("severity_max_pre") or 0),
+                int(rec.get("severity_max_post") or 0),
+            )
+            had_meaningful = bool(issues_pre) or bool(issues_post) or shipped != "first_try"
+            if not had_meaningful:
+                # Clean shot — drop the heavy byte buffers but keep the slim
+                # tally so run-summary counters still see passed_first.
+                rec.pop("_screenshots_pre_bytes", None)
+                rec.pop("_screenshots_post_bytes", None)
+                continue
+
+            screenshots_pre_bytes: List[bytes] = rec.pop("_screenshots_pre_bytes", None) or []
+            screenshots_post_bytes: List[bytes] = rec.pop("_screenshots_post_bytes", None) or []
+            pre_urls = [
+                u for u in (
+                    _upload_png(shot_idx, "pre", i, png)
+                    for i, png in enumerate(screenshots_pre_bytes)
+                ) if u
+            ]
+            post_urls = [
+                u for u in (
+                    _upload_png(shot_idx, "post", i, png)
+                    for i, png in enumerate(screenshots_post_bytes)
+                ) if u
+            ] or None
+
+            # Original HTML is what the shot LLM produced first. When shipped="regen"
+            # the entry now carries the regen html, so we read the stash. When the
+            # regen was rejected, entry["html"] still IS the original.
+            original_html = rec.get("original_html") or entry.get("html")
+            original_html_url = _upload_html(shot_idx, "original", original_html)
+            # Regen attempt: upload whenever the corrective LLM call produced
+            # one, regardless of whether it shipped. Distinguishes "regen tried
+            # and failed" from "regen never fired" in the case bank.
+            regen_html = rec.get("regen_html_attempt") or (entry.get("html") if shipped == "regen" else None)
+            regen_html_url = _upload_html(shot_idx, "regen", regen_html) if regen_html else None
+
+            # Surface URLs back onto the in-memory record for telemetry.
+            rec["screenshots_pre_urls"] = pre_urls
+            rec["screenshots_post_urls"] = post_urls
+            rec["original_html_url"] = original_html_url
+            rec["regen_html_url"] = regen_html_url
+
+            # Build the reviewer JSON blobs we persist verbatim — strip the
+            # large `raw` model output to keep the row reasonable, but keep
+            # the structured issues for analysis queries.
+            reviewer_pre_json = {
+                "passes": rec.get("passed_first"),
+                "issues": issues_pre,
+                "severity_max": rec.get("severity_max_pre") or 0,
+                "model": rec.get("model"),
+                "prompt_version": rec.get("prompt_version"),
+                "error": rec.get("error_pre"),
+            }
+            reviewer_post_json: Optional[Dict[str, Any]] = None
+            if issues_post or rec.get("severity_max_post") is not None or rec.get("error_post"):
+                reviewer_post_json = {
+                    "issues": issues_post,
+                    "severity_max": rec.get("severity_max_post") or 0,
+                    "error": rec.get("error_post"),
+                }
+
+            # Aggregate issue codes for the run-summary log.
+            for it in issues_pre:
+                code = it.get("code")
+                if code:
+                    self._vision_review_issue_codes[code] = self._vision_review_issue_codes.get(code, 0) + 1
+
+            if repo is not None:
+                repo.insert_case(
+                    video_id=vid,
+                    shot_idx=shot_idx,
+                    shot_type=entry.get("_shot_type"),
+                    quality_tier=self._quality_tier,
+                    prompt_version=rec.get("prompt_version"),
+                    issue_codes=[it["code"] for it in issues_pre if it.get("code")],
+                    severity_max=severity_max,
+                    shipped=shipped,
+                    reviewer_pre_json=reviewer_pre_json,
+                    reviewer_post_json=reviewer_post_json,
+                    original_html_url=original_html_url,
+                    regen_html_url=regen_html_url,
+                    screenshots_pre_urls=pre_urls or None,
+                    screenshots_post_urls=post_urls,
+                    review_ms=int(rec.get("review_ms_pre") or 0),
+                    review_cost_usd=float(rec.get("review_cost_usd_pre") or 0.0),
+                    regen_ms=int(rec.get("review_ms_post") or 0) or None,
+                    regen_cost_usd=float(rec.get("review_cost_usd_post") or 0.0) or None,
+                    shot_meta={
+                        "narration_excerpt": entry.get("_narration_excerpt"),
+                        "visual_description": entry.get("_visual_description"),
+                        "duration": float(entry.get("end", 0)) - float(entry.get("start", 0)),
+                    },
+                    shot_pack=getattr(self, "_current_shot_pack", None),
+                    host_present=bool(rec.get("host_present")),
+                )
+
+        # Run-summary counters: walk entries once more for clean totals.
+        # Categories must be exhaustive over reviewed shots — any shot whose
+        # _vision_review is set fell into exactly one of these buckets:
+        #   clean                — review passed first try, no issues at all
+        #   minor_shipped        — review found sev-1/2 issues, no regen, shipped first try
+        #   regen                — sev-3 → regen → re-review better → shipped regen
+        #   ship_orig            — sev-3 → regen → re-review same/worse → ship original
+        # Shots with no _vision_review at all → counted in skip via _vision_review_skipped_count.
+        clean = minor_shipped = regen = ship_orig = 0
+        for entry in html_segments:
+            rec = entry.get("_vision_review") or {}
+            if not rec:
+                continue
+            shipped = rec.get("shipped")
+            if shipped == "regen":
+                regen += 1
+            elif shipped == "ship_original":
+                ship_orig += 1
+            elif rec.get("passed_first") and not rec.get("issues_pre"):
+                clean += 1
+            else:
+                minor_shipped += 1
+        self._vision_review_passed_first = clean
+        self._vision_review_regen_passed = regen
+        self._vision_review_ship_original = ship_orig
+
+        reviewed = clean + minor_shipped + regen + ship_orig
+        skipped = int(getattr(self, "_vision_review_skipped_count", 0))
+        # Always print the summary when the feature was enabled — even when
+        # every shot was skipped, the user needs to see "0 reviewed / N skipped"
+        # so they can diagnose render-worker or env-var problems immediately.
+        if self._tier_config.get("shot_vision_review"):
+            top = sorted(
+                self._vision_review_issue_codes.items(),
+                key=lambda kv: kv[1],
+                reverse=True,
+            )[:5]
+            top_str = ", ".join(f"{c}×{n}" for c, n in top) or "(none)"
+            print(
+                f"   👁️  Visual review: {reviewed} reviewed "
+                f"({clean} clean, {minor_shipped} minor-shipped, {regen} regen, {ship_orig} ship-original) "
+                f"+ {skipped} skipped"
+            )
+            if reviewed > 0:
+                print(f"   👁️  Top issues: {top_str}")
+            print(f"   👁️  Cost: ${self._vision_review_run_cost_usd:.4f} (cap ${self._tier_config.get('vision_review_run_cost_cap_usd', 0.0):.2f})")
+
     def _process_stock_videos(self, html_segments: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Scan HTML for <video data-video-query='...'> tags, search Pexels, inject URLs.
 
@@ -10984,6 +14419,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             #   _validator_record   → animation-validator telemetry (pre/post issues,
             #                         shipped='regen'|'original'); useful for log
             #                         aggregation, not for playback.
+            #   _vision_review      → vision reviewer telemetry; the row is already
+            #                         persisted to vision_review_cases at this point,
+            #                         no need to ship it in the timeline JSON.
             # Keep:
             #   _shot_type, _narration_excerpt, _visual_description → small
             #   (≤300 bytes/entry), used by the frame-regen LLM as run-context.
@@ -10992,6 +14430,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             for entry in html_segments:
                 entry.pop("_skill_audio_events", None)
                 entry.pop("_validator_record", None)
+                entry.pop("_vision_review", None)
 
         pexels_ok = self._pexels_service and self._pexels_service.is_available
         pixabay_ok = self._pixabay_service and self._pixabay_service.is_available
@@ -11019,10 +14458,34 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
                 provider_match = re.search(r'data-stock-provider=["\'](\w+)["\']', full_tag)
                 provider_hint = provider_match.group(1).lower() if provider_match else ""
-                services = self._resolve_stock_provider_chain(provider_hint, query)
+                source_match_v = re.search(r'data-video-source=["\'](\w+)["\']', full_tag)
+                video_source = source_match_v.group(1).lower() if source_match_v else ""
 
                 picked: Optional[Dict[str, Any]] = None
                 picked_provider = ""
+
+                # ── Web search via Serper (only when explicitly requested) ──
+                # YouTube/Vimeo/TikTok results were already filtered out at
+                # fetch time (renderer can't frame-seek their iframes), so
+                # search_videos returns only direct-CDN mp4s. When the result
+                # set is empty we fall through to Pexels/Pixabay below.
+                if video_source == "web" and getattr(self, '_serper_service', None) and self._serper_service.is_available:
+                    try:
+                        _serp_video = self._serper_service.best_video(query)
+                    except Exception as _sv_err:
+                        print(f"    ⚠️ Serper video search errored ({_sv_err}); falling through to stock")
+                        _serp_video = None
+                    if _serp_video:
+                        picked = {
+                            "url": _serp_video.get("url", ""),
+                            "image": _serp_video.get("thumbnail_url", ""),
+                            "id": None,
+                            "duration": 0,
+                        }
+                        picked_provider = "Serper"
+
+                services = self._resolve_stock_provider_chain(provider_hint, query) if not picked else []
+
                 for svc in services:
                     provider_name = type(svc).__name__.replace("Service", "")
                     if use_ranking:
@@ -11162,10 +14625,27 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 _sid_match = re.search(r'data-subject-id=["\']([^"\']+)["\']', full_tag)
                 if _sid_match:
                     _subject_id = _sid_match.group(1).strip() or _subject_id
+                # Pull the optional `data-img-query` (web search query — preferred
+                # over `data-img-prompt` when present, since the prompt is often
+                # a cinematic caption while the query is a clean entity name)
+                # and `data-screenshot-id` (article-screenshot lookup key).
+                _query_match = re.search(r'data-img-query=(["\'])(.*?)\1', full_tag, re.DOTALL)
+                _img_query = _query_match.group(2) if _query_match else ""
+                _ssid_match = re.search(r'data-screenshot-id=["\']([^"\']+)["\']', full_tag)
+                _screenshot_id = _ssid_match.group(1).strip() if _ssid_match else ""
+                # Brand-reference URL (Fix 2b) — emitted by the per-shot LLM
+                # via `<img data-img-source="reference" data-reference-url="...">`
+                # to embed a user-uploaded brand image verbatim. Resolver runs
+                # in process_image_task without any API call.
+                _refurl_match = re.search(r'data-reference-url=["\']([^"\']+)["\']', full_tag)
+                _reference_url = _refurl_match.group(1).strip() if _refurl_match else ""
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
                     "prompt": prompt,
+                    "img_query": _img_query,
+                    "screenshot_id": _screenshot_id,
+                    "reference_url": _reference_url,
                     "seg_idx": seg_idx,
                     "is_cutout": is_cutout,
                     "img_source": img_source,
@@ -11200,6 +14680,106 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # as-is and the CSS gradient background (written by the LLM) shows instead.
             _stock_only = self._tier_config.get("stock_preference") == "stock_only"
             if _stock_only and img_source == "generate":
+                img_source = "stock"
+
+            # ── reference: user-uploaded brand asset, no API call (Fix 2c) ──
+            # The per-shot LLM emits `<img data-img-source="reference"
+            # data-reference-url="<s3_url>">` for shots anchored on the
+            # user's brand assets. Returns the URL verbatim — same shape as
+            # article_screenshot. Falls through to AI gen if the URL is
+            # missing (defensive: shouldn't happen, but matches the
+            # article_screenshot pattern).
+            if img_source == "reference":
+                _ref_url_direct = (task.get("reference_url") or "").strip()
+                if _ref_url_direct:
+                    print(
+                        f"    🏷️  Brand-reference image for seg={task.get('seg_idx', '?')}: "
+                        f"{_ref_url_direct[:80]}..."
+                    )
+                    return {
+                        "entry": task.get("entry"),
+                        "entry_id": id(task.get("entry")),
+                        "full_tag": task.get("full_tag", ""),
+                        "stock_url": _ref_url_direct,
+                        "image_bytes": None,
+                        "filename": None,
+                        "usage": {},
+                    }
+                # No URL → fall through to AI gen rather than failing.
+                img_source = "generate"
+
+            # ── article_screenshot: synchronous lookup in scrape_artifacts ──
+            # Resolves `data-screenshot-id` against the captured-files manifest
+            # without hitting any external API. Falls through to AI gen if the
+            # id isn't found (graceful degradation when the per-shot LLM
+            # references a screenshot the pipeline didn't actually capture).
+            if img_source == "article_screenshot":
+                _ref = getattr(self, '_reference_context', None)
+                _resolved_url = ""
+                if isinstance(_ref, dict):
+                    _sa = _ref.get('scrape_artifacts') or {}
+                    _files = _sa.get('files_captured') if isinstance(_sa, dict) else None
+                    target_id = (task.get('screenshot_id') or '').strip().lower()
+                    if isinstance(_files, list):
+                        if target_id:
+                            for _f in _files:
+                                if isinstance(_f, dict) and (_f.get('id') or '').lower() == target_id:
+                                    _resolved_url = _f.get('url') or ''
+                                    break
+                        if not _resolved_url:
+                            for _f in _files:
+                                if isinstance(_f, dict) and _f.get('url'):
+                                    _resolved_url = _f.get('url') or ''
+                                    break
+                if _resolved_url:
+                    print(
+                        f"    📰 Article screenshot (id={task.get('screenshot_id') or '?'}) "
+                        f"for seg={task.get('seg_idx', '?')}"
+                    )
+                    return {
+                        "entry": task.get("entry"),
+                        "entry_id": id(task.get("entry")),
+                        "full_tag": task.get("full_tag", ""),
+                        "stock_url": _resolved_url,
+                        "image_bytes": None,
+                        "filename": None,
+                        "usage": {},
+                    }
+                # No screenshot available — fall through to web search, then AI gen.
+                img_source = "web" if (
+                    getattr(self, '_serper_service', None)
+                    and getattr(self._serper_service, 'is_available', False)
+                ) else "generate"
+
+            # ── web: Google Image search via Serper for named entities ──
+            # Falls through to stock then AI gen on no match. Uses the dedicated
+            # `data-img-query` if the per-shot LLM provided one, else the
+            # cinematic-flavoured `data-img-prompt`.
+            if img_source == "web":
+                _serper = getattr(self, '_serper_service', None)
+                if _serper and getattr(_serper, 'is_available', False):
+                    orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
+                    web_query = (task.get("img_query") or "").strip() or task.get("prompt", "")
+                    try:
+                        _hit = _serper.best_image(web_query, orientation=orientation)
+                    except Exception as _se:
+                        print(f"    ⚠️ Serper image search errored ({_se}); falling through to stock")
+                        _hit = None
+                    if _hit and _hit.get("url"):
+                        print(
+                            f"    🔎 Web image (Serper, src={_hit.get('source','')}) for "
+                            f"seg={task.get('seg_idx', '?')}: {web_query[:60]}..."
+                        )
+                        return {
+                            "entry": task.get("entry"),
+                            "entry_id": id(task.get("entry")),
+                            "full_tag": task.get("full_tag", ""),
+                            "stock_url": _hit["url"],
+                            "image_bytes": None,
+                            "filename": None,
+                            "usage": {},
+                        }
+                # Fall through to stock — keeps the existing Pexels/Pixabay behavior.
                 img_source = "stock"
 
             # Stock photo path: try configured providers in order (hint + fallback)
@@ -11270,9 +14850,34 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     if event and event.wait(timeout=120):
                         _ref_url = (self._subject_refs or {}).get(_sub_id)
 
+            # Brand-image fallback (Fix 2d): when there is no recurring-character
+            # subject at all, condition Seedream on the user's first uploaded
+            # brand image. Subject continuity wins when active because:
+            #   - subsequent shots of a recurring subject MUST use the cached ref
+            #     (otherwise the character drifts across shots);
+            #   - the FIRST shot of a recurring subject MUST generate fresh (no
+            #     ref) so it can become the canonical reference — passing the
+            #     brand image here would overwrite that canonical look.
+            # We therefore only apply the brand fallback when `_sub_id` is unset.
+            _brand_ref_for_gen: Optional[str] = None
+            if not _sub_id and not _ref_url:
+                _ref_for_brand = getattr(self, '_reference_context', None)
+                if isinstance(_ref_for_brand, dict):
+                    _ebi = _ref_for_brand.get('embeddable_images') or []
+                    if isinstance(_ebi, list):
+                        for _bi_first in _ebi[:1]:
+                            if isinstance(_bi_first, dict):
+                                _u = (_bi_first.get('s3_url') or _bi_first.get('url') or '').strip()
+                                if _u:
+                                    _brand_ref_for_gen = _u
+                                    break
+            _seedream_ref = _ref_url or _brand_ref_for_gen
+
             label = f"seg={idx}" + (" (cutout)" if is_cutout else "")
             if _sub_id:
                 label += f" [subject:{_sub_id}{'/first' if _is_first_for_subject else '/ref' if _ref_url else '/no-ref'}]"
+            elif _brand_ref_for_gen:
+                label += " [brand-ref]"
             print(f"    🎨 Generating image {label}: {prompt[:60]}...")
             # May raise _ImageGenRateLimitError — propagates to as_completed caller.
             # Subject continuity: if THIS is the first task for a subject, we
@@ -11283,7 +14888,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # re-claim or proceed without a reference.
             try:
                 image_bytes, usage_meta = self._call_image_generation_llm(
-                    prompt, reference_image_url=_ref_url
+                    prompt, reference_image_url=_seedream_ref
                 )
             except _ImageGenRateLimitError:
                 if _is_first_for_subject and _sub_id:
@@ -12108,6 +15713,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     timeline_entry["source_end"] = entry.get("source_end", 0)
                     timeline_entry["source_video_index"] = entry.get("source_video_index", 0)
                     timeline_entry["shot_type"] = "SOURCE_CLIP"
+                # IMAGE_CLIP: tag the timeline entry so future audio mixers,
+                # the render worker, or telemetry can identify image shots.
+                # The image URL is already embedded in the HTML by the
+                # post-Director injector, so no asset URL propagation is
+                # needed — only the shot_type + index for downstream.
+                elif entry.get("image_index") is not None:
+                    timeline_entry["image_index"] = entry["image_index"]
+                    timeline_entry["shot_type"] = "IMAGE_CLIP"
                     # Overlay-mode hint for the render worker: when an HTML overlay
                     # has translucent callouts on top of a full-canvas source video,
                     # the black-region heuristic can mis-classify the layout as
@@ -12144,8 +15757,13 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if content_max_end <= content_starts_at:
             content_max_end = content_starts_at + 1.0
 
-        # Ensure timeline covers the full audio duration.
-        # Without this, visuals can end before audio finishes.
+        # Pin content end to actual audio end (bidirectional, 50ms epsilon).
+        # Old behavior: only extended visuals if audio was >1.0s longer, and
+        # never trimmed when visuals were longer — leaving up to 1s of silent
+        # tail OR several seconds of visuals continuing after audio ended.
+        # The id filter is also fixed: legacy shots use "segment-N" but the
+        # modern Director pipeline emits "shot-N" / "shot-N-subM", so the old
+        # `startswith("segment-")` check silently no-op'd on most runs.
         if audio_path and Path(audio_path).exists() and navigation == "time_driven":
             try:
                 _probe = subprocess.run(
@@ -12154,20 +15772,84 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     capture_output=True, text=True, timeout=10,
                 )
                 _actual_audio_dur = float(_probe.stdout.strip())
-                # Audio starts at content_starts_at, so content should end at
-                # content_starts_at + audio_duration
                 _audio_end = content_starts_at + _actual_audio_dur
-                if _audio_end > content_max_end + 1.0:
-                    print(f"   ⚠️ Audio ({_actual_audio_dur:.1f}s) extends beyond last visual "
-                          f"({content_max_end:.1f}s). Extending last segment to match.")
-                    # Extend the last content entry's exitTime to cover the audio
+                _epsilon = 0.05  # 50ms — below human-perceptible drift
+
+                def _is_content(_te: Dict[str, Any]) -> bool:
+                    return not str(_te.get("id", "")).startswith("branding-")
+
+                if _audio_end > content_max_end + _epsilon:
+                    # Audio longer than visuals — extend the last content shot
                     for _te in reversed(timeline_entries):
-                        if _te.get("id", "").startswith("segment-"):
+                        if _is_content(_te):
+                            _old = float(_te.get("exitTime", 0.0))
                             _te["exitTime"] = _audio_end
+                            print(f"   ⏱️  Extended last shot {_old:.2f}s → {_audio_end:.2f}s "
+                                  f"to cover audio ({_actual_audio_dur:.1f}s)")
                             break
+                    content_max_end = _audio_end
+
+                elif _audio_end < content_max_end - _epsilon:
+                    # Visuals longer than audio — drop shots that start after
+                    # audio ends, then trim the new last shot to audio end.
+                    _kept: List[Dict[str, Any]] = []
+                    _dropped = 0
+                    for _te in timeline_entries:
+                        if not _is_content(_te):
+                            _kept.append(_te)
+                            continue
+                        if float(_te.get("inTime", 0)) >= _audio_end - _epsilon:
+                            _dropped += 1
+                            continue
+                        _kept.append(_te)
+                    timeline_entries[:] = _kept
+
+                    for _te in reversed(timeline_entries):
+                        if _is_content(_te) and float(_te.get("exitTime", 0)) > _audio_end:
+                            _old = float(_te["exitTime"])
+                            _te["exitTime"] = _audio_end
+                            print(f"   ✂️  Trimmed last shot {_old:.2f}s → {_audio_end:.2f}s "
+                                  f"to match audio ({_actual_audio_dur:.1f}s)")
+                            break
+
+                    if _dropped > 0:
+                        print(f"   ✂️  Dropped {_dropped} shot(s) starting after audio end")
                     content_max_end = _audio_end
             except Exception as _e:
                 print(f"   ℹ️ Could not probe audio duration: {_e}")
+
+        # 2.5. Gap-snap: extend each content shot's exitTime so it touches the
+        # next shot's inTime. Director-generated storyboards can leave small
+        # gaps between consecutive shots (e.g. shot N exits at 15.9s, shot N+1
+        # starts at 16.2s). The renderer's _active_entries_at filters with
+        # `t >= ex_t`, so frames inside the gap have zero active shots and
+        # render as the bare page background — visible as flashes of black/
+        # white on the final MP4. Branding entries (intro/outro/watermark) are
+        # excluded; they have their own placement semantics.
+        if navigation == "time_driven":
+            _content = [e for e in timeline_entries
+                        if not str(e.get("id", "")).startswith("branding-")]
+            _content_sorted = sorted(_content, key=lambda e: float(e.get("inTime", 0.0)))
+            _snapped = 0
+            _max_gap_filled = 0.0
+            for _i in range(len(_content_sorted) - 1):
+                _cur = _content_sorted[_i]
+                _nxt = _content_sorted[_i + 1]
+                _cur_exit = float(_cur.get("exitTime", 0.0))
+                _nxt_in = float(_nxt.get("inTime", 0.0))
+                _gap = _nxt_in - _cur_exit
+                # Only fill positive gaps. Touching (gap=0) and overlapping
+                # (gap<0) shots are already fine. Skip absurd gaps (>10s) —
+                # likely indicates an intentional structural break or an
+                # upstream bug that snapping would mask.
+                if 0.0 < _gap <= 10.0:
+                    _cur["exitTime"] = _nxt_in
+                    _snapped += 1
+                    if _gap > _max_gap_filled:
+                        _max_gap_filled = _gap
+            if _snapped > 0:
+                print(f"   🔗 Gap-snap: extended {_snapped} shot(s) to eliminate "
+                      f"timeline gaps (largest gap filled: {_max_gap_filled:.3f}s)")
 
         # 3. Add WATERMARK entry if enabled (spans entire content duration, positioned in corner)
         if watermark_enabled and watermark_config.get("html"):

@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import re
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 import argparse
@@ -16,6 +17,9 @@ from moviepy.video.io.ImageSequenceClip import ImageSequenceClip
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 from playwright.sync_api import sync_playwright
+from dispatcher_install_js import get_dispatcher_install_js
+
+from render_harness import build_harness_html
 
 
 def _html_escape(text: str) -> str:
@@ -140,896 +144,10 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     )
 
     # Base content with background color. HTML overlays are transparent.
-    # We inject educational libraries: KaTeX, Prism, Mermaid, GSAP, Vivus, Rough Notation, Howler
-    html_content = """
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <meta charset="utf-8" />
-
-                <!-- Google Fonts (must match client-side html-processor.ts) -->
-                <link rel="preconnect" href="https://fonts.googleapis.com">
-                <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-                <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&family=Noto+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-                <!-- GSAP -->
-                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-                <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/MotionPathPlugin.min.js"></script>
-                <!-- MorphSVGPlugin is a GSAP premium plugin — not on public CDN. Provide stub. -->
-                <script>
-                    window.MorphSVGPlugin = { version: '3.12.5', name: 'MorphSVGPlugin', default: {} };
-                </script>
-
-                <!-- Mermaid -->
-                <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-
-                <!-- Rough Notation -->
-                <script src="https://unpkg.com/rough-notation/lib/rough-notation.iife.js"></script>
-
-                <!-- Vivus -->
-                <script src="https://cdn.jsdelivr.net/npm/vivus@0.4.6/dist/vivus.min.js"></script>
-
-                <!-- KaTeX -->
-                <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
-                <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-                <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
-
-                <!-- Prism -->
-                <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
-                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-                <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
-
-                <!-- Howler -->
-                <script src="https://cdn.jsdelivr.net/npm/howler@2.2.4/dist/howler.min.js"></script>
-
-                <!-- D3.js (data visualizations, charts) -->
-                <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
-
-                <!-- Anime.js v3 — SVG morphing, stagger grids, spring physics -->
-                <!-- Frame-seeking: create animations with autoplay:false, register via window._animeR({instance, startMs}) -->
-                <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.1/lib/anime.min.js"></script>
-                <script>
-                    // Anime.js frame-seek registry.
-                    // LLM code registers seekable animations with: window._animeR({instance: anime({autoplay:false,...}), startMs:500})
-                    // The renderer calls window._animeSeek(t_seconds) every frame alongside gsap.globalTimeline.totalTime(t).
-                    window._animeTimelines = [];
-                    window._animeR = function(entry) { window._animeTimelines.push(entry); };
-                    window._animeSeek = function(tSec) {
-                        var tMs = tSec * 1000;
-                        window._animeTimelines.forEach(function(e) {
-                            if (!e || !e.instance || typeof e.instance.seek !== 'function') return;
-                            var elapsed = tMs - (e.startMs || 0);
-                            if (elapsed >= 0) {
-                                e.instance.seek(Math.min(elapsed, e.instance.duration || 0));
-                            }
-                        });
-                    };
-                </script>
-
-                <!-- Iconify (Web Component — 275k+ icons) -->
-                <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
-
-                <style>
-                  /* ===== BASE STYLES (must match client html-processor.ts getBaseStyles) ===== */
-                  :root {
-                    --text-color: #1e293b;
-                    --text-secondary: #475569;
-                    --primary-color: #2563eb;
-                    --accent-color: #f59e0b;
-                    --background-color: #ffffff;
-                  }
-                  * { box-sizing: border-box; }
-                  html, body { margin:0; padding:0; width:100%; height:100%; background:REPLACE_BG; overflow:hidden; font-family: 'Inter', 'Noto Sans', sans-serif; color: var(--text-color); }
-                  body { position:relative; }
-                  /* Note: body * opacity:1 is NOT set here — it's inside shadow DOM CSS only */
-                  pre { white-space: pre-wrap; word-wrap: break-word; }
-
-                  /* Typography classes */
-                  .text-display { font-family: 'Montserrat', 'Noto Sans', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; }
-                  .text-h2 { font-family: 'Montserrat', 'Noto Sans', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
-                  .text-body { font-family: 'Inter', 'Noto Sans', sans-serif; font-size: 28px; font-weight: 400; line-height: 1.5; }
-                  .text-label { font-family: 'Fira Code', monospace; font-size: 18px; text-transform: uppercase; letter-spacing: 0.1em; }
-
-                  .full-screen-center {
-                    width: 100%; height: 100%;
-                    display: flex; flex-direction: column;
-                    align-items: center; justify-content: center;
-                    text-align: center; padding: 60px 80px;
-                  }
-
-                  .highlight {
-                    background: linear-gradient(120deg, rgba(255, 226, 89, 0.6) 0%, rgba(255, 233, 148, 0.4) 100%);
-                    padding: 0 4px; border-radius: 4px;
-                  }
-                  .emphasis { color: var(--primary-color); font-weight: bold; }
-                  .mermaid { display: flex; justify-content: center; width: 100%; margin: 20px auto; }
-                  .layout-split {
-                    display: grid; grid-template-columns: 1fr 1fr; gap: 60px;
-                    width: 90%; max-width: 1700px; align-items: center;
-                  }
-
-                  /* Key Takeaway Card */
-                  .key-takeaway { display: flex; align-items: center; gap: 20px; padding: 24px 32px; border-left: 5px solid #10b981; background: rgba(16, 185, 129, 0.1); margin: 20px 0; }
-                  .takeaway-icon { font-size: 48px; }
-                  .takeaway-label { font-size: 14px; text-transform: uppercase; letter-spacing: 0.1em; color: #10b981; font-weight: 700; }
-                  .takeaway-text { font-size: 28px; margin-top: 8px; font-weight: 600; }
-
-                  /* Wrong vs Right Pattern */
-                  .wrong-right-container { display: flex; gap: 40px; width: 100%; }
-                  .wrong-box, .right-box { flex: 1; padding: 24px; border-radius: 12px; }
-                  .wrong-box { border: 3px solid #ef4444; background: rgba(239, 68, 68, 0.1); }
-                  .right-box { border: 3px solid #10b981; background: rgba(16, 185, 129, 0.1); }
-                  .wr-header { font-size: 18px; font-weight: 700; margin-bottom: 12px; }
-                  .wrong-box .wr-header { color: #ef4444; }
-                  .right-box .wr-header { color: #10b981; }
-                  .wr-icon { font-size: 24px; margin-right: 8px; }
-                  .wr-text { font-size: 24px; }
-
-                  /* Cutout asset images */
-                  .generated-image[data-cutout="true"] {
-                    background: transparent; mix-blend-mode: normal;
-                    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
-                  }
-
-                  /* ===== KEN BURNS CINEMATIC ENGINE (must match html-processor.ts getKenBurnsStyles) ===== */
-                  .image-hero { position: relative; width: 100%; height: 100%; overflow: hidden; }
-                  .image-hero > img {
-                    position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
-                    transform-origin: center; will-change: transform;
-                    animation-duration: var(--kb-duration, 12s);
-                    animation-timing-function: ease-in-out; animation-fill-mode: both;
-                  }
-                  .image-text-overlay {
-                    position: absolute; inset: 0; display: flex; flex-direction: column;
-                    justify-content: flex-end; padding: 80px 100px; z-index: 2;
-                  }
-                  .image-text-overlay > * { position: relative; z-index: 1; }
-                  .image-text-overlay.gradient-bottom::before,
-                  .image-text-overlay:not([class*="gradient-"])::before {
-                    content: ""; position: absolute; inset: 0;
-                    background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 40%, transparent 70%);
-                    pointer-events: none; z-index: 0;
-                  }
-                  .image-text-overlay.gradient-full::before {
-                    content: ""; position: absolute; inset: 0;
-                    background: rgba(0,0,0,0.45); pointer-events: none; z-index: 0;
-                  }
-                  .image-text-overlay.gradient-center { justify-content: center; align-items: center; text-align: center; }
-                  .image-text-overlay.gradient-center::before {
-                    content: ""; position: absolute; inset: 0;
-                    background: radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 70%);
-                    pointer-events: none; z-index: 0;
-                  }
-                  .image-text-overlay h1, .image-text-overlay .hero-title {
-                    font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800;
-                    color: #fff; line-height: 1.1; margin: 0 0 16px 0;
-                    text-shadow: 0 2px 20px rgba(0,0,0,0.3);
-                  }
-                  .image-text-overlay p, .image-text-overlay .hero-subtitle {
-                    font-family: 'Inter', sans-serif; font-size: 28px;
-                    color: rgba(255,255,255,0.9); line-height: 1.4; margin: 0; max-width: 800px;
-                  }
-
-                  /* VIDEO_HERO: Full-screen stock video background */
-                  .video-hero { position: relative; width: 100%; height: 100%; overflow: hidden; }
-                  .video-hero > video, .video-hero > .stock-video {
-                      position: absolute; inset: 0; width: 100%; height: 100%;
-                      object-fit: cover; z-index: 0;
-                  }
-                  .stock-video { object-fit: cover; width: 100%; height: 100%; }
-
-                  /* IMAGE_SPLIT */
-                  .image-split-layout { display: grid; grid-template-columns: 1fr 1fr; width: 100%; height: 100%; overflow: hidden; }
-                  .image-split-layout .split-image { position: relative; overflow: hidden; }
-                  .image-split-layout .split-image img {
-                    width: 100%; height: 100%; object-fit: cover; will-change: transform;
-                    animation-duration: var(--kb-duration, 12s);
-                    animation-timing-function: ease-in-out; animation-fill-mode: both;
-                  }
-                  .image-split-layout .split-text { display: flex; flex-direction: column; justify-content: center; padding: 60px 80px; }
-
-                  /* Portrait (9:16) responsive overrides */
-                  @media (max-width: 1100px) {
-                    .full-screen-center { padding: 40px; }
-                    .text-display { font-size: 48px; }
-                    .text-h2 { font-size: 36px; }
-                    .text-body { font-size: 24px; }
-                    .layout-split { grid-template-columns: 1fr; gap: 30px; }
-                    .image-split-layout { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-                    .image-split-layout .split-text { padding: 30px 40px; }
-                    .image-text-overlay { justify-content: center; align-items: center; text-align: center; padding: 40px; }
-                    .image-text-overlay::before { background: rgba(0,0,0,0.5) !important; }
-                    .image-text-overlay > * { background: rgba(0,0,0,0.65); padding: 20px 32px; border-radius: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-                    .image-text-overlay > *::before { display: none; }
-                    .image-text-overlay h1, .image-text-overlay .hero-title { font-size: 48px; text-align: center; }
-                    .image-text-overlay p, .image-text-overlay .hero-subtitle { font-size: 24px; max-width: 100%; text-align: center; }
-                    .lower-third { bottom: 80px; left: 40px; }
-                  }
-
-                  /* LOWER_THIRD */
-                  .lower-third {
-                    position: absolute; bottom: 120px; left: 100px;
-                    display: flex; align-items: stretch;
-                    animation: ltSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; z-index: 20;
-                  }
-                  .lower-third .lt-accent-bar { width: 6px; background: linear-gradient(180deg, #3b82f6, #8b5cf6); border-radius: 3px 0 0 3px; }
-                  .lower-third .lt-content { background: rgba(0,0,0,0.85); padding: 16px 32px; border-radius: 0 8px 8px 0; display: flex; flex-direction: column; gap: 4px; }
-                  .lower-third .lt-label { font-family: 'Fira Code', monospace; font-size: 12px; text-transform: uppercase; letter-spacing: 0.15em; color: #3b82f6; font-weight: 600; }
-                  .lower-third .lt-text { font-family: 'Inter', sans-serif; font-size: 24px; color: #fff; font-weight: 600; }
-                  @keyframes ltSlideIn { from { transform: translateX(-40px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
-                  /* ANNOTATION_MAP */
-                  .annotation-map-container { position: relative; width: 100%; height: 100%; overflow: hidden; }
-                  .annotation-map-container .annotation-map-bg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; will-change: transform; animation-duration: var(--kb-duration, 12s); animation-timing-function: ease-in-out; animation-fill-mode: both; }
-                  .annotation-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
-
-                  /* PROCESS_STEPS */
-                  .process-flow { display: flex; flex-direction: column; align-items: center; width: 80%; max-width: 960px; }
-                  .process-node { display: flex; align-items: center; gap: 24px; background: var(--card-bg, rgba(30,41,59,0.6)); border: 2px solid var(--primary-color, #3b82f6); border-radius: 12px; padding: 20px 32px; width: 100%; }
-                  .node-num { width: 52px; height: 52px; border-radius: 50%; background: var(--primary-color, #3b82f6); color: #fff; font-size: 24px; font-weight: 800; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: 'Montserrat', sans-serif; }
-                  .node-body { display: flex; flex-direction: column; gap: 4px; }
-                  .node-title { font-size: 22px; font-weight: 700; font-family: 'Montserrat', sans-serif; color: var(--text-color, #fff); }
-                  .node-desc { font-size: 16px; font-family: 'Inter', sans-serif; color: var(--text-secondary, #94a3b8); }
-                  .process-connector { width: 20px; height: 40px; flex-shrink: 0; color: var(--primary-color, #3b82f6); }
-
-                  /* EQUATION_BUILD */
-                  .equation-build-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; margin: 48px 0 32px; }
-                  .equation-build-row .eq-term, .equation-build-row .eq-sep { display: inline-flex; align-items: center; font-size: 3.5rem; }
-                  .equation-build-row .eq-sep { font-size: 3rem; margin: 0 4px; }
-
-                  /* Ken Burns motion keyframes */
-                  .kb-zoom-in     { animation-name: kbZoomIn; }
-                  .kb-zoom-out    { animation-name: kbZoomOut; }
-                  .kb-pan-left    { animation-name: kbPanLeft; }
-                  .kb-pan-right   { animation-name: kbPanRight; }
-                  .kb-pan-up      { animation-name: kbPanUp; }
-                  .kb-zoom-pan-tl { animation-name: kbZoomPanTL; }
-                  @keyframes kbZoomIn    { from { transform: scale(1.0); }  to { transform: scale(1.15); } }
-                  @keyframes kbZoomOut   { from { transform: scale(1.20); } to { transform: scale(1.05); } }
-                  @keyframes kbPanLeft   { from { transform: scale(1.15) translateX(3%); }  to { transform: scale(1.15) translateX(-3%); } }
-                  @keyframes kbPanRight  { from { transform: scale(1.15) translateX(-3%); } to { transform: scale(1.15) translateX(3%); } }
-                  @keyframes kbPanUp     { from { transform: scale(1.15) translateY(3%); }  to { transform: scale(1.15) translateY(-3%); } }
-                  @keyframes kbZoomPanTL { from { transform: scale(1.0) translate(2%, 2%); } to { transform: scale(1.15) translate(-2%, -2%); } }
-                  .shot-enter { animation: shotFadeIn 0.6s ease-out forwards; }
-                  @keyframes shotFadeIn { from { opacity: 0; } to { opacity: 1; } }
-                </style>
-              </head>
-              <body>
-                <!-- World Layer: Camera moves this. Contains Snippets & Character -->
-                <div id="camera-wrapper" style="position:absolute; top:0; left:0; width:100%; height:100%; overflow:hidden;">
-                  <div id="world-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; transform-origin: center center; will-change: transform;"></div>
-                </div>
-                
-                <!-- UI Layer: Fixed HUD. Contains Captions & Branding -->
-                <div id="ui-layer" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:9999;"></div>
-
-                <script>
-                  // ========== AI VIDEO HELPER FUNCTIONS ==========
-
-                  // Re-render Math using KaTeX
-                  window.renderMath = function(selector) {
-                      if (window.renderMathInElement && window.katex) {
-                           const el = selector ? (typeof selector === 'string' ? document.querySelector(selector) : selector) : document.body;
-                           if(el) {
-                               try {
-                                   renderMathInElement(el, {
-                                      delimiters: [
-                                          {left: '$$', right: '$$', display: true},
-                                          {left: '$', right: '$', display: false},
-                                          {left: '\\\\(', right: '\\\\)', display: false},
-                                          {left: '\\\\[', right: '\\\\]', display: true}
-                                      ],
-                                      throwOnError : false,
-                                      strict: false
-                                  });
-                               } catch (e) {
-                                   console.warn('KaTeX render error:', e);
-                               }
-                           }
-                      }
-                  };
-
-                  // Highlight Code using Prism
-                  window.highlightCode = function() {
-                      if (window.Prism) {
-                          Prism.highlightAll();
-                      }
-                  };
-
-                  // SVG drawing animation
-                  window.animateSVG = function(svgIdOrEl, duration, callback) {
-                    if (!window.Vivus) return;
-                    var cb = typeof callback === 'function' ? callback : undefined;
-                    function tryInit(attemptsLeft) {
-                      // Accept either an element (from scoped resolve) or an ID string.
-                      // Pass the element (not ID) to Vivus so it works inside shadow DOM.
-                      var el = (typeof svgIdOrEl === 'string')
-                          ? document.getElementById(svgIdOrEl)
-                          : svgIdOrEl;
-                      if (!el) {
-                        if (attemptsLeft > 0) {
-                          setTimeout(function() { tryInit(attemptsLeft - 1); }, 100);
-                        }
-                        return;
-                      }
-                      try {
-                        // Pass element directly — Vivus accepts SVG elements
-                        new Vivus(el, {
-                          duration: duration || 100,
-                          type: 'oneByOne',
-                          animTimingFunction: Vivus.EASE_OUT
-                        }, cb);
-                      } catch(e) { console.warn('Vivus init error', e); }
-                    }
-                    tryInit(10);
-                  };
-
-                  // Hand-drawn annotation
-                  window.annotate = function(selectorOrEl, options) {
-                    if (!window.RoughNotation) return null;
-                    const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
-                    if (!el) return null;
-                    // Backward compatibility: annotate(el, 'underline', 'red', 5)
-                    const opts = typeof options === 'object' ? options : {
-                      type: options || 'underline',
-                      color: arguments[2] || '#dc2626',
-                      padding: arguments[3] || 5
-                    };
-                    try {
-                      const annotation = RoughNotation.annotate(el, {
-                        type: opts.type || 'underline',
-                        color: opts.color || '#dc2626',
-                        strokeWidth: opts.strokeWidth || 3,
-                        padding: opts.padding || 5,
-                        animationDuration: opts.duration || 800
-                      });
-                      annotation.show();
-                      return annotation;
-                    } catch(e) { console.warn('annotate error', e); return null; }
-                  };
-
-                  // Simple fade in
-                  window.fadeIn = function(selector, duration, delay) {
-                    try {
-                        gsap.fromTo(selector, 
-                          {opacity: 0}, 
-                          {opacity: 1, duration: duration || 0.5, delay: delay || 0, ease: 'power2.out'}
-                        );
-                    } catch (e) { console.warn('fadeIn error', e); }
-                  };
-
-                  // Typewriter effect (supports useSplit flag for smoother splitReveal-based animation)
-                  window.typewriter = function(selectorOrEl, duration, delay, useSplit) {
-                    if (useSplit && window.splitReveal) {
-                      window.splitReveal(selectorOrEl, { type: 'chars', stagger: (duration || 1) / 50, delay: delay || 0 });
-                      return;
-                    }
-                    const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
-                    if (!el) return;
-                    const text = el.textContent;
-                    el.textContent = '';
-                    el.style.opacity = '1';
-                    let i = 0;
-                    const speed = (duration || 1) * 1000 / Math.max(1, text.length);
-                    setTimeout(() => {
-                      const interval = setInterval(() => {
-                        if (i < text.length) {
-                          el.textContent += text.charAt(i);
-                          i++;
-                        } else {
-                          clearInterval(interval);
-                        }
-                      }, speed);
-                    }, (delay || 0) * 1000);
-                  };
-
-                  // Pop in with scale
-                  window.popIn = function(selector, duration, delay) {
-                    try {
-                        gsap.fromTo(selector,
-                          {opacity: 0, scale: 0.85},
-                          {opacity: 1, scale: 1, duration: duration || 0.4, delay: delay || 0, ease: 'back.out(1.7)'}
-                        );
-                    } catch (e) { console.warn('popIn error', e); }
-                  };
-
-                  // Slide up from below
-                  window.slideUp = function(selector, duration, delay) {
-                    try {
-                        gsap.fromTo(selector,
-                          {opacity: 0, y: 30},
-                          {opacity: 1, y: 0, duration: duration || 0.5, delay: delay || 0, ease: 'power2.out'}
-                        );
-                    } catch (e) { console.warn('slideUp error', e); }
-                  };
-
-                  // Reveal lines with stagger (falls back to splitReveal word-by-word if no .line children)
-                  window.revealLines = function(selectorOrEl, staggerDelay) {
-                    const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
-                    if (!el) return;
-                    const lines = el.querySelectorAll('.line');
-                    if (lines.length === 0) {
-                      if (window.splitReveal) {
-                        window.splitReveal(el, { type: 'words', stagger: staggerDelay || 0.05 });
-                      } else {
-                        window.fadeIn(el, 0.5);
-                      }
-                      return;
-                    }
-                    try {
-                      gsap.fromTo(lines,
-                        {opacity: 0, y: 20},
-                        {opacity: 1, y: 0, duration: 0.4, stagger: staggerDelay || 0.3, ease: 'power2.out'}
-                      );
-                    } catch(e) { console.warn('revealLines error', e); }
-                  };
-
-                  // Show text then annotate
-                  window.showThenAnnotate = function(textSelector, termSelector, annotationType, annotationColor, textDelay, annotationDelay) {
-                    window.fadeIn(textSelector, 0.5, textDelay || 0);
-                    setTimeout(() => {
-                      window.annotate(termSelector, {
-                        type: annotationType || 'underline',
-                        color: annotationColor || '#dc2626',
-                        duration: 600
-                      });
-                    }, ((textDelay || 0) + (annotationDelay || 0.8)) * 1000);
-                  };
-
-                  // Split text into chars or words and animate with stagger (SplitText alternative)
-                  window.splitReveal = function(selectorOrEl, options) {
-                    const el = typeof selectorOrEl === 'string' ? document.querySelector(selectorOrEl) : selectorOrEl;
-                    if (!el || !window.gsap) return;
-                    const opts = Object.assign({
-                      type: 'chars', stagger: 0.03, duration: 0.5,
-                      delay: 0, ease: 'power2.out', y: 20
-                    }, options);
-                    const text = el.textContent;
-                    if (!text || !text.trim()) return;
-                    el.innerHTML = '';
-                    el.style.opacity = '1';
-                    const allSpans = [];
-                    if (opts.type === 'words') {
-                      text.split(/\\s+/).forEach(function(word, i, arr) {
-                        var span = document.createElement('span');
-                        span.style.display = 'inline-block';
-                        span.style.whiteSpace = 'nowrap';
-                        span.style.opacity = '0';
-                        span.textContent = word + (i < arr.length - 1 ? '\u00A0' : '');
-                        el.appendChild(span);
-                        allSpans.push(span);
-                      });
-                    } else {
-                      // Char mode: group chars of the same word in a nowrap wrapper so
-                      // the browser never line-breaks mid-word between inline-block spans.
-                      var wordBuf = [];
-                      var flushWord = function() {
-                        if (!wordBuf.length) return;
-                        var wrapper = document.createElement('span');
-                        wrapper.style.display = 'inline-block';
-                        wrapper.style.whiteSpace = 'nowrap';
-                        wordBuf.forEach(function(s) { wrapper.appendChild(s); });
-                        el.appendChild(wrapper);
-                        wordBuf = [];
-                      };
-                      text.split('').forEach(function(ch) {
-                        if (ch === ' ' || ch === '\u00A0') {
-                          flushWord();
-                          var sp = document.createElement('span');
-                          sp.style.display = 'inline-block';
-                          sp.textContent = '\u00A0';
-                          el.appendChild(sp);
-                        } else {
-                          var span = document.createElement('span');
-                          span.style.display = 'inline-block';
-                          span.style.opacity = '0';
-                          span.textContent = ch;
-                          wordBuf.push(span);
-                          allSpans.push(span);
-                        }
-                      });
-                      flushWord();
-                    }
-                    try {
-                      gsap.fromTo(allSpans,
-                        { opacity: 0, y: opts.y },
-                        { opacity: 1, y: 0, duration: opts.duration, stagger: opts.stagger, delay: opts.delay, ease: opts.ease }
-                      );
-                    } catch(e) {
-                      // Fallback: just show the text
-                      el.textContent = text;
-                      el.style.opacity = '1';
-                    }
-                  };
-
-                  window.sounds = {
-                    pop: 'https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3',
-                    click: 'https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3',
-                    whoosh: 'https://assets.mixkit.co/active_storage/sfx/209/209-preview.mp3',
-                    success: 'https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3'
-                  };
-
-                  window.playSound = function(soundName) {
-                    if (window.sounds && window.sounds[soundName]) {
-                      const audio = new Audio(window.sounds[soundName]);
-                      audio.volume = 0.5;
-                      audio.play().catch(e => console.log('Sound play failed:', e));
-                    }
-                  };
-
-                  // ── Diagram Templates (auto-render data-diagram elements) ──
-                  window.initDiagramTemplates = function(scope) {
-                    var root = scope || document;
-                    var els = root.querySelectorAll('[data-diagram]');
-                    els.forEach(function(el) {
-                      if (el.getAttribute('data-rendered') === 'true') return;
-                      try {
-                        var type = el.getAttribute('data-diagram');
-                        var pj = function(s, f) { try { return JSON.parse(s); } catch(e) { return f; } };
-                        var gc = function(n, f) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || f; };
-                        var primary = gc('--primary-color', '#2563eb');
-                        var textColor = gc('--text-color', '#1e293b');
-                        var animIn = function(nodes, opts) {
-                          if (!window.gsap) { Array.from(nodes).forEach(function(n){ n.style.opacity='1'; }); return; }
-                          try { gsap.fromTo(nodes, {opacity:0,y:opts.y||20}, {opacity:1,y:0,duration:opts.dur||0.5,stagger:opts.stg||0.15,delay:opts.del||0.3,ease:'power2.out'}); }
-                          catch(e) { Array.from(nodes).forEach(function(n){ n.style.opacity='1'; }); }
-                        };
-                        if (type === 'data-chart') {
-                          var vals = pj(el.getAttribute('data-values'), []);
-                          var ctype = el.getAttribute('data-type') || 'bar';
-                          if (ctype === 'bar' && vals.length) {
-                            var mx = Math.max.apply(null, vals.map(function(v){return v.value||0;})) || 1;
-                            var h = '<div style="display:flex;align-items:flex-end;gap:12px;height:200px;padding:20px;justify-content:center">';
-                            vals.forEach(function(v) {
-                              var bh = Math.max(8, (v.value/mx)*160);
-                              h += '<div class="dg-bar" style="display:flex;flex-direction:column;align-items:center;opacity:0">'
-                                + '<div style="font-size:14px;font-weight:700;color:'+textColor+';margin-bottom:4px">'+v.value+'</div>'
-                                + '<div style="width:48px;height:0;background:'+primary+';border-radius:4px 4px 0 0" data-th="'+bh+'"></div>'
-                                + '<div style="font-size:12px;color:'+textColor+'99;margin-top:6px">'+( v.label||'')+'</div></div>';
-                            });
-                            h += '</div>';
-                            el.innerHTML = h;
-                            if (window.gsap) {
-                              el.querySelectorAll('[data-th]').forEach(function(b,i){ gsap.to(b,{height:parseInt(b.getAttribute('data-th')),duration:0.6,delay:0.3+i*0.1,ease:'power2.out'}); });
-                              gsap.to(el.querySelectorAll('.dg-bar'), {opacity:1,duration:0.3,stagger:0.08,delay:0.2});
-                            }
-                          }
-                        }
-                        // More diagram types are handled client-side via diagram-templates.ts
-                        el.setAttribute('data-rendered', 'true');
-                      } catch(e) { console.warn('Diagram template error:', e); }
-                    });
-                  };
-
-                  // Render Mermaid
-                  window.renderMermaid = function(selector) {
-                      if (window.mermaid) {
-                          try {
-                              mermaid.init(undefined, selector ? document.querySelectorAll(selector) : document.querySelectorAll('.mermaid'));
-                          } catch (e) {
-                              console.error('Mermaid render error:', e);
-                          }
-                      }
-                  };
-
-                  // Initialize
-                  window.addEventListener('load', () => {
-                      if(window.gsap) {
-                         if(window.MotionPathPlugin) gsap.registerPlugin(MotionPathPlugin);
-                         if(window.MorphSVGPlugin && typeof window.MorphSVGPlugin.version === 'string') {
-                             try { gsap.registerPlugin(MorphSVGPlugin); } catch(e) { console.warn('MorphSVG registration failed', e); }
-                         }
-                      }
-
-                      if (window.RoughNotation && !window.RoughNotation.annotateAll) {
-                          window.RoughNotation.annotateAll = function(annotations) {
-                              if (Array.isArray(annotations) && window.RoughNotation.annotationGroup) {
-                                   const group = window.RoughNotation.annotationGroup(annotations);
-                                   group.show();
-                              } else if (Array.isArray(annotations)) {
-                                   annotations.forEach(a => a.show && a.show());
-                              }
-                          };
-                      }
-
-                      if(window.mermaid) mermaid.initialize({startOnLoad:true});
-                      if(window.renderMathInElement && window.katex) window.renderMath();
-                      if(window.Prism) window.highlightCode();
-                      if(window.initDiagramTemplates) window.initDiagramTemplates();
-                      
-                      // Pause global timeline for frame rendering
-                      if (window.gsap) {
-                          gsap.ticker.remove(gsap.ticker.tick);
-                          gsap.globalTimeline.pause();
-                      }
-
-                      // Monkey-patch RoughNotation to register all annotations
-                      // and record the GSAP time when show() is called,
-                      // so we can do time-aware show/hide during frame rendering.
-                      window.__registeredAnnotations = [];
-                      window.__annotationShowTimes = new Map();
-                      if (window.RoughNotation && window.RoughNotation.annotate) {
-                          const _origAnnotate = window.RoughNotation.annotate;
-                          window.RoughNotation.annotate = function(el, opts) {
-                              // Force animation duration to 0 so show() completes instantly
-                              // (we render frame-by-frame, async animations won't finish before screenshot)
-                              const patchedOpts = Object.assign({}, opts, { animationDuration: 0 });
-                              const a = _origAnnotate(el, patchedOpts);
-                              const _origShow = a.show.bind(a);
-                              a.show = function() {
-                                  // Record the GSAP time when show() is triggered
-                                  const gsapTime = (window.gsap && gsap.globalTimeline)
-                                      ? gsap.globalTimeline.totalTime() : 0;
-                                  window.__annotationShowTimes.set(a, gsapTime);
-                                  return _origShow();
-                              };
-                              window.__registeredAnnotations.push(a);
-                              return a;
-                          };
-                      }
-                  });
-
-                  // ── Shadow DOM CSS ──
-                  // All styles that must be injected into each shadow root.
-                  // Shadow DOM is style-isolated: global <style> rules do NOT apply inside.
-                  // This must match html-processor.ts getBaseStyles() + getKenBurnsStyles().
-                  window.__SHADOW_CSS = `
-                    /* Fonts loaded via <link> in __updateSnippets — not @import (doesn't work reliably in shadow DOM) */
-
-                    :host {
-                      --text-color: #1e293b;
-                      --text-secondary: #475569;
-                      --primary-color: #2563eb;
-                      --accent-color: #f59e0b;
-                      --background-color: #ffffff;
-                    }
-
-                    /* NOTE: Do NOT force opacity:1 !important here — it breaks GSAP
-                       animations that use opacity:0 as their starting state, causing
-                       elements to appear before their animated reveal. */
-
-                    * { box-sizing: border-box; }
-                    html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; font-family: 'Inter', 'Noto Sans', sans-serif; color: var(--text-color); }
-
-                    /* Fix word-smashing: LLM sometimes wraps each word in inline-block
-                       spans without whitespace between them. This ensures a gap. */
-                    span[style*="inline-block"] + span[style*="inline-block"] { margin-left: 0.25em; }
-                    div[style*="inline-block"] + div[style*="inline-block"] { margin-left: 0.25em; }
-                    /* Also catch class-based word wrappers */
-                    [class*="word"] { display: inline-block; margin-right: 0.2em; }
-                    .word-wrapper, .word-wrap, .word { margin-right: 0.2em; }
-
-                    /* Prevent text from overflowing — shrink to fit, never break mid-word */
-                    h1, h2, h3, .text-display, .text-h2 {
-                      max-width: 95vw; word-break: keep-all; overflow-wrap: normal;
-                      padding-left: 3%; padding-right: 3%;
-                      /* Scale down oversized text to fit viewport width */
-                      max-inline-size: 95vw;
-                    }
-
-                    /* Default centering for content-wrapper — centers even if HTML lacks .full-screen-center */
-                    #content-wrapper {
-                      display: flex; flex-direction: column;
-                      align-items: center; justify-content: center;
-                      min-height: 100%; width: 100%;
-                      box-sizing: border-box;
-                    }
-
-                    /* Cutout asset images */
-                    .generated-image[data-cutout="true"] {
-                      background: transparent;
-                      mix-blend-mode: normal;
-                      filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.15));
-                    }
-
-                    /* SVG Maps */
-                    .map-svg { display: block; margin: 0 auto; }
-                    .map-svg path { transition: fill 0.3s ease; }
-
-                    /* Typography */
-                    .text-display { font-family: 'Montserrat', 'Noto Sans', sans-serif; font-size: 64px; font-weight: 800; line-height: 1.1; }
-                    .text-h2 { font-family: 'Montserrat', 'Noto Sans', sans-serif; font-size: 48px; font-weight: 700; margin-bottom: 16px; }
-                    .text-body { font-family: 'Inter', 'Noto Sans', sans-serif; font-size: 28px; font-weight: 400; line-height: 1.5; }
-                    .text-label { font-family: 'Fira Code', monospace; font-size: 18px; text-transform: uppercase; letter-spacing: 0.1em; }
-
-                    /* Layout */
-                    .full-screen-center {
-                      width: 100%; height: 100%;
-                      display: flex; flex-direction: column;
-                      align-items: center; justify-content: center;
-                      text-align: center; padding: 60px 80px;
-                    }
-                    .highlight {
-                      background: linear-gradient(120deg, rgba(255, 226, 89, 0.6) 0%, rgba(255, 233, 148, 0.4) 100%);
-                      padding: 0 4px; border-radius: 4px;
-                    }
-                    .emphasis { color: var(--primary-color); font-weight: bold; }
-                    .mermaid { display: flex; justify-content: center; width: 100%; margin: 20px auto; }
-                    .layout-split {
-                      display: grid; grid-template-columns: 1fr 1fr; gap: 60px;
-                      width: 90%; max-width: 1700px; align-items: center;
-                    }
-                    pre { white-space: pre-wrap; word-wrap: break-word; }
-
-                    /* ===== KEN BURNS CINEMATIC ENGINE ===== */
-                    .image-hero {
-                      position: relative; width: 100%; height: 100%; overflow: hidden;
-                    }
-                    .image-hero > img {
-                      position: absolute; inset: 0; width: 100%; height: 100%;
-                      object-fit: cover; transform-origin: center; will-change: transform;
-                      animation-duration: var(--kb-duration, 12s);
-                      animation-timing-function: ease-in-out; animation-fill-mode: both;
-                    }
-                    .image-text-overlay {
-                      position: absolute; inset: 0; display: flex; flex-direction: column;
-                      justify-content: flex-end; padding: 80px 100px; z-index: 2;
-                    }
-                    .image-text-overlay > * { position: relative; z-index: 1; }
-                    .image-text-overlay.gradient-bottom::before,
-                    .image-text-overlay:not([class*="gradient-"])::before {
-                      content: ""; position: absolute; inset: 0;
-                      background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 40%, transparent 70%);
-                      pointer-events: none; z-index: 0;
-                    }
-                    .image-text-overlay.gradient-full::before {
-                      content: ""; position: absolute; inset: 0;
-                      background: rgba(0,0,0,0.45); pointer-events: none; z-index: 0;
-                    }
-                    .image-text-overlay.gradient-center {
-                      justify-content: center; align-items: center; text-align: center;
-                    }
-                    .image-text-overlay.gradient-center::before {
-                      content: ""; position: absolute; inset: 0;
-                      background: radial-gradient(ellipse at center, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 70%);
-                      pointer-events: none; z-index: 0;
-                    }
-                    .image-text-overlay h1, .image-text-overlay .hero-title {
-                      font-family: 'Montserrat', sans-serif; font-size: 64px; font-weight: 800;
-                      color: #fff; line-height: 1.1; margin: 0 0 16px 0;
-                      text-shadow: 0 2px 20px rgba(0,0,0,0.3);
-                    }
-                    .image-text-overlay p, .image-text-overlay .hero-subtitle {
-                      font-family: 'Inter', sans-serif; font-size: 28px; color: rgba(255,255,255,0.9);
-                      line-height: 1.4; margin: 0; max-width: 800px;
-                    }
-                    /* VIDEO_HERO: Full-screen stock video background */
-                    .video-hero { position: relative; width: 100%; height: 100%; overflow: hidden; }
-                    .video-hero > video, .video-hero > .stock-video {
-                        position: absolute; inset: 0; width: 100%; height: 100%;
-                        object-fit: cover; z-index: 0;
-                    }
-                    .stock-video { object-fit: cover; width: 100%; height: 100%; }
-
-                    .image-split-layout {
-                      display: grid; grid-template-columns: 1fr 1fr;
-                      width: 100%; height: 100%; overflow: hidden;
-                    }
-                    .image-split-layout .split-image { position: relative; overflow: hidden; }
-                    .image-split-layout .split-image img {
-                      width: 100%; height: 100%; object-fit: cover; will-change: transform;
-                      animation-duration: var(--kb-duration, 12s);
-                      animation-timing-function: ease-in-out; animation-fill-mode: both;
-                    }
-                    .image-split-layout .split-text {
-                      display: flex; flex-direction: column;
-                      justify-content: center; padding: 60px 80px;
-                    }
-
-                    /* Portrait (9:16) responsive overrides */
-                    @media (max-width: 1100px) {
-                      .full-screen-center { padding: 40px; }
-                      .text-display { font-size: 48px; }
-                      .text-h2 { font-size: 36px; }
-                      .text-body { font-size: 24px; }
-                      .layout-split { grid-template-columns: 1fr; gap: 30px; }
-                      .image-split-layout { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-                      .image-split-layout .split-text { padding: 30px 40px; }
-                      .image-text-overlay { justify-content: center; align-items: center; text-align: center; padding: 40px; }
-                      .image-text-overlay::before { background: rgba(0,0,0,0.5) !important; }
-                      .image-text-overlay > * { background: rgba(0,0,0,0.65); padding: 20px 32px; border-radius: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-                      .image-text-overlay > *::before { display: none; }
-                      .image-text-overlay h1, .image-text-overlay .hero-title { font-size: 48px; text-align: center; }
-                      .image-text-overlay p, .image-text-overlay .hero-subtitle { font-size: 24px; max-width: 100%; text-align: center; }
-                      .lower-third { bottom: 80px; left: 40px; }
-                    }
-
-                    .lower-third {
-                      position: absolute; bottom: 120px; left: 100px;
-                      display: flex; align-items: stretch;
-                      animation: ltSlideIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-                      z-index: 20;
-                    }
-                    .lower-third .lt-accent-bar {
-                      width: 6px; background: linear-gradient(180deg, #3b82f6, #8b5cf6);
-                      border-radius: 3px 0 0 3px;
-                    }
-                    .lower-third .lt-content {
-                      background: rgba(0,0,0,0.85); padding: 16px 32px;
-                      border-radius: 0 8px 8px 0; display: flex; flex-direction: column; gap: 4px;
-                    }
-                    .lower-third .lt-label {
-                      font-family: 'Fira Code', monospace; font-size: 12px;
-                      text-transform: uppercase; letter-spacing: 0.15em; color: #3b82f6; font-weight: 600;
-                    }
-                    .lower-third .lt-text {
-                      font-family: 'Inter', sans-serif; font-size: 24px; color: #fff; font-weight: 600;
-                    }
-                    @keyframes ltSlideIn {
-                      from { transform: translateX(-40px); opacity: 0; }
-                      to   { transform: translateX(0); opacity: 1; }
-                    }
-                    .annotation-map-container { position: relative; width: 100%; height: 100%; overflow: hidden; }
-                    .annotation-map-container .annotation-map-bg {
-                      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-                      object-fit: cover; will-change: transform;
-                      animation-duration: var(--kb-duration, 12s);
-                      animation-timing-function: ease-in-out; animation-fill-mode: both;
-                    }
-                    .annotation-overlay {
-                      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-                      pointer-events: none; z-index: 5;
-                    }
-                    .process-flow {
-                      display: flex; flex-direction: column;
-                      align-items: center; width: 80%; max-width: 960px;
-                    }
-                    .process-node {
-                      display: flex; align-items: center; gap: 24px;
-                      background: var(--card-bg, rgba(30,41,59,0.6));
-                      border: 2px solid var(--primary-color, #3b82f6);
-                      border-radius: 12px; padding: 20px 32px; width: 100%;
-                    }
-                    .node-num {
-                      width: 52px; height: 52px; border-radius: 50%;
-                      background: var(--primary-color, #3b82f6); color: #fff;
-                      font-size: 24px; font-weight: 800; flex-shrink: 0;
-                      display: flex; align-items: center; justify-content: center;
-                      font-family: 'Montserrat', sans-serif;
-                    }
-                    .node-body { display: flex; flex-direction: column; gap: 4px; }
-                    .node-title {
-                      font-size: 22px; font-weight: 700;
-                      font-family: 'Montserrat', sans-serif; color: var(--text-color, #fff);
-                    }
-                    .node-desc {
-                      font-size: 16px; font-family: 'Inter', sans-serif;
-                      color: var(--text-secondary, #94a3b8);
-                    }
-                    .process-connector {
-                      width: 20px; height: 40px; flex-shrink: 0;
-                      color: var(--primary-color, #3b82f6);
-                    }
-                    .equation-build-row {
-                      display: flex; align-items: center; justify-content: center;
-                      flex-wrap: wrap; gap: 8px; margin: 48px 0 32px;
-                    }
-                    .equation-build-row .eq-term,
-                    .equation-build-row .eq-sep {
-                      display: inline-flex; align-items: center; font-size: 3.5rem;
-                    }
-                    .equation-build-row .eq-sep { font-size: 3rem; margin: 0 4px; }
-
-                    /* Ken Burns keyframes */
-                    .kb-zoom-in     { animation-name: kbZoomIn; }
-                    .kb-zoom-out    { animation-name: kbZoomOut; }
-                    .kb-pan-left    { animation-name: kbPanLeft; }
-                    .kb-pan-right   { animation-name: kbPanRight; }
-                    .kb-pan-up      { animation-name: kbPanUp; }
-                    .kb-zoom-pan-tl { animation-name: kbZoomPanTL; }
-                    @keyframes kbZoomIn    { from { transform: scale(1.0); }  to { transform: scale(1.15); } }
-                    @keyframes kbZoomOut   { from { transform: scale(1.20); } to { transform: scale(1.05); } }
-                    @keyframes kbPanLeft   { from { transform: scale(1.15) translateX(3%); }  to { transform: scale(1.15) translateX(-3%); } }
-                    @keyframes kbPanRight  { from { transform: scale(1.15) translateX(-3%); } to { transform: scale(1.15) translateX(3%); } }
-                    @keyframes kbPanUp     { from { transform: scale(1.15) translateY(3%); }  to { transform: scale(1.15) translateY(-3%); } }
-                    @keyframes kbZoomPanTL { from { transform: scale(1.0) translate(2%, 2%); } to { transform: scale(1.15) translate(-2%, -2%); } }
-                    .shot-enter { animation: shotFadeIn 0.6s ease-out forwards; }
-                    @keyframes shotFadeIn { from { opacity: 0; } to { opacity: 1; } }
-                  `;
-                </script>
-              </body>
-            </html>
-            """.replace("REPLACE_BG", background_color)
+    # The harness HTML — with all educational library script tags, base CSS,
+    # and the __updateSnippets shadow-DOM dispatcher — lives in render_harness.py
+    # so the screenshot endpoint (vision-review path) shares byte-identical setup.
+    html_content = build_harness_html(background_color)
     
     temp_html_path = Path.cwd() / ".render_page.html"
     temp_html_path.write_text(html_content, encoding="utf-8")
@@ -1038,716 +156,7 @@ def _prepare_page(page, width: int, height: int, background_color: str = "#000")
     # Replace background color token
     # page.evaluate("(bg) => { document.querySelector('style').textContent = document.querySelector('style').textContent.replace('REPLACE_BG', bg); }", background_color)
     # Ensure functions exist on current document as well
-    page.evaluate(
-        """
-        () => {
-          if (typeof window.__updateSnippets !== 'function' || typeof window.__updateCaption !== 'function') {
-            window.__activeSnippets = new Map();
-            window.__updateSnippets = (entries) => {
-              const activeIds = new Set(entries.map(e => e.id));
-              for (const [id, host] of Array.from(window.__activeSnippets.entries())) {
-                if (!activeIds.has(id)) {
-                  try { host.remove(); } catch (e) {}
-                  window.__activeSnippets.delete(id);
-                }
-              }
-              for (const e of entries) {
-                let host = window.__activeSnippets.get(e.id);
-                if (!host) {
-                  // Seek GSAP timeline to the shot's inTime BEFORE creating
-                  // the snippet. Scripts inside the HTML create GSAP tweens
-                  // with delays relative to the current globalTimeline time.
-                  // Without this, tweens get wrong start times (especially in
-                  // parallel workers that start mid-video).
-                  if (window.gsap && typeof e.inTime === 'number') {
-                    try {
-                      gsap.globalTimeline.totalTime(e.inTime);
-                    } catch(err) {}
-                  }
-                  host = document.createElement('div');
-                  host.id = e.id;
-                  host.dataset.inTime = String(e.inTime || 0);
-                  host.style.position = 'absolute';
-                  host.style.overflow = 'visible'; // Allow annotations to flow outside
-                  host.style.pointerEvents = 'none';
-                  host.style.background = 'transparent';
-                  const world = document.getElementById('world-layer') || document.body;
-                  world.appendChild(host);
-                  const root = host.attachShadow({ mode: 'open' });
-                  const wrapper = document.createElement('div');
-                  wrapper.id = 'content-wrapper';
-                  // Fill the host container — let CSS classes like .full-screen-center handle centering
-                  wrapper.style.width = '100%';
-                  wrapper.style.height = '100%';
-                  wrapper.style.overflow = 'visible'; // Allow Rough Notation SVGs to extend outside elements
-
-                  // Inject ALL CSS into Shadow DOM (shadow DOM is style-isolated)
-                  // Google Fonts must be a <link> (not @import in <style>) for shadow DOM
-                  const fontLink = document.createElement('link');
-                  fontLink.rel = 'stylesheet';
-                  fontLink.href = 'https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&family=Noto+Sans:wght@400;500;600;700&display=swap';
-                  root.appendChild(fontLink);
-
-                  const shadowStyle = document.createElement('style');
-                  shadowStyle.textContent = window.__SHADOW_CSS || '';
-                  root.appendChild(shadowStyle);
-
-                  const katexCss = document.createElement('link');
-                  katexCss.rel = 'stylesheet';
-                  katexCss.href = 'https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css';
-
-                  const prismCss = document.createElement('link');
-                  prismCss.rel = 'stylesheet';
-                  prismCss.href = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css';
-
-                  root.appendChild(katexCss);
-                  root.appendChild(prismCss);
-
-                  // Pre-process HTML before injection (match client's processHtmlContent)
-                  let processedHtml = e.html;
-
-                  // 1. Ken Burns: inject kb-{motion} CSS class from data-ken-burns attribute
-                  processedHtml = processedHtml.replace(
-                    /(<img[^>]*)\\bdata-ken-burns=["']([\\w-]+)["']([^>]*>)/gi,
-                    (match, before, motion, after) => {
-                      const className = 'kb-' + motion;
-                      if (/class=["']/.test(before)) {
-                        return before.replace(/class=["']([^"']*)["']/, 'class="$1 ' + className + '"')
-                          + 'data-ken-burns="' + motion + '"' + after;
-                      }
-                      return before + ' class="' + className + '" data-ken-burns="' + motion + '"' + after;
-                    }
-                  );
-
-                  // 1.5. Rewrite :root to :host so CSS variables apply inside shadow DOM.
-                  // The LLM often generates `:root { --primary: ... }` which doesn't work
-                  // in shadow DOM (no document root). `:host` is the shadow DOM equivalent.
-                  processedHtml = processedHtml.split(':root').join(':host');
-
-                  // 1.6. Rewrite body/html selectors for shadow DOM compatibility.
-                  // LLM generates full HTML documents with `body { width:100vw; ... }`
-                  // which works in iframe (FE) but not in shadow DOM (render).
-                  processedHtml = processedHtml.replace(/(?:^|[\\s,;{}])body\\s*\\{/gm, ' #content-wrapper {');
-                  processedHtml = processedHtml.replace(/(?:^|[\\s,;{}])html\\s*\\{/gm, ' :host {');
-
-                  // 1.7. Strip full document structure (<!DOCTYPE>, <html>, <head>, <body>)
-                  if (processedHtml.includes('<!DOCTYPE') || processedHtml.includes('<html')) {
-                    const headMatch = processedHtml.match(/<head[^>]*>([\\s\\S]*?)<\\/head>/i);
-                    const headContent = headMatch ? headMatch[1] : '';
-                    const bodyMatch = processedHtml.match(/<body[^>]*>([\\s\\S]*?)<\\/body>/i);
-                    const bodyContent = bodyMatch ? bodyMatch[1] : processedHtml;
-                    const styles = (headContent.match(/<style[\\s\\S]*?<\\/style>/gi) || []).join('');
-                    const links = (headContent.match(/<link[^>]*>/gi) || []).join('');
-                    processedHtml = styles + links + bodyContent;
-                  }
-
-                  // 2. placeholder.png: replace with transparent 1x1 GIF
-                  if (processedHtml.includes('placeholder.png')) {
-                    const TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-                    processedHtml = processedHtml.replace(/src=['"]placeholder\\.png['"]/g, 'src="' + TRANSPARENT + '"');
-                    processedHtml = '<style>.generated-image{opacity:0!important}.image-hero{background:linear-gradient(160deg,#1a1a2e 0%,#16213e 60%,#0f3460 100%)!important}</style>' + processedHtml;
-                  }
-
-                  wrapper.innerHTML = processedHtml;
-                  root.appendChild(wrapper);
-                  window.__activeSnippets.set(e.id, host);
-
-                  // Mirror every external stylesheet AND inline @font-face rule from
-                  // the shadow root into document.head so fonts register globally with
-                  // document.fonts. Shadow-DOM-only stylesheets don't always populate
-                  // the doc-level FontFaceSet reliably, causing fallback fonts to
-                  // render with wrong text metrics (e.g. Montserrat → system sans,
-                  // "PASSWORDS" overflows canvas). Three vectors covered:
-                  //   1. <link rel="stylesheet"> (anywhere in shadow root)
-                  //   2. @import url(...) inside <style> blocks
-                  //   3. @font-face { src: url(...) } inside <style> blocks
-                  // De-dupe by href/url so we don't re-fetch on every segment.
-                  if (!window.__globalLinkCache) window.__globalLinkCache = new Set();
-                  if (!window.__globalFontFaceCache) window.__globalFontFaceCache = new Set();
-                  const __addGlobalStylesheet = (href) => {
-                      if (!href || window.__globalLinkCache.has(href)) return;
-                      window.__globalLinkCache.add(href);
-                      const clone = document.createElement('link');
-                      clone.rel = 'stylesheet';
-                      clone.href = href;
-                      document.head.appendChild(clone);
-                  };
-                  const __addGlobalFontFace = (cssBlock) => {
-                      const key = cssBlock.replace(/\\s+/g, ' ').trim();
-                      if (!key || window.__globalFontFaceCache.has(key)) return;
-                      window.__globalFontFaceCache.add(key);
-                      const styleEl = document.createElement('style');
-                      styleEl.setAttribute('data-snippet-fontface', '1');
-                      styleEl.textContent = cssBlock;
-                      document.head.appendChild(styleEl);
-                  };
-                  // Walk both wrapper and the shadow root itself (renderer adds Google
-                  // Fonts / KaTeX / Prism links directly to root, not inside wrapper).
-                  const __scanLinks = (scope) => {
-                      scope.querySelectorAll('link[rel="stylesheet"]').forEach(l => {
-                          __addGlobalStylesheet(l.getAttribute('href'));
-                      });
-                  };
-                  __scanLinks(wrapper);
-                  // root.querySelectorAll only descends into shadow root direct children,
-                  // not into the wrapper subtree (already covered above).
-                  Array.from(root.children).forEach(child => {
-                      if (child.tagName === 'LINK' && child.rel === 'stylesheet') {
-                          __addGlobalStylesheet(child.getAttribute('href'));
-                      }
-                  });
-                  // Pull @import urls and @font-face blocks out of inline <style> tags
-                  const __importRe = /@import\\s+(?:url\\()?["']?([^"')]+)["']?\\)?[^;]*;?/g;
-                  const __fontFaceRe = /@font-face\\s*\\{[^}]*\\}/g;
-                  const __scanStyles = (scope) => {
-                      scope.querySelectorAll('style').forEach(s => {
-                          const css = s.textContent || '';
-                          let m;
-                          while ((m = __importRe.exec(css)) !== null) {
-                              __addGlobalStylesheet(m[1]);
-                          }
-                          let f;
-                          while ((f = __fontFaceRe.exec(css)) !== null) {
-                              __addGlobalFontFace(f[0]);
-                          }
-                      });
-                  };
-                  __scanStyles(wrapper);
-                  Array.from(root.children).forEach(child => {
-                      if (child.tagName === 'STYLE') {
-                          const css = child.textContent || '';
-                          let m;
-                          while ((m = __importRe.exec(css)) !== null) {
-                              __addGlobalStylesheet(m[1]);
-                          }
-                          let f;
-                          while ((f = __fontFaceRe.exec(css)) !== null) {
-                              __addGlobalFontFace(f[0]);
-                          }
-                      }
-                  });
-
-                  // Trigger KaTeX for Math
-                  if (window.renderMathInElement) {
-                      window.renderMathInElement(wrapper, {
-                          delimiters: [
-                              {left: '$$', right: '$$', display: true},
-                              {left: '$', right: '$', display: false},
-                              {left: '\\(', right: '\\)', display: false},
-                              {left: '\\[', right: '\\]', display: true}
-                          ],
-                          throwOnError: false,
-                          strict: false
-                      });
-                  }
-
-                  // Manually activate scripts
-                  // Manually activate scripts with Scoped GSAP Proxy
-                  const scripts = wrapper.querySelectorAll('script');
-                  scripts.forEach(oldScript => {
-                      const newScript = document.createElement('script');
-                      Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-                      
-                      // Wrap content in IIFE with scoped GSAP.
-                      // Rewrite the LLM source so window.RoughNotation/window.Vivus/document.querySelector
-                      // calls go through our scoped helpers and resolve elements from the shadow root.
-                      let originalCode = oldScript.textContent;
-                      originalCode = originalCode.split('window.RoughNotation').join('__sd_RoughNotation');
-                      originalCode = originalCode.split('new Vivus').join('new __sd_Vivus');
-                      originalCode = originalCode.split('window.Vivus').join('__sd_Vivus');
-                      originalCode = originalCode.split('window.d3').join('d3');
-                      originalCode = originalCode.split('document.getElementById').join('__sd_getElementById');
-                      originalCode = originalCode.split('document.querySelectorAll').join('__sd_querySelectorAll');
-                      originalCode = originalCode.split('document.querySelector').join('__sd_querySelector');
-                      // Unwrap `document.addEventListener("DOMContentLoaded", handler)` and
-                      // `window.addEventListener("load", handler)` — snippets run AFTER the page
-                      // has loaded, so those events never fire. We convert them to direct
-                      // invocation: `document.addEventListener("DOMContentLoaded", fn)` → `(fn)()`.
-                      // Strategy: locate the call, find its matching close paren, then rewrite.
-                      const _unwrapReadyListener = (src) => {
-                          const pattern = /(document|window)\s*\.\s*addEventListener\s*\(\s*["'](DOMContentLoaded|load|readystatechange)["']\s*,\s*/g;
-                          let out = '', last = 0, m;
-                          while ((m = pattern.exec(src)) !== null) {
-                              out += src.slice(last, m.index);
-                              // find matching close paren for the addEventListener call
-                              let i = m.index + m[0].length, depth = 1, inStr = null, esc = false;
-                              while (i < src.length && depth > 0) {
-                                  const c = src[i];
-                                  if (esc) { esc = false; }
-                                  else if (inStr) {
-                                      if (c === '\\\\') esc = true;
-                                      else if (c === inStr) inStr = null;
-                                  } else if (c === '"' || c === "'" || c === '`') inStr = c;
-                                  else if (c === '(') depth++;
-                                  else if (c === ')') depth--;
-                                  if (depth === 0) break;
-                                  i++;
-                              }
-                              // handler expression is src[m.index+m[0].length .. i-1], optionally followed by ", options"
-                              let handler = src.slice(m.index + m[0].length, i);
-                              // Drop trailing options arg (simple heuristic: last top-level comma)
-                              let pd = 0, cut = -1, ins = null, es = false;
-                              for (let j = 0; j < handler.length; j++) {
-                                  const ch = handler[j];
-                                  if (es) { es = false; continue; }
-                                  if (ins) { if (ch === '\\\\') es = true; else if (ch === ins) ins = null; continue; }
-                                  if (ch === '"' || ch === "'" || ch === '`') { ins = ch; continue; }
-                                  if (ch === '(' || ch === '[' || ch === '{') pd++;
-                                  else if (ch === ')' || ch === ']' || ch === '}') pd--;
-                                  else if (ch === ',' && pd === 0) cut = j;
-                              }
-                              if (cut >= 0) handler = handler.slice(0, cut);
-                              out += '(' + handler + ')()';
-                              last = i + 1;
-                              pattern.lastIndex = last;
-                          }
-                          out += src.slice(last);
-                          return out;
-                      };
-                      originalCode = _unwrapReadyListener(originalCode);
-                      const scopedCode = `
-                        (function(scope) {
-                            // Helper to resolve selectors in this shadow root
-                            const resolve = (s) => {
-                                const el = (typeof s === 'string' ? scope.querySelector(s) : s);
-                                // Don't warn — LLM-generated selectors may reference elements
-                                // that don't exist yet or are in a different shadow root
-                                return el;
-                            };
-                            const resolveAll = (s) => (typeof s === 'string' ? scope.querySelectorAll(s) : s);
-
-                            // Shadow-DOM-aware document.* replacements (used after rewriting LLM source)
-                            const __sd_getElementById = (id) => scope.querySelector('#' + CSS.escape(id));
-                            const __sd_querySelector = (sel) => scope.querySelector(sel);
-                            const __sd_querySelectorAll = (sel) => scope.querySelectorAll(sel);
-
-
-                            // Proxy global helpers to use scoped resolution
-                            const annotate = (target, opts) => {
-                                console.log('Proxy annotate:', target, opts);
-                                try { window.annotate(resolve(target), opts); } catch(e) { console.error('Annotate error:', e); }
-                            };
-                            const typewriter = (target, dur, del) => window.typewriter(resolve(target), dur, del);
-                            const fadeIn = (target, dur, del) => window.fadeIn(resolve(target), dur, del);
-                            const popIn = (target, dur, del) => window.popIn(resolve(target), dur, del);
-                            const slideUp = (target, dur, del) => window.slideUp(resolve(target), dur, del);
-                            const revealLines = (target, stag) => window.revealLines(resolve(target), stag);
-                            const showThenAnnotate = (txt, term, type, col, txtDel, annDel) => {
-                                console.log('Proxy showThenAnnotate:', txt, term);
-                                window.showThenAnnotate(resolve(txt), resolve(term), type, col, txtDel, annDel);
-                            };
-                            const animateSVG = (id, dur, cb) => {
-                                // Resolve from shadow root, retrying if not yet present
-                                const tryResolve = (attempts) => {
-                                    let el;
-                                    if (typeof id === 'string') {
-                                        // Try by ID then by tag/id selector inside shadow root
-                                        el = scope.querySelector('#' + id) || scope.querySelector(id);
-                                    } else {
-                                        el = id;
-                                    }
-                                    if (el) {
-                                        window.animateSVG(el, dur, cb);
-                                    } else if (attempts > 0) {
-                                        setTimeout(() => tryResolve(attempts - 1), 100);
-                                    }
-                                    // Silently give up after retries — element never appeared
-                                };
-                                tryResolve(15);
-                            };
-
-                            // Creator of scoped GSAP instance
-                            const createScopedGsap = () => {
-                                const g = { ...window.gsap }; // shallow clone
-                                
-                                const resolveGsap = (target) => {
-                                    if (target == null) return target;
-                                    if (typeof target === 'string') {
-                                        return Array.from(scope.querySelectorAll(target));
-                                    }
-                                    if (Array.isArray(target)) {
-                                        const out = [];
-                                        for (const t of target) {
-                                            if (typeof t === 'string') {
-                                                for (const el of scope.querySelectorAll(t)) out.push(el);
-                                            } else if (t) {
-                                                out.push(t);
-                                            }
-                                        }
-                                        return out;
-                                    }
-                                    return target;
-                                };
-
-                                g.to = (target, vars) => window.gsap.to(resolveGsap(target), vars);
-                                g.from = (target, vars) => window.gsap.from(resolveGsap(target), vars);
-                                g.fromTo = (target, f, t) => window.gsap.fromTo(resolveGsap(target), f, t);
-                                g.set = (target, vars) => window.gsap.set(resolveGsap(target), vars);
-                                g.timeline = (vars) => {
-                                    const tl = window.gsap.timeline(vars);
-                                    const explicitProxy = (tlInstance) => {
-                                        const originalTo = tlInstance.to.bind(tlInstance);
-                                        const originalFrom = tlInstance.from.bind(tlInstance);
-                                        const originalFromTo = tlInstance.fromTo.bind(tlInstance);
-                                        const originalSet = tlInstance.set.bind(tlInstance);
-                                        
-                                        tlInstance.to = (t, v, p) => { originalTo(resolveGsap(t), v, p); return tlInstance; };
-                                        tlInstance.from = (t, v, p) => { originalFrom(resolveGsap(t), v, p); return tlInstance; };
-                                        tlInstance.fromTo = (t, f, to, p) => { originalFromTo(resolveGsap(t), f, to, p); return tlInstance; };
-                                        tlInstance.set = (t, v, p) => { originalSet(resolveGsap(t), v, p); return tlInstance; };
-                                        return tlInstance;
-                                    };
-                                    return explicitProxy(tl);
-                                };
-                                return g;
-                            };
-
-                            const gsap = createScopedGsap();
-
-                            // Scoped d3 proxy — d3.select/selectAll search inside shadow root
-                            const d3 = window.d3 ? (() => {
-                                const proxy = Object.create(window.d3);
-                                proxy.select = (s) => typeof s === 'string'
-                                    ? window.d3.select(scope.querySelector(s))
-                                    : window.d3.select(s);
-                                proxy.selectAll = (s) => typeof s === 'string'
-                                    ? window.d3.selectAll(Array.from(scope.querySelectorAll(s)))
-                                    : window.d3.selectAll(s);
-                                return proxy;
-                            })() : undefined;
-
-                            // ── Scoped Anime.js proxy — resolves selectors inside this shadow root ──
-                            // LLM uses: anime({targets: '#el', ...}) → scoped to shadow DOM
-                            // LLM registers seekable timelines with: _animeR({instance: anime({autoplay:false,...}), startMs:500})
-                            const anime = window.anime ? (function() {
-                                const resolveTargets = (targets) => {
-                                    if (typeof targets === 'string') {
-                                        return Array.from(scope.querySelectorAll(targets));
-                                    }
-                                    return targets;
-                                };
-                                return function(opts) {
-                                    const resolved = Object.assign({}, opts);
-                                    if (opts.targets) resolved.targets = resolveTargets(opts.targets);
-                                    const instance = window.anime(resolved);
-                                    return instance;
-                                };
-                            })() : function(o) { return { seek: function(){}, duration: 0 }; };
-                            // Copy static methods (stagger, timeline, set, etc.)
-                            if (window.anime) {
-                                anime.stagger = window.anime.stagger.bind(window.anime);
-                                anime.timeline = function(opts) {
-                                    // timeline() needs its own target resolution on .add()
-                                    const tl = window.anime.timeline(opts);
-                                    const origAdd = tl.add.bind(tl);
-                                    tl.add = function(o, offset) {
-                                        const r = Object.assign({}, o);
-                                        if (o.targets && typeof o.targets === 'string') {
-                                            r.targets = Array.from(scope.querySelectorAll(o.targets));
-                                        }
-                                        return origAdd(r, offset);
-                                    };
-                                    return tl;
-                                };
-                                anime.set = window.anime.set ? window.anime.set.bind(window.anime) : undefined;
-                                anime.remove = window.anime.remove ? window.anime.remove.bind(window.anime) : undefined;
-                                anime.get = window.anime.get ? window.anime.get.bind(window.anime) : undefined;
-                                anime.random = window.anime.random ? window.anime.random.bind(window.anime) : undefined;
-                                anime.running = window.anime.running;
-                                anime.easings = window.anime.easings;
-                            }
-                            // _animeR: register a seekable Anime.js instance with its shot-relative start time
-                            const _animeR = function(entry) { if (window._animeR) window._animeR(entry); };
-
-                            // ── Shadow-DOM-aware helpers (called from rewritten LLM code) ──
-                            // The LLM source is rewritten before injection so that:
-                            //   document.querySelector(...)    → __sd_querySelector(...)
-                            //   document.getElementById(...)   → __sd_getElementById(...)
-                            //   document.querySelectorAll(...) → __sd_querySelectorAll(...)
-                            //   window.RoughNotation           → __sd_RoughNotation
-                            //   window.Vivus                   → __sd_Vivus
-                            //   new Vivus(...)                 → new __sd_Vivus(...)
-                            // These helpers are unique names to avoid TDZ from shadowing globals.
-                            const __sd_RoughNotation = window.RoughNotation ? {
-                                annotate: function(el, opts) {
-                                    if (typeof el === 'string') {
-                                        const resolved = scope.querySelector(el);
-                                        if (!resolved) return { show: function(){}, hide: function(){}, isShowing: false };
-                                        el = resolved;
-                                    }
-                                    return window.RoughNotation.annotate(el, opts);
-                                },
-                                annotationGroup: window.RoughNotation.annotationGroup
-                                    ? window.RoughNotation.annotationGroup.bind(window.RoughNotation)
-                                    : undefined
-                            } : undefined;
-
-                            function __sd_Vivus(el, opts, cb) {
-                                if (!window.Vivus) return { play: function(){}, stop: function(){}, reset: function(){} };
-                                if (typeof el === 'string') {
-                                    const resolved = scope.querySelector('#' + CSS.escape(el));
-                                    if (!resolved) return { play: function(){}, stop: function(){}, reset: function(){} };
-                                    el = resolved;
-                                }
-                                return new window.Vivus(el, opts, cb);
-                            }
-                            if (window.Vivus) {
-                                __sd_Vivus.EASE = window.Vivus.EASE;
-                                __sd_Vivus.EASE_IN = window.Vivus.EASE_IN;
-                                __sd_Vivus.EASE_OUT = window.Vivus.EASE_OUT;
-                                __sd_Vivus.LINEAR = window.Vivus.LINEAR;
-                            }
-
-                            try {
-                                ${originalCode}
-                            } catch (e) {
-                                console.error("Script execution error in snippet:", e);
-                            }
-                        })(document.getElementById('${e.id}').shadowRoot);
-                      `;
-                      
-                      newScript.textContent = scopedCode;
-                      oldScript.parentNode.replaceChild(newScript, oldScript);
-                  });
-
-                  // Force-show all registered Rough Notation annotations after layout settles
-                  // Use double-rAF to ensure layout is computed before annotations measure positions
-                  requestAnimationFrame(() => {
-                    requestAnimationFrame(() => {
-                      if (window.__registeredAnnotations && window.__registeredAnnotations.length > 0) {
-                        window.__registeredAnnotations.forEach(a => {
-                          try {
-                            if (a && a.isShowing) {
-                              // Already showing but may have wrong position — hide and re-show
-                              a.hide();
-                              a.show();
-                            } else if (a && !a.isShowing) {
-                              a.show();
-                            }
-                          } catch(e) {}
-                        });
-                      }
-                    });
-                  });
-
-                  // Trigger Mermaid (Robust)
-                  const promises = [];
-                  if (window.mermaid) {
-                      if (!window.mermaidInitialized) {
-                          window.mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
-                          window.mermaidInitialized = true;
-                      }
-                      const nodes = wrapper.querySelectorAll('.mermaid, pre > code.language-mermaid, div.mermaid');
-                      const p = Promise.all(Array.from(nodes).map(async (el, index) => {
-                          const id = 'mermaid-' + e.id + '-' + index + '-' + Math.round(Math.random() * 10000);
-                          var targetContainer = el; // Use var to ensure function scope hoisting awareness
-                          try {
-                              let graphDefinition = el.textContent.trim();
-                              if (!graphDefinition) return;
-                              
-                              if (el.tagName.toLowerCase() === 'code' && el.parentElement && el.parentElement.tagName.toLowerCase() === 'pre') {
-                                  const div = document.createElement('div');
-                                  div.id = id;
-                                  div.className = 'mermaid-diagram';
-                                  div.style.display = 'flex';
-                                  div.style.justifyContent = 'center';
-                                  el.parentElement.replaceWith(div);
-                              } else {
-                                  el.id = id;
-                              }
-                              
-                              // JSON is cleaned, disabling potentially dangerous regex
-                              // graphDefinition = graphDefinition.replace(/[^\\x00-\\x7F]+/g, ''); 
-                              
-                              const { svg } = await window.mermaid.render(id, graphDefinition);
-                              const successContainer = document.getElementById(id);
-                              if (successContainer) successContainer.innerHTML = svg;
-                          } catch (err) {
-                              console.error('Mermaid render error for id ' + id, err);
-                              const errorContainer = document.getElementById(id);
-                              if (errorContainer) {
-                                errorContainer.innerHTML = '<div style="color:red;border:1px solid red;padding:10px;background:rgba(0,0,0,0.8);font-size:12px;"> Mermaid Error: ' + err.message + '</div>';
-                              }
-                          }
-                      }));
-                      promises.push(p);
-                  }
-
-                  // Trigger Prism
-                  if (window.Prism) {
-                      window.Prism.highlightAllUnder(wrapper);
-                  }
-
-                  // Trigger diagram templates inside this shadow root's wrapper
-                  if (window.initDiagramTemplates) {
-                      window.initDiagramTemplates(wrapper);
-                  }
-
-                  // Wait for async rendering (Mermaid etc.) before proceeding
-                  Promise.all(promises).catch(() => {});
-                }
-                // Clamp snippet dimensions to viewport to prevent overflow
-                // (LLM may generate 1920px width for portrait 1080px canvas)
-                const vw = window.innerWidth;
-                const vh = window.innerHeight;
-                const clampedW = Math.min(e.w | 0, vw);
-                const clampedH = Math.min(e.h | 0, vh);
-                host.style.left = Math.max(0, Math.min(e.x | 0, vw - clampedW)) + 'px';
-                host.style.top = Math.max(0, Math.min(e.y | 0, vh - clampedH)) + 'px';
-                host.style.width = clampedW + 'px';
-                host.style.height = clampedH + 'px';
-                if (typeof e.z !== 'undefined') host.style.zIndex = String(e.z);
-                if (typeof e.opacity !== 'undefined') host.style.opacity = String(e.opacity);
-                // Store timing for video sync
-                if (typeof e.inTime !== 'undefined') host.dataset.inTime = String(e.inTime);
-              }
-            };
-
-            // Define caption updater fallback as well
-            window.__updateCaption = (entryOrNull) => {
-              const id = 'caption';
-              if (!entryOrNull) {
-                const host = window.__activeSnippets.get(id);
-                if (host) { try { host.remove(); } catch (e) {}; window.__activeSnippets.delete(id); }
-                return;
-              }
-              const e = entryOrNull;
-              let host = window.__activeSnippets.get(id);
-              if (!host) {
-                host = document.createElement('div');
-                host.id = id;
-                host.style.position = 'absolute';
-                host.style.overflow = 'hidden';
-                host.style.pointerEvents = 'none';
-                host.style.background = 'transparent';
-                const ui = document.getElementById('ui-layer') || document.body;
-                ui.appendChild(host);
-                const root = host.attachShadow({ mode: 'open' });
-                const wrapper = document.createElement('div');
-                wrapper.id = 'content-wrapper';
-                wrapper.style.width = '100%';
-                wrapper.style.height = '100%';
-                wrapper.style.minHeight = '100%';
-                wrapper.style.overflow = 'hidden';
-                wrapper.style.position = 'relative';
-                wrapper.style.boxSizing = 'border-box';
-                root.appendChild(wrapper);
-                window.__activeSnippets.set(id, host);
-              }
-              const root = host.shadowRoot;
-              const wrapper = root.getElementById('content-wrapper');
-              wrapper.innerHTML = e.html;
-              // Match client AIContentPlayer behavior: every entry fills the
-              // full viewport (top:0 left:0 100% 100%) regardless of x/y/w/h.
-              // This ensures the rendered video looks identical to the client.
-              // Branding watermarks are excluded since they need positioning.
-              if (e.id && e.id.startsWith('branding-')) {
-                host.style.left = (e.x | 0) + 'px';
-                host.style.top = (e.y | 0) + 'px';
-                host.style.width = (e.w | 0) + 'px';
-                host.style.height = (e.h | 0) + 'px';
-                console.log('[SIZING-DIAG] branding ' + e.id + ' size=' + e.w + 'x' + e.h + ' pos=' + e.x + ',' + e.y);
-              } else {
-                host.style.left = '0px';
-                host.style.top = '0px';
-                host.style.width = window.innerWidth + 'px';
-                host.style.height = window.innerHeight + 'px';
-                host.style.overflow = 'hidden';
-                host.style.background = getComputedStyle(document.body).backgroundColor || '#ffffff';
-                // Force the inner content to stretch to fill — prevents white gap at bottom
-                const wr = host.shadowRoot.getElementById('content-wrapper');
-                if (wr) {
-                  wr.style.minHeight = window.innerHeight + 'px';
-                  // Find the first child div and stretch it too
-                  const firstChild = wr.firstElementChild;
-                  if (firstChild && firstChild.tagName === 'STYLE') {
-                    // Skip <style> tags, get the first content element
-                    const contentEl = firstChild.nextElementSibling;
-                    if (contentEl) {
-                      contentEl.style.minHeight = '100%';
-                      contentEl.style.boxSizing = 'border-box';
-                    }
-                  } else if (firstChild) {
-                    firstChild.style.minHeight = '100%';
-                    firstChild.style.boxSizing = 'border-box';
-                  }
-                }
-                console.log('[SIZING-DIAG] full-viewport ' + e.id + ' (orig size=' + e.w + 'x' + e.h + ', forced=' + window.innerWidth + 'x' + window.innerHeight + ')');
-              }
-            };
-          }
-
-          if (typeof window.__updateCharacter !== 'function') {
-            window.__updateCharacter = (state) => {
-              let container = document.getElementById('character-container');
-              if (!container) {
-                container = document.createElement('div');
-                container.id = 'character-container';
-                container.style.position = 'absolute';
-                container.style.top = '0';
-                container.style.left = '0';
-                container.style.width = '100%';
-                container.style.height = '100%';
-                container.style.pointerEvents = 'none';
-                container.style.userSelect = 'none';
-                container.style.zIndex = '10';
-                container.style.zIndex = '10';
-                const world = document.getElementById('world-layer') || document.body;
-                world.appendChild(container);
-
-                const pose = document.createElement('img');
-                pose.id = 'char-pose';
-                pose.style.position = 'absolute';
-                pose.style.left = '0';
-                pose.style.top = '0';
-                pose.style.transformOrigin = 'top left';
-                pose.style.willChange = 'transform';
-                container.appendChild(pose);
-
-                const mouth = document.createElement('img');
-                mouth.id = 'char-mouth';
-                mouth.style.position = 'absolute';
-                mouth.style.transformOrigin = 'top left';
-                mouth.style.willChange = 'transform';
-                container.appendChild(mouth);
-              }
-
-              if (!state || !state.visible) {
-                container.style.display = 'none';
-                return;
-              }
-
-              container.style.display = 'block';
-              if (typeof state.zIndex !== 'undefined') {
-                container.style.zIndex = String(state.zIndex);
-              }
-
-              const poseImg = document.getElementById('char-pose');
-              const mouthImg = document.getElementById('char-mouth');
-
-              if (state.poseSrc && poseImg.getAttribute('data-src') !== state.poseSrc) {
-                poseImg.src = state.poseSrc;
-                poseImg.setAttribute('data-src', state.poseSrc);
-              }
-              if (state.mouthSrc && mouthImg.getAttribute('data-src') !== state.mouthSrc) {
-                mouthImg.src = state.mouthSrc;
-                mouthImg.setAttribute('data-src', state.mouthSrc);
-              }
-
-              poseImg.style.left = (state.poseX || 0) + 'px';
-              poseImg.style.top = (state.poseY || 0) + 'px';
-              poseImg.style.transform = `scale(${state.poseScale || 1})`;
-              poseImg.style.display = 'block';
-
-              mouthImg.style.left = (state.mouthX || 0) + 'px';
-              mouthImg.style.top = (state.mouthY || 0) + 'px';
-              mouthImg.style.transform = `scale(${state.mouthScale || 1})`;
-              mouthImg.style.display = state.mouthSrc ? 'block' : 'none';
-            };
-          }
-        }
-        """.replace("REPLACE_LIBS", libs)
-    )
+    page.evaluate(get_dispatcher_install_js(libs))
 
 
 def _load_timeline(json_path: Path) -> List[Dict[str, Any]]:
@@ -1789,6 +198,14 @@ def _load_timeline(json_path: Path) -> List[Dict[str, Any]]:
                 entry["z"] = int(item["z"])
             except (TypeError, ValueError):
                 pass
+        # NOTE: intentionally NOT carrying `timescale` here. Reverted from v24
+        # because plumbing timescale through to JS made the dispatcher's
+        # per-shot-timeline branch fire for most shots, and that approach
+        # regressed many previously-working shots while not fixing the
+        # original 3 problem shots (shot-1/2/22 in the test render). Leaving
+        # timescale undefined in JS means the per-shot-timeline branch stays
+        # dormant and shots play at base speed against globalTimeline — which
+        # is what worked for the majority before my v24-v30 changes.
         timeline.append(entry)
     return timeline
 def _load_words(words_path: Path) -> List[Dict[str, Any]]:
@@ -2101,6 +518,7 @@ def _active_entries_at(
         }
         if "z" in item:
             entry["z"] = item["z"]
+        # NOTE: intentionally NOT carrying `timescale` (reverted; see _load_timeline above).
 
         if cf > 0.0:
             if t < in_t:
@@ -2374,7 +792,6 @@ def render_video_from_json(
     caption_segments: List[Dict[str, Any]] = []
     caption_words: List[Dict[str, Any]] = []
     caption_styles: Dict[str, Any] = {}
-    caption_box: Dict[str, int] = {}
     if show_captions:
         if not captions_words_path or not captions_settings_path:
             raise ValueError("Captions requested but words path or settings path not provided")
@@ -2396,16 +813,15 @@ def render_video_from_json(
         caption_settings = _load_caption_settings(settings_p)
         caption_segments = _build_caption_segments(words, caption_settings["gap_threshold_seconds"])
         caption_styles = caption_settings
-        # Caption is now rendered as a full-viewport overlay with CSS positioning
-        # (matching client-side CaptionDisplay.tsx approach)
-        caption_box = {
-            "x": 0,
-            "y": 0,
-            "w": width,
-            "h": height,
-        }
-        # Scale caption font size proportionally to width
-        # Client defaults: S=16, M=20, L=28 at 1920w
+        # Caption is rendered as a full-viewport overlay with CSS positioning
+        # (matching client-side CaptionDisplay.tsx approach) — see the per-frame
+        # caption HTML emission below for the actual position/box logic.
+        # Caption font_size in caption_settings is "px at the 1920px canvas".
+        # Scale to the actual render width (1920 landscape, 1080 portrait).
+        # Single source of truth — the render-worker passes user-selected px
+        # through unchanged so this stays the only canvas-relative scale; if
+        # we ever scale here AND in the worker the result compounds to
+        # (width/1920)² and silently shrinks portrait captions to ~1% of frame.
         caption_font_scale = width / 1920.0
         base_font_size = caption_settings.get("font_size", 20)
         caption_settings["font_size"] = max(12, int(base_font_size * caption_font_scale))
@@ -2524,7 +940,13 @@ def render_video_from_json(
     # Render frames using Playwright (CSS animations run in real-time between frames)
     print("[RENDER-STAGE] launching chromium", flush=True)
     with sync_playwright() as p:
-        browser = p.chromium.launch(
+        # Retry chromium.launch on transient failure. When N parallel workers
+        # all spawn chromium simultaneously on a tight-RAM box, the OS can
+        # briefly deny one of them (OOM at allocation, fork limit, /tmp
+        # contention). Playwright's `rewrite_error` truncates the underlying
+        # cause so we can't see why — retrying with a small backoff lets the
+        # transient pressure pass instead of failing the whole worker.
+        _launch_args = dict(
             channel="chrome",  # Google Chrome — includes H.264/AAC codecs (Playwright Chromium lacks them)
             headless=True,
             args=[
@@ -2540,6 +962,26 @@ def render_video_from_json(
                 "--enable-gpu-rasterization",
             ],
         )
+        browser = None
+        _last_launch_err: Optional[BaseException] = None
+        for _attempt in range(3):
+            try:
+                browser = p.chromium.launch(**_launch_args)
+                break
+            except Exception as _e:
+                _last_launch_err = _e
+                _backoff = 2.0 * (_attempt + 1)  # 2s, 4s, 6s
+                print(
+                    f"[RENDER-STAGE] chromium.launch attempt {_attempt + 1}/3 failed: "
+                    f"{type(_e).__name__}: {_e}. Retrying in {_backoff:.1f}s",
+                    flush=True,
+                )
+                import time as _time
+                _time.sleep(_backoff)
+        if browser is None:
+            raise RuntimeError(
+                f"chromium.launch failed after 3 attempts: {_last_launch_err}"
+            ) from _last_launch_err
         print("[RENDER-STAGE] chromium launched, opening context", flush=True)
         _dpi_scale = device_scale_factor if device_scale_factor is not None else 1
         print(f"🎥 Rendering with DPI Scale Factor: {_dpi_scale}", flush=True)
@@ -2559,7 +1001,7 @@ def render_video_from_json(
                 print(f"[BROWSER {msg.type.upper()}] {msg.text}")
             elif msg.type in ("info", "log", "debug"):
                 txt = msg.text
-                if any(tag in txt for tag in ("DIAG", "VERSION", "ANNOT", "SIZING", "VIVUS", "ROUGHNOTATION")):
+                if any(tag in txt for tag in ("DIAG", "VERSION", "ANNOT", "SIZING", "VIVUS", "ROUGHNOTATION", "per-shot-timeline", "per-shot-timeline-postscript", "per-shot-timeline-postscript-gtl", "TS-RX", "vx-timescale", "scoped-gsap", "SCRIPT-ERR")):
                     print(f"[BROWSER LOG] {txt}")
         page.on("console", _on_console)
         def _on_pageerror(err):
@@ -2583,7 +1025,7 @@ def render_video_from_json(
         
         _prepare_page(page, width=width, height=height, background_color=background_color)
         # ── Build version marker ── (bump this when deploying changes)
-        print(f"[RENDER-VERSION] generate_video.py build=2026-05-01-v15 (vx-tweens-conv, diag-heartbeats, fps={fps})", flush=True)
+        print(f"[RENDER-VERSION] generate_video.py build=2026-05-09-v34 (gsap-gc-no-recurse-into-nested-timelines, fps={fps})", flush=True)
         # Wait for fonts to load before rendering frames
         try:
             page.evaluate("() => document.fonts.ready")
@@ -2609,9 +1051,75 @@ def render_video_from_json(
                 try {
                     gsap.globalTimeline.totalTime(state.t);
                 } catch(e) {}
+                // 5a. At shot boundaries, kill tweens that ended more than 1s ago.
+                // The renderer reuses the same gsap.globalTimeline across all shots
+                // in a chunk (see worker.py:312 — "shots share window.gsap.globalTimeline").
+                // Completed tweens stay registered and are walked every scrub, so
+                // per-frame cost grows linearly with shot index. Killing the dead
+                // ones at each segment change keeps that cost flat without
+                // disturbing tweens that are active or upcoming.
+                if (state.segmentChanged) {
+                    try {
+                        const cutoff = state.t - 1;
+                        // CRITICAL: nested=false. The previous version used
+                        // getChildren(true, ...) which walks recursively into
+                        // master timelines added by shot scripts. For tweens
+                        // INSIDE a nested timeline, tween.endTime() returns the
+                        // timeline-LOCAL position (e.g., 6.6 for a tween at
+                        // tl-position 6.0 dur 0.6), NOT the absolute gtl time.
+                        // cutoff is in absolute gtl time (e.g., state.t - 1 =
+                        // 8.5 when state.t=9.5). 6.6 < 8.5 → killed before
+                        // firing. Result: every nested tween in shot scripts'
+                        // gsap.timeline().to(...) chains was getting killed
+                        // immediately on shot mount (segmentChanged=true), so
+                        // they never fired. Visual symptom: shot-1 EXECUTION
+                        // GAP stuck at scale 0.5 (the scale-2 tween was at
+                        // tl-position 6.0, killed); shot-2 entirely white
+                        // (every master-tl tween killed; only the immediate-
+                        // render fromVars from tl.fromTo applied, leaving
+                        // #shot-root at opacity:0); shot-22 flash-word words
+                        // stuck at opacity 1 from first .to but second .to
+                        // never fired. Free-standing gsap.to/fromTo etc.
+                        // (top-level gtl children) survived because their
+                        // endTime() IS absolute gtl time.
+                        // Walking only direct children fixes this — top-level
+                        // tween/timeline endTime is absolute. Killing a parent
+                        // timeline cascades to its internal tweens, which is
+                        // also fine for cleanup purposes.
+                        const children = gsap.globalTimeline.getChildren(false, true, true);
+                        let _killed = 0;
+                        for (const tw of children) {
+                            try {
+                                const et = tw.endTime();
+                                if (typeof et === 'number' && et < cutoff) {
+                                    tw.kill();
+                                    _killed++;
+                                }
+                            } catch(e) {}
+                        }
+                        if (_killed > 0) {
+                            console.log('[GSAP-GC] killed=' + _killed + ' at t=' + state.t.toFixed(2));
+                        }
+                    } catch(e) {}
+                }
                 // 5b. Sync Anime.js registered timelines
                 try { if (window._animeSeek) window._animeSeek(state.t); } catch(e) {}
-                // 6. Seek stock videos (skip entirely if none exist)
+                // 6. Seek stock videos (skip entirely if none exist).
+                //
+                // Broken-video defence: when a stock URL fails to load, the <video>
+                // sits at readyState=0 indefinitely. The previous code waited up
+                // to 10s for `canplaythrough` + 2s for `seeked` PER FRAME PER VIDEO,
+                // turning a single 404'd clip into 11s/frame for the whole shot.
+                //
+                // We now use a wall-clock budget per video: each video gets up to
+                // VIDEO_LOAD_BUDGET_MS to reach readyState>=2 (HAVE_CURRENT_DATA,
+                // which is enough to seek). On reaching it we render normally; if
+                // the budget runs out we permanently skip seeks for that video.
+                // The render rate doesn't affect the budget (some boxes render
+                // 5fps, others 0.5fps — a frame-count threshold would unfairly
+                // penalise slow-loading-but-valid videos on slow render boxes).
+                const VIDEO_LOAD_BUDGET_MS = 5000;
+                if (!window.__videoState) window.__videoState = new WeakMap();
                 if (state.seekVideos) {
                     const allHosts = document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"]');
                     let hasVideos = false;
@@ -2628,12 +1136,38 @@ def render_video_from_json(
                         root.querySelectorAll('video').forEach(v => {
                             try {
                                 v.pause();
-                                // Wait for video to be seekable if not ready yet
+                                // Initialise per-video bookkeeping on first sight.
+                                let _vs = window.__videoState.get(v);
+                                if (!_vs) {
+                                    _vs = { brokenSinceMs: null, gaveUp: false };
+                                    window.__videoState.set(v, _vs);
+                                }
+                                // Permanently skip if we've already given up.
+                                if (_vs.gaveUp) return;
+                                // Not enough data to seek: give the video up to
+                                // VIDEO_LOAD_BUDGET_MS wall-clock to load before
+                                // permanently skipping it. Reset the timer if the
+                                // video later recovers.
+                                if (v.readyState < 2) {
+                                    if (_vs.brokenSinceMs === null) {
+                                        _vs.brokenSinceMs = performance.now();
+                                    } else if (performance.now() - _vs.brokenSinceMs > VIDEO_LOAD_BUDGET_MS) {
+                                        _vs.gaveUp = true;
+                                        try { console.log('[VIDEO-DIAG] gave up on video after ' + VIDEO_LOAD_BUDGET_MS + 'ms unloaded (src=' + (v.currentSrc || v.src || '?') + ')'); } catch(e) {}
+                                    }
+                                    return;
+                                }
+                                // Recovered (or never broken) — clear the timer.
+                                _vs.brokenSinceMs = null;
                                 const doSeek = async () => {
+                                    // Tight wait if we have data but not yet
+                                    // canplaythrough — gives a partly-loaded
+                                    // video a brief chance to settle, but bounds
+                                    // the per-frame cost.
                                     if (v.readyState < 4) {
                                         await new Promise(r => {
                                             v.addEventListener('canplaythrough', r, { once: true });
-                                            setTimeout(r, 10000);
+                                            setTimeout(r, 250);
                                         });
                                     }
                                     const inTime = parseFloat(host.dataset.inTime || '0');
@@ -2647,7 +1181,7 @@ def render_video_from_json(
                                     if (Math.abs(v.currentTime - targetTime) > 0.05) {
                                         await new Promise(r => {
                                             v.addEventListener('seeked', r, { once: true });
-                                            setTimeout(r, 2000);
+                                            setTimeout(r, 250);
                                             v.currentTime = targetTime;
                                         });
                                     }
@@ -2696,6 +1230,45 @@ def render_video_from_json(
                 if (state.segmentChanged && svgCount > 0) {
                     console.log('[ANNOT-DIAG] forced visible on ' + svgCount + ' rough-annotation SVGs');
                 }
+                // 7.5. Force-visible: rescue elements whose visibility depends on
+                // a GSAP tween that failed to bind a target. LLM HTML pattern:
+                //   .headline { opacity: 0 }  /* CSS — element starts hidden */
+                //   gsap.fromTo('#headline', {y:30}, {opacity:1, y:0, duration:0.6})
+                // If '#headline' resolves correctly: GSAP sets inline opacity from
+                // tween — fade-in plays. If selector doesn't resolve in the shadow
+                // root (typo, GSAP-internal toArray bypassing the scope proxy,
+                // shadow-DOM scoping mismatch the FE iframe-srcdoc doesn't have):
+                // GSAP warns 'target not found', the element stays at CSS opacity:0
+                // forever, invisible the entire shot.
+                //
+                // The 78+ '[BROWSER WARNING] GSAP target  not found' lines in user's
+                // log map to elements like .kinetic-word / .headline / .node etc
+                // that have CSS opacity:0 and no inline opacity to indicate intent.
+                //
+                // Rescue logic, run only on shot boundary (cheap):
+                //   - Skip if author set INLINE opacity → intentional initial state.
+                //   - Skip if any GSAP tween exists for this element → legit anim.
+                //   - Otherwise, force inline opacity:1 to match what FE shows.
+                if (state.segmentChanged && window.gsap && typeof window.gsap.getTweensOf === 'function') {
+                    let _fvCount = 0;
+                    document.querySelectorAll('[id^="snippet-"], [id^="segment-"], [id^="shot-"], [id^="branding-"]').forEach(host => {
+                        const fvRoot = host.shadowRoot;
+                        if (!fvRoot) return;
+                        fvRoot.querySelectorAll('*').forEach(el => {
+                            try {
+                                const inlineOp = el.style && el.style.opacity;
+                                if (inlineOp !== '' && inlineOp !== undefined && inlineOp !== null) return;
+                                const computed = window.getComputedStyle(el).opacity;
+                                if (parseFloat(computed) > 0.01) return;
+                                const tweens = window.gsap.getTweensOf(el);
+                                if (tweens && tweens.length > 0) return;
+                                el.style.setProperty('opacity', '1', 'important');
+                                _fvCount++;
+                            } catch (_) {}
+                        });
+                    });
+                    if (_fvCount > 0) console.log('[FORCE-VISIBLE] set opacity:1 on ' + _fvCount + ' untweened invisible elements');
+                }
                 // 8. Wait for paint — double-RAF ensures the browser has fully
                 // composited GSAP transform updates AND SVG stroke repaints
                 // before screenshot capture. Single RAF was insufficient for
@@ -2710,6 +1283,8 @@ def render_video_from_json(
 
         _prev_active_ids = set()
         _crossfade_duration: float = float(opts.get("crossfade_duration", 0.0))
+        _frame_progress_start = time.time()
+        _frame_progress_chunk_size = max(1, _render_end - _render_start)
 
         for frame_index in range(_render_start, _render_end):
             t = frame_index / float(fps)
@@ -3080,8 +1655,23 @@ def render_video_from_json(
                     _caption_entry = {"x": 0, "y": 0, "w": width, "h": height, "html": html}
 
             # ── Single batched evaluate: camera + character + caption + GSAP + video seek + annotations + paint wait ──
-            if frame_index % 30 == 0:
-                print(f"DEBUG: Processing frame {frame_index}/{total_frames} (t={t:.2f}s)")
+            # Emit a parseable progress line every 50 frames so the parent
+            # render-worker process can see liveness in real time and forward
+            # aggregate progress to the AI server. Format consumed by
+            # render_worker/worker.py's stdout streamer.
+            _local_idx = frame_index - _render_start
+            if _local_idx > 0 and (_local_idx % 50 == 0 or frame_index + 1 == _render_end):
+                _elapsed = max(0.001, time.time() - _frame_progress_start)
+                _rate = _local_idx / _elapsed
+                _remaining = max(0, _frame_progress_chunk_size - _local_idx)
+                _eta = _remaining / _rate if _rate > 0 else 0
+                print(
+                    f"[FRAME-PROGRESS] worker_pid={os.getpid()} "
+                    f"rendered={_local_idx}/{_frame_progress_chunk_size} "
+                    f"frame_index={frame_index} elapsed={_elapsed:.1f}s "
+                    f"eta={_eta:.1f}s rate={_rate:.2f}fps"
+                )
+                sys.stdout.flush()
 
             page.evaluate("async (state) => await window.__batchRenderFrame(state)", {
                 "entries": None,  # Already updated via __updateSnippets above

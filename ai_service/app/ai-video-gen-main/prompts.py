@@ -1,6 +1,7 @@
 """
 Prompts configuration for StillLift Automation.
 """
+from typing import Any, Dict, List, Optional
 
 # Background type presets for consistent theming
 BACKGROUND_PRESETS = {
@@ -264,15 +265,15 @@ Target Audience: {target_audience}
 
 Target Duration: {target_duration}
 
-**DURATION GUIDELINES — STRICT** (based on speaking rate of ~155 words/minute):
-- 30 seconds = ~75 words
-- 1 minute = ~155 words
-- 2 minutes = ~310 words
-- 3 minutes = ~465 words
-- 5 minutes = ~775 words
-- 7 minutes = ~1085 words
-- 10 minutes = ~1550 words
-⚠️ HARD CAP — your script will be REJECTED and require regeneration if it exceeds the target by >15%. Count your words carefully. The final script MUST match the target duration above. Do NOT write more content than needed — a 1-minute video needs ~155 words, NOT 300. Going over means the video will exceed the requested length AND trigger a costly retry. WRITE FEWER WORDS, NOT MORE.
+**DURATION GUIDELINES — STRICT** (calibrated to your TTS voice `{voice_label}` rendering at ~{wps_int} words/minute):
+- 30 seconds ≈ {ex_30s} words
+- 1 minute ≈ {ex_60s} words
+- 2 minutes ≈ {ex_120s} words
+- 3 minutes ≈ {ex_180s} words
+- 5 minutes ≈ {ex_300s} words
+- 7 minutes ≈ {ex_420s} words
+- 10 minutes ≈ {ex_600s} words
+⚠️ HARD CAP — your script will be REJECTED and require regeneration if it exceeds the target by >15%. Count your words carefully. The final script MUST match the target duration above. The voice `{voice_label}` paces at roughly **{wps_per_sec:.2f} words/second** — write FEWER words than a generic narrator, leaving room for ad-style pauses, brand stings, and product reveals. WRITE FEWER WORDS, NOT MORE.
 
 **HEX-CODE HANDLING — MANDATORY**:
 Any hex code (`#XXXXXX` format like `#0D0D0D` or `#C9A84C`) that appears in the user's prompt above is a CSS STYLING value (background colour, accent colour, text colour). NEVER include the literal hex string in the narration script — the host won't say "hashtag zero D zero D zero D" out loud. Hex codes are passed downstream as CSS values via background-color / color / border-color properties; they belong in the visual layer, not the narration.
@@ -410,7 +411,7 @@ SCRIPT_REVIEW_USER_PROMPT_TEMPLATE = """Review and improve this educational vide
 
 3. **Analogies & examples**: For every abstract concept, ensure there is at least one concrete, age-appropriate analogy or real-world example. Replace weak analogies with more vivid, memorable ones.
 
-4. **Pacing**: Check word count against the target duration (~155 words/minute). Trim fluff or expand thin sections. Trim filler words and hedging phrases ('basically', 'actually', 'kind of', 'you know') that slow pacing without adding value.
+4. **Pacing**: Check word count against the target duration (the chosen TTS voice paces at ~{wps_int} words/minute, so a {ex_30s}-word script renders ~30 seconds, an {ex_60s}-word script renders ~1 minute, etc.). Trim fluff or expand thin sections. Trim filler words and hedging phrases ('basically', 'actually', 'kind of', 'you know') that slow pacing without adding value. **DO NOT pad the script just to hit a higher wpm benchmark — fewer words at this voice's pace is correct.**
 
 5. **Emotional arc**: Verify the beat `emotion` fields create a varied arc (not all "calm" or all "excitement"). Adjust if monotone.
 
@@ -426,6 +427,203 @@ SCRIPT_REVIEW_USER_PROMPT_TEMPLATE = """Review and improve this educational vide
 
 Return the improved JSON with the same structure. Only modify content — do not add or remove keys.
 """
+
+
+# ---------------------------------------------------------------------------
+# User visual preferences — Slice B helper (appended to script user prompt)
+# ---------------------------------------------------------------------------
+
+# Maps each VisualPreferences family to (script-vocab visual_type bias text,
+# label used in LEAN AGAINST list, suggested visual_style for the whole video).
+# The script LLM picks `visual_type` from a smaller vocabulary than the
+# Director (IMAGE_HERO / IMAGE_SPLIT / TEXT_DIAGRAM / LOWER_THIRD /
+# ANIMATED_ASSET), so the bias map below maps each family to the closest
+# members of that vocabulary. The Director (Slice C) re-biases against its
+# full catalog later — this nudge is what tiers without a Director (free,
+# standard) rely on.
+_VISUAL_PREFERENCE_FAMILY_BIAS: Dict[str, Dict[str, str]] = {
+    "stock_video": {
+        "favor_visual_type": "IMAGE_HERO",
+        "favor_hint": (
+            "real-world / cinematic photograph in `image_prompt_hint` "
+            "(e.g. \"DSLR photo\", \"documentary still\")"
+        ),
+        "avoid_label": "stock-photography hero shots",
+        "visual_style_hint": "realistic cinematic photograph",
+    },
+    "ai_imagery": {
+        "favor_visual_type": "IMAGE_HERO, IMAGE_SPLIT",
+        "favor_hint": "image-driven beats with rich `image_prompt_hint`",
+        "avoid_label": "AI-generated imagery beats",
+        "visual_style_hint": "realistic cinematic photograph",
+    },
+    "svg_illustrated": {
+        "favor_visual_type": "TEXT_DIAGRAM, ANIMATED_ASSET",
+        "favor_hint": (
+            "explicit \"diagram\" / \"illustrated\" / \"sketched\" cues "
+            "in `visual_idea`"
+        ),
+        "avoid_label": "diagram / illustration beats",
+        "visual_style_hint": "scientific diagram illustration",
+    },
+    "motion_graphics": {
+        "favor_visual_type": "TEXT_DIAGRAM, ANIMATED_ASSET",
+        "favor_hint": (
+            "animated charts, processes, or data visualizations in `visual_idea`"
+        ),
+        "avoid_label": "motion-graphics beats",
+        "visual_style_hint": "flat vector illustration",
+    },
+    "app_ui_mockup": {
+        "favor_visual_type": "IMAGE_SPLIT, TEXT_DIAGRAM",
+        "favor_hint": (
+            "explicit \"app UI\", \"mobile screen\", \"browser interface\", "
+            "or \"dashboard\" cue in `visual_idea`"
+        ),
+        "avoid_label": "device / app UI mockup beats",
+        "visual_style_hint": "modern tech product",
+    },
+}
+
+
+def build_visual_preferences_script_block(prefs: Optional[Dict[str, Any]]) -> str:
+    """Build an optional block to append to the script user prompt.
+
+    Reads a *resolved* VisualPreferences dict (the post-merge view written
+    by `IntentRouterService.merge_visual_preferences`) and produces a
+    markdown block that biases the script's beat-level `visual_type` and
+    `image_prompt_hint` brevity. Returns "" when no preferences are
+    actively expressed (all None / "auto").
+
+    Slice B is the only thing that runs on the free / standard tiers
+    (which skip the Director), so the block has to do real work even
+    without downstream support: bias `visual_type` per beat, bias
+    `visual_style` for the whole video, and shape on-screen text density.
+    """
+    if not prefs:
+        return ""
+
+    # Skip the block entirely when no field is actively expressed. "auto" and
+    # None mean "no opinion" — pumping the prompt full of noise dilutes other
+    # rules and burns tokens.
+    active = {k: v for k, v in prefs.items() if v not in (None, "auto")}
+    if not active:
+        return ""
+
+    favor_lines: List[str] = []
+    avoid_labels: List[str] = []
+    visual_style_hints: List[str] = []
+
+    for family, bias in _VISUAL_PREFERENCE_FAMILY_BIAS.items():
+        v = active.get(family)
+        if v == "high":
+            favor_lines.append(
+                f"- visual_type: `{bias['favor_visual_type']}` — {bias['favor_hint']}"
+            )
+            visual_style_hints.append(bias["visual_style_hint"])
+        elif v == "no":
+            avoid_labels.append(f"- {bias['avoid_label']}")
+
+    parts: List[str] = [
+        "",  # leading blank line
+        "## 🎨 USER VISUAL PREFERENCES (soft guidance)",
+        (
+            "The user has expressed visual treatment preferences. Honor them "
+            "when content allows; do not contort the narrative to fit them — "
+            "content always wins on conflict."
+        ),
+    ]
+    if favor_lines:
+        parts.append("\n**LEAN TOWARD** (favor these in `beat_outline`):")
+        parts.extend(favor_lines)
+    if avoid_labels:
+        parts.append(
+            "\n**LEAN AGAINST** (use these only when the beat genuinely demands it):"
+        )
+        parts.extend(avoid_labels)
+    if visual_style_hints:
+        # Script picks ONE visual_style for the whole video — first FAVOR wins.
+        parts.append(
+            f"\n**`visual_style` HINT:** prefer "
+            f"`\"{visual_style_hints[0]}\"` if compatible with the "
+            f"subject_domain; otherwise pick the next-best fit from the "
+            f"visual_style classification list above."
+        )
+
+    density = active.get("text_density")
+    if density == "minimal":
+        parts.append(
+            "\n**ON-SCREEN TEXT DENSITY: minimal** — the viewer will hear "
+            "narration but see almost no on-screen text. Write narration that "
+            "is FULLY self-contained: NEVER say \"as you can see\", \"in this "
+            "diagram\", \"the chart shows\", or refer to on-screen labels. "
+            "Avoid LOWER_THIRD entirely (vocabulary banners are on-screen "
+            "text). Keep `visual_idea` ≤ 12 words. `image_prompt_hint` "
+            "describes the IMAGE only — no text overlays."
+        )
+    elif density == "low":
+        parts.append(
+            "\n**ON-SCREEN TEXT DENSITY: low** — keep on-screen text light. "
+            "Narration carries the meaning; on-screen text is decorative, not "
+            "load-bearing. Use LOWER_THIRD sparingly (max 1 per 30s of video) "
+            "and only for genuine vocabulary callouts. Keep `visual_idea` "
+            "≤ 18 words; no body paragraphs."
+        )
+    elif density == "rich":
+        parts.append(
+            "\n**ON-SCREEN TEXT DENSITY: rich** — on-screen text is welcome. "
+            "Headlines + supporting labels are encouraged where they reinforce "
+            "narration. LOWER_THIRD is freely available for vocabulary."
+        )
+
+    return "\n".join(parts)
+
+
+def build_visual_preferences_shot_block(
+    prefs: Optional[Dict[str, Any]],
+    shot_type: str,
+) -> str:
+    """Per-shot text-density caps. Slice D — keeps cheap LLMs from filling
+    minimal / low shots with body paragraphs and supporting captions.
+
+    Returns "" for None / "auto" / "rich" densities (no caps); a focused
+    micro-block for `minimal` / `low`. Family biases are NOT repeated here
+    — the Director's `shot_type` choice already encodes those, and the
+    Slice C director-prompt block carried the cross-shot instructions.
+    """
+    if not prefs:
+        return ""
+    density = (prefs.get("text_density") or "").lower()
+    if density not in ("minimal", "low"):
+        return ""
+
+    parts: List[str] = ["\n\n**✂️ ON-SCREEN TEXT BUDGET (user preference)**"]
+    if density == "minimal":
+        parts.append(
+            "- Headline: ≤ 4 words. NO body paragraphs. NO supporting captions."
+        )
+        parts.append(
+            "- At most ONE `.tracking-label` (an ALL-CAPS micro-label, ≤ 3 words). "
+            "All other text must be omitted from the HTML — narration carries the meaning."
+        )
+        if shot_type == "KINETIC_TITLE":
+            parts.append(
+                "- KINETIC_TITLE here: 1-2 words on screen. Single accent word. No subtitle line."
+            )
+        elif shot_type == "LOWER_THIRD":
+            parts.append(
+                "- LOWER_THIRD here: term + ≤ 5-word definition. No additional supporting text."
+            )
+    else:  # low
+        parts.append(
+            "- Headline: ≤ 7 words. NO body paragraphs. Drop subtitle lines unless they "
+            "carry a key term."
+        )
+        parts.append(
+            "- Use `.tracking-label` sparingly (max 1)."
+        )
+    return "\n".join(parts)
+
 
 # ---------------------------------------------------------------------------
 # Segment context addon (appended to HTML generation user prompt for Standard+ tiers)

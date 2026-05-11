@@ -94,7 +94,7 @@ async def stream_course_outline(
 
     # Convert CourseUserPromptRequest to internal CourseOutlineRequest
     from ..services.ai_models_service import AIModelsService
-    default_model = AIModelsService(db).get_models_for_use_case("outline").default_model_id
+    default_model = AIModelsService(db).get_models_for_use_case("outline").default_model.model_id
     
     final_model = model or payload.model or default_model
 

@@ -79,8 +79,11 @@ jobs:
               SARVAM_API_KEY=${{ secrets.SARVAM_API_KEY }} \
               RENDER_SERVER_URL=${{ secrets.RENDER_SERVER_URL }} \
               RENDER_SERVER_KEY=${{ secrets.RENDER_SERVER_KEY }} \
+              AI_SERVICE_PUBLIC_URL=https://backend-stage.vacademy.io \
               PEXELS_API_KEYS=${{ secrets.PEXELS_API_KEYS }} \
-              GOOGLE_CLOUD_PROJECT=${{ secrets.GOOGLE_CLOUD_PROJECT }}
+              SERPER_API_KEYS=${{ secrets.SERPER_API_KEYS }} \
+              GOOGLE_CLOUD_PROJECT=${{ secrets.GOOGLE_CLOUD_PROJECT }} \
+              INTERNAL_SERVICE_TOKEN=${{ secrets.INTERNAL_SERVICE_TOKEN }}
 
             # Apply resource limits from deployment YAML (helm upgrade not used in CI,
             # so patch directly to keep requests/limits in sync with the checked-in values).

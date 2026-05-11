@@ -45,7 +45,9 @@ import {
     newTextOverlay,
     newImageOverlay,
     newVideoOverlay,
+    findOverlayPath,
 } from './utils/html-overlay-editor';
+import { pathsEqual } from './utils/html-tree';
 import { TRANSITION_OPTIONS, Transition, TransitionType } from './utils/transitions';
 import { LayersTab } from './LayersTab';
 import { downloadShotHtml } from './utils/download-shot';
@@ -932,22 +934,48 @@ function HtmlTab({ entryId, entryHtml }: HtmlTabProps) {
 interface OverlaysTabProps {
     entryId: string;
     entryHtml: string;
+    canvasW: number;
+    canvasH: number;
 }
 
 function OverlayEditor({
     overlay,
+    selected,
+    onSelect,
     onPatch,
     onDelete,
     onReplaceSrc,
 }: {
     overlay: Overlay;
+    selected: boolean;
+    onSelect: () => void;
     onPatch: (patch: Partial<Overlay>) => void;
     onDelete: () => void;
     onReplaceSrc: () => void;
 }) {
     return (
-        <div className="space-y-2 rounded-md border border-gray-200 bg-gray-50 p-2">
-            <div className="flex items-center gap-1.5">
+        <div
+            className={[
+                'space-y-2 rounded-md border p-2 transition-colors',
+                selected
+                    ? 'border-indigo-400 bg-indigo-50 ring-1 ring-indigo-200'
+                    : 'border-gray-200 bg-gray-50',
+            ].join(' ')}
+        >
+            <div
+                role="button"
+                tabIndex={0}
+                onClick={onSelect}
+                onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onSelect();
+                    }
+                }}
+                title="Select on canvas"
+                className="-m-1 flex cursor-pointer items-center gap-1.5 rounded p-1 hover:bg-white/60"
+            >
                 {overlay.kind === 'text' && <Type className="size-3 text-indigo-500" />}
                 {overlay.kind === 'image' && <Image className="size-3 text-indigo-500" />}
                 {overlay.kind === 'video' && <Film className="size-3 text-indigo-500" />}
@@ -955,7 +983,10 @@ function OverlayEditor({
                     {overlay.kind}
                 </span>
                 <button
-                    onClick={onDelete}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onDelete();
+                    }}
                     className="text-gray-300 hover:text-red-500"
                     title="Delete overlay"
                 >
@@ -1071,6 +1102,44 @@ function OverlayEditor({
                     onChange={(v) => onPatch({ width: v } as Partial<Overlay>)}
                 />
             )}
+            {(overlay.kind === 'image' || overlay.kind === 'video') && (
+                <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-gray-500">Height</span>
+                        <button
+                            type="button"
+                            onClick={() =>
+                                onPatch({
+                                    height:
+                                        overlay.height == null ? overlay.width ?? 30 : undefined,
+                                } as Partial<Overlay>)
+                            }
+                            className="text-[10px] text-indigo-600 hover:underline"
+                        >
+                            {overlay.height == null ? 'Set' : 'Auto'}
+                        </button>
+                    </div>
+                    {overlay.height != null ? (
+                        <input
+                            type="range"
+                            min={5}
+                            max={100}
+                            step={1}
+                            value={overlay.height}
+                            onChange={(e) =>
+                                onPatch({
+                                    height: parseFloat(e.target.value),
+                                } as Partial<Overlay>)
+                            }
+                            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-gray-200 accent-indigo-600"
+                        />
+                    ) : (
+                        <p className="text-[10px] text-gray-400">
+                            Auto · preserves natural aspect ratio
+                        </p>
+                    )}
+                </div>
+            )}
             <SliderField
                 label="Opacity"
                 value={Math.round(overlay.opacity * 100)}
@@ -1084,19 +1153,35 @@ function OverlayEditor({
     );
 }
 
-function OverlaysTab({ entryId, entryHtml }: OverlaysTabProps) {
+function OverlaysTab({ entryId, entryHtml, canvasW, canvasH }: OverlaysTabProps) {
     const updateEntryHtml = useVideoEditorStore((s) => s.updateEntryHtml);
+    const selectLayer = useVideoEditorStore((s) => s.selectLayer);
+    const selectedLayerPath = useVideoEditorStore((s) => s.selectedLayerPath);
     const { uploadFile, getPublicUrl } = useFileUpload();
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const replaceTargetRef = useRef<{ id: string; kind: 'image' | 'video' } | null>(null);
 
-    const overlays = useMemo(() => listOverlays(entryHtml), [entryHtml]);
+    // Pass canvas dims so px-valued geometry (committed by the canvas drag/
+    // resize handles via patchNodeStyle) is converted back to % at parse
+    // time. Without this, a drag would silently snap left/top to 0.
+    const overlays = useMemo(
+        () => listOverlays(entryHtml, { w: canvasW, h: canvasH }),
+        [entryHtml, canvasW, canvasH]
+    );
 
     const patchHtml = useCallback(
         (nextHtml: string) => {
             updateEntryHtml(entryId, nextHtml);
         },
         [entryId, updateEntryHtml]
+    );
+
+    const selectOverlay = useCallback(
+        (overlayId: string) => {
+            const path = findOverlayPath(entryHtml, overlayId);
+            if (path) selectLayer(path);
+        },
+        [entryHtml, selectLayer]
     );
 
     const handleAddText = () => {
@@ -1194,15 +1279,21 @@ function OverlaysTab({ entryId, entryHtml }: OverlaysTabProps) {
                     No overlays yet — add text, image, or video above.
                 </p>
             ) : (
-                overlays.map((o) => (
-                    <OverlayEditor
-                        key={o.id}
-                        overlay={o}
-                        onPatch={handlePatch(o.id)}
-                        onDelete={handleDelete(o.id)}
-                        onReplaceSrc={() => o.kind !== 'text' && openFilePicker(o.kind, o.id)}
-                    />
-                ))
+                overlays.map((o) => {
+                    const path = findOverlayPath(entryHtml, o.id);
+                    const isSelected = !!path && pathsEqual(path, selectedLayerPath);
+                    return (
+                        <OverlayEditor
+                            key={o.id}
+                            overlay={o}
+                            selected={isSelected}
+                            onSelect={() => selectOverlay(o.id)}
+                            onPatch={handlePatch(o.id)}
+                            onDelete={handleDelete(o.id)}
+                            onReplaceSrc={() => o.kind !== 'text' && openFilePicker(o.kind, o.id)}
+                        />
+                    );
+                })
             )}
         </div>
     );
@@ -1371,6 +1462,7 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                         editor is built around. */}
                     {apiKey && (
                         <button
+                            data-tour="editor-remake"
                             onClick={handleRemakeOpen}
                             className={[
                                 'inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition',
@@ -1469,7 +1561,10 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
             </div>
 
             {/* Tab bar — horizontally scrollable so narrow panels still reveal every tab */}
-            <div className="flex shrink-0 overflow-x-auto border-b border-gray-200 [scrollbar-width:thin]">
+            <div
+                data-tour="editor-properties-tabs"
+                className="flex shrink-0 overflow-x-auto border-b border-gray-200 [scrollbar-width:thin]"
+            >
                 {(
                     [
                         { id: 'layers', icon: <Layers className="size-3" />, label: 'Layers' },
@@ -1526,7 +1621,14 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                     />
                 )}
                 {tab === 'media' && <MediaTab entryId={entryId} entryHtml={entry.html} />}
-                {tab === 'overlays' && <OverlaysTab entryId={entryId} entryHtml={entry.html} />}
+                {tab === 'overlays' && (
+                    <OverlaysTab
+                        entryId={entryId}
+                        entryHtml={entry.html}
+                        canvasW={canvasW}
+                        canvasH={canvasH}
+                    />
+                )}
                 {tab === 'layers' && <LayersTab entryId={entryId} entryHtml={entry.html} />}
                 {tab === 'code' && <HtmlTab entryId={entryId} entryHtml={entry.html} />}
             </div>

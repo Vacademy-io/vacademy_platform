@@ -192,7 +192,8 @@ public class LearnerEnrollRequestService {
                 }
             }
 
-            String learndashBaseUrl = getLearndashBaseUrlFromPackage(enrollDTO.getPackageSessionIds());
+            String learndashBaseUrl = resolveLearnerPortalUrl(
+                    enrollDTO.getPackageSessionIds(), learnerEnrollRequestDTO.getInstituteId());
             UserDTO user = authService.createUserFromAuthServiceForLearnerEnrollment(learnerEnrollRequestDTO.getUser(),
                     learnerEnrollRequestDTO.getInstituteId(), sendCredentials, learndashBaseUrl);
             learnerEnrollRequestDTO.setUser(user);
@@ -988,6 +989,24 @@ public class LearnerEnrollRequestService {
             log.error("Error in checkPackageSendCredentialsFlag - defaulting to sendCredentials=true", e);
             return true;
         }
+    }
+
+    /**
+     * Resolves the learner portal URL for the credential email's "Access Your Account" link.
+     * Priority: package.course_setting.LMS_SETTING.learndash_base_url → institute.learnerPortalBaseUrl → null.
+     * Kept in sync with the v3 path (BulkAssignmentService.resolveLearnerPortalUrl).
+     */
+    private String resolveLearnerPortalUrl(List<String> packageSessionIds, String instituteId) {
+        String packageUrl = getLearndashBaseUrlFromPackage(packageSessionIds);
+        if (StringUtils.hasText(packageUrl)) {
+            return packageUrl;
+        }
+        if (StringUtils.hasText(instituteId)) {
+            return instituteRepository.findById(instituteId)
+                    .map(Institute::getLearnerPortalBaseUrl)
+                    .orElse(null);
+        }
+        return null;
     }
 
     /**

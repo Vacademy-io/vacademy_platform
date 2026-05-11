@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from ..db import db_dependency
 from ..core.security import get_current_user
+from ..dependencies import require_internal_service_token
 from ..services.credit_service import CreditService
 from ..schemas.credits import (
     CreditBalanceResponse,
@@ -29,6 +30,9 @@ from ..schemas.credits import (
     CreditCheckResponse,
     CreditDeductRequest,
     CreditDeductResponse,
+    InternalGrantFromPaymentRequest,
+    InternalRefundFromPaymentRequest,
+    InternalGrantOrRefundResponse,
     TransactionHistoryRequest,
     TransactionHistoryResponse,
     UsageAnalyticsResponse,
@@ -370,3 +374,51 @@ def estimate_cost(
             result["has_sufficient_credits"] = balance.current_balance >= estimated_cost
 
     return result
+
+
+# ============================================================================
+# Internal Endpoints (service-to-service, X-Internal-Service-Token gated)
+#
+# Called by admin_core_service from the Razorpay webhook handler after a
+# credit-pack purchase succeeds (or is refunded). NOT exposed to end users —
+# auth is via shared secret, not user JWT.
+#
+# Idempotency: both endpoints dedup on `external_reference_id` (Razorpay
+# payment_id for grants, refund_id for refunds) via a partial UNIQUE index
+# on credit_transactions.external_reference_id (V243).
+# ============================================================================
+
+@router.post(
+    "/internal/grant-from-payment",
+    response_model=InternalGrantOrRefundResponse,
+    summary="Grant credits as fulfillment of a paid order (internal)",
+    description=(
+        "Service-to-service endpoint called by admin_core_service after a "
+        "Razorpay credit-pack payment is captured. Idempotent on Razorpay "
+        "payment_id. Requires X-Internal-Service-Token header."
+    ),
+)
+def grant_from_payment(
+    request: InternalGrantFromPaymentRequest,
+    service: CreditService = Depends(get_credit_service),
+    _: None = Depends(require_internal_service_token),
+):
+    return service.grant_from_purchase(request)
+
+
+@router.post(
+    "/internal/refund-from-payment",
+    response_model=InternalGrantOrRefundResponse,
+    summary="Reverse a previously-granted purchase (internal)",
+    description=(
+        "Service-to-service endpoint called by admin_core_service when "
+        "Razorpay sends a refund.processed webhook. Idempotent on Razorpay "
+        "refund_id. Balance is allowed to go negative (logged for ops)."
+    ),
+)
+def refund_from_payment(
+    request: InternalRefundFromPaymentRequest,
+    service: CreditService = Depends(get_credit_service),
+    _: None = Depends(require_internal_service_token),
+):
+    return service.refund_from_purchase(request)

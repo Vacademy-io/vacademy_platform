@@ -6,6 +6,15 @@ export interface AssignmentItem {
     payment_option_id?: string | null;
     plan_id?: string | null;
     access_days?: number | null;
+
+    /**
+     * CPO only. Amount admin records as paid now ([1, totalCpoFee]).
+     * Null or 0 → no payment recorded; learner can pay each installment later.
+     */
+    cpo_payment_amount?: number | null;
+
+    /** CPO only. "OFFLINE" if recording a payment, "SKIP" (default) otherwise. */
+    cpo_payment_mode?: 'OFFLINE' | 'SKIP' | null;
 }
 
 export interface AssignOptions {
@@ -94,6 +103,11 @@ export interface AssignResultItem {
     user_plan_id?: string;
     enroll_invite_id_used?: string;
     message?: string;
+    payment_option_type?: string | null;
+    cpo_total_amount?: number | null;
+    cpo_installment_count?: number | null;
+    cpo_initial_payment_amount?: number | null;
+    cpo_initial_payment_mode?: 'OFFLINE' | 'SKIP' | null;
 }
 
 export interface BulkAssignResponse {
@@ -150,6 +164,8 @@ export interface PaymentOption {
     tag: string | null;
     require_approval: boolean;
     payment_plans: PaymentPlan[];
+    /** Set when type='CPO'. Points at the underlying ComplexPaymentOption row. */
+    complex_payment_option_id?: string | null;
 }
 
 export interface PackageSessionToPaymentOption {
@@ -220,6 +236,14 @@ export interface SelectedPackageSession {
     enrollInviteId?: string | null;
     enrollInviteName?: string;
     accessDays?: number | null;
+
+    /**
+     * CPO-only per-course state, used when the resolved invite carries a CPO PaymentOption.
+     * mode='OFFLINE' records `amount` (in [1, totalCpoFee]) now; otherwise no payment is
+     * recorded and the learner pays installments online later.
+     */
+    cpoPaymentMode?: 'OFFLINE' | 'SKIP' | null;
+    cpoPaymentAmount?: number | null;
 }
 
 /** Global bulk enroll options (Step 3) */

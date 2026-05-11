@@ -516,6 +516,8 @@ public class EnrollInviteService {
                 .type(paymentOption.getType())
                 .paymentOptionMetadataJson(paymentOption.getPaymentOptionMetadataJson())
                 .requireApproval(paymentOption.isRequireApproval())
+                .unit(paymentOption.getUnit())
+                .complexPaymentOptionId(paymentOption.getComplexPaymentOptionId())
                 .paymentPlans(paymentPlans)
                 .build();
     }

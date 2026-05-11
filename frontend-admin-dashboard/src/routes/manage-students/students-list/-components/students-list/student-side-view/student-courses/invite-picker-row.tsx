@@ -10,6 +10,11 @@ import type {
     PaymentOption,
     PaymentPlan,
 } from '@/routes/manage-students/students-list/-types/bulk-assign-types';
+import {
+    CpoInstallmentPanel,
+    type CpoInstallmentValue,
+} from '@/routes/manage-students/students-list/-components/enroll-bulk/components/CpoInstallmentPanel';
+import { useResolvedInviteDetails } from '@/routes/manage-students/students-list/-hooks/useResolvedInviteDetails';
 
 // ── Per-PS config state (exposed to parent) ──
 export interface PackageSessionConfig {
@@ -23,6 +28,9 @@ export interface PackageSessionConfig {
     resolvedPaymentPlan: PaymentPlan | null;
 
     accessDaysOverride: number | null;
+
+    /** CPO-only state, populated when the resolved payment option is a CPO mirror. */
+    cpoPayment?: CpoInstallmentValue;
 }
 
 interface InvitePickerRowProps {
@@ -38,6 +46,20 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
     const [invites, setInvites] = useState<EnrollInviteProjection[]>([]);
     const [isLoadingDetail, setIsLoadingDetail] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Resolves the effective PaymentOption — works for both manual (admin picked an invite)
+    // and Auto mode (looks up the package session's DEFAULT invite, matching what the
+    // backend's DefaultInviteResolver does). Drives the CPO installment panel below.
+    const { data: resolvedFromHook } = useResolvedInviteDetails({
+        instituteId,
+        packageSessionId: config.packageSessionId,
+        enrollInviteId: config.selectedInvite?.id ?? null,
+    });
+    const effectivePaymentOption = config.resolvedPaymentOption ?? resolvedFromHook?.paymentOption ?? null;
+    const effectiveCpoId =
+        effectivePaymentOption?.type === 'CPO'
+            ? effectivePaymentOption.complex_payment_option_id ?? null
+            : null;
 
     // Fetch invite list when the card is expanded
     useEffect(() => {
@@ -102,12 +124,15 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
                     defaultPlan || plans.find((p) => p.status === 'ACTIVE') || null;
             }
 
+            const nextIsCpo = resolvedOption?.type === 'CPO';
             onChange({
                 ...config,
                 selectedInvite: invite,
                 isAutoMode: false,
                 resolvedPaymentOption: resolvedOption,
                 resolvedPaymentPlan: resolvedPlan,
+                // Reset CPO state on each invite change; defaults to SKIP.
+                cpoPayment: nextIsCpo ? { mode: 'SKIP', amount: null } : undefined,
             });
             setExpanded(false);
         } catch {
@@ -124,6 +149,7 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
             isAutoMode: true,
             resolvedPaymentOption: null,
             resolvedPaymentPlan: null,
+            cpoPayment: undefined,
         });
         setExpanded(false);
     };
@@ -362,7 +388,9 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
                                             className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
                                                 config.resolvedPaymentOption.type === 'FREE'
                                                     ? 'bg-emerald-100 text-emerald-700'
-                                                    : 'bg-orange-100 text-orange-700'
+                                                    : config.resolvedPaymentOption.type === 'CPO'
+                                                      ? 'bg-amber-100 text-amber-800'
+                                                      : 'bg-orange-100 text-orange-700'
                                             }`}
                                         >
                                             {config.resolvedPaymentOption.type}
@@ -456,6 +484,20 @@ export const InvitePickerRow = ({ config, onChange }: InvitePickerRowProps) => {
                             className="w-20 rounded border border-neutral-200 px-2 py-1 text-[11px] outline-none focus:border-primary-300"
                         />
                     </div>
+
+                </div>
+            )}
+
+            {/* CPO installments + optional initial payment recording.
+                Renders whether the admin picked a specific invite or left Auto mode —
+                effectiveCpoId comes from useResolvedInviteDetails which auto-falls-back to DEFAULT. */}
+            {effectiveCpoId && (
+                <div className="border-t border-neutral-100 px-4 pb-3">
+                    <CpoInstallmentPanel
+                        cpoId={effectiveCpoId}
+                        value={config.cpoPayment}
+                        onChange={(v) => onChange({ ...config, cpoPayment: v })}
+                    />
                 </div>
             )}
         </div>

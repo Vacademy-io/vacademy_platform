@@ -32,4 +32,20 @@ public class AssignmentItemDTO {
     private Integer accessDays;
 
     private List<CustomFieldValueDTO> customFieldValues;
+
+    /**
+     * For CPO payment options only. Amount admin chooses to record as paid right now.
+     * Allowed range: [1, total CPO contract value]. Null or 0 means no payment is recorded —
+     * the learner will still get all installment rows (PENDING) and can pay each online later.
+     */
+    private Double cpoPaymentAmount;
+
+    /**
+     * For CPO payment options only. One of:
+     *   "SKIP"    → enroll only, no payment recorded (default when null)
+     *   "OFFLINE" → admin records a cash/offline collection of cpoPaymentAmount; that amount
+     *               is allocated FIFO against the freshly-generated installment rows and an
+     *               Invoice is generated.
+     */
+    private String cpoPaymentMode;
 }

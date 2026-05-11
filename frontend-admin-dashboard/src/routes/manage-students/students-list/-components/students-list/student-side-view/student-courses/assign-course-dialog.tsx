@@ -131,13 +131,24 @@ export const AssignCourseDialog = ({
     };
 
     const buildRequest = (dryRun: boolean): BulkAssignRequest => {
-        const assignments: AssignmentItem[] = psConfigs.map((cfg) => ({
-            package_session_id: cfg.packageSessionId,
-            enroll_invite_id: cfg.isAutoMode ? null : cfg.selectedInvite?.id || null,
-            payment_option_id: cfg.isAutoMode ? null : cfg.resolvedPaymentOption?.id || null,
-            plan_id: cfg.isAutoMode ? null : cfg.resolvedPaymentPlan?.id || null,
-            access_days: cfg.accessDaysOverride,
-        }));
+        const assignments: AssignmentItem[] = psConfigs.map((cfg) => {
+            // CPO is detected from either an explicitly-picked invite or the auto-resolved
+            // panel state (cfg.cpoPayment is only set when the panel was rendered).
+            const cpoMode = cfg.cpoPayment?.mode ?? null;
+            const cpoAmount =
+                cpoMode === 'OFFLINE' && cfg.cpoPayment?.amount && cfg.cpoPayment.amount > 0
+                    ? cfg.cpoPayment.amount
+                    : null;
+            return {
+                package_session_id: cfg.packageSessionId,
+                enroll_invite_id: cfg.isAutoMode ? null : cfg.selectedInvite?.id || null,
+                payment_option_id: cfg.isAutoMode ? null : cfg.resolvedPaymentOption?.id || null,
+                plan_id: cfg.isAutoMode ? null : cfg.resolvedPaymentPlan?.id || null,
+                access_days: cfg.accessDaysOverride,
+                cpo_payment_mode: cpoMode,
+                cpo_payment_amount: cpoAmount,
+            };
+        });
 
         return {
             institute_id: instituteId,
@@ -377,26 +388,51 @@ export const AssignCourseDialog = ({
                     <p className="mb-1 text-[10px] font-semibold uppercase text-neutral-500">
                         Invite Configuration
                     </p>
-                    {psConfigs.map((cfg) => (
-                        <p
-                            key={cfg.packageSessionId}
-                            className="text-[11px] text-neutral-600"
-                        >
-                            <span className="font-medium">
-                                {cfg.packageSessionName.split(' · ')[0]}:
-                            </span>{' '}
-                            {cfg.isAutoMode ? (
-                                <span className="text-blue-600">Auto (Default)</span>
-                            ) : (
-                                <span className="text-purple-600">
-                                    {cfg.selectedInvite?.name}
-                                    {cfg.resolvedPaymentPlan
-                                        ? ` · ₹${cfg.resolvedPaymentPlan.actual_price}`
-                                        : ''}
-                                </span>
-                            )}
-                        </p>
-                    ))}
+                    {psConfigs.map((cfg) => {
+                        const previewResult = previewData?.results.find(
+                            (r) => r.package_session_id === cfg.packageSessionId
+                        );
+                        const isCpo =
+                            cfg.resolvedPaymentOption?.type === 'CPO' ||
+                            previewResult?.payment_option_type === 'CPO';
+                        const cpoTotal =
+                            previewResult?.cpo_total_amount ?? null;
+                        const cpoCount =
+                            previewResult?.cpo_installment_count ?? null;
+                        const cpoMode = cfg.cpoPayment?.mode ?? 'SKIP';
+                        const cpoAmount = cfg.cpoPayment?.amount ?? null;
+                        return (
+                            <div
+                                key={cfg.packageSessionId}
+                                className="text-[11px] text-neutral-600"
+                            >
+                                <span className="font-medium">
+                                    {cfg.packageSessionName.split(' · ')[0]}:
+                                </span>{' '}
+                                {cfg.isAutoMode ? (
+                                    <span className="text-blue-600">Auto (Default)</span>
+                                ) : (
+                                    <span className="text-purple-600">
+                                        {cfg.selectedInvite?.name}
+                                        {!isCpo && cfg.resolvedPaymentPlan
+                                            ? ` · ₹${cfg.resolvedPaymentPlan.actual_price}`
+                                            : ''}
+                                    </span>
+                                )}
+                                {isCpo && (
+                                    <span className="text-amber-700">
+                                        {' · CPO'}
+                                        {cpoCount != null ? ` · ${cpoCount} installments` : ''}
+                                        {cpoTotal != null ? ` · total ₹${cpoTotal}` : ''}
+                                        {' · '}
+                                        {cpoMode === 'OFFLINE' && cpoAmount
+                                            ? `recording ₹${cpoAmount} now`
+                                            : 'no initial payment'}
+                                    </span>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
 
                 {/* Results table */}

@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.annotations.Where;
-import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 
 import java.util.ArrayList;
@@ -51,12 +50,14 @@ public class PaymentOption {
     @Column(name = "unit")
     private String unit;
 
+    /**
+     * Scalar FK to ComplexPaymentOption. Intentionally NOT also mapped as a @ManyToOne
+     * relation — two Hibernate mappings on the same column cause the scalar to come back
+     * null on some read paths (notably the enroll-invite payload). All callers use
+     * getComplexPaymentOptionId() directly.
+     */
     @Column(name = "complex_payment_option_id")
     private String complexPaymentOptionId;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "complex_payment_option_id", insertable = false, updatable = false)
-    private ComplexPaymentOption complexPaymentOption;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

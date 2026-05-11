@@ -110,6 +110,7 @@ import { Route as AdmissionsApplicationIndexRouteImport } from "./routes/admissi
 import { Route as AdmissionsAdmissionListIndexRouteImport } from "./routes/admissions/admission-list/index"
 import { Route as AdmissionsAdmissionFormIndexRouteImport } from "./routes/admissions/admission-form/index"
 import { Route as AdminPackageManagementBulkCreateIndexRouteImport } from "./routes/admin-package-management/bulk-create/index"
+import { Route as VimReelsNewRouteImport } from "./routes/vim/reels/new"
 import { Route as TemplatesEditTemplateIdRouteImport } from "./routes/templates/edit/$templateId"
 import { Route as SignupOauthCallbackRouteImport } from "./routes/signup/oauth/callback"
 import { Route as PlanningPlanningLogIdRouteImport } from "./routes/planning/planning/$logId"
@@ -118,6 +119,7 @@ import { Route as ManagePagesEditorTagNameRouteImport } from "./routes/manage-pa
 import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/redirect"
 import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
 import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
+import { Route as VimReelsReelIdIndexRouteImport } from "./routes/vim/reels/$reelId/index"
 import { Route as VimEditVideoIdIndexRouteImport } from "./routes/vim/edit/$videoId/index"
 import { Route as VideoApiStudioEditVideoIdIndexRouteImport } from "./routes/video-api-studio/edit/$videoId/index"
 import { Route as StudyLibraryVoltAddIndexRouteImport } from "./routes/study-library/volt/add/index"
@@ -950,6 +952,11 @@ const AdminPackageManagementBulkCreateIndexRoute =
       (d) => d.Route,
     ),
   )
+const VimReelsNewRoute = VimReelsNewRouteImport.update({
+  id: "/vim/reels/new",
+  path: "/vim/reels/new",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TemplatesEditTemplateIdRoute = TemplatesEditTemplateIdRouteImport.update({
   id: "/templates/edit/$templateId",
   path: "/templates/edit/$templateId",
@@ -1008,6 +1015,11 @@ const WorkflowWorkflowIdEditIndexRoute =
       (d) => d.Route,
     ),
   )
+const VimReelsReelIdIndexRoute = VimReelsReelIdIndexRouteImport.update({
+  id: "/vim/reels/$reelId/",
+  path: "/vim/reels/$reelId/",
+  getParentRoute: () => rootRouteImport,
+} as any)
 const VimEditVideoIdIndexRoute = VimEditVideoIdIndexRouteImport.update({
   id: "/vim/edit/$videoId/",
   path: "/vim/edit/$videoId/",
@@ -1444,6 +1456,7 @@ export interface FileRoutesByFullPath {
   "/planning/planning/$logId": typeof PlanningPlanningLogIdRoute
   "/signup/oauth/callback": typeof SignupOauthCallbackRoute
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
+  "/vim/reels/new": typeof VimReelsNewRoute
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/admission-list/": typeof AdmissionsAdmissionListIndexRoute
@@ -1534,6 +1547,7 @@ export interface FileRoutesByFullPath {
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
   "/video-api-studio/edit/$videoId/": typeof VideoApiStudioEditVideoIdIndexRoute
   "/vim/edit/$videoId/": typeof VimEditVideoIdIndexRoute
+  "/vim/reels/$reelId/": typeof VimReelsReelIdIndexRoute
   "/workflow/$workflowId/edit/": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -1601,6 +1615,7 @@ export interface FileRoutesByTo {
   "/planning/planning/$logId": typeof PlanningPlanningLogIdRoute
   "/signup/oauth/callback": typeof SignupOauthCallbackRoute
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
+  "/vim/reels/new": typeof VimReelsNewRoute
   "/admin-package-management/bulk-create": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admissions/admission-form": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/admission-list": typeof AdmissionsAdmissionListIndexRoute
@@ -1691,6 +1706,7 @@ export interface FileRoutesByTo {
   "/study-library/volt/add": typeof StudyLibraryVoltAddIndexRoute
   "/video-api-studio/edit/$videoId": typeof VideoApiStudioEditVideoIdIndexRoute
   "/vim/edit/$videoId": typeof VimEditVideoIdIndexRoute
+  "/vim/reels/$reelId": typeof VimReelsReelIdIndexRoute
   "/workflow/$workflowId/edit": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -1760,6 +1776,7 @@ export interface FileRoutesById {
   "/planning/planning/$logId": typeof PlanningPlanningLogIdRoute
   "/signup/oauth/callback": typeof SignupOauthCallbackRoute
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
+  "/vim/reels/new": typeof VimReelsNewRoute
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/admission-list/": typeof AdmissionsAdmissionListIndexRoute
@@ -1850,6 +1867,7 @@ export interface FileRoutesById {
   "/study-library/volt/add/": typeof StudyLibraryVoltAddIndexRoute
   "/video-api-studio/edit/$videoId/": typeof VideoApiStudioEditVideoIdIndexRoute
   "/vim/edit/$videoId/": typeof VimEditVideoIdIndexRoute
+  "/vim/reels/$reelId/": typeof VimReelsReelIdIndexRoute
   "/workflow/$workflowId/edit/": typeof WorkflowWorkflowIdEditIndexRoute
   "/study-library/ai-copilot/shared/components/YouTubePlayerSimple": typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   "/assessment/assessment-list/offline-entry/$assessmentId/": typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -1920,6 +1938,7 @@ export interface FileRouteTypes {
     | "/planning/planning/$logId"
     | "/signup/oauth/callback"
     | "/templates/edit/$templateId"
+    | "/vim/reels/new"
     | "/admin-package-management/bulk-create/"
     | "/admissions/admission-form/"
     | "/admissions/admission-list/"
@@ -2010,6 +2029,7 @@ export interface FileRouteTypes {
     | "/study-library/volt/add/"
     | "/video-api-studio/edit/$videoId/"
     | "/vim/edit/$videoId/"
+    | "/vim/reels/$reelId/"
     | "/workflow/$workflowId/edit/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId/"
@@ -2077,6 +2097,7 @@ export interface FileRouteTypes {
     | "/planning/planning/$logId"
     | "/signup/oauth/callback"
     | "/templates/edit/$templateId"
+    | "/vim/reels/new"
     | "/admin-package-management/bulk-create"
     | "/admissions/admission-form"
     | "/admissions/admission-list"
@@ -2167,6 +2188,7 @@ export interface FileRouteTypes {
     | "/study-library/volt/add"
     | "/video-api-studio/edit/$videoId"
     | "/vim/edit/$videoId"
+    | "/vim/reels/$reelId"
     | "/workflow/$workflowId/edit"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId"
@@ -2235,6 +2257,7 @@ export interface FileRouteTypes {
     | "/planning/planning/$logId"
     | "/signup/oauth/callback"
     | "/templates/edit/$templateId"
+    | "/vim/reels/new"
     | "/admin-package-management/bulk-create/"
     | "/admissions/admission-form/"
     | "/admissions/admission-list/"
@@ -2325,6 +2348,7 @@ export interface FileRouteTypes {
     | "/study-library/volt/add/"
     | "/video-api-studio/edit/$videoId/"
     | "/vim/edit/$videoId/"
+    | "/vim/reels/$reelId/"
     | "/workflow/$workflowId/edit/"
     | "/study-library/ai-copilot/shared/components/YouTubePlayerSimple"
     | "/assessment/assessment-list/offline-entry/$assessmentId/"
@@ -2393,6 +2417,7 @@ export interface RootRouteChildren {
   PlanningPlanningLogIdRoute: typeof PlanningPlanningLogIdRoute
   SignupOauthCallbackRoute: typeof SignupOauthCallbackRoute
   TemplatesEditTemplateIdRoute: typeof TemplatesEditTemplateIdRoute
+  VimReelsNewRoute: typeof VimReelsNewRoute
   AdminPackageManagementBulkCreateIndexRoute: typeof AdminPackageManagementBulkCreateIndexRoute
   AdmissionsAdmissionFormIndexRoute: typeof AdmissionsAdmissionFormIndexRoute
   AdmissionsAdmissionListIndexRoute: typeof AdmissionsAdmissionListIndexRoute
@@ -2483,6 +2508,7 @@ export interface RootRouteChildren {
   StudyLibraryVoltAddIndexRoute: typeof StudyLibraryVoltAddIndexRoute
   VideoApiStudioEditVideoIdIndexRoute: typeof VideoApiStudioEditVideoIdIndexRoute
   VimEditVideoIdIndexRoute: typeof VimEditVideoIdIndexRoute
+  VimReelsReelIdIndexRoute: typeof VimReelsReelIdIndexRoute
   WorkflowWorkflowIdEditIndexRoute: typeof WorkflowWorkflowIdEditIndexRoute
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute: typeof StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute
   AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute: typeof AssessmentAssessmentListOfflineEntryAssessmentIdIndexRoute
@@ -3229,6 +3255,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdminPackageManagementBulkCreateIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/vim/reels/new": {
+      id: "/vim/reels/new"
+      path: "/vim/reels/new"
+      fullPath: "/vim/reels/new"
+      preLoaderRoute: typeof VimReelsNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/templates/edit/$templateId": {
       id: "/templates/edit/$templateId"
       path: "/templates/edit/$templateId"
@@ -3283,6 +3316,13 @@ declare module "@tanstack/react-router" {
       path: "/workflow/$workflowId/edit"
       fullPath: "/workflow/$workflowId/edit/"
       preLoaderRoute: typeof WorkflowWorkflowIdEditIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/vim/reels/$reelId/": {
+      id: "/vim/reels/$reelId/"
+      path: "/vim/reels/$reelId"
+      fullPath: "/vim/reels/$reelId/"
+      preLoaderRoute: typeof VimReelsReelIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/vim/edit/$videoId/": {
@@ -3659,6 +3699,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlanningPlanningLogIdRoute: PlanningPlanningLogIdRoute,
   SignupOauthCallbackRoute: SignupOauthCallbackRoute,
   TemplatesEditTemplateIdRoute: TemplatesEditTemplateIdRoute,
+  VimReelsNewRoute: VimReelsNewRoute,
   AdminPackageManagementBulkCreateIndexRoute:
     AdminPackageManagementBulkCreateIndexRoute,
   AdmissionsAdmissionFormIndexRoute: AdmissionsAdmissionFormIndexRoute,
@@ -3773,6 +3814,7 @@ const rootRouteChildren: RootRouteChildren = {
   StudyLibraryVoltAddIndexRoute: StudyLibraryVoltAddIndexRoute,
   VideoApiStudioEditVideoIdIndexRoute: VideoApiStudioEditVideoIdIndexRoute,
   VimEditVideoIdIndexRoute: VimEditVideoIdIndexRoute,
+  VimReelsReelIdIndexRoute: VimReelsReelIdIndexRoute,
   WorkflowWorkflowIdEditIndexRoute: WorkflowWorkflowIdEditIndexRoute,
   StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute:
     StudyLibraryAiCopilotSharedComponentsYouTubePlayerSimpleRoute,

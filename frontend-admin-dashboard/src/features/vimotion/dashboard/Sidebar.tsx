@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router';
 import { forwardRef } from 'react';
-import { Clapperboard, FolderOpen, LogOut, Palette, Sparkles, UserSquare2, Wand2, Coins } from 'lucide-react';
+import { Clapperboard, FolderOpen, LogOut, Palette, Scissors, Sparkles, UserSquare2, Wand2, Coins } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiCreditsQuery } from '@/services/ai-credits/get-ai-credits';
 import { AiCreditsPanel } from '@/components/common/ai-credits/AiCreditsPanel';
@@ -18,6 +18,7 @@ interface SidebarProps {
 const NAV_ITEMS: { id: DashboardTab; label: string; Icon: typeof Clapperboard }[] = [
     { id: 'create', label: 'Create', Icon: Wand2 },
     { id: 'recent', label: 'Recent', Icon: Clapperboard },
+    { id: 'reels', label: 'Reels', Icon: Scissors },
     { id: 'assets', label: 'Assets', Icon: FolderOpen },
     { id: 'avatars', label: 'Avatars', Icon: UserSquare2 },
     { id: 'brand-kits', label: 'Brand Kits', Icon: Palette },

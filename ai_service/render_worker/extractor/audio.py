@@ -169,7 +169,7 @@ def analyze_prosody(
         pauses=pauses,
     )
     logger.info(f"Prosody: mean_rms={mean_rms:.4f}, pauses={len(pauses)}, pitch={mean_pitch:.0f}Hz")
-    return summary, rms_times, rms
+    return summary, rms_times, rms, f0_times, f0
 
 
 # ---------------------------------------------------------------------------

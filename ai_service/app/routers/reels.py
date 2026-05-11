@@ -1,0 +1,737 @@
+"""
+Router for the Reels-from-Long-Video pipeline.
+
+Three-gate funnel (see REELS_FROM_VIDEO plan §3):
+  POST /external/reels/v1/scan       — Gate 1, heuristic scoring, free
+  POST /external/reels/v1/preview    — Gate 2, cheap LLM enrichment (Phase 2)
+  POST /external/reels/v1/render     — Gate 3, full render (Phase 2)
+  GET  /external/reels/v1/{id}
+  GET  /external/reels/v1/{id}/status
+  GET  /external/reels/v1/list
+  DELETE /external/reels/v1/{id}
+
+This file implements Gate 1 fully. Gates 2 + 3 ship in subsequent slices.
+"""
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import logging
+from typing import Any, List, Optional
+
+import httpx
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from ..db import db_dependency
+from ..dependencies import get_institute_from_api_key
+from ..models.ai_input_asset import AiInputAsset
+from ..repositories.ai_input_asset_repository import AiInputAssetRepository
+from ..repositories.ai_reel_repository import (
+    AiReelCandidateRepository,
+    AiReelRepository,
+)
+from uuid import uuid4
+from ..schemas.reels import (
+    CutSpan,
+    EnrichedCandidate,
+    PreviewRequest,
+    PreviewResponse,
+    ReelCandidate,
+    ReelResponse,
+    ReelStatusResponse,
+    RenderRequest,
+    ScanRequest,
+    ScanResponse,
+    ScoreAxes,
+    ScoreBreakdown,
+    StageProgress,
+    WordImportance,
+)
+from ..services.reels_engagement_service import (
+    ScoringRequest,
+    score_windows,
+)
+from ..services.reels_preview_service import ReelsPreviewService
+from ..services.reels_render_orchestrator import (
+    RenderContext,
+    dispatch_render,
+    register_all_stages,
+)
+from ..services.reels_thumbnail_service import ReelsThumbnailService
+
+# Install real stage handlers on top of the orchestrator's no-op defaults.
+# `register_all_stages()` imports every stage module — adding a new stage
+# means updating ONE place (the helper in the orchestrator) instead of
+# duplicating import lines here.
+register_all_stages()
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/external/reels/v1", tags=["reels"])
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+# How many top-ranked candidates get a thumbnail generated in the background
+# after /scan returns. Higher = more polish, more compute per scan.
+THUMBNAIL_TOP_N = 15
+
+# Timeout for fetching video_context.json from S3. The artifact is small
+# (~1-2 MB for a 1hr source) so 20s is generous.
+CONTEXT_FETCH_TIMEOUT_S = 20
+
+# Hard cap on the fetched video_context.json size. Real files are 1-2MB for
+# a 1hr source; 10MB is 10× headroom. Beyond this, treat as corrupt/hostile
+# rather than OOM the worker.
+CONTEXT_FETCH_MAX_BYTES = 10 * 1024 * 1024
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _config_hash(input_asset_id: str, req: ScanRequest) -> str:
+    """Idempotency key for the /scan cache. Stable across equivalent requests."""
+    payload = {
+        "input_asset_id": input_asset_id,
+        "target_duration_sec": req.target_duration_sec,
+        "duration_tolerance_sec": req.duration_tolerance_sec,
+        "scan_limit": req.scan_limit,
+        "aspect": req.aspect,
+        "topic_keywords": sorted(k.lower().strip() for k in (req.topic_keywords or [])),
+        "must_include_ranges": sorted(
+            [r.t_start, r.t_end] for r in (req.must_include_ranges or [])
+        ),
+    }
+    serialized = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+async def _fetch_context_json(context_url: str) -> dict:
+    """Fetch video_context.json from S3 and parse. Streams with a hard size
+    cap so a corrupt/hostile artifact can't OOM the worker.
+
+    Raises HTTPException on any failure (network, oversize, malformed JSON).
+    """
+    if not context_url:
+        raise HTTPException(
+            status_code=409,
+            detail="Source asset has no context_json_url — indexing may not have completed.",
+        )
+    try:
+        async with httpx.AsyncClient(timeout=CONTEXT_FETCH_TIMEOUT_S) as client:
+            async with client.stream("GET", context_url) as resp:
+                resp.raise_for_status()
+                # Early reject if the server reports a too-large content-length.
+                declared = resp.headers.get("content-length")
+                if declared and declared.isdigit() and int(declared) > CONTEXT_FETCH_MAX_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            f"Indexed metadata is implausibly large "
+                            f"({int(declared) // (1024 * 1024)}MB > "
+                            f"{CONTEXT_FETCH_MAX_BYTES // (1024 * 1024)}MB cap)."
+                        ),
+                    )
+                buf = bytearray()
+                async for chunk in resp.aiter_bytes(chunk_size=65536):
+                    buf.extend(chunk)
+                    if len(buf) > CONTEXT_FETCH_MAX_BYTES:
+                        raise HTTPException(
+                            status_code=413,
+                            detail=(
+                                f"Indexed metadata exceeded "
+                                f"{CONTEXT_FETCH_MAX_BYTES // (1024 * 1024)}MB cap during download — "
+                                f"likely a corrupt artifact."
+                            ),
+                        )
+                return json.loads(bytes(buf))
+    except HTTPException:
+        raise
+    except httpx.HTTPError as e:
+        logger.error(f"Failed to fetch video_context.json from {context_url}: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not fetch indexed metadata for source asset: {e}",
+        )
+    except json.JSONDecodeError as e:
+        logger.error(f"video_context.json at {context_url} is not valid JSON: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="Indexed metadata for source asset is corrupt.",
+        )
+
+
+def _validate_source_asset(asset: Optional[AiInputAsset], institute_id: str) -> AiInputAsset:
+    """Common preconditions: exists, belongs to caller, completed video, podcast mode.
+
+    Phase 1 only supports podcast-mode sources. Demo-mode (screen recordings)
+    lacks face_segments, prosody signals, and clean transcript structure that
+    the scorer was tuned for — letting it through would produce uniformly
+    poor candidates that frustrate users. Better to surface the limitation
+    explicitly.
+    """
+    if asset is None or asset.institute_id != institute_id:
+        raise HTTPException(status_code=404, detail="Input asset not found")
+    if asset.kind != "video":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Reels can only be made from video assets (got kind={asset.kind!r})",
+        )
+    if asset.status != "COMPLETED":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Source asset is not ready (status={asset.status!r}). Wait for indexing to complete.",
+        )
+    if asset.mode != "podcast":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Reels are only supported for podcast-mode sources in this release "
+                f"(got mode={asset.mode!r}). Re-index this asset with mode='podcast' "
+                f"if it's talking-head footage."
+            ),
+        )
+    return asset
+
+
+async def _populate_thumbnails(
+    source_url: str,
+    candidate_ids_and_midpoints: list[tuple[str, float]],
+) -> None:
+    """Background task: generate thumbnails for top-N and patch the rows.
+
+    Errors are swallowed — thumbnails are non-essential.
+    """
+    if not candidate_ids_and_midpoints:
+        return
+    try:
+        thumb_svc = ReelsThumbnailService()
+        results = await thumb_svc.generate_batch(source_url, candidate_ids_and_midpoints)
+    except Exception as e:
+        logger.warning(f"Thumbnail batch failed: {e}")
+        return
+
+    if not any(results.values()):
+        return
+
+    repo = AiReelCandidateRepository()
+    for cid, url in results.items():
+        if not url:
+            continue
+        try:
+            repo.set_thumbnail(cid, url)
+        except Exception as e:
+            logger.warning(f"Persist thumbnail URL failed for {cid}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# POST /scan — Gate 1
+# ---------------------------------------------------------------------------
+
+@router.post("/scan", response_model=ScanResponse)
+async def scan_reel_candidates(
+    request: ScanRequest,
+    background_tasks: BackgroundTasks,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """Gate 1: score candidate reel windows over an indexed source video.
+
+    Returns ranked candidates with 4-axis scores. No LLM cost; sub-second on
+    a warm cache, a few seconds on a cold scan (download + score + persist).
+    Thumbnails for the top candidates are generated asynchronously and
+    appear on a subsequent /scan call (idempotent via config_hash).
+    """
+    # 1. Validate the source asset.
+    asset_repo = AiInputAssetRepository(session=db)
+    asset = asset_repo.get_by_id(request.input_asset_id)
+    asset = _validate_source_asset(asset, institute_id)
+
+    # 2. Compute the idempotency key.
+    cfg_hash = _config_hash(request.input_asset_id, request)
+
+    # 3. Cache hit?
+    candidate_repo = AiReelCandidateRepository(session=db)
+    cached = candidate_repo.find_cached(request.input_asset_id, cfg_hash)
+    if cached:
+        candidates = [_candidate_row_to_response(row) for row in cached]
+        return ScanResponse(
+            input_asset_id=request.input_asset_id,
+            config_hash=cfg_hash,
+            candidates=candidates,
+            total_returned=len(cached),
+            cache_ttl_seconds=3600,
+        )
+
+    # 4. Cold scan: fetch context, score, persist.
+    context = await _fetch_context_json(asset.context_json_url or "")
+
+    scoring_req = ScoringRequest(
+        target_duration_sec=request.target_duration_sec,
+        duration_tolerance_sec=request.duration_tolerance_sec,
+        scan_limit=request.scan_limit,
+        topic_keywords=tuple(request.topic_keywords or ()),
+        must_include_ranges=tuple(
+            (r.t_start, r.t_end) for r in (request.must_include_ranges or [])
+        ),
+    )
+
+    scored = score_windows(context, scoring_req)
+    if not scored:
+        # No usable windows — return empty result rather than 500. FE will
+        # show "We couldn't find good clips" with the option to relax filters.
+        return ScanResponse(
+            input_asset_id=request.input_asset_id,
+            config_hash=cfg_hash,
+            candidates=[],
+            total_returned=0,
+            cache_ttl_seconds=3600,
+        )
+
+    # Persist rows so /preview and /render can reference them by id.
+    rows = [
+        {
+            "rank": cs.rank,
+            "source_t_start": cs.source_t_start,
+            "source_t_end": cs.source_t_end,
+            "source_duration_s": cs.source_duration_s,
+            "predicted_output_duration_s": cs.predicted_output_duration_s,
+            "score": {
+                "hook": cs.score.hook,
+                "pacing": cs.score.pacing,
+                "info": cs.score.info,
+                "loop": cs.score.loop,
+                "composite": cs.score.composite,
+            },
+            "breakdown": cs.score.breakdown or {},
+            "transcript_snippet": cs.transcript_snippet,
+            "thumbnail_strip_url": None,
+        }
+        for cs in scored
+    ]
+    persisted = candidate_repo.bulk_create(
+        institute_id=institute_id,
+        input_asset_id=request.input_asset_id,
+        config_hash=cfg_hash,
+        rows=rows,
+    )
+
+    # 5. Schedule background thumbnail generation for top-N.
+    # Use the public assets_urls.source_video if present — it's a browser-
+    # compatible re-encode produced by the indexer. Fall back to source_url
+    # (the user's original upload) if not.
+    source_url_for_thumbs = (
+        (asset.assets_urls or {}).get("source_video")
+        or asset.source_url
+    )
+    if source_url_for_thumbs:
+        top_n = persisted[:THUMBNAIL_TOP_N]
+        midpoints = [
+            (str(row.id), (row.source_t_start + row.source_t_end) / 2.0)
+            for row in top_n
+        ]
+        background_tasks.add_task(
+            _populate_thumbnails, source_url_for_thumbs, midpoints
+        )
+
+    # 6. Build response.
+    response_candidates = [_candidate_row_to_response(row) for row in persisted]
+    return ScanResponse(
+        input_asset_id=request.input_asset_id,
+        config_hash=cfg_hash,
+        candidates=response_candidates,
+        total_returned=len(response_candidates),
+        cache_ttl_seconds=3600,
+    )
+
+
+def _candidate_row_to_response(row) -> ReelCandidate:
+    """ai_reel_candidates row → ReelCandidate response model."""
+    score_dict = row.score or {}
+    bd_dict = row.breakdown or {}
+    axes = ScoreAxes(
+        hook=score_dict.get("hook", 0.0),
+        pacing=score_dict.get("pacing", 0.0),
+        info=score_dict.get("info", 0.0),
+        loop=score_dict.get("loop", 0.0),
+        composite=score_dict.get("composite", 0.0),
+    )
+    breakdown = ScoreBreakdown(**{
+        k: bd_dict.get(k) for k in (
+            "opener_quality", "energy_first_2_5s", "first_sentence_complete",
+            "silence_fraction", "emphasis_density", "predicted_after_silence_s",
+            "unique_content_words_per_s", "numeric_token_count",
+            "first_last_mfcc_similarity", "has_verbal_cta_end",
+            "word_cut_savings_needed_s", "word_cut_savings_pct",
+            "speaker_moves_in_window",
+        )
+    })
+    return ReelCandidate(
+        candidate_id=str(row.id),
+        rank=row.rank,
+        source_t_start=row.source_t_start,
+        source_t_end=row.source_t_end,
+        source_duration_s=row.source_duration_s,
+        predicted_output_duration_s=row.predicted_output_duration_s,
+        score=axes,
+        breakdown=breakdown,
+        transcript_snippet=row.transcript_snippet or "",
+        thumbnail_strip_url=row.thumbnail_strip_url,
+        low_confidence=axes.composite < 60,
+    )
+
+
+def _enriched_dict_to_response(candidate_id: str, enriched: dict) -> EnrichedCandidate:
+    """Map persisted `enriched` JSONB → EnrichedCandidate response model."""
+    words = [
+        WordImportance(
+            word=str(w.get("word", "")),
+            t_start=float(w.get("t_start", 0.0)),
+            t_end=float(w.get("t_end", 0.0)),
+            importance=int(w.get("importance", 2)),
+            keyword_type=w.get("keyword_type"),
+        )
+        for w in (enriched.get("word_importance") or [])
+        if isinstance(w, dict)
+    ]
+    cuts = [
+        CutSpan(
+            t_start=float(c.get("t_start", 0.0)),
+            t_end=float(c.get("t_end", 0.0)),
+            kind=c.get("kind", "word"),
+        )
+        for c in (enriched.get("cut_plan") or [])
+        if isinstance(c, dict)
+    ]
+    return EnrichedCandidate(
+        candidate_id=candidate_id,
+        title=str(enriched.get("title") or "Untitled"),
+        rationale=str(enriched.get("rationale") or ""),
+        word_importance=words,
+        cut_plan=cuts,
+        predicted_output_duration_s=float(enriched.get("predicted_output_duration_s") or 0.0),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /preview — Gate 2
+# ---------------------------------------------------------------------------
+
+@router.post("/preview", response_model=PreviewResponse)
+async def preview_reel_candidates(
+    request: PreviewRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """Gate 2: enrich N user-picked scan candidates with title + rationale +
+    word-importance + cut-plan. One Haiku-class LLM call per candidate
+    (skipped if the candidate is already enriched within its TTL).
+
+    Returns one EnrichedCandidate per requested candidate_id. Order matches
+    request order. If a candidate id is unknown or doesn't belong to the
+    caller's institute, that entry is silently dropped — partial responses
+    are allowed.
+    """
+    if not request.candidate_ids:
+        return PreviewResponse(enriched=[])
+
+    candidate_repo = AiReelCandidateRepository(session=db)
+    rows = candidate_repo.get_by_ids(request.candidate_ids)
+
+    # Filter to the caller's institute + the asset they specified. Silent
+    # drop on mismatch — we don't want to leak existence of other institutes'
+    # candidates via different status codes.
+    rows = [
+        r for r in rows
+        if r.institute_id == institute_id
+        and str(r.input_asset_id) == request.input_asset_id
+    ]
+    if not rows:
+        return PreviewResponse(enriched=[])
+
+    # We need the source's video_context.json for word-level data + emphasis
+    # marks. Fetch ONCE per /preview call regardless of how many candidates.
+    asset_repo = AiInputAssetRepository(session=db)
+    asset = asset_repo.get_by_id(request.input_asset_id)
+    asset = _validate_source_asset(asset, institute_id)
+    context = await _fetch_context_json(asset.context_json_url or "")
+
+    # Recover target / tolerance / topic_keywords from the candidate's
+    # config_hash → actually those aren't stored. The scan request's
+    # values live only in the original /scan call; we re-derive from
+    # the candidate's source window vs target_duration field. For now,
+    # default to the candidate's predicted_output_duration_s as the
+    # target (the user already saw it on the scan card) with the same
+    # 3s tolerance as scan default. Future: persist scan_request on the
+    # candidate row so /preview replays the exact same config.
+    preview_svc = ReelsPreviewService()
+
+    # Split rows into cache hits (cheap, sync) and misses (need LLM).
+    # Each row carries its index so we can reassemble in request order.
+    cache_hits: list[tuple[int, EnrichedCandidate]] = []
+    miss_rows: list[tuple[int, Any]] = []
+    for i, row in enumerate(rows):
+        if row.enriched:
+            cache_hits.append((i, _enriched_dict_to_response(str(row.id), row.enriched)))
+        else:
+            miss_rows.append((i, row))
+
+    # Run all cache-miss enrichments concurrently. Each candidate is an
+    # independent LLM call + DB write; gathering parallelizes the LLM hops
+    # (the slow part) so p95 doesn't grow linearly with picks.
+    async def _enrich_one(row) -> tuple[Any, dict]:
+        target = int(round(row.predicted_output_duration_s or 25))
+        tolerance = 3  # FE may want to expose this later; safe default for now
+        payload = await preview_svc.enrich(
+            candidate_row=row,
+            context=context,
+            target_duration_sec=target,
+            duration_tolerance_sec=tolerance,
+            topic_keywords=(),  # not persisted on candidate; future enhancement
+        )
+        return row, payload.to_dict()
+
+    miss_results: list[tuple[int, EnrichedCandidate]] = []
+    if miss_rows:
+        outcomes = await asyncio.gather(
+            *(_enrich_one(r) for _, r in miss_rows),
+            return_exceptions=True,
+        )
+        for (i, row), outcome in zip(miss_rows, outcomes):
+            if isinstance(outcome, BaseException):
+                # One candidate failed — log and skip rather than nuke the
+                # whole batch. The FE will see partial results.
+                logger.warning(f"Enrich failed for candidate {row.id}: {outcome}")
+                continue
+            _, enriched_dict = outcome
+            try:
+                candidate_repo.set_enriched(str(row.id), enriched_dict)
+            except Exception as e:
+                logger.warning(f"Failed to persist enriched for {row.id}: {e}")
+            miss_results.append((i, _enriched_dict_to_response(str(row.id), enriched_dict)))
+
+    # Reassemble in request order.
+    combined: list[tuple[int, EnrichedCandidate]] = cache_hits + miss_results
+    combined.sort(key=lambda pair: pair[0])
+    enriched_out = [item for _, item in combined]
+    return PreviewResponse(enriched=enriched_out)
+
+
+def _reel_row_to_response(row) -> ReelResponse:
+    """ai_reels row → ReelResponse. Mirrors AiReel.to_dict() shape but
+    coerces nested lists into typed StageProgress objects."""
+    d = row.to_dict()
+    stages = [
+        StageProgress(
+            stage=s.get("stage", "UNKNOWN"),
+            progress=int(s.get("progress", 0) or 0),
+        )
+        for s in (d.get("stages") or [])
+        if isinstance(s, dict)
+    ]
+    return ReelResponse(
+        id=d["id"],
+        reel_id=d["reel_id"],
+        institute_id=d["institute_id"],
+        input_asset_id=d["input_asset_id"],
+        candidate_id=d.get("candidate_id"),
+        status=d["status"],
+        current_stage=d["current_stage"],
+        progress=d.get("progress", 0),
+        stages=stages,
+        error_message=d.get("error_message"),
+        config=d.get("config") or {},
+        source_window=d.get("source_window") or {},
+        trim_map=d.get("trim_map"),
+        s3_urls=d.get("s3_urls") or {},
+        metadata=d.get("metadata") or {},
+        created_at=d.get("created_at"),
+        updated_at=d.get("updated_at"),
+        completed_at=d.get("completed_at"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /render — Gate 3
+# ---------------------------------------------------------------------------
+
+@router.post("/render", response_model=ReelResponse)
+async def render_reel(
+    request: RenderRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """Gate 3: trigger an async multi-stage render of one chosen candidate.
+
+    Returns immediately with `status=IN_PROGRESS`. The FE polls
+    `GET /reels/v1/{reel_id}/status` for stage-by-stage progress.
+
+    Validation:
+      - Source asset must exist, belong to caller, be a COMPLETED podcast.
+      - Candidate must exist, belong to caller, reference the same source asset.
+      - Candidate SHOULD be enriched (i.e., /preview was called) — we
+        currently allow un-enriched candidates through with a heuristic
+        cut plan generated on-the-fly later; the FE should usually call
+        /preview first so the user sees the plan before paying for render.
+    """
+    # 1. Validate source asset.
+    asset_repo = AiInputAssetRepository(session=db)
+    asset = asset_repo.get_by_id(request.input_asset_id)
+    asset = _validate_source_asset(asset, institute_id)
+
+    # 2. Validate candidate.
+    candidate_repo = AiReelCandidateRepository(session=db)
+    candidate = candidate_repo.get_by_id(request.candidate_id)
+    if (
+        candidate is None
+        or candidate.institute_id != institute_id
+        or str(candidate.input_asset_id) != request.input_asset_id
+    ):
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    # 3. Create the AiReel row.
+    reel_repo = AiReelRepository(session=db)
+    reel_id = f"reel-{uuid4().hex[:12]}"
+    config_dict = request.model_dump()
+    # G4: Snapshot the candidate's current `enriched` payload (title,
+    # rationale, word_importance, cut_plan) into the reel's config at
+    # /render time. The render reads from this snapshot, NOT from
+    # candidate.enriched, so a concurrent /preview call can't quietly
+    # change what the user paid to render.
+    if candidate.enriched:
+        config_dict["enriched_snapshot"] = candidate.enriched
+    source_window = {
+        "t_start": candidate.source_t_start,
+        "t_end": candidate.source_t_end,
+        "original_duration_s": candidate.source_duration_s,
+    }
+    reel = reel_repo.create(
+        reel_id=reel_id,
+        institute_id=institute_id,
+        input_asset_id=request.input_asset_id,
+        parent_candidate_id=str(candidate.id),
+        config=config_dict,
+        source_window=source_window,
+    )
+
+    # 4. Build the render context and dispatch the background task.
+    # We pass a plain dict-friendly snapshot rather than the SQLAlchemy row
+    # so the background task is decoupled from request-scoped session state.
+    ctx = RenderContext(
+        reel_pk=str(reel.id),
+        reel_id=reel.reel_id,
+        institute_id=institute_id,
+        input_asset_id=request.input_asset_id,
+        candidate_id=str(candidate.id),
+        config=config_dict,
+        source_window=source_window,
+    )
+    dispatch_render(ctx)
+
+    # 5. Return the row immediately. status=PENDING in the DB initially;
+    # we re-read after dispatch in case the orchestrator already flipped
+    # to IN_PROGRESS (race-free under asyncio single-threaded scheduling).
+    db.refresh(reel)
+    return _reel_row_to_response(reel)
+
+
+# ---------------------------------------------------------------------------
+# GET /list — list reels for the institute (optionally filtered by source asset)
+# ---------------------------------------------------------------------------
+
+@router.get("/list", response_model=List[ReelResponse])
+async def list_reels(
+    input_asset_id: Optional[str] = Query(
+        None,
+        description="Filter to reels derived from a specific source asset.",
+    ),
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """List reels for the calling institute, newest first."""
+    repo = AiReelRepository(session=db)
+    rows = repo.list_by_institute(institute_id, input_asset_id=input_asset_id)
+    return [_reel_row_to_response(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# GET /{reel_id} — full reel record
+# ---------------------------------------------------------------------------
+
+@router.get("/{reel_id}", response_model=ReelResponse)
+async def get_reel(
+    reel_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """Full reel record. `reel_id` is the user-facing string id (not the UUID pk).
+
+    Includes per-stage progress, trim map, and output URLs once complete.
+    """
+    repo = AiReelRepository(session=db)
+    row = repo.get_by_reel_id(reel_id)
+    if row is None or row.institute_id != institute_id:
+        raise HTTPException(status_code=404, detail="Reel not found")
+    return _reel_row_to_response(row)
+
+
+# ---------------------------------------------------------------------------
+# GET /{reel_id}/status — lightweight poll payload
+# ---------------------------------------------------------------------------
+
+@router.get("/{reel_id}/status", response_model=ReelStatusResponse)
+async def get_reel_status(
+    reel_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """Lightweight status poll. FE hits this every few seconds during a
+    render to advance the stage-by-stage progress UI (§13.11 of plan).
+    """
+    repo = AiReelRepository(session=db)
+    row = repo.get_by_reel_id(reel_id)
+    if row is None or row.institute_id != institute_id:
+        raise HTTPException(status_code=404, detail="Reel not found")
+    stages = [
+        StageProgress(
+            stage=s.get("stage", "UNKNOWN"),
+            progress=int(s.get("progress", 0) or 0),
+        )
+        for s in (row.stages or [])
+        if isinstance(s, dict)
+    ]
+    return ReelStatusResponse(
+        id=str(row.id),
+        status=row.status,
+        current_stage=row.current_stage,
+        progress=row.progress or 0,
+        stages=stages,
+        error_message=row.error_message,
+    )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /{reel_id} — hard-delete a reel record
+# ---------------------------------------------------------------------------
+
+@router.delete("/{reel_id}")
+async def delete_reel(
+    reel_id: str,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+):
+    """Delete a reel record. The reel's rendered MP4 and intermediate
+    artifacts stay in S3 — only the DB row is removed. A separate lifecycle
+    job sweeps orphaned artifacts.
+    """
+    repo = AiReelRepository(session=db)
+    row = repo.get_by_reel_id(reel_id)
+    if row is None or row.institute_id != institute_id:
+        raise HTTPException(status_code=404, detail="Reel not found")
+    repo.delete_by_id(str(row.id))
+    return {"deleted": True}

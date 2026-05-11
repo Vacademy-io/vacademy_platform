@@ -9,6 +9,7 @@ import {
     type InputAssetRecord,
     type VideoContextData,
 } from '@/routes/video-api-studio/-services/input-asset';
+import { CreateReelsCTA } from '../reels/dashboard/CreateReelsCTA';
 
 interface AssetDetailPanelProps {
     asset: InputAssetRecord;
@@ -85,7 +86,7 @@ export function AssetDetailPanel({ asset, apiKey, onClose }: AssetDetailPanelPro
                 </div>
 
                 {/* Footer */}
-                <div className="border-t border-neutral-200 p-3">
+                <div className="flex items-center justify-between gap-2 border-t border-neutral-200 p-3">
                     <button
                         type="button"
                         onClick={handleDelete}
@@ -99,6 +100,9 @@ export function AssetDetailPanel({ asset, apiKey, onClose }: AssetDetailPanelPro
                         )}
                         Delete asset
                     </button>
+                    {/* "Create Reels from this" — renders nothing when the asset
+                        isn't reels-eligible (image / non-podcast / not COMPLETED). */}
+                    <CreateReelsCTA asset={asset} />
                 </div>
             </aside>
         </div>

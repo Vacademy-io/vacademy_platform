@@ -608,10 +608,15 @@ public class WhatsAppTemplateManagerService {
         // Step 1: start an upload session. Per Meta docs, both Bearer and the
         // access_token query param work — we use Bearer to match the rest of
         // this service's calls.
+        //
+        // IMPORTANT: do NOT URL-encode the `file_type` value. Meta validates it
+        // against the regex /^[a-z]+(\/[A-Za-z.0-9-+]+)?$/ which requires a
+        // literal '/'. URLEncoder.encode turns "image/png" into "image%2Fpng"
+        // and Meta rejects it with error code 100.
         String startUrl = "https://graph.facebook.com/v22.0/" + creds.appId + "/uploads"
                 + "?file_name=" + URLEncoder.encode(fileName, StandardCharsets.UTF_8)
                 + "&file_length=" + bytes.length
-                + "&file_type=" + URLEncoder.encode(contentType, StandardCharsets.UTF_8);
+                + "&file_type=" + contentType;
 
         HttpHeaders startHeaders = new HttpHeaders();
         startHeaders.setBearerAuth(creds.accessToken);

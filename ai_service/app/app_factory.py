@@ -28,6 +28,7 @@ from .routers.mathpix import router as mathpix_router
 from .routers.knowledge_base import router as knowledge_base_router
 from .routers.voice_agent import router as voice_agent_router
 from .routers.input_asset import router as input_asset_router
+from .routers.reels import router as reels_router
 from .routers.transcription import router as transcription_router
 from .routers.brand_kit_scrape import router as brand_kit_scrape_router
 
@@ -114,6 +115,11 @@ def create_app() -> FastAPI:
     )
     app.include_router(transcription_router, prefix=settings.api_base_path)
     app.include_router(brand_kit_scrape_router, prefix=settings.api_base_path)
+    # Reels-from-long-video — three-gate funnel (scan/preview/render).
+    app.include_router(
+        reels_router,
+        prefix=f"{settings.api_base_path}/reels/v1",
+    )
 
     return app
 

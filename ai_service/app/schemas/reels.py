@@ -29,6 +29,13 @@ Layout = Literal[
     "pip_corner_speaker",
     "lower_third_speaker",
     "book_quote",
+    # Phase 2c.2: speaker top + user-supplied "satisfying" b-roll bottom.
+    # Research §12.3 — dual-attention anchoring holds attention 30-45% longer
+    # than single-frame for slower narrative moments. Background video URL
+    # must be set in RenderRequest.background_video_url; otherwise director
+    # falls back to full_speaker_with_overlays so the bottom half doesn't
+    # render as a black bar.
+    "stacked_speaker_with_broll",
 ]
 CaptionPreset = Literal["hormozi", "karaoke", "pop", "clean"]
 SilenceTrim = Literal["off", "gentle", "on", "aggressive"]
@@ -230,6 +237,10 @@ class RenderRequest(BaseModel):
     audio_strategy: AudioStrategy = "keep_speaker"
     background_music_url: Optional[str] = None
     ducking: bool = True
+    # Only consumed when layout=stacked_speaker_with_broll. Plays in the
+    # bottom half of the reel as ambient "engagement glue" footage. Director
+    # ignores when layout is anything else.
+    background_video_url: Optional[str] = None
     captions: CaptionConfig = Field(default_factory=CaptionConfig)
     branding: BrandingConfig = Field(default_factory=BrandingConfig)
     visual_preferences: VisualPreferences = Field(default_factory=VisualPreferences)

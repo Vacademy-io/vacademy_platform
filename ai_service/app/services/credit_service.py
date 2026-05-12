@@ -93,6 +93,11 @@ DEFAULT_PRICING = {
     "embedding": {"base_cost": Decimal("0.01"), "token_rate": Decimal("0.000002"), "min_charge": Decimal("0.01"), "unit": "tokens"},
     "image": {"base_cost": Decimal("0.30"), "token_rate": Decimal("0"), "min_charge": Decimal("0.30"), "unit": "none"},
     "video": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
+    # Reels-from-long-video /preview gate. One Haiku-class LLM call per
+    # picked candidate (~2k tokens round-trip — 1.5k prompt + 0.5k completion).
+    # Same rates as `content` but bucketed separately so audit can tell
+    # apart "user is exploring scan results" vs "user is generating outlines".
+    "reels_preview": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
     "tts": {"base_cost": Decimal("0.02"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.02"), "unit": "characters"},
     "tts_premium": {"base_cost": Decimal("0.04"), "token_rate": Decimal("0.00002"), "min_charge": Decimal("0.04"), "unit": "characters"},
     "stock": {"base_cost": Decimal("0.10"), "token_rate": Decimal("0"), "min_charge": Decimal("0.10"), "unit": "none"},

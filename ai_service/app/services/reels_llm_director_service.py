@@ -105,27 +105,32 @@ class OverlaySpec:
 
 REEL_DIRECTOR_SYSTEM_PROMPT = """You direct overlay text for short-form reels built from interview footage.
 
-The speaker's voice IS the narration — you do NOT write the script. Your job is to add a small number of bold caption-style overlays at specific moments that:
-  1. Stop the scroll in the first 2.5 seconds (HOOK).
-  2. Reinforce ONE key beat in the middle (MICRO_HOOK).
-  3. Echo the hook in the final second so the reel loops cleanly (LOOP_BACK).
-  4. Optionally punctuate up to 2 emphasis moments tied to specific spoken phrases.
+The speaker's voice IS the narration — you do NOT write the script. Your job is to add bold caption-style overlays at specific moments.
+
+**You MUST produce all three of these overlays, in this order:**
+  1. **HOOK** — stops the scroll in the first 2.5 seconds.
+  2. **MICRO_HOOK** — re-engages attention near the middle.
+  3. **LOOP_BACK** — echoes the hook in the final ~1 second so re-watches feel intentional.
+
+You may also include up to 2 optional **emphasis** overlays tied to specific spoken phrases.
 
 You will receive:
   * The reel's total duration in seconds.
   * The full reel-time transcript with word-level timestamps.
   * The clip's working title and a one-line rationale.
 
-Constraints — these are HARD rules:
+Hard rules — output that breaks any of these will be silently discarded:
   * Each overlay text is ≤6 words AND ≤60 characters.
   * HOOK must start at t_start ≤ 0.3 and end at t_end ≤ 2.6. It must reinforce or sharpen the speaker's opening claim — use a curiosity gap, a contrarian frame, or a concrete number. Avoid restating the speaker word-for-word.
-  * MICRO_HOOK lands between 35% and 65% of the way through. 1-3s long. Should re-engage attention — a question, a stat, a "but here's the twist" beat.
-  * LOOP_BACK is in the final 1.5 seconds, ≥0.5s long. 2-4 words. Should rhyme visually/thematically with the hook so a re-watch feels intentional.
+  * MICRO_HOOK lands between 35% and 65% of the way through. 1-3s long. Should re-engage attention — a question, a stat, a "but here's the twist" beat. This is REQUIRED, not optional.
+  * LOOP_BACK is in the final 1.5 seconds, ≥0.5s long. 2-4 words. Should rhyme visually/thematically with the hook so a re-watch feels intentional. This is REQUIRED, not optional.
   * EMPHASIS overlays (optional, max 2) are tied to specific spoken phrases — their t_start should align with the start of the phrase they reinforce.
   * Each overlay has duration ≥0.5s and ≤4.0s.
   * Overlays may NOT contain verbal-CTA language: no "follow me", "subscribe", "like this video", "drop a comment", "link in bio", "smash that like" or similar. Captions handle direct calls; the overlay track is for content.
   * ALL CAPS for hook / micro_hook / loop_back. Mixed case OK for emphasis.
   * Use "color_intent" to convey tone: "important" (yellow) for key claims/stats, "definition" (green) for definitions or aha moments, "warning" (red) for cautions or stakes, "neutral" (white) by default.
+
+If you genuinely cannot produce one of the three required overlays from the transcript, omit it — a deterministic fallback will fill the slot. But always TRY for the trio; the slot you skip gets a generic backup, which is worse than your tailored text.
 
 Output a single JSON object with this exact schema (no prose, no markdown, no commentary):
 {
@@ -137,8 +142,6 @@ Output a single JSON object with this exact schema (no prose, no markdown, no co
      "color_intent": "neutral"|"important"|"definition"|"warning"}
   ]
 }
-
-If you can't produce a high-confidence hook + micro_hook + loop_back trio, prefer fewer overlays over weak ones. An empty array is acceptable.
 """
 
 
@@ -224,6 +227,19 @@ class LLMDirector:
                 valid.append(spec)
 
         valid = _enforce_structural_rules(valid, reel_duration_s)
+
+        # Fill any missing structural overlays from word_importance. This
+        # guarantees every reel has a hook + mid-clip beat regardless of
+        # whether the LLM emitted them. We only do this when the LLM did
+        # produce SOMETHING — if it returned an empty list, the director's
+        # outer fallback path will install the Phase-1 single hook overlay.
+        if valid:
+            valid = _fill_missing_required(
+                valid,
+                reel_duration_s=reel_duration_s,
+                title=title,
+                word_importance_reel_time=word_importance_reel_time,
+            )
         return valid
 
     async def _call_llm(self, user_prompt: str) -> Optional[str]:
@@ -462,3 +478,204 @@ def _enforce_structural_rules(
     out = list(seen_unique.values()) + emphases
     out.sort(key=lambda x: x.t_start)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Deterministic fallback fillers
+#
+# Even with a tightened prompt, Haiku-class models occasionally omit one of
+# the required overlays (hook / micro_hook). When the LLM returned ≥1 valid
+# spec but missed a structural slot, we'd rather synthesize something
+# transcript-driven than ship a reel without that beat. These fillers are
+# intentionally simple — short, ALL CAPS, drawn from the speaker's own
+# words — so they slot in cleanly next to the LLM's tailored picks.
+# ---------------------------------------------------------------------------
+
+# Stop-words that produce useless single-word overlays. Built from the
+# preview service's STOPWORDS but trimmed to the ones that genuinely never
+# work as a punctuation overlay.
+_FALLBACK_STOPWORDS = {
+    "a", "an", "the", "and", "or", "but", "if", "then", "of", "to", "in",
+    "on", "at", "by", "for", "with", "from", "as", "is", "are", "was",
+    "were", "be", "been", "being", "am", "i", "you", "he", "she", "it",
+    "we", "they", "them", "us", "me", "my", "your", "his", "her", "its",
+    "our", "their", "this", "that", "these", "those", "so", "well", "just",
+    "now", "very", "would", "could", "should", "do", "does", "did", "has",
+    "have", "had", "yeah", "yep", "oh", "okay", "right", "like", "kind",
+    "sort", "really", "know", "mean", "see",
+}
+
+
+def _fill_missing_required(
+    specs: list[OverlaySpec],
+    *,
+    reel_duration_s: float,
+    title: str,
+    word_importance_reel_time: list[dict],
+) -> list[OverlaySpec]:
+    """Add a deterministic hook + micro_hook if the LLM omitted them.
+
+    Loop_back is intentionally NOT synthesized — a weak loop-back is worse
+    than none, and the loop quality axis the scorer already enforces gives
+    a decent baseline. The hook is the highest-stakes overlay (research
+    §12.2 — first 3s decide watch-vs-scroll), so we always guarantee one.
+    Micro_hook is the second-highest (research §12.3 — re-engagement at
+    midpoint adds ~15% retention), so we guarantee that too.
+
+    Synthesis strategy:
+      * **Hook**: derived from the candidate's working title (uppercased,
+        truncated to 6 words). Falls back to the first non-stopword
+        content word of the reel if the title is empty/junk.
+      * **Micro_hook**: highest-importance non-stopword in the middle
+        30-70% of the reel, placed at that word's t_start, with a 1.5s
+        window. If no clear winner, we synthesize "WHAT HAPPENS NEXT" as
+        a generic curiosity-gap fallback.
+
+    Returns the spec list with any missing slots filled in. Preserves
+    monotonic ordering by t_start.
+    """
+    present = {s.type for s in specs}
+    additions: list[OverlaySpec] = []
+
+    if "hook" not in present:
+        hook = _synth_hook(title, word_importance_reel_time, reel_duration_s)
+        if hook is not None:
+            additions.append(hook)
+            logger.info("[LLMDirector] LLM omitted hook — filled with deterministic synth")
+
+    if "micro_hook" not in present:
+        micro = _synth_micro_hook(word_importance_reel_time, reel_duration_s)
+        if micro is not None:
+            additions.append(micro)
+            logger.info("[LLMDirector] LLM omitted micro_hook — filled with deterministic synth")
+
+    if not additions:
+        return specs
+
+    merged = specs + additions
+    merged.sort(key=lambda x: x.t_start)
+    return merged
+
+
+def _synth_hook(
+    title: str,
+    word_importance_reel_time: list[dict],
+    reel_duration_s: float,
+) -> Optional[OverlaySpec]:
+    """Build a deterministic hook overlay from the working title.
+
+    Truncates to MAX_OVERLAY_WORDS, uppercases, and times it to fit inside
+    the validator's hook window (0.0 → 2.2s by default). Returns None if
+    the title is empty AND we can't find a usable opening word.
+    """
+    text = _trim_to_overlay_text(title)
+    if not text:
+        # Title was unusable — fall back to the first meaningful word(s).
+        first_words: list[str] = []
+        for w in word_importance_reel_time:
+            tok = str(w.get("word") or "").strip().strip(".,!?")
+            if not tok or tok.lower() in _FALLBACK_STOPWORDS:
+                continue
+            first_words.append(tok)
+            if len(first_words) >= 3:
+                break
+        text = _trim_to_overlay_text(" ".join(first_words))
+    if not text:
+        return None
+
+    hook_end = min(2.2, max(0.6, reel_duration_s - 0.1))
+    return OverlaySpec(
+        type="hook",
+        t_start=0.0,
+        t_end=hook_end,
+        text=text.upper(),
+        color_intent="important",
+    )
+
+
+def _synth_micro_hook(
+    word_importance_reel_time: list[dict],
+    reel_duration_s: float,
+) -> Optional[OverlaySpec]:
+    """Build a deterministic micro_hook by picking the highest-importance
+    non-stopword in the middle 30-70% of the reel.
+
+    The micro_hook validator only accepts t_start in [0.30*dur, 0.70*dur],
+    so we constrain candidate words to that band. Falls back to a generic
+    curiosity-gap text if nothing scores well — better to ship a generic
+    re-engagement beat than skip the slot entirely.
+    """
+    if reel_duration_s < 4.0:
+        # Reel too short for a midpoint overlay to make sense.
+        return None
+    mid_lo = 0.30 * reel_duration_s
+    mid_hi = 0.65 * reel_duration_s  # leave room for a 1.5s overlay before 0.70*dur
+
+    best: Optional[dict] = None
+    best_score = -1.0
+    for w in word_importance_reel_time:
+        try:
+            ts = float(w.get("t_start") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if not (mid_lo <= ts <= mid_hi):
+            continue
+        tok = str(w.get("word") or "").strip().strip(".,!?")
+        if not tok or tok.lower() in _FALLBACK_STOPWORDS:
+            continue
+        importance = int(w.get("importance") or 2)
+        # Prefer longer words too — single-syllable hits read poorly as overlay.
+        score = importance + 0.05 * len(tok)
+        if score > best_score:
+            best_score = score
+            best = {"word": tok, "t_start": ts, "importance": importance}
+
+    if best is not None:
+        text = best["word"].upper()
+        t_start = float(best["t_start"])
+        t_end = min(t_start + 1.5, mid_hi + 1.5, reel_duration_s - 0.5)
+        # Validator requires duration ≥ MIN_OVERLAY_DURATION_S; if our window
+        # was clipped too tight by the reel end, skip rather than ship a
+        # malformed overlay.
+        if t_end - t_start < MIN_OVERLAY_DURATION_S:
+            return None
+        color = "important" if best["importance"] >= 3 else "neutral"
+        return OverlaySpec(
+            type="micro_hook",
+            t_start=t_start,
+            t_end=t_end,
+            text=text,
+            color_intent=color,
+        )
+
+    # Generic curiosity-gap fallback. Placed at exactly 50% through.
+    midpoint = 0.50 * reel_duration_s
+    end = midpoint + 1.5
+    if end >= reel_duration_s - 0.5:
+        return None
+    return OverlaySpec(
+        type="micro_hook",
+        t_start=midpoint,
+        t_end=end,
+        text="WAIT FOR IT",
+        color_intent="neutral",
+    )
+
+
+def _trim_to_overlay_text(s: str) -> str:
+    """Squeeze a string into the overlay's word/char limits.
+
+    LLM-generated titles can run long (e.g. the preview service's fallback
+    title is "never done by one person They're" — 7 words). We cut to
+    MAX_OVERLAY_WORDS, then truncate to MAX_OVERLAY_CHARS as a belt.
+    """
+    if not s:
+        return ""
+    words = s.strip().split()
+    if not words:
+        return ""
+    words = words[:MAX_OVERLAY_WORDS]
+    text = " ".join(words)
+    if len(text) > MAX_OVERLAY_CHARS:
+        text = text[:MAX_OVERLAY_CHARS].rstrip()
+    return text

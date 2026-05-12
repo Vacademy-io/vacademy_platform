@@ -93,6 +93,18 @@ CONTEXT_FETCH_TIMEOUT_S = 20
 # rather than OOM the worker.
 CONTEXT_FETCH_MAX_BYTES = 10 * 1024 * 1024
 
+# Per-candidate token estimates used for /preview credit pre-flight + deduct.
+# Numbers calibrated against actual Haiku roundtrips on a 24s podcast clip
+# (transcript window + system prompt ≈ 1500 prompt tokens; title+rationale+
+# word_importance JSON ≈ 500 completion tokens). Real usage can drift; we
+# accept that — it's a fixed estimate by design, not a per-call meter.
+_PREVIEW_PROMPT_TOKENS = 1500
+_PREVIEW_COMPLETION_TOKENS = 500
+# Pricing tier driver. Tracks `reels_preview_service._LLM_DEFAULT_MODEL`;
+# bump in lockstep if we switch model. Wrong value here means credits get
+# costed at the wrong tier, not a functional break.
+_PREVIEW_LLM_MODEL_FOR_PRICING = "anthropic/claude-3-5-haiku"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -476,6 +488,27 @@ async def preview_reel_candidates(
     if not rows:
         return PreviewResponse(enriched=[])
 
+    # Pre-flight credit gate. The LLM-burning subset is just rows that
+    # AREN'T already enriched within TTL — re-previewing the same picks is
+    # a free cache hit. We charge for the rows that WILL hit the network.
+    # Estimate ~_PREVIEW_PROMPT_TOKENS prompt + ~_PREVIEW_COMPLETION_TOKENS
+    # completion per candidate; under-estimating costs the user nothing
+    # extra (the deduct path uses the same numbers), over-estimating means
+    # they'd get a misleading "insufficient credits" message.
+    miss_count = sum(1 for r in rows if not r.enriched)
+    if miss_count > 0:
+        from ..services.credit_service import CreditService
+        from ..schemas.credits import CreditCheckRequest
+        estimate_tokens = miss_count * (_PREVIEW_PROMPT_TOKENS + _PREVIEW_COMPLETION_TOKENS)
+        credit_check = CreditService(db).check_credits(CreditCheckRequest(
+            institute_id=institute_id,
+            request_type="reels_preview",
+            model=_PREVIEW_LLM_MODEL_FOR_PRICING,
+            estimated_tokens=estimate_tokens,
+        ))
+        if not credit_check.has_sufficient_credits:
+            raise HTTPException(status_code=402, detail=credit_check.message)
+
     # We need the source's video_context.json for word-level data + emphasis
     # marks. Fetch ONCE per /preview call regardless of how many candidates.
     asset_repo = AiInputAssetRepository(session=db)
@@ -519,6 +552,7 @@ async def preview_reel_candidates(
         return row, payload.to_dict()
 
     miss_results: list[tuple[int, EnrichedCandidate]] = []
+    successful_llm_picks = 0
     if miss_rows:
         outcomes = await asyncio.gather(
             *(_enrich_one(r) for _, r in miss_rows),
@@ -527,7 +561,8 @@ async def preview_reel_candidates(
         for (i, row), outcome in zip(miss_rows, outcomes):
             if isinstance(outcome, BaseException):
                 # One candidate failed — log and skip rather than nuke the
-                # whole batch. The FE will see partial results.
+                # whole batch. The FE will see partial results. Skipped
+                # candidates are NOT billed (the cost is per LLM roundtrip).
                 logger.warning(f"Enrich failed for candidate {row.id}: {outcome}")
                 continue
             _, enriched_dict = outcome
@@ -536,6 +571,40 @@ async def preview_reel_candidates(
             except Exception as e:
                 logger.warning(f"Failed to persist enriched for {row.id}: {e}")
             miss_results.append((i, _enriched_dict_to_response(str(row.id), enriched_dict)))
+            # Only charge when the LLM actually fired. `method == "heuristic_fallback"`
+            # covers two cases — either no API key configured (no LLM call
+            # ever happened, billing would be theft) OR the LLM call failed
+            # mid-flight (we paid, but the user got a degraded experience).
+            # Conflating both means we either over-bill the misconfig case
+            # or under-bill the failure case. We choose under-billing: a
+            # failed LLM call we eat the cost on, but we never bill for a
+            # call that never happened.
+            if enriched_dict.get("method") == "llm":
+                successful_llm_picks += 1
+
+    # Post-success credit deduction. We charge per successful LLM pick —
+    # failed picks (caught above), cache hits (never entered miss_rows), and
+    # heuristic-only fallbacks (no LLM call made) are all free. Best-effort:
+    # a deduct failure logs but doesn't block the response (the user got
+    # their result, losing tracking on one call is a smaller incident than
+    # refusing to return the enrichment).
+    if successful_llm_picks > 0:
+        from ..services.credit_service import CreditService
+        from ..schemas.credits import CreditDeductRequest
+        try:
+            CreditService(db).deduct_credits(CreditDeductRequest(
+                institute_id=institute_id,
+                request_type="reels_preview",
+                model=_PREVIEW_LLM_MODEL_FOR_PRICING,
+                prompt_tokens=successful_llm_picks * _PREVIEW_PROMPT_TOKENS,
+                completion_tokens=successful_llm_picks * _PREVIEW_COMPLETION_TOKENS,
+                batch_id=request.input_asset_id,  # group every preview for an asset
+            ))
+        except Exception as e:
+            logger.warning(
+                f"[/preview] credit deduct failed for {institute_id} "
+                f"({successful_llm_picks} picks): {e}"
+            )
 
     # Reassemble in request order.
     combined: list[tuple[int, EnrichedCandidate]] = cache_hits + miss_results

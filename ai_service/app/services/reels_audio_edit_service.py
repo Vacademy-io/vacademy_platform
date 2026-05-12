@@ -56,6 +56,47 @@ OUTPUT_BITRATE = "96k"
 # spans ≥80ms; the dual check here protects against rounding edge cases.
 MIN_KEPT_SPAN_S = 0.1
 
+# Output sample rate when background music is present — music gets crunchy
+# at 22050Hz mono, so we bump to a music-friendly rate + stereo. Speech-only
+# reels keep the lighter 22050/mono encoding.
+OUTPUT_SAMPLE_RATE_WITH_BGM = 44100
+OUTPUT_BITRATE_WITH_BGM = "128k"
+OUTPUT_CHANNELS_WITH_BGM = "2"
+
+# Volume reduction applied to bgm before it mixes with speech. -8 dB is the
+# baseline "background bed" level even with ducking on; the sidechain
+# compressor adds further dynamic reduction during speech.
+BGM_BASE_GAIN_DB = -8
+
+# Ducking parameters — research §12.2 calls for -8 to -12 dB additional
+# reduction under speech. With ratio=8 + threshold=0.05, speech around -26
+# dBFS triggers ~10 dB compression on bgm. attack=5 / release=200 (ms)
+# gives a snappy duck-in + ~200 ms tail so the bed doesn't pop back the
+# instant a syllable ends.
+SIDECHAIN_THRESHOLD = 0.05
+SIDECHAIN_RATIO = 8
+SIDECHAIN_ATTACK_MS = 5
+SIDECHAIN_RELEASE_MS = 200
+
+def _resolve_bgm_url(raw: Optional[str]) -> Optional[str]:
+    """Apply the same scheme + whitespace gate to user-supplied bgm URLs
+    that we apply to source assets. ffmpeg accepts `file:///etc/passwd`-
+    style URLs and we don't trust arbitrary strings off a render request.
+    Returns None when the URL is missing or fails validation."""
+    if not raw or not isinstance(raw, str):
+        return None
+    url = raw.strip()
+    if not url:
+        return None
+    lower = url.lower()
+    if not (lower.startswith("https://") or lower.startswith("http://")):
+        logger.warning(
+            f"[AudioEdit] rejecting non-http(s) bgm URL: {url[:80]!r}"
+        )
+        return None
+    return url
+
+
 # Source URL fallback chain: the indexer's re-encoded MP4 first (browser-
 # friendly), then the user's original upload.
 def _resolve_source_url(asset) -> Optional[str]:
@@ -174,8 +215,27 @@ class ReelsAudioEditService:
                 "Cut plan removes the entire window — no audio to produce"
             )
         trim_map = self._build_trim_map(kept_spans, speed)
+        # Final reel duration (post-atempo) — needed to bound the bgm trim
+        # since `-stream_loop -1 -i` would otherwise feed amix indefinitely.
+        reel_duration = trim_map[-1].new_t_end if trim_map else 0.0
 
-        # 5. Run ffmpeg to produce the final audio.
+        # 5. Resolve background-music config. Only activates when the user
+        # selected `keep_speaker_plus_bgm` AND provided a valid http(s) URL.
+        # Otherwise we silently fall back to speaker-only — matches what
+        # most config-form misconfigurations should produce.
+        audio_strategy = str((ctx.config or {}).get("audio_strategy") or "keep_speaker")
+        bgm_url = None
+        ducking = True
+        if audio_strategy == "keep_speaker_plus_bgm":
+            bgm_url = _resolve_bgm_url((ctx.config or {}).get("background_music_url"))
+            ducking = bool((ctx.config or {}).get("ducking", True))
+            if bgm_url is None:
+                logger.info(
+                    f"[AudioEdit] {ctx.reel_id} requested bgm but no usable URL — "
+                    "falling back to speaker-only"
+                )
+
+        # 6. Run ffmpeg to produce the final audio.
         with tempfile.TemporaryDirectory(prefix="reels-audio-") as tmpdir:
             out_path = Path(tmpdir) / f"{ctx.reel_id}.mp3"
             self._run_ffmpeg(
@@ -187,18 +247,21 @@ class ReelsAudioEditService:
                     for s in kept_spans
                 ],
                 speed=speed,
+                bgm_url=bgm_url,
+                ducking=ducking,
+                reel_duration_s=reel_duration,
                 out_path=out_path,
             )
 
             if not out_path.exists() or out_path.stat().st_size == 0:
                 raise RuntimeError("ffmpeg produced no audio output")
 
-            # 6. Upload to S3.
+            # 7. Upload to S3.
             s3 = self._ensure_s3()
             s3_key = f"ai-reels/{ctx.reel_id}/speaker_audio-{uuid4().hex[:8]}.mp3"
             url = s3.upload_file(out_path, s3_key=s3_key, content_type="audio/mpeg")
 
-        # 7. Write back to the context. The orchestrator persists at completion.
+        # 8. Write back to the context. The orchestrator persists at completion.
         ctx.s3_urls["speaker_audio"] = url
         ctx.trim_map = {
             "spans": [e.to_dict() for e in trim_map],
@@ -209,9 +272,17 @@ class ReelsAudioEditService:
                 round(trim_map[-1].new_t_end, 3) if trim_map else 0.0
             ),
         }
+        # Track audio-mix mode for audit + so the FE can show "music + ducking"
+        # on the reel detail page once we wire that.
+        ctx.extra_metadata["audio_mode"] = (
+            "speaker_plus_bgm_ducked" if (bgm_url and ducking)
+            else "speaker_plus_bgm" if bgm_url
+            else "speaker_only"
+        )
         logger.info(
             f"[AudioEdit] {ctx.reel_id} kept {len(kept_spans)} spans, "
-            f"speed={speed}x, final duration={ctx.trim_map['total_new_duration_s']}s"
+            f"speed={speed}x, mode={ctx.extra_metadata['audio_mode']}, "
+            f"final duration={ctx.trim_map['total_new_duration_s']}s"
         )
 
     # ── Helpers ───────────────────────────────────────────────────────────
@@ -323,18 +394,37 @@ class ReelsAudioEditService:
         win_duration: float,
         kept_spans_relative: list[tuple[float, float]],
         speed: float,
+        bgm_url: Optional[str],
+        ducking: bool,
+        reel_duration_s: float,
         out_path: Path,
     ) -> None:
         """Single ffmpeg invocation that produces the final audio.
 
-        Filter graph shape (N kept spans, optional atempo):
+        Two filter-graph variants share most of the pipeline:
 
-          [0:a]atrim=start=t0:end=t1,asetpts=PTS-STARTPTS[a0]
-          [0:a]atrim=start=t2:end=t3,asetpts=PTS-STARTPTS[a1]
-          ...
-          [a0][a1]...[aN-1]concat=n=N:v=0:a=1[ac]    (skipped if N==1)
-          [ac/a0]atempo=K[aout]                       (skipped if speed==1.0)
+        Speaker-only (no bgm):
+          [0:a]atrim=…,asetpts=PTS-STARTPTS[a0]…
+          [a0][a1]…concat=n=N:v=0:a=1[ac]      (skipped if N==1)
+          [ac]atempo=K[aout]                    (skipped if speed==1.0)
+          → encoded mono 22050Hz
+
+        Speaker + bgm (+ optional ducking):
+          Same speaker chain (with aresample=44100 inserted so sidechain
+          matches), then:
+          [1:a]aresample=44100,atrim=duration=<reel_dur>,volume=-8dB[bgm]
+          ducking ?
+            [bgm][speaker]sidechaincompress=…[bgm_ducked]
+            [speaker][bgm_ducked]amix=inputs=2:duration=first:normalize=0[mix]
+          :
+            [speaker][bgm]amix=inputs=2:duration=first:normalize=0[mix]
+          → encoded stereo 44100Hz so music doesn't sound crunchy
         """
+        has_bgm = bgm_url is not None
+        # Bump the speaker chain to 44.1kHz when bgm is in play so the
+        # sidechain compressor doesn't have to deal with mismatched rates.
+        aresample_prefix = "aresample=44100," if has_bgm else ""
+
         filter_lines: list[str] = []
         labels: list[str] = []
         for i, (ts, te) in enumerate(kept_spans_relative):
@@ -343,12 +433,13 @@ class ReelsAudioEditService:
             # atrim end is inclusive of the keyframe; asetpts resets timestamps
             # so concat doesn't see overlapping PTS.
             filter_lines.append(
-                f"[0:a]atrim=start={ts:.4f}:end={te:.4f},asetpts=PTS-STARTPTS[{label}]"
+                f"[0:a]{aresample_prefix}atrim=start={ts:.4f}:end={te:.4f},"
+                f"asetpts=PTS-STARTPTS[{label}]"
             )
 
         # Concatenate (only needed when more than one span).
         if len(labels) == 1:
-            concat_out = labels[0]  # already the only stream
+            concat_out = labels[0]
         else:
             concat_out = "[ac]"
             filter_lines.append(
@@ -358,10 +449,43 @@ class ReelsAudioEditService:
         # Atempo. atempo's per-filter range is 0.5-100; values within 0.5..2.0
         # are recommended single-pass for quality. Our config caps at 1.5.
         if abs(speed - 1.0) < 1e-6:
-            final_label = concat_out
+            speaker_label = concat_out
         else:
-            filter_lines.append(f"{concat_out}atempo={speed:.4f}[aout]")
-            final_label = "[aout]"
+            filter_lines.append(f"{concat_out}atempo={speed:.4f}[speaker]")
+            speaker_label = "[speaker]"
+
+        # BGM branch — only when we have a validated URL AND a positive
+        # reel duration (otherwise atrim would be a no-op and amix returns
+        # empty).
+        if has_bgm and reel_duration_s > 0.1:
+            # Bound the bgm to the reel's length so `-stream_loop -1` on
+            # the input doesn't push amix forever.
+            filter_lines.append(
+                f"[1:a]aresample=44100,atrim=duration={reel_duration_s:.4f},"
+                f"asetpts=PTS-STARTPTS,volume={BGM_BASE_GAIN_DB:+d}dB[bgm_quiet]"
+            )
+            if ducking:
+                filter_lines.append(
+                    f"[bgm_quiet]{speaker_label}sidechaincompress="
+                    f"threshold={SIDECHAIN_THRESHOLD:.3f}:"
+                    f"ratio={SIDECHAIN_RATIO}:"
+                    f"attack={SIDECHAIN_ATTACK_MS}:"
+                    f"release={SIDECHAIN_RELEASE_MS}:"
+                    f"level_sc=1[bgm_ducked]"
+                )
+                bgm_final = "[bgm_ducked]"
+            else:
+                bgm_final = "[bgm_quiet]"
+            # duration=first keeps the mix as long as the speaker. normalize=0
+            # preserves loudness levels (default is normalize=1 which would
+            # halve the speaker once bgm is added — wrong for our case).
+            filter_lines.append(
+                f"{speaker_label}{bgm_final}amix=inputs=2:duration=first:"
+                f"dropout_transition=0:normalize=0[mix]"
+            )
+            final_label = "[mix]"
+        else:
+            final_label = speaker_label
 
         filter_complex = ";".join(filter_lines)
 
@@ -372,15 +496,31 @@ class ReelsAudioEditService:
             "-ss", f"{max(0.0, win_t_start):.3f}",
             "-t", f"{max(0.0, win_duration):.3f}",
             "-i", source_url,
+        ]
+        if has_bgm:
+            # `-stream_loop -1` loops the music indefinitely — bounded by
+            # the atrim filter above. Must be placed BEFORE the -i it
+            # applies to.
+            cmd.extend(["-stream_loop", "-1", "-i", bgm_url])
+        cmd.extend([
             "-filter_complex", filter_complex,
             "-map", final_label,
             "-vn",
             "-acodec", "libmp3lame",
-            "-ar", str(OUTPUT_SAMPLE_RATE),
-            "-b:a", OUTPUT_BITRATE,
-            "-ac", "1",  # mono — saves bandwidth, fine for podcast speech
-            str(out_path),
-        ]
+        ])
+        if has_bgm:
+            cmd.extend([
+                "-ar", str(OUTPUT_SAMPLE_RATE_WITH_BGM),
+                "-b:a", OUTPUT_BITRATE_WITH_BGM,
+                "-ac", OUTPUT_CHANNELS_WITH_BGM,
+            ])
+        else:
+            cmd.extend([
+                "-ar", str(OUTPUT_SAMPLE_RATE),
+                "-b:a", OUTPUT_BITRATE,
+                "-ac", "1",  # mono — saves bandwidth, fine for speech-only
+            ])
+        cmd.append(str(out_path))
 
         try:
             subprocess.run(

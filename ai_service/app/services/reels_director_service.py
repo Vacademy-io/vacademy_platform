@@ -158,11 +158,33 @@ class ReelsDirectorService:
         title = (enriched.get("title") or "").strip() or "Watch this"
         rationale = (enriched.get("rationale") or "").strip()
 
+        # Layout resolution. Both `stacked_speaker_with_broll` and
+        # `pip_corner_speaker` need a bgv URL to render meaningfully —
+        # without it the bottom half / bg fill is a black void. We silently
+        # downgrade to `full_speaker_with_overlays` in that case so the reel
+        # still renders something useful. Effective layout is tracked in
+        # extra_metadata so the FE can show "we used the default instead".
+        requested_layout = str((ctx.config or {}).get("layout") or "full_speaker_with_overlays")
+        bgv_url_raw = (ctx.config or {}).get("background_video_url")
+        bgv_url = _resolve_http_url(bgv_url_raw) if bgv_url_raw else None
+        effective_layout = requested_layout
+        if requested_layout in ("stacked_speaker_with_broll", "pip_corner_speaker") and not bgv_url:
+            logger.info(
+                f"[Director] {ctx.reel_id} requested {requested_layout} without "
+                f"usable bgv URL — falling back to full_speaker_with_overlays"
+            )
+            effective_layout = "full_speaker_with_overlays"
+
         # 2. Compose shots.
         shots: list[_Shot] = []
 
-        # 2a. Base SOURCE_CLIP shot covering the whole reel.
-        shots.append(self._build_base_shot(speaker_clip_url, total_duration))
+        # 2a. Base shot covering the whole reel — shape depends on layout.
+        shots.append(self._build_base_shot(
+            speaker_clip_url,
+            total_duration,
+            layout=effective_layout,
+            background_video_url=bgv_url,
+        ))
 
         # 2b. Remap word_importance to reel-time once — used by both the
         # LLM director (for prompt construction) and the caption builder.
@@ -180,10 +202,14 @@ class ReelsDirectorService:
         shots.extend(overlay_shots)
 
         # 2d. Captions — same word list, but grouped into phrase blocks.
+        # Stacked layout pushes captions up so they sit on the speaker half,
+        # just above the 50/50 split. Other layouts use the default
+        # bottom-third position.
         if word_importance_reel_time:
             caption_shots = self._build_caption_blocks_from_reel_time(
                 word_importance_reel_time,
                 total_duration=total_duration,
+                layout=effective_layout,
             )
             shots.extend(caption_shots)
 
@@ -192,6 +218,7 @@ class ReelsDirectorService:
         ctx.extra_metadata["canvas_dimensions"] = {"width": canvas_w, "height": canvas_h}
         ctx.extra_metadata["total_duration_s"] = round(total_duration, 3)
         ctx.extra_metadata["director_overlay_method"] = overlay_method
+        ctx.extra_metadata["effective_layout"] = effective_layout
         logger.info(
             f"[Director] {ctx.reel_id} composed {len(shots)} shots "
             f"(1 base + {len(overlay_shots)} overlays via {overlay_method} + "
@@ -257,29 +284,106 @@ class ReelsDirectorService:
     # ── Shot builders ─────────────────────────────────────────────────────
 
     @staticmethod
-    def _build_base_shot(speaker_clip_url: str, duration: float) -> _Shot:
-        """Full-bleed SOURCE_CLIP entry referencing the speaker_clip MP4.
+    def _build_base_shot(
+        speaker_clip_url: str,
+        duration: float,
+        *,
+        layout: str = "full_speaker_with_overlays",
+        background_video_url: Optional[str] = None,
+    ) -> _Shot:
+        """Base shot HTML — shape depends on `layout`.
 
-        The editor's html-processor recognizes `<video data-source-clip>`
-        and handles seek + autoplay (per VIDEO_EDITOR_REVIEW.md §9).
+        Default (`full_speaker_with_overlays`): a single full-bleed
+        `<video>` of the trimmed speaker clip. Playwright autoplays it
+        muted during the per-frame screenshot pass; render worker captures
+        frames as the video advances.
+
+        `stacked_speaker_with_broll`: a `<div>` flex-column with the
+        speaker on the top 50% and a user-supplied b-roll video on the
+        bottom 50%. The b-roll is mute-autoplay-loop so it acts as
+        ambient engagement glue (research §12.3 — dual-attention
+        anchoring holds attention 30-45% longer). Required URL is
+        validated upstream in `run()`; this builder trusts it.
         """
         # data-source-start=0 — speaker_clip is ALREADY trimmed; play from
         # its own beginning, not a source-video offset.
-        safe_url = html_lib.escape(speaker_clip_url, quote=True)
-        fragment = (
-            f'<video data-source-clip '
-            f'src="{safe_url}" '
-            f'data-source-start="0" '
-            f'autoplay muted playsinline '
-            f'style="width:100%;height:100%;object-fit:cover;display:block"></video>'
-        )
+        safe_speaker = html_lib.escape(speaker_clip_url, quote=True)
+
+        if layout == "stacked_speaker_with_broll" and background_video_url:
+            safe_bgv = html_lib.escape(background_video_url, quote=True)
+            fragment = (
+                '<div style="position:absolute;inset:0;display:flex;'
+                'flex-direction:column;background:#000;">'
+                # Speaker (top 50%) — crop to fill via object-fit:cover.
+                '<div style="flex:1 1 50%;overflow:hidden;">'
+                f'<video data-source-clip src="{safe_speaker}" '
+                f'data-source-start="0" autoplay muted playsinline '
+                'style="width:100%;height:100%;object-fit:cover;'
+                'display:block"></video>'
+                '</div>'
+                # B-roll (bottom 50%) — loop so a short clip covers the
+                # whole reel duration; muted because reel audio is owned
+                # by the speaker_audio track.
+                '<div style="flex:1 1 50%;overflow:hidden;">'
+                f'<video src="{safe_bgv}" autoplay muted loop playsinline '
+                'style="width:100%;height:100%;object-fit:cover;'
+                'display:block"></video>'
+                '</div>'
+                '</div>'
+            )
+            entry_meta = {
+                "shot_type": "stacked_base",
+                "background_video_url": background_video_url,
+            }
+        elif layout == "pip_corner_speaker" and background_video_url:
+            # Phase-2c.3: rectangular PiP. Speaker sits in a rounded
+            # bottom-right window, bgv fills the rest. Sized by HEIGHT
+            # (`height:35%; aspect-ratio:9/16`) rather than width — that's
+            # the only way to keep the box vertically bounded across all
+            # three aspect ratios. With width-driven sizing the PiP would
+            # be ~614×1092px in a 1920×1080 (16:9) frame and overflow the
+            # bottom edge; height-driven sizing keeps it at ~378px tall
+            # everywhere.
+            #
+            # True alpha-matte cutout PiP is a Phase-2d follow-up — it
+            # requires re-running `extractor/podcast_visual.py` for the
+            # reel's specific window, which costs ~30s of CPU/GPU per
+            # render and warrants its own roll-out + caching strategy.
+            safe_bgv = html_lib.escape(background_video_url, quote=True)
+            fragment = (
+                '<div style="position:absolute;inset:0;background:#000;">'
+                # Background — fills the whole frame.
+                f'<video src="{safe_bgv}" autoplay muted loop playsinline '
+                'style="position:absolute;inset:0;width:100%;height:100%;'
+                'object-fit:cover;display:block"></video>'
+                # Speaker PiP — bottom-right corner. Height drives sizing
+                # so the box doesn't overflow in 16:9 / 1:1 aspects.
+                f'<video data-source-clip src="{safe_speaker}" '
+                f'data-source-start="0" autoplay muted playsinline '
+                'style="position:absolute;bottom:8%;right:6%;height:35%;'
+                'aspect-ratio:9/16;object-fit:cover;border-radius:16px;'
+                'box-shadow:0 8px 32px rgba(0,0,0,0.5);display:block"></video>'
+                '</div>'
+            )
+            entry_meta = {
+                "shot_type": "pip_corner_base",
+                "background_video_url": background_video_url,
+            }
+        else:
+            fragment = (
+                f'<video data-source-clip src="{safe_speaker}" '
+                f'data-source-start="0" autoplay muted playsinline '
+                'style="width:100%;height:100%;object-fit:cover;display:block"></video>'
+            )
+            entry_meta = {"shot_type": "speaker_clip_base"}
+
         return _Shot(
             id="shot-base",
             in_time=0.0,
             exit_time=round(duration, 3),
             z=Z_BASE,
             html=fragment,
-            entry_meta={"shot_type": "speaker_clip_base"},
+            entry_meta=entry_meta,
         )
 
     @staticmethod
@@ -324,12 +428,19 @@ class ReelsDirectorService:
     def _build_caption_blocks_from_reel_time(
         remapped: list[dict],
         total_duration: float,
+        *,
+        layout: str = "full_speaker_with_overlays",
     ) -> list[_Shot]:
         """Group already-reel-time word_importance into caption phrase blocks.
 
         `remapped` is the output of `_remap_word_importance` — words have
         post-trim, post-atempo timestamps in `t_start`/`t_end`. We rename
         them here to `in_time`/`exit_time` for the grouping logic.
+
+        `layout` controls vertical placement. For stacked layouts (which
+        consume the bottom half of the frame for b-roll), captions shift
+        upward so they sit on the speaker portion. Other layouts keep the
+        default Y position.
         """
         remapped = [
             {
@@ -382,7 +493,7 @@ class ReelsDirectorService:
             out_t = min(block[-1]["exit_time"], total_duration)
             if out_t <= in_t:
                 continue
-            html = _build_caption_block_html(block)
+            html = _build_caption_block_html(block, layout=layout)
             shots.append(_Shot(
                 id=f"shot-cap-{i:03d}",
                 in_time=in_t,
@@ -400,6 +511,27 @@ class ReelsDirectorService:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _resolve_http_url(raw: Optional[str]) -> Optional[str]:
+    """Apply the same http(s)-only gate we use for source_video and bgm URLs
+    to layout-specific URLs (today: stacked layout's background video).
+
+    Returns the trimmed URL if it parses as http(s) scheme; None otherwise.
+    Defense in depth — `<video src=...>` rendered by Playwright happily
+    fetches anything the URL resolves to, including local-file paths if the
+    upstream config ever drifted.
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    url = raw.strip()
+    if not url:
+        return None
+    lower = url.lower()
+    if not (lower.startswith("https://") or lower.startswith("http://")):
+        logger.warning(f"[Director] rejecting non-http(s) URL: {url[:80]!r}")
+        return None
+    return url
+
 
 def _remap_word_importance(
     word_importance: list[dict],
@@ -535,7 +667,30 @@ def _source_to_reel_time(t_source: float, trim_map: dict) -> Optional[float]:
     return float(spans[-1]["new_t_end"])
 
 
-def _build_caption_block_html(block: list[dict]) -> str:
+# Caption Y-position per layout. Default `bottom:18%` sits in the lower
+# third of the frame (research §12.4 — Y≈70% from top is the universal
+# caption convention). Stacked layout has b-roll occupying the bottom 50%
+# of the frame, so captions shift up to sit just above the split — still
+# inside the speaker half. New layouts get appended here without touching
+# the HTML builder body.
+_CAPTION_BOTTOM_PCT_BY_LAYOUT: dict = {
+    "full_speaker_with_overlays": 18,
+    "stacked_speaker_with_broll": 53,   # ~1056px from bottom in a 1920 frame
+    # PiP speaker corner is sized by HEIGHT (35% of frame). Across aspects,
+    # the PiP's top edge sits at 1 - 0.08 - 0.35 = 57% of frame height from
+    # the bottom — so caption `bottom` must exceed 57% to clear it, with
+    # margin for the caption's own text height (~5% of frame). 45% gives a
+    # safe ~10% clearance in the worst case (1:1 aspect).
+    "pip_corner_speaker": 45,
+}
+_CAPTION_BOTTOM_PCT_DEFAULT = 18
+
+
+def _build_caption_block_html(
+    block: list[dict],
+    *,
+    layout: str = "full_speaker_with_overlays",
+) -> str:
     """Build a single caption block fragment with **per-word karaoke
     reveal** animation (Phase 2a).
 
@@ -555,6 +710,7 @@ def _build_caption_block_html(block: list[dict]) -> str:
         per-word reveal moments.
       - Color encoding: keyword_type words stay in their assigned color
         (yellow/green/red); normal words are white. Both pop on reveal.
+      - Y position varies by `layout` — see `_CAPTION_BOTTOM_PCT_BY_LAYOUT`.
 
     NB: scrubbing the editor backward then forward will re-mount the
     iframe — animations replay from the start. Live playback (the render
@@ -563,6 +719,7 @@ def _build_caption_block_html(block: list[dict]) -> str:
     body_color = DEFAULT_CAPTION_PALETTE["body"]
     stroke_color = DEFAULT_CAPTION_PALETTE["stroke"]
     block_in = float(block[0]["in_time"])
+    bottom_pct = _CAPTION_BOTTOM_PCT_BY_LAYOUT.get(layout, _CAPTION_BOTTOM_PCT_DEFAULT)
 
     spans: list[str] = []
     for w in block:
@@ -598,7 +755,7 @@ def _build_caption_block_html(block: list[dict]) -> str:
         '<div style="'
         'position:absolute;'
         'left:6%;right:6%;'
-        'bottom:18%;'
+        f'bottom:{bottom_pct}%;'
         'font:800 6vw/1.2 Inter,Montserrat,sans-serif;'
         'letter-spacing:0;'
         'text-align:center;'

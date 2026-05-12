@@ -7,13 +7,15 @@
  *      candidates running in parallel server-side)
  *   3. Renders one expanded card per enriched candidate showing title,
  *      rationale, cut-plan visualization, predicted output duration
- *   4. Per-card "Render this clip" button fires `useRender` and navigates
- *      to /vim/reels/$reelId
+ *   4. Per-card "Render this clip" button fires `useRender` with the
+ *      tray-level `renderConfig` and navigates to /vim/reels/$reelId
  *
- * Slice 3 ships with default render config (9:16, 25s, hormozi captions,
- * keep_speaker audio). Slice 4 will hang a per-card config form on top.
+ * Config: one shared `RenderConfigPanel` sits above the cards. The same
+ * config is applied to whichever candidate the user renders — matches how
+ * scan params work and how every competing product (Opus / Vizard / Klap)
+ * frames it.
  */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
     AlertCircle,
@@ -31,6 +33,11 @@ import type {
 import { usePreview } from '../hooks/usePreview';
 import { useRender } from '../hooks/useRender';
 import { WordImportanceTimeline } from './WordImportanceTimeline';
+import {
+    DEFAULT_RENDER_CONFIG,
+    RenderConfigPanel,
+    type RenderConfigValue,
+} from './RenderConfigPanel';
 
 interface PreviewTrayProps {
     open: boolean;
@@ -56,6 +63,13 @@ export function PreviewTray({
     const preview = usePreview({ apiKey });
     const render = useRender({ apiKey });
 
+    // Tray-level render config — applies to whichever card the user renders.
+    // Default mirrors what we used to hardcode (9:16 / silence-trim on / 1.0× /
+    // hormozi captions / speaker-only). The panel sits above the cards.
+    const [renderConfig, setRenderConfig] = useState<RenderConfigValue>(
+        DEFAULT_RENDER_CONFIG
+    );
+
     // Fire the /preview mutation when the drawer opens with a non-empty
     // selection. Idempotent via the backend's `enriched` cache — re-opening
     // the same selection is essentially free.
@@ -80,18 +94,42 @@ export function PreviewTray({
 
     const handleRender = (enriched: EnrichedCandidate) => {
         if (renderingCandidateRef.current === enriched.candidate_id) return;
+        // Soft validation: nudge the user to fill in URLs they asked for.
+        // Backend would silently fall back to defaults if these are missing,
+        // but that's a worse UX than telling them why their choice didn't
+        // take effect.
+        if (
+            renderConfig.audio_strategy === 'keep_speaker_plus_bgm'
+            && !renderConfig.background_music_url
+        ) {
+            toast.error(
+                'Add a background music URL or switch back to "Speaker only".'
+            );
+            return;
+        }
+        if (
+            (renderConfig.layout === 'stacked_speaker_with_broll'
+                || renderConfig.layout === 'pip_corner_speaker')
+            && !renderConfig.background_video_url
+        ) {
+            toast.error(
+                'Add a b-roll video URL or switch back to "Full speaker" layout.'
+            );
+            return;
+        }
         renderingCandidateRef.current = enriched.candidate_id;
         render.mutate(
             {
                 input_asset_id: inputAssetId,
                 candidate_id: enriched.candidate_id,
-                // Phase 1 defaults — slice 4 will surface a config form.
-                aspect: '9:16',
-                layout: 'full_speaker_with_overlays',
-                pace: { silence_trim: 'on', speed_multiplier: 1.0, word_trim: true },
-                audio_strategy: 'keep_speaker',
-                ducking: true,
-                captions: { enabled: true, preset: 'hormozi' },
+                layout: renderConfig.layout,
+                aspect: renderConfig.aspect,
+                pace: renderConfig.pace,
+                audio_strategy: renderConfig.audio_strategy,
+                background_music_url: renderConfig.background_music_url,
+                background_video_url: renderConfig.background_video_url,
+                ducking: renderConfig.ducking,
+                captions: renderConfig.captions,
             },
             {
                 onSuccess: (reel) => {
@@ -146,6 +184,8 @@ export function PreviewTray({
                         renderingCandidateId={
                             render.isPending ? render.variables?.candidate_id ?? null : null
                         }
+                        renderConfig={renderConfig}
+                        onConfigChange={setRenderConfig}
                     />
                 </div>
             </aside>
@@ -199,12 +239,16 @@ function PreviewTrayBody({
     onRender,
     renderInflight,
     renderingCandidateId,
+    renderConfig,
+    onConfigChange,
 }: {
     preview: ReturnType<typeof usePreview>;
     candidatesById: Map<string, ReelCandidate>;
     onRender: (enriched: EnrichedCandidate) => void;
     renderInflight: boolean;
     renderingCandidateId: string | null;
+    renderConfig: RenderConfigValue;
+    onConfigChange: (next: RenderConfigValue) => void;
 }) {
     if (preview.isPending) {
         return (
@@ -257,6 +301,11 @@ function PreviewTrayBody({
 
     return (
         <div className="space-y-5">
+            <RenderConfigPanel
+                value={renderConfig}
+                onChange={onConfigChange}
+                disabled={renderInflight}
+            />
             {enriched.map((e) => (
                 <EnrichedCard
                     key={e.candidate_id}

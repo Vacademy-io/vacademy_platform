@@ -365,15 +365,22 @@ public class LiveSessionProviderService {
             // page; the actual MP4 upload is handled by the post-publish hook on
             // the BBB server. If we don't yet have an S3 row for this recordId,
             // ask the heal service to re-run the hook on the BBB host.
+            //
+            // Short-circuit once we've triggered a republish: each /republish
+            // call blocks up to 15s, and a meeting may have several formats
+            // (content / webcams / presenter) sharing one bbbInternalId.
+            // Without this, sync could block for 75s+ → gateway timeout.
             if (bbbRec.getPlaybackUrl() == null || bbbRec.getPlaybackUrl().isBlank()) {
                 String bbbInternalId = bbbRec.getBbbInternalId();
                 boolean alreadyUploaded = bbbInternalId != null
                         && registeredInternalIds.contains(bbbInternalId);
-                if (!alreadyUploaded && bbbInternalId != null && !bbbInternalId.isBlank()
+                if (!alreadyUploaded && !republishTriggered
+                        && bbbInternalId != null && !bbbInternalId.isBlank()
                         && triggerRepublish(bbbInternalId, schedule)) {
                     republishTriggered = true;
                     continue;
                 }
+                if (republishTriggered) continue; // sibling format — same hook will produce all
                 log.warn("[Sync] BBB recording {} has no URL, skipping", bbbRec.getRecordingId());
                 failCount++;
                 continue;

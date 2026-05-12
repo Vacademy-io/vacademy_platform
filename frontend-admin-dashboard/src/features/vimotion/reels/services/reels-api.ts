@@ -21,7 +21,8 @@ export type Layout =
     | 'split_top_speaker'
     | 'pip_corner_speaker'
     | 'lower_third_speaker'
-    | 'book_quote';
+    | 'book_quote'
+    | 'stacked_speaker_with_broll';
 export type CaptionPreset = 'hormozi' | 'karaoke' | 'pop' | 'clean';
 export type SilenceTrim = 'off' | 'gentle' | 'on' | 'aggressive';
 export type AudioStrategy = 'keep_speaker' | 'keep_speaker_plus_bgm' | 'tts_overdub';
@@ -155,6 +156,9 @@ export interface RenderRequest {
     pace?: PaceConfig;
     audio_strategy?: AudioStrategy;
     background_music_url?: string | null;
+    /** Only consumed when layout=stacked_speaker_with_broll. Plays in the
+     *  bottom half of the reel as ambient engagement footage. */
+    background_video_url?: string | null;
     ducking?: boolean;
     captions?: CaptionConfig;
     branding?: BrandingConfig;

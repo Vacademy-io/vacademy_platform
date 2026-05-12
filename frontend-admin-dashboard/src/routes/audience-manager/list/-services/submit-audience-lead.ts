@@ -1,8 +1,4 @@
-import { LOCAL_ADMIN_CORE_BASE } from '@/constants/urls';
-
-// LOCAL: lead submit endpoint pointed at local admin_core_service for testing.
-// Revert by importing BASE_URL and using it instead of LOCAL_ADMIN_CORE_BASE.
-export const SUBMIT_AUDIENCE_LEAD_URL = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/open/v1/audience/lead/submit`;
+import { SUBMIT_AUDIENCE_LEAD_URL } from '@/constants/urls';
 
 export interface SubmitLeadUserDto {
     id?: string;
@@ -41,7 +37,9 @@ export interface SubmitLeadResponse {
  * Submit a lead/response to an audience campaign using the open endpoint.
  * This can be used by admins to submit on behalf of respondents.
  */
-export const submitAudienceLead = async (payload: SubmitLeadRequest): Promise<SubmitLeadResponse> => {
+export const submitAudienceLead = async (
+    payload: SubmitLeadRequest
+): Promise<SubmitLeadResponse> => {
     const response = await fetch(SUBMIT_AUDIENCE_LEAD_URL, {
         method: 'POST',
         headers: {

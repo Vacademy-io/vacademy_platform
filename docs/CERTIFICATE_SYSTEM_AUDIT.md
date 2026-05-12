@@ -4,8 +4,25 @@
 > Out of scope: the bulk admin CSV-issuance tool at `/certificate-generation/student-data` (separate page, separate use case).
 >
 > **Audit date:** 2026-05-08
-> **Last updated:** 2026-05-09 — see "Update note" below.
+> **Last updated:** 2026-05-12 — Code Editor (Question Mode and Practice Mode) is now wired into the completion cascade. See "Update note (2026-05-12)" below.
 > **Audience:** engineers planning the next iteration of the certificate feature.
+
+## Update note (2026-05-12) — Code Editor cascade integration shipped
+
+Branch `fix/code-editor-progress-tracking`, commit `3a8537126`. Two changes worth noting for anyone planning the next iteration of the cert flow:
+
+1. **Code Editor in Question Mode** now writes a `learner_operation` row on every submission. The new `LearnerTrackingAsyncService.updateLearnerOperationsForCodingSubmission(...)` is called from `CodingSubmissionService.submit(...)` after the submission persists. It writes `PERCENTAGE_DOCUMENT_COMPLETED = 100` (Code Editor is `source_type = DOCUMENT`, so no new operation enum / no change to the cascade source-type list at `LearnerTrackingAsyncService.java:430-433`) and cascades up through chapter → module → subject → package_session in the usual pass. Completion bar is "any submission" — verdict / score / passing tests don't gate this.
+
+2. **Code Editor in Practice Mode** now also marks the slide 100% on the learner's first edit, rather than waiting for the ~60-second dwell sync. Implementation is a one-shot synthetic page_view force-flushed via `addActivity` + `syncPDFTrackingData` on the first user-initiated Monaco `onChange` event. The 60s-dwell fallback via `calculateAndUpdatePageViews` is intentionally left in place as a secondary path.
+
+**Implications for §5 "Slide types — the ground truth" and §13 "Hidden bugs":**
+
+- The "Code Editor" rows in the §5 table no longer have the "tracked but never aggregated" caveat for Question Mode. Both modes now contribute to chapter completion via the standard cascade.
+- The bullet in §11 about "what's implemented today" should be read alongside this: chapter completion math now reaches 100% for Code Editor-containing chapters without requiring administrator workarounds.
+- The §13 bullet about "VIDEO_QUESTION is tracked but never aggregated" is unchanged. SCORM and ASSESSMENT exclusions from §13 are also unchanged.
+- For the auto-trigger work (§15, Phase 2 / Bucket B): courses containing Code Editor slides as their final gate will now legitimately cross the threshold, which previously required mixed content to compensate. No new code needed on the cert side — the threshold gate continues to read from the existing `learner_operation` rollup.
+
+
 
 ## Update note (2026-05-09) — rollup percentages can now legitimately drop
 
@@ -175,7 +192,8 @@ The **cascade list** is hardcoded at [LearnerTrackingAsyncService.java:430-433](
 | Audio | `AUDIO` | — | AudioTracked | `/learner-tracking/v1/add-or-update-audio-activity` | ✅ | ✅ |
 | Jupyter Notebook | `DOCUMENT` | `JUPYTER` | DocumentTracked (re-used) | document endpoint | ✅ | ✅ — interactions tracked as page views via `pdf-tracking-store` |
 | Scratch Project | `DOCUMENT` | `SCRATCH` | DocumentTracked (re-used) | document endpoint | ✅ | ✅ — same pattern |
-| Code Editor | `DOCUMENT` | `CODE` | DocumentTracked (re-used) | document endpoint | ✅ | ✅ — same pattern |
+| Code Editor — Practice Mode | `DOCUMENT` | `CODE` | DocumentTracked (re-used) | document endpoint | ✅ | ✅ — first user edit force-flushes immediately (2026-05-12); 60s dwell fallback still applies |
+| Code Editor — Question Mode | `DOCUMENT` | `CODE` (with `mode: "question"` in `published_data`) | `coding_submission` + DocumentTracked via cascade hook | `/admin-core-service/coding/submissions` triggers cascade (2026-05-12) | ✅ | ✅ — any submission writes `PERCENTAGE_DOCUMENT_COMPLETED = 100` |
 | **Presentation (Excalidraw)** | `DOCUMENT` | (Excalidraw JSON) | — | none | ✅ (in denominator) | ❌ **`presentation-tracking-store.syncActivities` is local-only — never POSTs.** |
 | SCORM Package | `SCORM` | — | `ScormLearnerProgress` (lives in `slide/entity/`, not `learner_tracking/`) | `/admin-core-service/slide/scorm-tracking/v1/...` | ❌ **excluded from cascade** | n/a — orphan |
 | Assessment | `ASSESSMENT` | — | none locally — delegated to `assessment_service` | `assessment_service` endpoints | ❌ **excluded from cascade** | n/a — orphan |

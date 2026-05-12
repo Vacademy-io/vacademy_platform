@@ -79,6 +79,21 @@ ASPECT_RATIO = {
     "16:9": 16.0 / 9.0,
 }
 
+# Canonical delivery resolution per aspect. The crop math above operates in
+# source pixels (whatever resolution the source asset happens to be); we then
+# scale to one of these standard sizes so:
+#   1. `meta.dimensions` in the assembled timeline matches what platforms
+#      expect (TikTok/Reels/Shorts all assume 1080×1920 for vertical),
+#   2. the render worker composites overlays / captions on a full-res canvas
+#      (a 720p source upsampled to 1080×1920 + sharp caption layers >>>
+#      everything letterboxed to a tiny 404×720 frame),
+#   3. caption font sizes computed in `vw` / `%` of frame look right.
+TARGET_RESOLUTION = {
+    "9:16": (1080, 1920),
+    "1:1":  (1080, 1080),
+    "16:9": (1920, 1080),
+}
+
 
 @dataclass
 class _CropBox:
@@ -263,9 +278,15 @@ class ReelsSourceClipService:
         face_cx, face_cy = _compute_face_center(face_segments, win_t_start, win_t_end)
         crop = _compute_crop(source_w, source_h, aspect, face_cx, face_cy)
 
+        # Canonical delivery dims for the aspect — speaker_clip is scaled up
+        # to this so meta.dimensions matches platform expectations and the
+        # render worker has a full-res canvas (see TARGET_RESOLUTION comment).
+        target_w, target_h = TARGET_RESOLUTION.get(aspect, TARGET_RESOLUTION["9:16"])
+
         logger.info(
-            f"[SourceClip] {ctx.reel_id} {source_w}x{source_h} → {crop.w}x{crop.h} "
-            f"at ({crop.x},{crop.y}), face_center=({face_cx:.2f},{face_cy:.2f}), "
+            f"[SourceClip] {ctx.reel_id} {source_w}x{source_h} → crop "
+            f"{crop.w}x{crop.h} at ({crop.x},{crop.y}) → scale {target_w}x{target_h}, "
+            f"face_center=({face_cx:.2f},{face_cy:.2f}), "
             f"spans={len(kept_spans_relative)}, speed={speed}"
         )
 
@@ -281,6 +302,8 @@ class ReelsSourceClipService:
                 crop=crop,
                 source_w=source_w,
                 source_h=source_h,
+                target_w=target_w,
+                target_h=target_h,
                 out_path=out_path,
             )
 
@@ -294,9 +317,14 @@ class ReelsSourceClipService:
 
         # 6. Write back.
         ctx.s3_urls["speaker_clip"] = url
-        # Track the output dimensions on the metadata so DIRECTOR + HTML
-        # stages know the final reel dimensions without re-parsing.
-        ctx.extra_metadata["output_resolution"] = {"width": crop.w, "height": crop.h}
+        # `output_resolution` is the **delivery** resolution (post-scale), not
+        # the source-pixel crop. DIRECTOR uses this to set the canvas in the
+        # assembled timeline; ASSEMBLE forwards it to meta.dimensions. The
+        # raw crop dims (`crop.w × crop.h`) are kept for debugging only.
+        ctx.extra_metadata["output_resolution"] = {"width": target_w, "height": target_h}
+        ctx.extra_metadata["source_crop"] = {
+            "w": crop.w, "h": crop.h, "x": crop.x, "y": crop.y,
+        }
         ctx.extra_metadata["output_aspect"] = aspect
 
     # ── Helpers ───────────────────────────────────────────────────────────
@@ -338,6 +366,8 @@ class ReelsSourceClipService:
         crop: _CropBox,
         source_w: int,
         source_h: int,
+        target_w: int,
+        target_h: int,
         out_path: Path,
     ) -> None:
         """Single ffmpeg invocation. Filter graph shape:
@@ -347,7 +377,8 @@ class ReelsSourceClipService:
           ...
           [v0][v1]...concat=n=N:v=1:a=0[vc]   (skipped if N==1)
           [vc]crop=W:H:X:Y[vcrop]             (skipped for passthrough)
-          [vcrop]setpts=PTS/K[vout]           (skipped when speed==1.0)
+          [vcrop]scale=tw:th:flags=lanczos[vscale]  (skipped when crop==target)
+          [vscale]setpts=PTS/K[vout]          (skipped when speed==1.0)
         """
         filter_lines: list[str] = []
         span_labels: list[str] = []
@@ -367,7 +398,7 @@ class ReelsSourceClipService:
                 f"{''.join(span_labels)}concat=n={len(span_labels)}:v=1:a=0{concat_out}"
             )
 
-        # Crop — skip when output dimensions match source (passthrough).
+        # Crop — skip when crop region == source dimensions (passthrough).
         if crop.is_passthrough and crop.w == source_w and crop.h == source_h:
             cropped_label = concat_out
         else:
@@ -376,11 +407,22 @@ class ReelsSourceClipService:
                 f"{concat_out}crop={crop.w}:{crop.h}:{crop.x}:{crop.y}{cropped_label}"
             )
 
+        # Scale crop pixels up (or down) to the canonical delivery size.
+        # Skip the noop case where crop already matches target. lanczos gives
+        # the cleanest upsample of speaker faces — bicubic blurs hair/eyes.
+        if crop.w == target_w and crop.h == target_h:
+            scaled_label = cropped_label
+        else:
+            scaled_label = "[vscale]"
+            filter_lines.append(
+                f"{cropped_label}scale={target_w}:{target_h}:flags=lanczos{scaled_label}"
+            )
+
         # Speed via setpts. PTS/K speeds up by factor K.
         if abs(speed - 1.0) < 1e-6:
-            final_label = cropped_label
+            final_label = scaled_label
         else:
-            filter_lines.append(f"{cropped_label}setpts=PTS/{speed:.4f}[vout]")
+            filter_lines.append(f"{scaled_label}setpts=PTS/{speed:.4f}[vout]")
             final_label = "[vout]"
 
         filter_complex = ";".join(filter_lines)

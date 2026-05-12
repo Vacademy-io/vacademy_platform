@@ -709,14 +709,25 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
     }
   }, [isPlayed]);
 
-  // Periodic sync
+  // Periodic sync — cadence = min(video duration, 60s). Short videos sync at
+  // their own length so the worst-case unsynced window is bounded by the
+  // video length, not by a fixed 60s.
   useEffect(() => {
     if (!isPlayed) return;
+    const periodMs = Math.max(
+      1000,
+      Math.min(
+        Number.isFinite(duration) && duration > 0
+          ? Math.round(duration * 1000)
+          : 60000,
+        60000
+      )
+    );
     const interval = setInterval(() => {
       syncTrackingData();
-    }, 60000);
+    }, periodMs);
     return () => clearInterval(interval);
-  }, [isPlayed, syncTrackingData]);
+  }, [isPlayed, syncTrackingData, duration]);
 
   // Activity tracking effect
   useEffect(() => {

@@ -29,6 +29,34 @@ type FormValues = z.infer<typeof formSchema>;
 
 const INSTITUTE_ID = 'your-institute-id'; // Replace this in real usage
 
+// Read the video file's intrinsic duration in milliseconds. Without this,
+// the slide is created with length=0 and the learner-side cascade can never
+// compute PERCENTAGE_VIDEO_WATCHED (the `length > 0` guard in
+// LearnerTrackingAsyncService skips the write), so the slide stays at 0%
+// forever for every learner.
+const readVideoDurationMillis = (file: File): Promise<number> => {
+    return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        const objectUrl = URL.createObjectURL(file);
+        const cleanup = () => URL.revokeObjectURL(objectUrl);
+        video.onloadedmetadata = () => {
+            cleanup();
+            const seconds = video.duration;
+            if (!Number.isFinite(seconds) || seconds <= 0) {
+                reject(new Error('Could not determine video duration'));
+                return;
+            }
+            resolve(Math.round(seconds * 1000));
+        };
+        video.onerror = () => {
+            cleanup();
+            reject(new Error('Failed to read video metadata'));
+        };
+        video.src = objectUrl;
+    });
+};
+
 export const AddVideoFileDialog = ({ openState }: { openState?: (open: boolean) => void }) => {
     const { getPackageSessionId } = useInstituteDetailsStore();
     const { courseId, levelId, chapterId, moduleId, subjectId, sessionId } = Route.useSearch();
@@ -102,6 +130,19 @@ export const AddVideoFileDialog = ({ openState }: { openState?: (open: boolean) 
         try {
             setIsUploading(true);
 
+            // Read duration from the file before upload. If we can't read it,
+            // refuse to create the slide rather than silently storing length=0,
+            // which would break learner progress tracking on this slide.
+            let durationMillis: number;
+            try {
+                durationMillis = await readVideoDurationMillis(data.videoFile);
+            } catch {
+                toast.error(
+                    'Could not read video duration. Please try a different file or re-encode it.'
+                );
+                return;
+            }
+
             const fileId = await UploadFileInS3(
                 data.videoFile,
                 (progress) => {
@@ -126,9 +167,10 @@ export const AddVideoFileDialog = ({ openState }: { openState?: (open: boolean) 
                     description: '',
                     url: fileId ?? null,
                     title: data.videoName,
-                    video_length_in_millis: 0,
+                    video_length_in_millis: durationMillis,
                     published_url: slideStatus === 'PUBLISHED' ? (fileId ?? null) : null,
-                    published_video_length_in_millis: slideStatus === 'PUBLISHED' ? 0 : 0,
+                    published_video_length_in_millis:
+                        slideStatus === 'PUBLISHED' ? durationMillis : 0,
                     source_type: 'FILE_ID',
                 },
                 status: slideStatus,

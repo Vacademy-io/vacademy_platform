@@ -124,14 +124,24 @@ export const AddVideoDialog = ({ openState }: { openState?: (open: boolean) => v
                 playerVars: { autoplay: 0, controls: 0 },
                 events: {
                     onReady: (event) => {
-                        const duration = event.target.getDuration();
-                        submitFormWithDuration(data, duration * 1000);
+                        const durationSeconds = event.target.getDuration();
+                        if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+                            toast.error(
+                                'Could not read video duration from YouTube. Please try again.'
+                            );
+                            event.target.destroy();
+                            return;
+                        }
+                        submitFormWithDuration(data, Math.round(durationSeconds * 1000));
                         event.target.destroy();
                     },
                 },
             });
         } else {
-            submitFormWithDuration(data, 0);
+            // YouTube IFrame API hasn't finished loading yet. Don't submit with
+            // length=0 — that would break learner-side progress tracking on
+            // this slide forever. Ask the user to retry.
+            toast.error('YouTube is still loading. Please wait a moment and try again.');
         }
     };
 

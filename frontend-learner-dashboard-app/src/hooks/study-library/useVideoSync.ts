@@ -10,6 +10,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { useSlidesRefresh } from "./useSlidesRefresh";
+import { ADD_UPDATE_VIDEO_ACTIVITY } from "@/constants/urls";
 
 const STORAGE_KEY = "video_tracking_data";
 const USER_ID_KEY = "StudentDetails";
@@ -35,6 +36,155 @@ export const useVideoSync = () => {
       setPackageSessionId(id);
     };
     fetchPackageSessionId();
+  }, []);
+
+  // Tab-close safety net. The periodic 60s sync covers the "user keeps the
+  // tab open" case; this covers "user pauses then closes the tab". We use
+  // fetch with keepalive:true (not sendBeacon, which can't set Authorization)
+  // so the browser is guaranteed to flush the request even after the page
+  // unloads. Web only — Capacitor native has its own background lifecycle.
+  useEffect(() => {
+    const handlePageHide = () => {
+      try {
+        const raw = localStorage.getItem("CapacitorStorage." + STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        const activities = (parsed?.data ?? []) as Array<
+          z.infer<typeof ActivitySchema>
+        >;
+        const pending = activities.filter(
+          (a) =>
+            a.sync_status !== "SYNCED" &&
+            Array.isArray(a.timestamps) &&
+            a.timestamps.length > 0
+        );
+        if (pending.length === 0) return;
+
+        const accessToken = localStorage.getItem(
+          "CapacitorStorage.accessToken"
+        );
+        if (!accessToken) return;
+
+        const studentRaw = localStorage.getItem(
+          "CapacitorStorage.StudentDetails"
+        );
+        const student = studentRaw ? JSON.parse(studentRaw) : null;
+        const userId: string | undefined = student?.user_id || student?.userId;
+        if (!userId) return;
+
+        // Snapshot route context from current URL — synchronous and reliable
+        // during pagehide. We only flush activities for the slide that's
+        // currently in the URL, since older slides' route context isn't
+        // available here.
+        const params = new URLSearchParams(window.location.search);
+        const slideIdInUrl = params.get("slideId") || "";
+        const chapterIdInUrl = params.get("chapterId") || "";
+        const moduleIdInUrl = params.get("moduleId") || "";
+        const subjectIdInUrl = params.get("subjectId") || "";
+        const packageSessionIdInUrl = (
+          params.get("sessionId") ||
+          params.get("courseId") ||
+          ""
+        ).trim();
+        if (
+          !slideIdInUrl ||
+          !chapterIdInUrl ||
+          !moduleIdInUrl ||
+          !subjectIdInUrl ||
+          !packageSessionIdInUrl
+        ) {
+          return;
+        }
+
+        const url =
+          ADD_UPDATE_VIDEO_ACTIVITY +
+          `?slideId=${slideIdInUrl}` +
+          `&chapterId=${chapterIdInUrl}` +
+          `&packageSessionId=${packageSessionIdInUrl}` +
+          `&moduleId=${moduleIdInUrl}` +
+          `&subjectId=${subjectIdInUrl}`;
+
+        const instituteId =
+          localStorage.getItem("CapacitorStorage.InstituteId") ||
+          localStorage.getItem("CapacitorStorage.instituteId") ||
+          "";
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+          "X-User-Id": String(userId),
+          "X-Package-Session-Id": packageSessionIdInUrl,
+        };
+        if (instituteId) {
+          headers["clientId"] = instituteId;
+          headers["X-Institute-Id"] = instituteId;
+        }
+
+        for (const activity of pending) {
+          // Only flush activities that match the current slide — we don't
+          // have route context for other slides during pagehide.
+          if (activity.id !== slideIdInUrl) continue;
+
+          const validTimestamps = activity.timestamps.filter(
+            (t) =>
+              t.start != null &&
+              t.end != null &&
+              typeof t.start === "number" &&
+              typeof t.end === "number" &&
+              !isNaN(t.start) &&
+              !isNaN(t.end) &&
+              t.end > t.start
+          );
+          if (validTimestamps.length === 0) continue;
+
+          const payload: TrackingDataType = {
+            id: activity.activity_id,
+            source_id: "",
+            source_type: activity.source,
+            user_id: userId,
+            slide_id: slideIdInUrl,
+            start_time_in_millis: activity.start_time,
+            end_time_in_millis: activity.end_time,
+            percentage_watched: parseFloat(activity.percentage_watched),
+            videos: validTimestamps.map((t) => ({
+              id: t.id,
+              start_time_in_millis: t.start,
+              end_time_in_millis: t.end,
+            })),
+            documents: null,
+            new_activity: activity.new_activity,
+            concentration_score: {
+              id:
+                crypto.randomUUID?.() ??
+                Math.random().toString(36).substring(2, 15),
+              concentration_score: 0,
+              tab_switch_count: 0,
+              pause_count: 0,
+              answer_times_in_seconds: [],
+            },
+          };
+
+          // Fire-and-forget. keepalive:true lets the browser complete the
+          // request after the page unloads. We don't await the response.
+          try {
+            fetch(url, {
+              method: "POST",
+              keepalive: true,
+              headers,
+              body: JSON.stringify(payload),
+            }).catch(() => {
+              /* swallow — pagehide must not throw */
+            });
+          } catch {
+            /* swallow */
+          }
+        }
+      } catch {
+        /* swallow — pagehide must never block tab close */
+      }
+    };
+
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
   }, []);
 
   const syncVideoTrackingData = async () => {

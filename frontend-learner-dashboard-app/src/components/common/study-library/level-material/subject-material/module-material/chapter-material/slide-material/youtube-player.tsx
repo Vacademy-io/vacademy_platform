@@ -1345,9 +1345,22 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         setIsFirstPlay(false);
 
         if (!updateIntervalRef.current) {
+          // Periodic sync cadence = min(video duration, 60s). For short
+          // videos the cadence shrinks so the worst-case unsynced window
+          // is bounded by the video length.
+          const durSec = await safeGetNumber(player.getDuration());
+          const periodMs = Math.max(
+            1000,
+            Math.min(
+              Number.isFinite(durSec) && durSec > 0
+                ? Math.round(durSec * 1000)
+                : 60000,
+              60000
+            )
+          );
           updateIntervalRef.current = setInterval(() => {
             syncVideoTrackingData();
-          }, 60 * 1000);
+          }, periodMs);
         }
       }
 
@@ -1360,24 +1373,29 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       stopProgressTracking();
       videoEndTime.current = now;
 
-      const currentStartTimeInSeconds = convertTimeToSeconds(
-        currentStartTimeRef.current
-      );
-      const endTimeInSeconds =
-        currentStartTimeInSeconds + timestampDurationRef.current;
-      const endTimeStamp = formatVideoTime(endTimeInSeconds);
+      // Use the player's actual playback position rather than a wall-clock
+      // tick estimate. The 1-Hz timer rounds down to the last whole second,
+      // and the natural-end event fires before the next tick lands —
+      // together they undercount each watch by up to ~1 s. On natural ENDED,
+      // snap to getDuration() because YouTube's getCurrentTime() at end
+      // can also be slightly short.
+      const startTimeInMillis =
+        convertTimeToSeconds(currentStartTimeRef.current) * 1000;
+      let endTimeInMillis: number;
+      if (event.data === ENDED_STATE) {
+        const dur = await safeGetNumber(player.getDuration());
+        endTimeInMillis = Math.round(dur * 1000);
+      } else {
+        const cur = await safeGetNumber(player.getCurrentTime());
+        endTimeInMillis = Math.round(cur * 1000);
+      }
+      const endTimeStamp = formatVideoTime(endTimeInMillis / 1000);
 
-      // Only create timestamp if we have a valid start time (not empty or zero when it shouldn't be)
-      // This prevents creating timestamps when pause/end event fires before any play event
-      const startTimeInMillis = convertTimeToSeconds(currentStartTimeRef.current) * 1000;
-      const endTimeInMillis = convertTimeToSeconds(endTimeStamp) * 1000;
-      
       if (
         currentStartTimeRef.current !== "" &&
         !isNaN(startTimeInMillis) &&
         !isNaN(endTimeInMillis) &&
-        endTimeInMillis >= startTimeInMillis &&
-        timestampDurationRef.current > 0 // Only add if there was actual playback duration
+        endTimeInMillis > startTimeInMillis
       ) {
         currentTimestamps.current.push({
           id: uuidv4(),
@@ -1392,13 +1410,20 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           endTime: endTimeStamp,
           startTimeInMillis,
           endTimeInMillis,
-          timestampDuration: timestampDurationRef.current,
         });
       }
 
       currentStartTimeRef.current = formatVideoTime(currentTime);
       timestampDurationRef.current = 0;
       setIsPlayed(false);
+
+      // Sync immediately on natural end so the learner sees 100% within the
+      // cascade-refresh window (~700 ms) instead of waiting for the periodic
+      // tick or for tab close. PAUSED still relies on the periodic tick to
+      // avoid a per-pause POST storm during scrubbing.
+      if (event.data === ENDED_STATE) {
+        syncVideoTrackingData();
+      }
     }
   };
 

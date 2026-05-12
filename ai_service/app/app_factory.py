@@ -115,11 +115,12 @@ def create_app() -> FastAPI:
     )
     app.include_router(transcription_router, prefix=settings.api_base_path)
     app.include_router(brand_kit_scrape_router, prefix=settings.api_base_path)
-    # Reels-from-long-video — three-gate funnel (scan/preview/render).
-    app.include_router(
-        reels_router,
-        prefix=f"{settings.api_base_path}/reels/v1",
-    )
+    # Reels-from-long-video — three-gate funnel (scan/preview/render) +
+    # /frame/{add,update,delete} for the editor's `kind=reel` save loop.
+    # The router declares its own `/external/reels/v1` prefix; we only add
+    # the service-wide `/ai-service` base here. Final paths:
+    #   {api_base_path}/external/reels/v1/{scan,preview,render,list,...}
+    app.include_router(reels_router, prefix=settings.api_base_path)
 
     return app
 

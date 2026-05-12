@@ -117,6 +117,12 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
   const startTimeInMillis = useRef(getEpochTimeInMillis());
   const [isFirstView, setIsFirstView] = useState(true);
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // One-shot guard: fire the completion POST on the FIRST user-initiated
+  // edit of this slide visit, then never again until the component unmounts.
+  // Without this guard every keystroke would re-fire the sync — B9's
+  // slide-level monotonic guard makes the extra writes no-ops at the DB
+  // level, but the network traffic would be wasteful and noisy.
+  const hasFiredCompletionRef = useRef(false);
 
   // Activity tracking for code editor (treating each action as a "page view")
   const [currentAction, setCurrentAction] = useState(1); // 1 for editing, 2 for running code, etc.
@@ -675,8 +681,80 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
     handleUserActivity(); // Track theme change activity
   };
 
-  const handleCodeChange = (value: string | undefined) => {
+  // Practice-Mode completion bar (per product decision 2026-05-12): the slide
+  // counts as 100% complete as soon as the learner makes their first real
+  // edit to the code. The existing 60s-interval sync would eventually fire
+  // anyway via calculateAndUpdatePageViews synthesizing a page_view from
+  // elapsed time, but that means a learner who opens, types, and leaves
+  // within 60 seconds gets no credit. This path makes completion immediate.
+  //
+  // Implementation: push a synthetic page_view (page=1, since admin-create
+  // hardcodes published_document_total_pages=1) onto actionViews.current,
+  // then directly call addActivity+syncPDFTrackingData rather than waiting
+  // for the next 1s elapsedTime tick to flush the ref into storage. The
+  // hasFiredCompletionRef guard makes this a one-shot per slide visit.
+  const fireCompletionOnFirstEdit = async () => {
+    if (hasFiredCompletionRef.current) return;
+    hasFiredCompletionRef.current = true;
+
+    const now = getEpochTimeInMillis();
+    const nowIso = getISTTime();
+
+    actionViews.current.push({
+      id: uuidv4(),
+      page: 1,
+      duration: Math.max(1, elapsedTime),
+      start_time: startTime.current,
+      end_time: nowIso,
+      start_time_in_millis: startTimeInMillis.current,
+      end_time_in_millis: now,
+    });
+
+    try {
+      await addActivity({
+        slide_id: activeItem?.id || "",
+        activity_id: activityId.current,
+        source: "DOCUMENT" as const,
+        source_id: documentId || "",
+        start_time: startTime.current,
+        end_time: nowIso,
+        start_time_in_millis: startTimeInMillis.current,
+        end_time_in_millis: now,
+        duration: elapsedTime.toString(),
+        page_views: [...actionViews.current],
+        total_pages_read: new Set(actionViews.current.map((v) => v.page)).size,
+        sync_status: "STALE",
+        current_page: currentAction,
+        current_page_start_time_in_millis: actionStartTime.current.getTime(),
+        new_activity: true,
+        concentration_score: {
+          id: activityId.current,
+          concentration_score: 0,
+          tab_switch_count: tabSwitchCount,
+          pause_count: missedAnswerCount,
+          wrong_answer_count: wrongAnswerCount,
+          answer_times_in_seconds: answeredTimeArray,
+        },
+      });
+      await syncPDFTrackingData();
+    } catch (err) {
+      console.error("[PracticeMode] Completion POST failed", err);
+      // Reset so a subsequent edit can retry. Per-keystroke retries are
+      // bounded by the guard flipping back to true on the next attempt.
+      hasFiredCompletionRef.current = false;
+    }
+  };
+
+  const handleCodeChange = (
+    value: string | undefined,
+    event?: { isFlush?: boolean; changes?: unknown[] }
+  ) => {
     if (editorState.readOnly || editorState.viewMode === "view") return;
+
+    // Monaco fires onChange for both user typing AND programmatic setValue
+    // (starter code load on mount, language switch, etc.). isFlush=true
+    // marks the latter; we only want to count user edits.
+    const isUserEdit = event ? event.isFlush === false : true;
 
     const newCode = value || "";
     setEditorState((prev) => ({
@@ -689,6 +767,10 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
 
     // Track code editing activity
     handleUserActivity();
+
+    if (isUserEdit) {
+      void fireCompletionOnFirstEdit();
+    }
   };
 
   const handleEditorDidMount = (editor: any, monaco: any) => {

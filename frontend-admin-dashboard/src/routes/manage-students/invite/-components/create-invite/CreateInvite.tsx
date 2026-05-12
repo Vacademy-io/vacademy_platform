@@ -203,7 +203,7 @@ const CreateInvite = () => {
                                     <CaretDown size={18} />
                                 </button>
                                 {showCourseDropdown && (
-                                    <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">
+                                    <div className="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded border bg-white shadow">
                                         {dummyCourses.map((course) => (
                                             <div
                                                 key={course.id}
@@ -263,7 +263,7 @@ const CreateInvite = () => {
                                             <CaretDown size={18} />
                                         </button>
                                         {showSessionDropdown && (
-                                            <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">
+                                            <div className="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded border bg-white shadow">
                                                 {sessions.map((session) => (
                                                     <div
                                                         key={session.sessionId}
@@ -317,7 +317,7 @@ const CreateInvite = () => {
                                             <CaretDown size={18} />
                                         </button>
                                         {showLevelDropdown && selectedSession && (
-                                            <div className="absolute z-10 mt-1 w-full rounded border bg-white shadow">
+                                            <div className="absolute z-10 mt-1 max-h-60 w-full overflow-y-auto rounded border bg-white shadow">
                                                 {levels.map((level) => (
                                                     <div
                                                         key={level.levelId}

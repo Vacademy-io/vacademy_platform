@@ -6,6 +6,9 @@ export const getPaymentDetail = async () => {
     const instituteId = getInstituteId();
     const data = {
         types: [],
+        // Empty list opts out of the backend's default CPO-exclusion so admins can pick a
+        // CPO mirror as the invite's payment option alongside regular plans.
+        exclude_types: [],
         source: 'INSTITUTE',
         source_id: instituteId,
         require_approval: true,

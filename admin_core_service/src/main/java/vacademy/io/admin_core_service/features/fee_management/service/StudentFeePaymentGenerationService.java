@@ -97,6 +97,13 @@ public class StudentFeePaymentGenerationService {
                         payment.setAmountExpected(installment.getAmount());
                         payment.setAmountPaid(BigDecimal.ZERO);
                         payment.setDueDate(Date.valueOf(installment.getDueDate()));
+                        // Copy start_date from template when present so the side-view's
+                        // "Start" column reflects the installment window instead of
+                        // being blank. Admins overriding the dates at enrollment time
+                        // overwrite this via CpoEnrollmentConfigApplier.
+                        if (installment.getStartDate() != null) {
+                            payment.setStartDate(Date.valueOf(installment.getStartDate()));
+                        }
                         payment.setStatus("PENDING");
                         payment.setInstituteId(instituteId);
 

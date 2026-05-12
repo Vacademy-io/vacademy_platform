@@ -21,6 +21,14 @@ import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSe
 import vacademy.io.admin_core_service.features.institute_learner.notification.LearnerEnrollmentNotificationService;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
 import vacademy.io.admin_core_service.features.learner.service.LearnerService;
+import vacademy.io.admin_core_service.features.fee_management.entity.AftInstallment;
+import vacademy.io.admin_core_service.features.fee_management.entity.AssignedFeeValue;
+import vacademy.io.admin_core_service.features.fee_management.entity.FeeType;
+import vacademy.io.admin_core_service.features.fee_management.repository.AftInstallmentRepository;
+import vacademy.io.admin_core_service.features.fee_management.repository.AssignedFeeValueRepository;
+import vacademy.io.admin_core_service.features.fee_management.repository.FeeTypeRepository;
+import vacademy.io.admin_core_service.features.fee_management.service.FeeLedgerAllocationService;
+import vacademy.io.admin_core_service.features.fee_management.service.StudentFeePaymentGenerationService;
 import vacademy.io.admin_core_service.features.learner_management.dto.*;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
@@ -38,6 +46,7 @@ import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
+import java.math.BigDecimal;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -76,6 +85,12 @@ public class BulkAssignmentService {
     private final ObjectMapper objectMapper;
     private final InstituteRepository instituteRepository;
     private final vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService userLeadProfileService;
+    private final StudentFeePaymentGenerationService studentFeePaymentGenerationService;
+    private final FeeLedgerAllocationService feeLedgerAllocationService;
+    private final vacademy.io.admin_core_service.features.fee_management.service.CpoEnrollmentConfigApplier cpoEnrollmentConfigApplier;
+    private final FeeTypeRepository feeTypeRepository;
+    private final AssignedFeeValueRepository assignedFeeValueRepository;
+    private final AftInstallmentRepository aftInstallmentRepository;
 
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
@@ -473,7 +488,7 @@ public class BulkAssignmentService {
                 // Case B: TERMINATED / INACTIVE / EXPIRED → RE_ENROLL or SKIP
                 if (DUPLICATE_RE_ENROLL.equals(duplicateHandling)) {
                     return handleReEnroll(mapping, userId, userEmail, config,
-                            instituteId, dryRun, userDTO, extraDetails, adminUserId);
+                            instituteId, dryRun, userDTO, extraDetails, adminUserId, assignment);
                 } else if (DUPLICATE_ERROR.equals(duplicateHandling)) {
                     return buildFailedResult(userId, userMap, packageSessionId,
                             "Existing enrollment found with status: " + existingStatus);
@@ -491,7 +506,7 @@ public class BulkAssignmentService {
             // Case C: No existing mapping → create new
             NewUserDTO newUserData = newUserDataMap.get(userId);
             return handleNewEnrollment(userId, userEmail, config, instituteId, dryRun, userDTO, extraDetails,
-                    adminUserId, options, newUserData, generateInvoiceOnManualEnroll);
+                    adminUserId, options, newUserData, generateInvoiceOnManualEnroll, assignment);
 
         } catch (Exception e) {
             log.error("Error processing assignment userId={}, packageSessionId={}: {}",
@@ -517,18 +532,34 @@ public class BulkAssignmentService {
             UserDTO userDTO, StudentExtraDetails extraDetails,
             String adminUserId, BulkAssignOptionsDTO options,
             NewUserDTO newUserData,
-            boolean generateInvoiceOnManualEnroll) {
+            boolean generateInvoiceOnManualEnroll,
+            AssignmentItemDTO assignment) {
+
+        boolean isCpo = isCpoOption(config.getPaymentOption());
+        CpoTemplateSummary cpoSummary = isCpo
+                ? summarizeCpoFromTemplate(config.getPaymentOption().getComplexPaymentOptionId())
+                : null;
+        String cpoMode = isCpo ? resolveCpoMode(assignment) : null;
+        Double cpoAmount = isCpo && "OFFLINE".equals(cpoMode) ? resolveCpoAmount(assignment) : null;
+        CpoEnrollmentConfigDTO cpoConfig = isCpo ? assignment.getCpoConfig() : null;
 
         if (dryRun) {
-            return BulkAssignResultItemDTO.builder()
+            BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder b = BulkAssignResultItemDTO.builder()
                     .userId(userId).userEmail(userEmail)
                     .packageSessionId(config.getPackageSession().getId())
                     .status("SUCCESS").actionTaken("CREATED")
                     .enrollInviteIdUsed(config.getEnrollInvite().getId())
+                    .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null)
                     .message(config.isAutoCreated()
                             ? "Will create with auto-generated free invite"
-                            : null)
-                    .build();
+                            : null);
+            if (isCpo && cpoSummary != null) {
+                b.cpoTotalAmount(cpoSummary.total.doubleValue())
+                        .cpoInstallmentCount(cpoSummary.count)
+                        .cpoInitialPaymentMode(cpoMode)
+                        .cpoInitialPaymentAmount(cpoAmount);
+            }
+            return b.build();
         }
 
         // Idempotently grant the STUDENT role in auth-service. Newly-created
@@ -624,8 +655,20 @@ public class BulkAssignmentService {
         Date globalPaymentDate = options != null ? options.getPaymentDate() : null;
         String transactionId = options != null ? options.getTransactionId() : null;
 
-        // Create payment log if any payment date or transaction ID is provided
-        if (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId)) {
+        // CPO post-enrollment side effects: always generate the installment schedule;
+        // apply per-learner overrides + CPO discount if supplied; optionally record
+        // an admin-collected offline payment that FIFOs against the resulting rows.
+        if (isCpo) {
+            applyCpoEnrollmentSideEffects(
+                    userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
+                    perUserPaymentDate, globalPaymentDate, transactionId,
+                    generateInvoiceOnManualEnroll);
+        }
+
+        // Create payment log if any payment date or transaction ID is provided.
+        // Skipped for CPO since applyCpoEnrollmentSideEffects already owns the PaymentLog
+        // (and uses the partial amount the admin specified instead of the full plan price).
+        if (!isCpo && (perUserPaymentDate != null || globalPaymentDate != null || StringUtils.hasText(transactionId))) {
             try {
                 Double amount = config.getPaymentPlan() != null ? config.getPaymentPlan().getActualPrice() : 0.0;
                 String currency = config.getPaymentPlan() != null ? config.getPaymentPlan().getCurrency()
@@ -680,14 +723,22 @@ public class BulkAssignmentService {
             }
         }
 
-        return BulkAssignResultItemDTO.builder()
+        BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder resultBuilder = BulkAssignResultItemDTO.builder()
                 .userId(userId).userEmail(userEmail)
                 .packageSessionId(config.getPackageSession().getId())
                 .status("SUCCESS").actionTaken("CREATED")
                 .mappingId(mappingId)
                 .userPlanId(userPlan.getId())
                 .enrollInviteIdUsed(config.getEnrollInvite().getId())
-                .build();
+                .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null);
+        if (isCpo && cpoSummary != null) {
+            resultBuilder
+                    .cpoTotalAmount(cpoSummary.total.doubleValue())
+                    .cpoInstallmentCount(cpoSummary.count)
+                    .cpoInitialPaymentMode(cpoMode)
+                    .cpoInitialPaymentAmount(cpoAmount);
+        }
+        return resultBuilder.build();
     }
 
     /**
@@ -701,16 +752,32 @@ public class BulkAssignmentService {
             DefaultInviteResolver.ResolvedConfig config,
             String instituteId, boolean dryRun,
             UserDTO userDTO, StudentExtraDetails extraDetails,
-            String adminUserId) {
+            String adminUserId,
+            AssignmentItemDTO assignment) {
+
+        boolean isCpo = isCpoOption(config.getPaymentOption());
+        CpoTemplateSummary cpoSummary = isCpo
+                ? summarizeCpoFromTemplate(config.getPaymentOption().getComplexPaymentOptionId())
+                : null;
+        String cpoMode = isCpo ? resolveCpoMode(assignment) : null;
+        Double cpoAmount = isCpo && "OFFLINE".equals(cpoMode) ? resolveCpoAmount(assignment) : null;
+        CpoEnrollmentConfigDTO cpoConfig = isCpo ? assignment.getCpoConfig() : null;
 
         if (dryRun) {
-            return BulkAssignResultItemDTO.builder()
+            BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder b = BulkAssignResultItemDTO.builder()
                     .userId(userId).userEmail(userEmail)
                     .packageSessionId(config.getPackageSession().getId())
                     .status("SUCCESS").actionTaken("RE_ENROLLED")
                     .enrollInviteIdUsed(config.getEnrollInvite().getId())
-                    .message("Will re-enroll from " + existingMapping.getStatus() + " status")
-                    .build();
+                    .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null)
+                    .message("Will re-enroll from " + existingMapping.getStatus() + " status");
+            if (isCpo && cpoSummary != null) {
+                b.cpoTotalAmount(cpoSummary.total.doubleValue())
+                        .cpoInstallmentCount(cpoSummary.count)
+                        .cpoInitialPaymentMode(cpoMode)
+                        .cpoInitialPaymentAmount(cpoAmount);
+            }
+            return b.build();
         }
 
         // Idempotently grant the STUDENT role in auth-service before reactivating
@@ -773,15 +840,33 @@ public class BulkAssignmentService {
         // Auto-link learner to sub-org if the enrolling admin belongs to one
         subOrgAutoLinkService.linkIfSubOrgAdmin(userId, config.getPackageSession().getId(), existingMapping.getId(), adminUserId);
 
-        return BulkAssignResultItemDTO.builder()
+        // CPO re-enrollment: regenerate the installment schedule for the fresh UserPlan,
+        // apply per-learner overrides if supplied, and optionally record the admin's
+        // offline payment against the resulting rows.
+        if (isCpo) {
+            applyCpoEnrollmentSideEffects(
+                    userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
+                    null, null, null,
+                    false);
+        }
+
+        BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder resultBuilder = BulkAssignResultItemDTO.builder()
                 .userId(userId).userEmail(userEmail)
                 .packageSessionId(config.getPackageSession().getId())
                 .status("SUCCESS").actionTaken("RE_ENROLLED")
                 .mappingId(existingMapping.getId())
                 .userPlanId(userPlan.getId())
                 .enrollInviteIdUsed(config.getEnrollInvite().getId())
-                .message("Re-enrolled from " + existingMapping.getStatus() + " status")
-                .build();
+                .paymentOptionType(config.getPaymentOption() != null ? config.getPaymentOption().getType() : null)
+                .message("Re-enrolled from " + existingMapping.getStatus() + " status");
+        if (isCpo && cpoSummary != null) {
+            resultBuilder
+                    .cpoTotalAmount(cpoSummary.total.doubleValue())
+                    .cpoInstallmentCount(cpoSummary.count)
+                    .cpoInitialPaymentMode(cpoMode)
+                    .cpoInitialPaymentAmount(cpoAmount);
+        }
+        return resultBuilder.build();
     }
 
     /**
@@ -1134,5 +1219,200 @@ public class BulkAssignmentService {
             return false;
         return request.getAssignments().stream()
                 .anyMatch(a -> !CollectionUtils.isEmpty(a.getCustomFieldValues()));
+    }
+
+    // ========================= CPO SUPPORT =========================
+
+    private static boolean isCpoOption(vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption po) {
+        return po != null
+                && po.getType() != null
+                && PaymentOptionType.CPO.name().equalsIgnoreCase(po.getType());
+    }
+
+    /**
+     * "OFFLINE" if an offline payment is being recorded; "SKIP" otherwise.
+     * cpoConfig (when present) supersedes the legacy cpoPaymentMode/Amount fields.
+     */
+    private static String resolveCpoMode(AssignmentItemDTO assignment) {
+        if (assignment == null) return "SKIP";
+        String mode;
+        Double amount;
+        if (assignment.getCpoConfig() != null) {
+            mode = assignment.getCpoConfig().getPaymentMode();
+            amount = assignment.getCpoConfig().getPaymentAmount();
+        } else {
+            mode = assignment.getCpoPaymentMode();
+            amount = assignment.getCpoPaymentAmount();
+        }
+        if ("OFFLINE".equalsIgnoreCase(mode) && amount != null && amount > 0.0) {
+            return "OFFLINE";
+        }
+        return "SKIP";
+    }
+
+    /** Resolves the offline-payment amount, preferring cpoConfig over the legacy field. */
+    private static Double resolveCpoAmount(AssignmentItemDTO assignment) {
+        if (assignment == null) return null;
+        if (assignment.getCpoConfig() != null && assignment.getCpoConfig().getPaymentAmount() != null) {
+            return assignment.getCpoConfig().getPaymentAmount();
+        }
+        return assignment.getCpoPaymentAmount();
+    }
+
+    /** Total contract value + installment count, read from the CPO template (not from SFP rows). */
+    private CpoTemplateSummary summarizeCpoFromTemplate(String cpoId) {
+        if (!StringUtils.hasText(cpoId)) return CpoTemplateSummary.empty();
+        try {
+            BigDecimal total = BigDecimal.ZERO;
+            int count = 0;
+            List<FeeType> feeTypes = feeTypeRepository.findByCpoId(cpoId);
+            for (FeeType ft : feeTypes) {
+                List<AssignedFeeValue> afvs = assignedFeeValueRepository.findByFeeTypeId(ft.getId());
+                for (AssignedFeeValue afv : afvs) {
+                    List<AftInstallment> installments = aftInstallmentRepository
+                            .findByAssignedFeeValueIdOrderByInstallmentNumberAsc(afv.getId());
+                    if (installments.isEmpty()) {
+                        // Single-bill CPO (no installments configured) — count the AFV as one row.
+                        BigDecimal amount = afv.getAmount() != null ? afv.getAmount() : BigDecimal.ZERO;
+                        total = total.add(amount);
+                        count += 1;
+                    } else {
+                        for (AftInstallment inst : installments) {
+                            BigDecimal amount = inst.getAmount() != null ? inst.getAmount() : BigDecimal.ZERO;
+                            total = total.add(amount);
+                            count += 1;
+                        }
+                    }
+                }
+            }
+            return new CpoTemplateSummary(total, count);
+        } catch (Exception e) {
+            log.warn("Failed to summarize CPO {}: {}", cpoId, e.getMessage());
+            return CpoTemplateSummary.empty();
+        }
+    }
+
+    /**
+     * For a freshly-created CPO UserPlan, generates the StudentFeePayment installment
+     * rows and optionally records an admin-collected offline payment that FIFO-allocates
+     * against those rows.
+     *
+     * <p>Mirrors the SFP generation that
+     * {@link vacademy.io.admin_core_service.features.learner_payment_option_operation.service.ComplexPaymentOptionOperation}
+     * runs for the learner-driven enrollment path. Because BulkAssignmentService creates
+     * the UserPlan directly (bypassing the strategy), we have to invoke this generator
+     * explicitly — otherwise the learner-facing "my dues" / "pay-installments" flow has
+     * no rows to surface.
+     */
+    private void applyCpoEnrollmentSideEffects(
+            String userId, String instituteId, UserPlan userPlan,
+            DefaultInviteResolver.ResolvedConfig config,
+            String cpoMode, Double cpoAmount,
+            CpoEnrollmentConfigDTO cpoConfig, String adminUserId,
+            Date perUserPaymentDate, Date globalPaymentDate, String transactionId,
+            boolean generateInvoiceOnManualEnroll) {
+
+        String cpoId = config.getPaymentOption().getComplexPaymentOptionId();
+        if (!StringUtils.hasText(cpoId)) {
+            log.error("CPO mirror PaymentOption {} has null complexPaymentOptionId — sync bug? Skipping SFP generation.",
+                    config.getPaymentOption().getId());
+            return;
+        }
+
+        // 1. Always generate the installment schedule. Without this the learner can't
+        //    see their dues and the FeeLedger has nothing to allocate against.
+        try {
+            studentFeePaymentGenerationService.generateFeeBills(
+                    userPlan.getId(), cpoId, userId, instituteId);
+        } catch (Exception e) {
+            log.error("Failed to generate fee bills (bulk-assign) for userPlan={}, cpo={}: {}",
+                    userPlan.getId(), cpoId, e.getMessage(), e);
+            throw new VacademyException("Failed to generate fee bills: " + e.getMessage());
+        }
+
+        // 1b. Apply per-learner installment overrides and CPO-level discount BEFORE
+        //     allocating any offline payment. Discount math must finalize first so
+        //     FIFO targets the post-discount net amounts, not the template gross.
+        if (cpoConfig != null) {
+            try {
+                cpoEnrollmentConfigApplier.apply(userPlan.getId(), cpoConfig, adminUserId);
+            } catch (Exception e) {
+                log.error("Failed to apply cpoConfig for userPlan={}: {}", userPlan.getId(), e.getMessage(), e);
+                throw new VacademyException("Failed to apply CPO configuration: " + e.getMessage());
+            }
+        }
+
+        // 2. Optionally record an offline payment.
+        if (!"OFFLINE".equals(cpoMode) || cpoAmount == null || cpoAmount <= 0.0) {
+            return;
+        }
+
+        BigDecimal amount = BigDecimal.valueOf(cpoAmount);
+        // Bounds check intentionally omitted for now (admin may record more/less than the
+        // generated outstanding). FeeLedgerAllocationService FIFO-allocates whatever fits;
+        // any remainder is stashed on PaymentLog.unallocatedAmount.
+
+        // 3. Create a PaymentLog (PAID/MANUAL) linked to this UserPlan, then FIFO-allocate
+        //    via FeeLedgerAllocationService.allocatePaymentForNewLog (same engine the
+        //    learner pay-installments + admin allocate paths use).
+        try {
+            Date paymentDate = perUserPaymentDate != null ? perUserPaymentDate
+                    : (globalPaymentDate != null ? globalPaymentDate : new Date());
+            String currency = config.getPaymentPlan() != null && config.getPaymentPlan().getCurrency() != null
+                    ? config.getPaymentPlan().getCurrency()
+                    : (config.getEnrollInvite() != null && config.getEnrollInvite().getCurrency() != null
+                            ? config.getEnrollInvite().getCurrency()
+                            : "INR");
+
+            String paymentLogId = paymentLogService.createPaymentLog(
+                    userId,
+                    cpoAmount,
+                    vacademy.io.common.payment.enums.PaymentGateway.MANUAL.name(),
+                    vacademy.io.common.payment.enums.PaymentGateway.MANUAL.name(),
+                    currency,
+                    userPlan,
+                    null,
+                    paymentDate);
+
+            Map<String, Object> paymentSpecificData = new HashMap<>();
+            String paymentReference = cpoConfig != null && StringUtils.hasText(cpoConfig.getPaymentReference())
+                    ? cpoConfig.getPaymentReference()
+                    : transactionId;
+            if (StringUtils.hasText(paymentReference)) {
+                paymentSpecificData.put("transaction_id", paymentReference);
+            }
+            paymentSpecificData.put("source", "BULK_ASSIGN_CPO");
+
+            paymentLogService.updatePaymentLogOnly(
+                    paymentLogId,
+                    vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum.SUCCESS.name(),
+                    vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name(),
+                    vacademy.io.admin_core_service.features.common.util.JsonUtil.toJson(paymentSpecificData));
+
+            feeLedgerAllocationService.allocatePaymentForNewLog(
+                    paymentLogId, amount, userPlan.getId());
+
+            if (generateInvoiceOnManualEnroll) {
+                try {
+                    PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
+                            .orElseThrow(() -> new RuntimeException(
+                                    "Payment log not found: " + paymentLogId));
+                    invoiceService.generateInvoice(userPlan, persistedLog, instituteId);
+                } catch (Exception e) {
+                    log.warn("Failed to generate invoice for CPO offline payment userId={}, paymentLogId={}: {}",
+                            userId, paymentLogId, e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to record CPO offline payment for userPlan={}, amount={}: {}",
+                    userPlan.getId(), cpoAmount, e.getMessage(), e);
+            throw new VacademyException("Failed to record CPO offline payment: " + e.getMessage());
+        }
+    }
+
+    private record CpoTemplateSummary(BigDecimal total, int count) {
+        static CpoTemplateSummary empty() {
+            return new CpoTemplateSummary(BigDecimal.ZERO, 0);
+        }
     }
 }

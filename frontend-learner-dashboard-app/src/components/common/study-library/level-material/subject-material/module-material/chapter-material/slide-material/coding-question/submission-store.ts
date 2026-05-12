@@ -14,7 +14,7 @@
 // still surfaces the most-recent attempt during a flaky connection.
 
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { BASE_URL } from "@/constants/urls";
+import { CODING_SUBMISSIONS } from "@/constants/urls";
 import type {
   CodingSubmission,
   LangId,
@@ -22,7 +22,7 @@ import type {
   Verdict,
 } from "./types";
 
-const ENDPOINT = `${BASE_URL}/admin-core-service/coding/submissions`;
+const ENDPOINT = CODING_SUBMISSIONS;
 
 // In-flight cache so an offline Submit isn't lost from the UI before the next
 // listSubmissions() call. Keyed by slideId.
@@ -123,8 +123,21 @@ export async function getSubmission(
   }
 }
 
+// Cascade-context IDs that the backend needs in order to fire the
+// learner_operation cascade (slide → chapter → module → subject →
+// package_session). Callers pull these from the router search params so the
+// submission contributes to progress rollups. If any is missing, the backend
+// still saves the submission but skips the cascade (logged on the server).
+export interface CascadeContext {
+  chapterId: string;
+  moduleId: string;
+  subjectId: string;
+  packageSessionId: string;
+}
+
 export async function saveSubmission(
   submission: CodingSubmission,
+  cascade?: CascadeContext,
 ): Promise<void> {
   // learnerId is set server-side from the JWT — we don't send it.
   const payload = {
@@ -142,6 +155,10 @@ export async function saveSubmission(
     sessionStartedAt: submission.sessionStartedAt
       ? new Date(submission.sessionStartedAt).toISOString()
       : null,
+    chapterId: cascade?.chapterId,
+    moduleId: cascade?.moduleId,
+    subjectId: cascade?.subjectId,
+    packageSessionId: cascade?.packageSessionId,
   };
 
   try {

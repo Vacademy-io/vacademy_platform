@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -15,16 +16,21 @@ import vacademy.io.admin_core_service.features.coding_submission.dto.CodingSubmi
 import vacademy.io.admin_core_service.features.coding_submission.dto.SubmitCodingRequestDto;
 import vacademy.io.admin_core_service.features.coding_submission.entity.CodingSubmission;
 import vacademy.io.admin_core_service.features.coding_submission.repository.CodingSubmissionRepository;
+import vacademy.io.admin_core_service.features.learner_tracking.service.LearnerTrackingAsyncService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.Date;
 
+@Slf4j
 @Service
 public class CodingSubmissionService {
 
     @Autowired
     private CodingSubmissionRepository repository;
+
+    @Autowired
+    private LearnerTrackingAsyncService learnerTrackingAsyncService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -66,7 +72,48 @@ public class CodingSubmissionService {
                 .sessionStartedAt(req.getSessionStartedAt())
                 .build();
 
-        return CodingSubmissionDto.from(repository.save(entity));
+        CodingSubmission saved = repository.save(entity);
+
+        // Fire the learner_operation cascade so this slide counts as completed
+        // in chapter / module / subject / package_session rollups. Code Editor
+        // is stored under source_type = DOCUMENT so the cascade writes
+        // PERCENTAGE_DOCUMENT_COMPLETED = 100. Any submission counts —
+        // verdict / score / passing tests don't gate this (intentional product
+        // call: completion bar is "the learner submitted," and grade quality
+        // lives separately on coding_submission for admin review). The
+        // cascade runs @Async, so this call returns immediately.
+        if (hasFullCascadeContext(req)) {
+            learnerTrackingAsyncService.updateLearnerOperationsForCodingSubmission(
+                    user.getUserId(),
+                    req.getSlideId(),
+                    req.getChapterId(),
+                    req.getModuleId(),
+                    req.getSubjectId(),
+                    req.getPackageSessionId());
+        } else {
+            // Submission persisted, but cascade can't fire without all four
+            // parent IDs. Log so this is visible if any caller forgets to
+            // ship the context. Not throwing — the submission itself is
+            // saved and recoverable; only the rollup is missed.
+            log.warn("Coding submission {} saved without full cascade context "
+                    + "(chapterId={}, moduleId={}, subjectId={}, packageSessionId={}). "
+                    + "Slide-level progress not updated.",
+                    saved.getId(), req.getChapterId(), req.getModuleId(),
+                    req.getSubjectId(), req.getPackageSessionId());
+        }
+
+        return CodingSubmissionDto.from(saved);
+    }
+
+    private static boolean hasFullCascadeContext(SubmitCodingRequestDto req) {
+        return notBlank(req.getChapterId())
+                && notBlank(req.getModuleId())
+                && notBlank(req.getSubjectId())
+                && notBlank(req.getPackageSessionId());
+    }
+
+    private static boolean notBlank(String s) {
+        return s != null && !s.isBlank();
     }
 
     /**

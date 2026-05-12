@@ -19,6 +19,13 @@ import java.util.Date;
 public class SubmitCodingRequestDto {
     private String slideId;
     private String packageSessionId;
+    // Cascade-context IDs. Needed so a successful submission can fire the
+    // learner_operation cascade (slide → chapter → module → subject →
+    // package_session). The frontend reads these from the router search
+    // params alongside slideId.
+    private String chapterId;
+    private String moduleId;
+    private String subjectId;
     private String language;
     private String sourceCode;
     private String verdict;

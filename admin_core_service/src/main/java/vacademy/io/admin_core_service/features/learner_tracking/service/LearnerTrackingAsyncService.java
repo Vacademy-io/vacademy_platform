@@ -205,6 +205,31 @@ public class LearnerTrackingAsyncService {
                 updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
         }
 
+        // ==== Coding Submission Tracking ====
+        //
+        // Code Editor slides are stored as source_type = DOCUMENT, so they live in
+        // the cascade under PERCENTAGE_DOCUMENT_COMPLETED (no new enum / no change
+        // to the cascade source-type list). Question Mode submissions don't go
+        // through the normal /add-or-update-document-activity path — they POST to
+        // /coding/submissions which has its own table (coding_submission). This
+        // method is the bridge: after CodingSubmissionService saves the row, it
+        // calls this so the slide gets a learner_operation entry and the cascade
+        // updates the chapter / module / subject / package_session rollups.
+        //
+        // Completion bar: any submission = 100%. The verdict / score / passed
+        // count still live on coding_submission for admin review and learner
+        // history; here we only signal "the slide has been completed." Slide-level
+        // monotonic guard (B9) makes re-submits a no-op at this layer.
+        @Async
+        @Transactional
+        public void updateLearnerOperationsForCodingSubmission(String userId, String slideId, String chapterId,
+                        String moduleId, String subjectId, String packageSessionId) {
+                addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                LearnerOperationEnum.PERCENTAGE_DOCUMENT_COMPLETED.name(), 100.0);
+
+                updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
+        }
+
         // ==== Video Slide Tracking ====
 
         @Async

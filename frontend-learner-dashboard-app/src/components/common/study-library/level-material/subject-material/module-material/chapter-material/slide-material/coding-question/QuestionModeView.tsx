@@ -4,6 +4,9 @@ import { Play, Send, Check, X, Loader2, Clock } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import confetti from "canvas-confetti";
 import { Preferences } from "@capacitor/preferences";
+import { useRouter } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
+import { refreshProgressAfterSubmit } from "@/utils/study-library/tracking/refreshProgressAfterSubmit";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -55,6 +58,13 @@ function classify(passed: number, total: number, hadError: boolean): Verdict {
 }
 
 export function QuestionModeView({ question, slideId }: Props) {
+  // Router search params carry the cascade-context IDs we ship to the backend
+  // alongside each submission so the learner_operation cascade can run. The
+  // slide route URL uses `sessionId` for what the backend calls
+  // `packageSessionId` — see routes/.../slides/index.tsx validateSearch.
+  const router = useRouter();
+  const queryClient = useQueryClient();
+
   const codeStorageKey = `coding_code_${slideId}`;
   // Per-language code, persisted per-slide in Capacitor Preferences so a
   // refresh / app re-open doesn't wipe in-progress work. Hydrated below.
@@ -368,7 +378,31 @@ export function QuestionModeView({ question, slideId }: Props) {
           sessionStartedAt,
         };
 
-        await saveSubmission(submission);
+        // Pull cascade-context IDs from the current route. `sessionId` in the
+        // URL is the packageSessionId on the backend (per the slide route's
+        // validateSearch). Sending all four lets the backend fire the
+        // learner_operation cascade so this slide counts toward chapter /
+        // module / subject / course progress.
+        const search = router.state.location.search as Record<string, unknown>;
+        const chapterIdForCascade = (search.chapterId as string | undefined) ?? "";
+        const moduleIdForCascade = (search.moduleId as string | undefined) ?? "";
+        const subjectIdForCascade = (search.subjectId as string | undefined) ?? "";
+        const packageSessionIdForCascade =
+          (search.sessionId as string | undefined) ?? "";
+
+        await saveSubmission(submission, {
+          chapterId: chapterIdForCascade,
+          moduleId: moduleIdForCascade,
+          subjectId: subjectIdForCascade,
+          packageSessionId: packageSessionIdForCascade,
+        });
+
+        // Invalidate every progress cache so the chapter sidebar, module
+        // rollups, and course % refetch with the new value. Mirror of the
+        // quiz submit path (see quiz-viewer.tsx).
+        if (chapterIdForCascade) {
+          void refreshProgressAfterSubmit(queryClient, chapterIdForCascade);
+        }
         // Redact hidden-test answer keys before they land in React state —
         // otherwise a learner can open DevTools and read `expected`/`stdout`
         // for hidden cases they just failed. The full payload already went

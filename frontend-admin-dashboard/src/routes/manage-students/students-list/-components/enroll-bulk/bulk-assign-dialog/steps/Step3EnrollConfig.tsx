@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/select';
 import { BulkEnrollOptions, SelectedPackageSession } from '../../../../-types/bulk-assign-types';
 import { InvitePickerDropdown } from '../../components/InvitePickerDropdown';
+import { CpoEnrollmentConfigPanel } from '../../components/CpoEnrollmentConfigPanel';
+import { useResolvedInviteDetails } from '../../../../-hooks/useResolvedInviteDetails';
 import { BookOpen } from '@phosphor-icons/react';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -34,6 +36,99 @@ interface Props {
     options: BulkEnrollOptions;
     onOptionsChange: (opts: BulkEnrollOptions) => void;
 }
+
+interface CourseConfigRowProps {
+    instituteId: string;
+    ps: SelectedPackageSession;
+    onUpdate: (patch: Partial<SelectedPackageSession>) => void;
+}
+
+const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) => {
+    const { data: resolved } = useResolvedInviteDetails({
+        instituteId,
+        packageSessionId: ps.packageSessionId,
+        enrollInviteId: ps.enrollInviteId,
+    });
+    const isCpo = resolved?.paymentOption?.type === 'CPO';
+    const cpoId = resolved?.complexPaymentOptionId ?? null;
+
+    return (
+        <div className="rounded-lg border border-neutral-200 bg-white p-4">
+            <div className="mb-3 flex items-center gap-2">
+                <BookOpen size={16} weight="duotone" className="text-primary-500" />
+                <div>
+                    <p className="text-sm font-semibold text-neutral-800">{ps.courseName}</p>
+                    <p className="text-xs text-neutral-400">{ps.levelName}</p>
+                </div>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+                <div className="flex-1">
+                    <Label className="mb-1 text-xs text-neutral-500">Invite Link</Label>
+                    <InvitePickerDropdown
+                        instituteId={instituteId}
+                        packageSessionId={ps.packageSessionId}
+                        value={ps.enrollInviteId ?? null}
+                        onValueChange={(id, name) =>
+                            onUpdate({
+                                enrollInviteId: id,
+                                enrollInviteName: name,
+                                // Reset CPO state on invite change — different invite may carry
+                                // a different (or no) CPO mirror.
+                                cpoConfig: undefined,
+                            })
+                        }
+                    />
+                </div>
+                <div className="w-36">
+                    <Label className="mb-1 text-xs text-neutral-500">Access Days Override</Label>
+                    <Input
+                        type="number"
+                        min={1}
+                        placeholder="From invite"
+                        value={ps.accessDays ?? ''}
+                        onChange={(e) =>
+                            onUpdate({
+                                accessDays: e.target.value ? Number(e.target.value) : null,
+                            })
+                        }
+                    />
+                </div>
+            </div>
+
+            {resolved?.paymentOption && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-600">
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 font-medium text-neutral-700">
+                        {resolved.paymentOption.name}
+                    </span>
+                    <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            resolved.paymentOption.type === 'FREE'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : resolved.paymentOption.type === 'CPO'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-orange-100 text-orange-700'
+                        }`}
+                    >
+                        {resolved.paymentOption.type}
+                    </span>
+                    {resolved.resolvedFromDefault && (
+                        <span className="text-[10px] text-neutral-400">
+                            (auto-resolved from DEFAULT invite)
+                        </span>
+                    )}
+                </div>
+            )}
+
+            {isCpo && cpoId && (
+                <CpoEnrollmentConfigPanel
+                    cpoId={cpoId}
+                    value={ps.cpoConfig}
+                    onChange={(v) => onUpdate({ cpoConfig: v })}
+                />
+            )}
+        </div>
+    );
+};
 
 export const Step3EnrollConfig = ({
     instituteId,
@@ -67,60 +162,12 @@ export const Step3EnrollConfig = ({
                 </p>
                 <div className="flex flex-col gap-3">
                     {selectedPackageSessions.map((ps) => (
-                        <div
+                        <CourseConfigRow
                             key={ps.packageSessionId}
-                            className="rounded-lg border border-neutral-200 bg-white p-4"
-                        >
-                            <div className="mb-3 flex items-center gap-2">
-                                <BookOpen
-                                    size={16}
-                                    weight="duotone"
-                                    className="text-primary-500"
-                                />
-                                <div>
-                                    <p className="text-sm font-semibold text-neutral-800">
-                                        {ps.courseName}
-                                    </p>
-                                    <p className="text-xs text-neutral-400">{ps.levelName}</p>
-                                </div>
-                            </div>
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
-                                <div className="flex-1">
-                                    <Label className="mb-1 text-xs text-neutral-500">
-                                        Invite Link
-                                    </Label>
-                                    <InvitePickerDropdown
-                                        instituteId={instituteId}
-                                        packageSessionId={ps.packageSessionId}
-                                        value={ps.enrollInviteId ?? null}
-                                        onValueChange={(id, name) =>
-                                            updateSession(ps.packageSessionId, {
-                                                enrollInviteId: id,
-                                                enrollInviteName: name,
-                                            })
-                                        }
-                                    />
-                                </div>
-                                <div className="w-36">
-                                    <Label className="mb-1 text-xs text-neutral-500">
-                                        Access Days Override
-                                    </Label>
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        placeholder="From invite"
-                                        value={ps.accessDays ?? ''}
-                                        onChange={(e) =>
-                                            updateSession(ps.packageSessionId, {
-                                                accessDays: e.target.value
-                                                    ? Number(e.target.value)
-                                                    : null,
-                                            })
-                                        }
-                                    />
-                                </div>
-                            </div>
-                        </div>
+                            instituteId={instituteId}
+                            ps={ps}
+                            onUpdate={(patch) => updateSession(ps.packageSessionId, patch)}
+                        />
                     ))}
                 </div>
             </div>

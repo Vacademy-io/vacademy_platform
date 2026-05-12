@@ -79,6 +79,11 @@ interface PaidPlan {
         title: string;
         newFeature: string;
     }[];
+    /**
+     * Set only when type='CPO'. Points at the underlying ComplexPaymentOption so the
+     * dialog card can fetch full installment details (count + schedule).
+     */
+    cpoId?: string;
 }
 
 export interface Course {
@@ -107,6 +112,8 @@ export interface PaymentOption {
     require_approval: boolean;
     payment_plans: PaymentPlanApi[]; // Payment plans array
     payment_option_metadata_json: string; // or parsed as: PaymentOptionMetadata if you want to parse it
+    /** Set when type='CPO'. FK to the underlying ComplexPaymentOption row. */
+    complex_payment_option_id?: string | null;
 }
 
 interface PaymentPlansInterface {
@@ -403,6 +410,22 @@ export function splitPlansByType(data: PaymentOption[]): {
     data.forEach((item) => {
         const type = (item.type ?? '').toLowerCase();
         if (!type) return;
+        if (type === 'cpo') {
+            // CPO mirrors have a single synthetic payment_plan whose actual_price equals
+            // the total contract value (sum of all installments). Currency is derived from
+            // that plan; metadata_json is typically empty for CPOs.
+            const syntheticPlan = item.payment_plans?.[0];
+            paidPlans.push({
+                id: item.id,
+                name: item.name,
+                description: 'Complex payment option (installments).',
+                price: syntheticPlan?.actual_price != null ? String(syntheticPlan.actual_price) : '',
+                currency: syntheticPlan?.currency || 'INR',
+                type: item.type,
+                cpoId: item.complex_payment_option_id || undefined,
+            });
+            return;
+        }
         if (type === 'free' || type === 'donation') {
             const parsedData = JSON.parse(item.payment_option_metadata_json);
             if (type === 'donation') {
@@ -480,8 +503,20 @@ export function getDefaultPlanFromPaymentsData(data: PaymentOption[]) {
             paymentOption: [],
             type: '',
         };
-    const parsedData = JSON.parse(item.payment_option_metadata_json);
     const type = (item.type ?? '').toLowerCase();
+    if (type === 'cpo') {
+        const syntheticPlan = item.payment_plans?.[0];
+        return {
+            id: item.id,
+            name: item.name,
+            description: 'Complex payment option (installments).',
+            price: syntheticPlan?.actual_price != null ? String(syntheticPlan.actual_price) : '',
+            currency: syntheticPlan?.currency || 'INR',
+            type: item.type,
+            cpoId: item.complex_payment_option_id || undefined,
+        };
+    }
+    const parsedData = JSON.parse(item.payment_option_metadata_json);
     if (type === 'donation') {
         return {
             id: item.id,
@@ -550,8 +585,20 @@ export function getMatchingPaymentPlan(data: PaymentOption[], id: string) {
             paymentOption: [],
             type: '',
         };
-    const parsedData = JSON.parse(item.payment_option_metadata_json);
     const type = (item.type ?? '').toLowerCase();
+    if (type === 'cpo') {
+        const syntheticPlan = item.payment_plans?.[0];
+        return {
+            id: item.id,
+            name: item.name,
+            description: 'Complex payment option (installments).',
+            price: syntheticPlan?.actual_price != null ? String(syntheticPlan.actual_price) : '',
+            currency: syntheticPlan?.currency || 'INR',
+            type: item.type,
+            cpoId: item.complex_payment_option_id || undefined,
+        };
+    }
+    const parsedData = JSON.parse(item.payment_option_metadata_json);
     if (type === 'donation') {
         return {
             id: item.id,

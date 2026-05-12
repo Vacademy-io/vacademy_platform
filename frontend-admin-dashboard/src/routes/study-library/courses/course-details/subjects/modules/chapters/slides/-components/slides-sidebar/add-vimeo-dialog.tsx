@@ -104,6 +104,15 @@ export const AddVimeoDialog = ({ openState }: { openState?: (open: boolean) => v
             return;
         }
 
+        // Don't submit with length=0 (oEmbed failed or hasn't returned yet) —
+        // that would break learner-side progress tracking on this slide forever.
+        if (!videoDuration || videoDuration <= 0) {
+            toast.error(
+                'Could not read video duration from Vimeo. The video may be private or oEmbed failed. Please retry.'
+            );
+            return;
+        }
+
         setIsVideoUploading(true);
         try {
             const slideId = crypto.randomUUID();

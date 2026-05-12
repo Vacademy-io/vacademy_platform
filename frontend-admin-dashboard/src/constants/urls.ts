@@ -94,6 +94,7 @@ export const GET_CROSS_STAGE_TIMELINE = `${BASE_URL}/admin-core-service/timeline
 export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/latest-notes-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
+export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
 export const BULK_SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit-with-enquiry`;
 export const BULK_SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/bulk-submit`;
 export const BULK_SUBMIT_APPLICATION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/applicant/bulk-apply`;
@@ -694,6 +695,18 @@ export const GET_CPO_LIST = (instituteId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${instituteId}`;
 export const GET_CPO_FULL_DETAILS = (cpoId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${cpoId}/full`;
+
+// Fee Management - CPO side-view (per-learner installment editor)
+export const GET_USER_CPO_USER_PLANS = (userId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user/${userId}/cpo-user-plans`;
+export const GET_USER_PLAN_INSTALLMENTS = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/installments`;
+export const PUT_INSTALLMENT = (sfpId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/installments/${sfpId}`;
+export const PUT_USER_PLAN_CPO_DISCOUNT = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/cpo-discount`;
+export const POST_USER_PLAN_OFFLINE_PAYMENT = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/record-offline-payment`;
 
 // Offline Data Entry
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;

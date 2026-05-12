@@ -147,7 +147,32 @@ export const Step4Preview = ({ previewResponse, selectedPackageSessions }: Props
                                         </span>
                                     </td>
                                     <td className="px-4 py-3 text-xs text-neutral-400">
-                                        {r.message || '—'}
+                                        {r.payment_option_type === 'CPO' ? (
+                                            <div className="flex flex-col gap-0.5">
+                                                <span className="font-medium text-amber-700">
+                                                    CPO
+                                                    {r.cpo_installment_count != null
+                                                        ? ` · ${r.cpo_installment_count} installments`
+                                                        : ''}
+                                                    {r.cpo_total_amount != null
+                                                        ? ` · total ₹${r.cpo_total_amount}`
+                                                        : ''}
+                                                </span>
+                                                <span className="text-neutral-500">
+                                                    {r.cpo_initial_payment_mode === 'OFFLINE' &&
+                                                    r.cpo_initial_payment_amount
+                                                        ? `Recording ₹${r.cpo_initial_payment_amount} now`
+                                                        : 'No initial payment recorded'}
+                                                </span>
+                                                {r.message && (
+                                                    <span className="text-neutral-400">
+                                                        {r.message}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            r.message || '—'
+                                        )}
                                     </td>
                                 </tr>
                             );

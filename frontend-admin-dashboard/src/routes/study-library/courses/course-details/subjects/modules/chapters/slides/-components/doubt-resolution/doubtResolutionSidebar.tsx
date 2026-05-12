@@ -62,8 +62,14 @@ const DoubtResolutionSidebar = () => {
         batch_ids: packageSessionId ? [packageSessionId] : [],
     });
 
+    // Gate the doubts query on sidebar visibility. The sidebar component stays
+    // mounted with w-0 when closed, so without this gate the hook would fire
+    // on every parent re-render — including the per-keystroke re-renders
+    // driven by the chapter-sidebar store's autosave-on-edit pattern. With
+    // `enabled: open`, the query simply doesn't run when the panel isn't
+    // visible. Opening the sidebar triggers a fresh fetch the first time.
     const { data, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage, refetch } =
-        useGetDoubts(filter);
+        useGetDoubts(filter, open);
 
     const [allDoubts, setAllDoubts] = useState<DoubtType[]>(
         (data as any)?.pages?.flatMap((page: { content: DoubtType[] }) => page.content) || []
@@ -75,6 +81,12 @@ const DoubtResolutionSidebar = () => {
         );
     }, [data]);
 
+    // Narrow the deps to the primitive fields we actually read inside.
+    // Previously this was `[activeItem, packageSessionId]`, but `activeItem`
+    // is a reference from the chapter-sidebar store that mutates on every
+    // admin-side autosave (per-keystroke), causing the effect to fire on
+    // every keystroke and produce a fresh filter object. Now we only re-run
+    // when the slide id, slide type, or doc-slide subtype actually change.
     useEffect(() => {
         setFilter((prev) => ({
             ...prev,
@@ -86,11 +98,19 @@ const DoubtResolutionSidebar = () => {
             ],
             batch_ids: packageSessionId ? [packageSessionId] : [],
         }));
-    }, [activeItem, packageSessionId]);
+    }, [
+        activeItem?.id,
+        activeItem?.source_type,
+        activeItem?.document_slide?.type,
+        packageSessionId,
+    ]);
 
-    useEffect(() => {
-        refetch();
-    }, [filter]);
+    // Note: the previous `useEffect(() => refetch(), [filter])` block was
+    // removed. The stable primitive-fielded queryKey on useGetDoubts already
+    // makes React Query auto-refetch when any meaningful filter field
+    // changes. The manual refetch was firing alongside it (double-fire) AND
+    // bypassed the `enabled` gate above, so it would have undone the
+    // sidebar-open guard.
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {

@@ -1,10 +1,10 @@
 package vacademy.io.admin_core_service.features.user_subscription.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
 import org.hibernate.annotations.Where;
-import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
 
 import java.util.ArrayList;
@@ -19,6 +19,11 @@ import java.util.Objects;
 @Entity
 @Table(name = "payment_option")
 @Data
+// payment_option_json snapshots stored on user_plan carry an extra
+// "cpo_discount_state" key (CPO-level discount + per-installment overrides
+// audit). Existing readers deserialize the snapshot back into PaymentOption
+// via JsonUtil; ignore unknown keys so they don't choke on the extra field.
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class PaymentOption {
     @Id
     @UuidGenerator
@@ -51,12 +56,14 @@ public class PaymentOption {
     @Column(name = "unit")
     private String unit;
 
+    /**
+     * Scalar FK to ComplexPaymentOption. Intentionally NOT also mapped as a @ManyToOne
+     * relation — two Hibernate mappings on the same column cause the scalar to come back
+     * null on some read paths (notably the enroll-invite payload). All callers use
+     * getComplexPaymentOptionId() directly.
+     */
     @Column(name = "complex_payment_option_id")
     private String complexPaymentOptionId;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "complex_payment_option_id", insertable = false, updatable = false)
-    private ComplexPaymentOption complexPaymentOption;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;

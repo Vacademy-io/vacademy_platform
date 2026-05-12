@@ -19,6 +19,7 @@ import "katex/dist/katex.css";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Slide } from "@/hooks/study-library/use-slides";
 import { useSelectedSessionStore } from "@/stores/study-library/selected-session-store";
+import { refreshProgressAfterSubmit as invalidateProgressCaches } from "@/utils/study-library/tracking/refreshProgressAfterSubmit";
 
 interface Option {
   id: string;
@@ -178,26 +179,12 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
     });
   }, [queryClient]);
 
-  // Refresh every progress-bearing cache after a quiz submit. The backend
-  // cascade (slide → chapter → module → subject → package_session) runs
-  // @Async, so we wait briefly before invalidating, then hit every key
-  // that feeds a progress UI: chapter sidebar (slides), module list
-  // (MODULES_WITH_CHAPTERS — both naming conventions exist in this codebase),
-  // and the course-level overall % (GET_COURSE_INIT).
+  // Cache invalidation moved to @/utils/study-library/tracking/refreshProgressAfterSubmit
+  // so other slide-type submit paths (e.g. coding-question) can reuse it.
+  // Quiz still needs its own wrapper to also run the localStorage-based 100%
+  // restore, which is quiz-specific.
   const refreshProgressAfterSubmit = useCallback(async (chapterIdToRefresh: string) => {
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    await queryClient.invalidateQueries({
-      predicate: (q) => {
-        const k = q.queryKey;
-        if (!Array.isArray(k)) return false;
-        return (
-          k[0] === "MODULES_WITH_CHAPTERS" ||
-          k[0] === "GET_MODULES_WITH_CHAPTERS" ||
-          k[0] === "GET_COURSE_INIT" ||
-          (k[0] === "slides" && k[1] === chapterIdToRefresh)
-        );
-      },
-    });
+    await invalidateProgressCaches(queryClient, chapterIdToRefresh);
     restoreLocalStorageCompletions(chapterIdToRefresh);
   }, [queryClient, restoreLocalStorageCompletions]);
 

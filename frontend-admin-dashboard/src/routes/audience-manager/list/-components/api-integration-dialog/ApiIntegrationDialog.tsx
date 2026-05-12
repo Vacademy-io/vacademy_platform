@@ -11,10 +11,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Check, Copy, Code, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { CampaignItem } from '../../-services/get-campaigns-list';
-import {
-    generateCurlCommand,
-    SUBMIT_AUDIENCE_LEAD_URL,
-} from '../../-services/submit-audience-lead';
+import { generateCurlCommand } from '../../-services/submit-audience-lead';
+import { SUBMIT_AUDIENCE_LEAD_URL } from '@/constants/urls';
 
 interface ApiIntegrationDialogProps {
     isOpen: boolean;

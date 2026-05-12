@@ -55,7 +55,7 @@ function shortInvoiceLabel(invoiceNumber: string | null | undefined, fallbackId:
     if (!raw) return '';
     // Match "STATUS-<uuid-or-id>" and keep the prefix + first UUID segment only.
     const m = /^(PAID|PARTIAL|DUE|OVERDUE|WAIVED)-([a-f0-9]{8})/i.exec(raw);
-    if (m) return `${m[1].toUpperCase()}-${m[2]}`;
+    if (m && m[1] && m[2]) return `${m[1].toUpperCase()}-${m[2]}`;
     return raw;
 }
 

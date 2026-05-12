@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useBlocker, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useEffect, useState, useCallback } from "react";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
@@ -120,7 +120,10 @@ function FeedbackPage() {
   const [responses, setResponses] = useState<Record<string, string | number>>({});
   const [errors, setErrors] = useState<Record<string, boolean>>({});
 
-  // Fetch feedback config
+  // Fetch feedback config. Do NOT auto-redirect when feedback is missing /
+  // disabled — silently bouncing the learner away after the meeting ends made
+  // it look like the page "flashed and disappeared". Instead, render a clear
+  // thank-you state and let the learner navigate back themselves.
   useEffect(() => {
     if (!scheduleId) {
       navigate({ to: "/study-library/live-class" });
@@ -134,19 +137,20 @@ function FeedbackPage() {
       )
       .then((res) => {
         const data: FeedbackConfigResponse = res.data;
+        // Diagnostic — verify what the API actually returned for this schedule.
+        // Helpful when an admin enabled feedback but the form still doesn't
+        // render (data may not have persisted on the matching session row).
+        // eslint-disable-next-line no-console
+        console.log("[Feedback] config response", data);
         setConfig(data);
-
-        // If feedback is disabled or already submitted, handle accordingly
-        if (!data.feedback_config?.enabled) {
-          navigate({ to: "/study-library/live-class" });
-          return;
-        }
         if (data.already_submitted) {
           setSubmitted(true);
         }
       })
-      .catch(() => {
-        navigate({ to: "/study-library/live-class" });
+      .catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn("[Feedback] failed to load feedback config", err);
+        setConfig(null);
       })
       .finally(() => setLoading(false));
   }, [scheduleId, navigate]);
@@ -159,6 +163,27 @@ function FeedbackPage() {
     }, 4000);
     return () => clearTimeout(timer);
   }, [submitted, navigate]);
+
+  // ─── Compulsory feedback lock-in ──────────────────────────────────────────
+  // When the admin sets feedback as compulsory (allow_skip === false), the
+  // learner cannot exit the page through the app UI until they submit.
+  // useBlocker.shouldBlockFn intercepts every in-app navigation — sidebar
+  // links, back button, programmatic navigate() — and hard-blocks them
+  // (returns true = block, no prompt). Tab close / refresh / external URLs
+  // are intentionally NOT blocked; the browser-level beforeunload prompt
+  // tends to be intrusive and the admin still gets backend enforcement
+  // (LiveSessionProviderController.submitFeedback rejects empty mandatory
+  // answers when allow_skip is false). UI also hides the Skip button and
+  // shows a "Feedback required" banner so the learner understands why.
+  const mustSubmit =
+    !loading &&
+    !submitted &&
+    config?.feedback_config?.enabled === true &&
+    config?.feedback_config?.allow_skip === false;
+
+  useBlocker({
+    shouldBlockFn: () => mustSubmit,
+  });
 
   const enabledQuestions = (config?.feedback_config?.questions ?? []).filter(
     (q) => q.enabled
@@ -188,10 +213,17 @@ function FeedbackPage() {
         `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/feedback`,
         { schedule_id: scheduleId, responses }
       );
+      // Server already collapses duplicates into 200 ({status: 'already_submitted'}),
+      // so this branch is the only "submission succeeded" path.
       setSubmitted(true);
-    } catch {
-      // If already submitted, treat as success
-      setSubmitted(true);
+    } catch (e) {
+      // Server-side rejections must NOT be treated as success — the prior
+      // catch-all flipped to the success screen even when the backend
+      // returned 400 validation_failed (e.g. compulsory feedback with an
+      // empty mandatory answer), recording nothing. Keep the form visible
+      // so the learner can fix and retry.
+      // eslint-disable-next-line no-console
+      console.error("[Feedback] submit failed", e);
     } finally {
       setSubmitting(false);
     }
@@ -231,6 +263,37 @@ function FeedbackPage() {
     );
   }
 
+  /* ── No feedback configured for this session ── */
+  // Reached when the API returned no feedback_config or feedback_config.enabled
+  // is false. Show a friendly thank-you screen instead of silently redirecting,
+  // so the learner sees something after the meeting and can navigate back when
+  // ready.
+  if (!config?.feedback_config?.enabled) {
+    return (
+      <>
+        <div className="feedback-page">
+          <div className="feedback-card feedback-success-card">
+            <div className="feedback-success-icon">✓</div>
+            <h2 className="feedback-success-title">Thanks for attending!</h2>
+            <p className="feedback-success-subtitle">
+              {config?.session_title
+                ? `Hope you found "${config.session_title}" useful.`
+                : "Hope you found the session useful."}
+            </p>
+            <button
+              type="button"
+              className="feedback-submit-btn"
+              onClick={() => navigate({ to: "/study-library/live-class" })}
+            >
+              Back to live classes
+            </button>
+          </div>
+        </div>
+        <FeedbackStyles />
+      </>
+    );
+  }
+
   /* ── Main feedback form ── */
   return (
     <>
@@ -253,6 +316,27 @@ function FeedbackPage() {
             <p className="feedback-institute-name">{config.institute_name}</p>
           )}
         </div>
+
+        {/* Compulsory-feedback notice */}
+        {config?.feedback_config?.allow_skip === false && (
+          <div
+            role="note"
+            style={{
+              margin: "0 1.5rem 1rem",
+              padding: "0.75rem 1rem",
+              borderRadius: "0.5rem",
+              backgroundColor: "#FEF3C7",
+              border: "1px solid #FCD34D",
+              color: "#92400E",
+              fontSize: "0.85rem",
+              lineHeight: 1.4,
+            }}
+          >
+            <strong>Feedback required.</strong> Your instructor has marked
+            feedback as compulsory for this session — please complete all
+            required questions to continue.
+          </div>
+        )}
 
         {/* Questions */}
         <div className="feedback-questions">

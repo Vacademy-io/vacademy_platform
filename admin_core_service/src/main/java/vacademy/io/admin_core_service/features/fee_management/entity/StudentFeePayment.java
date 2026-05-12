@@ -50,11 +50,22 @@ public class StudentFeePayment {
     @Column(name = "amount_expected", nullable = false)
     private BigDecimal amountExpected;
 
+    /**
+     * Template face value snapshotted at SFP generation. Never mutated after.
+     * amount_expected reflects the *net* (post-discount, post-edit) value FIFO
+     * targets; original_amount is the "before" figure the side-view shows.
+     */
+    @Column(name = "original_amount")
+    private BigDecimal originalAmount;
+
     @Column(name = "current_adjustment_history_id")
     private String currentAdjustmentHistoryId;
 
     @Column(name = "amount_paid")
     private BigDecimal amountPaid = BigDecimal.ZERO;
+
+    @Column(name = "start_date")
+    private Date startDate;
 
     @Column(name = "due_date")
     private Date dueDate;
@@ -93,6 +104,9 @@ public class StudentFeePayment {
         }
         if (amountPaid == null) {
             amountPaid = BigDecimal.ZERO;
+        }
+        if (originalAmount == null) {
+            originalAmount = amountExpected;
         }
     }
 

@@ -689,6 +689,18 @@ export const GET_CPO_LIST = (instituteId: string) =>
 export const GET_CPO_FULL_DETAILS = (cpoId: string) =>
     `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${cpoId}/full`;
 
+// Fee Management - CPO side-view (per-learner installment editor)
+export const GET_USER_CPO_USER_PLANS = (userId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user/${userId}/cpo-user-plans`;
+export const GET_USER_PLAN_INSTALLMENTS = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/installments`;
+export const PUT_INSTALLMENT = (sfpId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/installments/${sfpId}`;
+export const PUT_USER_PLAN_CPO_DISCOUNT = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/cpo-discount`;
+export const POST_USER_PLAN_OFFLINE_PAYMENT = (userPlanId: string) =>
+    `${BASE_URL}/admin-core-service/v1/fee-management/user-plan/${userPlanId}/record-offline-payment`;
+
 // Offline Data Entry
 export const OFFLINE_CREATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-attempt`;
 export const OFFLINE_SUBMIT_RESPONSES = `${BASE_URL}/assessment-service/assessment/offline-entry/submit-responses`;

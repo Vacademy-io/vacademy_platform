@@ -7,7 +7,8 @@ import { fetchUserInvoices, getInvoiceDownloadUrl } from '@/services/invoice-ser
 import type { InvoiceDTO } from '@/services/invoice-service';
 import { PaymentLogsTable } from '@/routes/manage-payments/-components/PaymentLogsTable';
 import type { BatchForSession, PaymentLogsResponse } from '@/types/payment-logs';
-import { Download, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Download, FileText, ChevronLeft, ChevronRight, Wallet } from 'lucide-react';
+import { CpoInstallmentsEditor } from './cpo-installments-editor';
 
 const PAGE_SIZE = 20;
 const INVOICES_PER_PAGE = 10;
@@ -83,7 +84,7 @@ const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
                 <thead className="bg-gray-50">
                     <tr>
                         <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Invoice #</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Date</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Due Date</th>
                         <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Amount</th>
                         <th className="px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
                         <th className="px-3 py-2.5 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Action</th>
@@ -96,7 +97,10 @@ const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
                                 {inv.invoice_number || inv.id.substring(0, 8)}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-600">
-                                {formatDate(inv.invoice_date)}
+                                {/* Prefer due_date so each row matches its installment's
+                                    deadline. Falls back to invoice_date for legacy /
+                                    non-CPO real Invoice rows that may not carry one. */}
+                                {formatDate(inv.due_date || inv.invoice_date)}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-gray-900">
                                 {formatCurrency(inv.total_amount, inv.currency)}
@@ -219,6 +223,16 @@ export const StudentPaymentHistory = () => {
 
     return (
         <div className="space-y-6">
+            {/* CPO Installments — only renders when this learner has CPO UserPlans;
+                self-hides for everyone else so non-CPO views are unchanged. */}
+            <div>
+                <div className="mb-2 flex items-center gap-2">
+                    <Wallet className="size-4 text-gray-500" />
+                    <h3 className="text-sm font-semibold text-gray-700">CPO Installments</h3>
+                </div>
+                <CpoInstallmentsEditor userId={selectedStudent.user_id} />
+            </div>
+
             {/* Invoices Section */}
             <div>
                 <div className="mb-2 flex items-center gap-2">

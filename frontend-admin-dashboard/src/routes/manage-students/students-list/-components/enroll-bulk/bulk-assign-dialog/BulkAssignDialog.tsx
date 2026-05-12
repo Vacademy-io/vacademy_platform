@@ -115,6 +115,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                 package_session_id: ps.packageSessionId,
                 enroll_invite_id: ps.enrollInviteId ?? null,
                 access_days: ps.accessDays ?? null,
+                cpo_config: ps.cpoConfig ?? null,
             })),
             options: {
                 duplicate_handling: options.duplicateHandling,

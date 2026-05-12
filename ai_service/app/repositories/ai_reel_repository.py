@@ -304,6 +304,45 @@ class AiReelRepository:
                 return self._get_fresh_session().execute(stmt).scalar_one_or_none()
             raise
 
+    def find_active_for_candidate(
+        self,
+        institute_id: str,
+        candidate_id: str,
+        render_config_hash: str,
+    ) -> Optional[AiReel]:
+        """Return any non-terminal reel for (institute, candidate, config-hash).
+
+        Used by /render to dedup double-clicks: if a previous POST with the
+        same payload is still PENDING or IN_PROGRESS, we return that row
+        instead of spawning a second parallel render. COMPLETED + FAILED
+        reels are *not* matched — the user may legitimately want a fresh
+        attempt after a failure, or a re-render after we shipped a fix.
+
+        Newest match first — in the (very unlikely) case multiple
+        non-terminal rows somehow exist, we surface the latest one so the
+        FE's polling lands on a row that's still progressing.
+        """
+        session = self._get_session()
+        stmt = (
+            select(AiReel)
+            .where(
+                AiReel.institute_id == institute_id,
+                AiReel.parent_candidate_id == candidate_id,
+                AiReel.status.in_(("PENDING", "IN_PROGRESS")),
+                # config_hash is stashed inside the JSONB config blob — this
+                # avoids a schema migration. JSONB '->>' returns text.
+                AiReel.config["render_config_hash"].astext == render_config_hash,
+            )
+            .order_by(AiReel.created_at.desc())
+            .limit(1)
+        )
+        try:
+            return session.execute(stmt).scalar_one_or_none()
+        except Exception as e:
+            if _is_connection_error(e):
+                return self._get_fresh_session().execute(stmt).scalar_one_or_none()
+            raise
+
     def list_by_institute(
         self,
         institute_id: str,

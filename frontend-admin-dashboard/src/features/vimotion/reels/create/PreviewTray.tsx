@@ -13,7 +13,7 @@
  * Slice 3 ships with default render config (9:16, 25s, hormozi captions,
  * keep_speaker audio). Slice 4 will hang a per-card config form on top.
  */
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
     AlertCircle,
@@ -70,7 +70,17 @@ export function PreviewTray({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [open, candidateIds.join('|'), inputAssetId, apiKey]);
 
+    // Synchronous guard against double-click on "Render this clip".
+    // `render.isPending` flips on the next React render after `mutate()`,
+    // which leaves a small window where a fast second click can fire a
+    // duplicate POST. The ref-based check closes it: any second invocation
+    // for the same candidate within the in-flight window is a no-op. The
+    // backend dedup catches anything that slips past (different tab, etc.).
+    const renderingCandidateRef = useRef<string | null>(null);
+
     const handleRender = (enriched: EnrichedCandidate) => {
+        if (renderingCandidateRef.current === enriched.candidate_id) return;
+        renderingCandidateRef.current = enriched.candidate_id;
         render.mutate(
             {
                 input_asset_id: inputAssetId,
@@ -94,6 +104,9 @@ export function PreviewTray({
                 },
                 onError: (e) => {
                     toast.error(`Couldn't start render: ${e.message}`);
+                },
+                onSettled: () => {
+                    renderingCandidateRef.current = null;
                 },
             }
         );

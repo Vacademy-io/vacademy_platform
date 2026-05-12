@@ -32,6 +32,7 @@ import {
 import { RenderSettingsDialog } from '../RenderSettingsDialog';
 import type { PipelineState } from './-utils/derive-pipeline-state';
 import { NODE_LABELS, type PipelineNodeId } from './-utils/stage-vocab';
+import { ThumbnailPickerPanel } from './ThumbnailPickerPanel';
 
 // ─── Render-job persistence (lifted from VideoResult.tsx) ────────────────
 const RENDER_JOB_KEY_PREFIX = 'render-job-';
@@ -460,6 +461,10 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: Pipel
                     </dl>
                 </div>
             )}
+
+            {/* Thumbnail picker — only renders when the video has a thumbnail
+                set persisted (i.e. the pipeline reached the Director stage). */}
+            <ThumbnailPickerPanel videoId={videoId} apiKey={apiKey} />
 
             {/* Artifact URLs */}
             <div className="rounded-lg border bg-card p-3 shadow-sm">

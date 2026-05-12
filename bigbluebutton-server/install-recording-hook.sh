@@ -275,25 +275,73 @@ else
     echo "  WARN: /etc/bigbluebutton/nginx not found — manual install required"
 fi
 
-# ── 9. Clean up any prior rap-resque-worker COUNT override ────
-# We tried COUNT=2 parallelism to unblock slow ffmpeg jobs, but forked
-# children lose the Bundler environment and fail with:
-#   "cannot load such file -- optimist (LoadError)"
-# Until we find a systemd-level fix that propagates BUNDLE_GEMFILE/GEM_HOME
-# into the forked resque children, stay on the default COUNT=1.
-echo "[9/10] Ensuring rap-resque-worker uses default COUNT=1..."
+# ── 9. Resource isolation drop-ins + deferred-upload drainer ──
+# Three coordinated pieces to keep recording-pipeline ffmpeg out of the
+# live-meeting CPU window:
+#   (a) Drop-ins lower bbb-rap-resque-worker priority (CPUWeight=10) and
+#       raise FreeSWITCH/SFU priority (CPUWeight=1000) so under contention
+#       live meetings always win.
+#   (b) The post-publish hook (installed in step 4) now QUEUES recordIds
+#       to /var/spool/bbb-recording-queue.txt and returns immediately.
+#   (c) bbb-recording-drain.timer drains the queue every minute during
+#       19:00-20:59 IST (off-peak) and bbb-schedule.sh stop forces a final
+#       drain before snapshot.
+echo "[9/10] Installing resource-isolation drop-ins and deferred-upload drainer..."
+
+# (a) drop-ins
 WORKER_OVERRIDE_DIR="/etc/systemd/system/bbb-rap-resque-worker.service.d"
+mkdir -p "$WORKER_OVERRIDE_DIR"
+# Remove the legacy COUNT=2 override.conf if it exists — it caused
+# bundler LoadError in forked resque children. Kept the explicit cleanup
+# from earlier installs so a stale file doesn't merge with our new drop-in.
 if [ -f "$WORKER_OVERRIDE_DIR/override.conf" ]; then
     rm -f "$WORKER_OVERRIDE_DIR/override.conf"
-    rmdir "$WORKER_OVERRIDE_DIR" 2>/dev/null || true
-    systemctl daemon-reload
-    if systemctl is-active --quiet bbb-rap-resque-worker; then
-        systemctl restart bbb-rap-resque-worker
-    fi
-    echo "  Removed stale COUNT=2 override (reverted to BBB default)"
-else
-    echo "  No override present — using BBB default"
+    echo "  ✓ removed legacy COUNT=2 override.conf"
 fi
+cp "$SCRIPT_DIR/systemd/bbb-rap-resque-worker.service.d/lowprio.conf" \
+   "$WORKER_OVERRIDE_DIR/lowprio.conf"
+echo "  ✓ rap-resque-worker low-priority drop-in"
+
+for svc in freeswitch bbb-webrtc-sfu; do
+    SRC="$SCRIPT_DIR/systemd/${svc}.service.d/highprio.conf"
+    DEST_DIR="/etc/systemd/system/${svc}.service.d"
+    if [ -f "$SRC" ]; then
+        mkdir -p "$DEST_DIR"
+        cp "$SRC" "$DEST_DIR/highprio.conf"
+        echo "  ✓ $svc high-priority drop-in"
+    fi
+done
+
+# (b) drainer script + spool dir + lock file with explicit ownership
+# Both the post-publish hook (run as 'bigbluebutton' by rap-worker) and the
+# drainer (run as 'bigbluebutton' by systemd) must be able to append-and-flock
+# the queue and lock files. Pre-create both with the correct owner so the
+# first writer doesn't accidentally lock out the other.
+install -m 755 "$SCRIPT_DIR/bbb-recording-drain.sh" /usr/local/bin/bbb-recording-drain.sh
+install -d -m 755 /var/spool
+for f in /var/spool/bbb-recording-queue.txt /var/spool/bbb-recording-queue.txt.lock; do
+    [ -f "$f" ] || touch "$f"
+    chown bigbluebutton:bigbluebutton "$f" 2>/dev/null || true
+    chmod 664 "$f"
+done
+# Marker dir for recordings that have completed S3 upload. Touched by the
+# post-publish hook on successful backend registration, read by the health
+# dashboard to render "Uploaded" badges in the Recordings tab. Must be owned
+# by 'bigbluebutton' since the hook runs as that user; the fallback (root
+# ownership at mode 755) would silently break marker writes.
+install -d -m 775 -o bigbluebutton -g bigbluebutton /var/spool/bbb-recording-uploaded
+echo "  ✓ bbb-recording-drain.sh installed"
+
+# (c) systemd unit + timer
+cp "$SCRIPT_DIR/systemd/bbb-recording-drain.service" /etc/systemd/system/
+cp "$SCRIPT_DIR/systemd/bbb-recording-drain.timer"   /etc/systemd/system/
+
+systemctl daemon-reload
+systemctl enable --now bbb-recording-drain.timer
+systemctl restart bbb-rap-resque-worker 2>/dev/null || true
+systemctl restart freeswitch            2>/dev/null || true
+systemctl restart bbb-webrtc-sfu        2>/dev/null || true
+echo "  ✓ drain timer enabled (fires Mon-Sat 19,20:*:00 IST)"
 
 # ── 10. Install daily cleanup cron (recordings older than 4 days) ──
 # Ensure any previous stalled-recording hourly cron is removed — we no longer

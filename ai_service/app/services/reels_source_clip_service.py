@@ -202,6 +202,201 @@ def _compute_face_center(
 
 
 # ---------------------------------------------------------------------------
+# Time-varying crop trajectory
+#
+# Phase 1 used a single static crop center (overlap-weighted average across
+# face_segments). On windows where the speaker moves — leans forward,
+# gestures, switches sides — the static crop drifts off-center because the
+# box never follows them.
+#
+# The trajectory approach emits one keyframe per face_segment that overlaps
+# the window, at the segment's midpoint, and feeds them to ffmpeg's `crop`
+# filter as **expressions** that interpolate linearly between keyframes.
+# Smoothing is implicit (linear interp between segment centers); when the
+# face is stationary, consecutive keyframes carry the same coords and the
+# expression degenerates to a constant.
+#
+# Falls back to the Phase-1 static crop when face data is sparse (≤1
+# segment in window) — single static crop is more stable than a one-point
+# trajectory.
+# ---------------------------------------------------------------------------
+
+# Don't emit a keyframe for source-time movements smaller than this in
+# either axis. Sub-pixel jitter looks worse than a stable center.
+TRAJECTORY_MIN_MOVE_NORM = 0.01    # 1% of frame dimension
+
+# Cap the number of keyframes to keep the ffmpeg expression manageable.
+# Real face_segments rarely exceed ~30 over a 60s window; this is a
+# safety valve for pathological inputs.
+TRAJECTORY_MAX_KEYFRAMES = 24
+
+
+def _source_to_crop_time(t_source: float, trim_map: dict) -> Optional[float]:
+    """Translate a source-video timestamp to the time INSIDE the crop filter
+    (post-trim+concat, **pre**-atempo). Returns None if `t_source` falls
+    outside every kept span.
+
+    Crop runs BEFORE the `setpts=PTS/speed` step in the filter chain, so the
+    `t` variable in crop expressions is window-relative pre-atempo time.
+    That's `sum(kept_span_orig_durations) + offset_into_current_span`.
+    """
+    spans = trim_map.get("spans") or []
+    running_pre_atempo = 0.0
+    for s in spans:
+        try:
+            os_ = float(s["orig_t_start"])
+            oe = float(s["orig_t_end"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if oe <= os_:
+            continue
+        if os_ <= t_source <= oe:
+            return running_pre_atempo + (t_source - os_)
+        running_pre_atempo += (oe - os_)
+    return None
+
+
+def _build_crop_trajectory(
+    face_segments: list[dict],
+    win_t_start: float,
+    win_t_end: float,
+    trim_map: dict,
+) -> list[tuple[float, float, float]]:
+    """Build a list of keyframes `(crop_t, cx_norm, cy_norm)` from
+    `face_segments` overlapping the window.
+
+    One keyframe per segment, placed at the segment's mid-point inside the
+    window (clipped to the window edges). `crop_t` is in the crop filter's
+    own time coordinate (post-trim+concat pre-atempo). Adjacent keyframes
+    that differ by less than `TRAJECTORY_MIN_MOVE_NORM` in both axes get
+    merged — silent stretches with no movement collapse to constants.
+
+    Returns an empty list if there's no usable face data — caller falls
+    back to the static crop. Returns a 1-element list if the entire window
+    is covered by a single segment — caller can still use it as a static
+    crop with no expression cost.
+    """
+    if not face_segments:
+        return []
+
+    raw: list[tuple[float, float, float]] = []
+    for seg in face_segments:
+        try:
+            ss = float(seg.get("t_start") or 0.0)
+            se = float(seg.get("t_end") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        ov_start = max(ss, win_t_start)
+        ov_end = min(se, win_t_end)
+        if ov_end <= ov_start:
+            continue
+        bbox = seg.get("bbox_norm") or [0.5, 0.5, 0.0, 0.0]
+        if len(bbox) < 4:
+            continue
+        try:
+            cx = float(bbox[0]) + float(bbox[2]) / 2.0
+            cy = float(bbox[1]) + float(bbox[3]) / 2.0
+        except (TypeError, ValueError):
+            continue
+        mid_source = (ov_start + ov_end) / 2.0
+        crop_t = _source_to_crop_time(mid_source, trim_map)
+        if crop_t is None:
+            continue
+        raw.append((crop_t, max(0.0, min(1.0, cx)), max(0.0, min(1.0, cy))))
+
+    if not raw:
+        return []
+
+    raw.sort(key=lambda k: k[0])
+
+    # Merge sub-threshold consecutive keyframes — keep the earliest of a run.
+    smoothed: list[tuple[float, float, float]] = [raw[0]]
+    for t, cx, cy in raw[1:]:
+        _, last_cx, last_cy = smoothed[-1]
+        if (abs(cx - last_cx) < TRAJECTORY_MIN_MOVE_NORM
+                and abs(cy - last_cy) < TRAJECTORY_MIN_MOVE_NORM):
+            continue
+        smoothed.append((t, cx, cy))
+
+    # Hard cap — keep evenly-spaced keyframes if we somehow blew past the
+    # safety limit. Real input never trips this; defensive.
+    if len(smoothed) > TRAJECTORY_MAX_KEYFRAMES:
+        step = len(smoothed) / TRAJECTORY_MAX_KEYFRAMES
+        smoothed = [smoothed[int(i * step)] for i in range(TRAJECTORY_MAX_KEYFRAMES)]
+
+    return smoothed
+
+
+def _crop_pos_from_norm(
+    center_norm: float,
+    source_dim: int,
+    crop_dim: int,
+) -> float:
+    """Convert a normalized face center (0..1 of source dimension) to a
+    crop-position value (top-left of the crop box, in source pixels),
+    clamped so the box stays inside the source frame."""
+    center_px = source_dim * center_norm - crop_dim / 2.0
+    return max(0.0, min(float(source_dim - crop_dim), center_px))
+
+
+def _build_crop_pos_expr(
+    keyframes: list[tuple[float, float, float]],
+    axis: str,            # "x" or "y"
+    source_dim: int,
+    crop_dim: int,
+) -> str:
+    """Generate an ffmpeg expression for the crop x or y position that
+    linearly interpolates between trajectory keyframes.
+
+    Form, for keyframes (t0,p0), (t1,p1), (t2,p2), ..., (tN,pN):
+
+        if(lt(t,t1), p0+(p1-p0)*(t-t0)/(t1-t0),
+        if(lt(t,t2), p1+(p2-p1)*(t-t1)/(t2-t1),
+        ...
+        pN))
+
+    Before the first keyframe the expression returns p0 (held constant);
+    after the last it holds pN. That avoids extrapolating outside the
+    sampled range, which could push the crop out of the source frame at
+    the very start/end of the clip.
+
+    The expression value is in source pixels — it goes straight into
+    `crop=W:H:x=<expr>:y=<expr>`. Result is single-quoted by the caller so
+    the embedded commas + colons survive ffmpeg's filter-graph parser.
+    """
+    if not keyframes:
+        return "0"
+    axis_idx = 1 if axis == "x" else 2
+
+    def pos_at(kf: tuple[float, float, float]) -> float:
+        return _crop_pos_from_norm(kf[axis_idx], source_dim, crop_dim)
+
+    if len(keyframes) == 1:
+        return f"{pos_at(keyframes[0]):.2f}"
+
+    # Build the chain from the tail inward so the innermost `else` is the
+    # last keyframe's value and each outer `if` clamps "below this t,
+    # interpolate the prev segment".
+    expr = f"{pos_at(keyframes[-1]):.2f}"
+    for i in range(len(keyframes) - 1, 0, -1):
+        t0, _, _ = keyframes[i - 1]
+        t1, _, _ = keyframes[i]
+        p0 = pos_at(keyframes[i - 1])
+        p1 = pos_at(keyframes[i])
+        # Guard against zero/negative interval — emit constant.
+        dt = max(1e-6, t1 - t0)
+        delta = p1 - p0
+        interp = f"{p0:.2f}+({delta:.2f})*(t-{t0:.4f})/{dt:.4f}"
+        expr = f"if(lt(t,{t1:.4f}),{interp},{expr})"
+    # Hold p0 before the first keyframe.
+    t_first = keyframes[0][0]
+    if t_first > 0.0:
+        p_first = pos_at(keyframes[0])
+        expr = f"if(lt(t,{t_first:.4f}),{p_first:.2f},{expr})"
+    return expr
+
+
+# ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
 
@@ -275,8 +470,28 @@ class ReelsSourceClipService:
         source_w = int(source_resolution[0])
         source_h = int(source_resolution[1])
         face_segments = context.get("face_segments") or []
+
+        # Static crop center is used for sizing the crop box (size is FIXED
+        # for the whole reel — only position varies over time). Centered on
+        # the overlap-weighted face position so the BOX shape never goes
+        # off-source even if a keyframe pushes it to an edge.
         face_cx, face_cy = _compute_face_center(face_segments, win_t_start, win_t_end)
         crop = _compute_crop(source_w, source_h, aspect, face_cx, face_cy)
+
+        # Build the per-segment trajectory. If we end up with <2 keyframes
+        # (one segment in window, or none) the box stays static — matches
+        # Phase-1 behavior and saves ffmpeg from parsing a trivial
+        # expression. With ≥2 keyframes, ffmpeg's crop x/y become piecewise-
+        # linear expressions of the filter's `t` variable.
+        trajectory = _build_crop_trajectory(
+            face_segments,
+            win_t_start=win_t_start,
+            win_t_end=win_t_end,
+            trim_map=ctx.trim_map or {"spans": [{
+                "orig_t_start": win_t_start,
+                "orig_t_end": win_t_end,
+            }]},
+        )
 
         # Canonical delivery dims for the aspect — speaker_clip is scaled up
         # to this so meta.dimensions matches platform expectations and the
@@ -285,9 +500,10 @@ class ReelsSourceClipService:
 
         logger.info(
             f"[SourceClip] {ctx.reel_id} {source_w}x{source_h} → crop "
-            f"{crop.w}x{crop.h} at ({crop.x},{crop.y}) → scale {target_w}x{target_h}, "
-            f"face_center=({face_cx:.2f},{face_cy:.2f}), "
-            f"spans={len(kept_spans_relative)}, speed={speed}"
+            f"{crop.w}x{crop.h} at static ({crop.x},{crop.y}) → scale "
+            f"{target_w}x{target_h}, face_center=({face_cx:.2f},{face_cy:.2f}), "
+            f"spans={len(kept_spans_relative)}, speed={speed}, "
+            f"trajectory_keyframes={len(trajectory)}"
         )
 
         # 4. Run ffmpeg.
@@ -304,6 +520,7 @@ class ReelsSourceClipService:
                 source_h=source_h,
                 target_w=target_w,
                 target_h=target_h,
+                trajectory=trajectory,
                 out_path=out_path,
             )
 
@@ -368,6 +585,7 @@ class ReelsSourceClipService:
         source_h: int,
         target_w: int,
         target_h: int,
+        trajectory: list[tuple[float, float, float]],
         out_path: Path,
     ) -> None:
         """Single ffmpeg invocation. Filter graph shape:
@@ -379,6 +597,10 @@ class ReelsSourceClipService:
           [vc]crop=W:H:X:Y[vcrop]             (skipped for passthrough)
           [vcrop]scale=tw:th:flags=lanczos[vscale]  (skipped when crop==target)
           [vscale]setpts=PTS/K[vout]          (skipped when speed==1.0)
+
+        When `trajectory` has ≥2 keyframes, the crop X and Y become piecewise-
+        linear expressions of the filter's `t` variable so the box follows
+        the speaker. With ≤1 keyframe we use the static crop.x / crop.y.
         """
         filter_lines: list[str] = []
         span_labels: list[str] = []
@@ -403,8 +625,21 @@ class ReelsSourceClipService:
             cropped_label = concat_out
         else:
             cropped_label = "[vcrop]"
+            # Resolve x and y. Multi-keyframe trajectory → expressions
+            # tracking the face. Otherwise → static values from `crop`.
+            if len(trajectory) >= 2:
+                x_val = _build_crop_pos_expr(trajectory, "x", source_w, crop.w)
+                y_val = _build_crop_pos_expr(trajectory, "y", source_h, crop.h)
+                # Single-quote the expressions so embedded commas don't get
+                # consumed by ffmpeg's filter-arg splitter. exprs only use
+                # printable ASCII, no nested quotes.
+                x_arg = f"'{x_val}'"
+                y_arg = f"'{y_val}'"
+            else:
+                x_arg = str(crop.x)
+                y_arg = str(crop.y)
             filter_lines.append(
-                f"{concat_out}crop={crop.w}:{crop.h}:{crop.x}:{crop.y}{cropped_label}"
+                f"{concat_out}crop={crop.w}:{crop.h}:{x_arg}:{y_arg}{cropped_label}"
             )
 
         # Scale crop pixels up (or down) to the canonical delivery size.

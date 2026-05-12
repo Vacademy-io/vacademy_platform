@@ -313,6 +313,7 @@ JSON shape:
   "target_grade": "...",
   "subject_domain": "coding | history | science | biology | chemistry | geography | math | language | saas_marketing | business_marketing | saas_demo | visual_storytelling | general",
   "visual_style": "realistic cinematic photograph | flat vector illustration | watercolor painting | scientific diagram illustration | documentary photography",
+  "intent": "ad | explainer | tutorial | announcement | news_recap | story | trailer",
   "script": "Full narration text...",
   "key_takeaway": "One sentence summary of the main concept",
   "common_mistake": "A typical misconception or error students make",
@@ -358,6 +359,15 @@ JSON shape:
 - "saas_demo": SaaS product demos, UI walkthroughs, tutorials
 - "visual_storytelling": Narrative videos, documentary style, emotional storytelling
 - "general": Life skills, art, music, mixed topics, anything that doesn't fit above
+
+**intent classification** (choose ONE — drives downstream thumbnail / framing decisions):
+- "ad": Sales-pitch, product hero, conversion-focused (SaaS marketing, business promo, brand spots).
+- "explainer": Concept explained in plain terms (science, math, general education).
+- "tutorial": Step-by-step how-to, often UI walkthrough, code demo, or skill practice.
+- "announcement": A specific event/launch reveal (release, partnership, milestone).
+- "news_recap": Summary of a news story or current event.
+- "story": Narrative-driven, character-led, cinematic storytelling.
+- "trailer": Teaser / hype cut for a longer piece (course, film, product reveal).
 
 **visual_style classification** (choose ONE for the entire video — all AI images will use this style):
 - "realistic cinematic photograph": For history, geography, real-world science, visual storytelling (cinematic, DSLR-quality)

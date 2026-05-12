@@ -1,6 +1,6 @@
 # Reels from Long Video — Feature Reference
 
-**Status**: Backend Phase 1 + 2a (karaoke captions) shipped. Backend Phase 2 (editor `kind=reel` frame save endpoints) shipped. Frontend Phase A (Slices 1-5) shipped. LLM-driven Director deferred to Phase 2c.
+**Status**: Backend Phase 1 + 2a (karaoke captions) + 2c (LLM-driven Director) shipped. Backend Phase 2 (editor `kind=reel` frame save endpoints, `/render` idempotency) shipped. Frontend Phase A (Slices 1-5) shipped. Source-clip aspect canvas now scales to canonical delivery dims (1080×1920 for 9:16).
 **Owners**: Vimotion team.
 **Companion docs**: [AI_VIDEO_GENERATION.md](./AI_VIDEO_GENERATION.md), [INPUT_VIDEO_INDEXING.md](./INPUT_VIDEO_INDEXING.md), [VIDEO_EDITOR_REVIEW.md](./VIDEO_EDITOR_REVIEW.md), [VIMOTION_FEATURE.md](../VIMOTION_FEATURE.md). The full design + research appendix lives in the planning doc (Claude session artifact).
 
@@ -126,6 +126,7 @@ All routes mounted at `{AI_SERVICE_BASE_URL}/external/reels/v1/*`. Auth via exis
 - `reels_assemble_service.py` — ASSEMBLE stage (final {meta, entries} JSON + validation)
 - `reels_render_finalize_service.py` — RENDER stage (worker submit + adaptive polling)
 - `reels_frame_service.py` — add/update/delete a single entry in the reel's `time_based_frame.json` on S3 (editor save plumbing)
+- `reels_llm_director_service.py` — Phase 2c LLM-driven storyline overlays (`hook` / `micro_hook` / `loop_back` / `emphasis`); falls back to deterministic hook overlay on any failure
 
 **Models / repo / schemas**
 - `app/models/ai_reel.py` — `AiReel` table
@@ -292,6 +293,8 @@ Stages register themselves at module import via `register_stage_handler`. The or
 
 ✅ **Editor `kind=reel` save plumbing** — `/external/reels/v1/frame/{add,update,delete}` endpoints update `ai_reels.s3_urls.time_based_frame` on S3. Editor's `saveChanges` switches `frameBase`/`idField` when the route's `kind=reel` search param is set. ReelDetailPage's "Open in editor" navigates with `kind=reel`, so user edits round-trip to the right table. The video-editor pipeline-view affordances (`frame/regenerate`, `frame/update` for LLM re-prompts) stay on the AI-gen endpoints — reels don't use that flow.
 
+✅ **Time-varying crop** — Phase-1's static crop drifted off-center when the speaker moved during the window. SOURCE_CLIP now walks `face_segments` overlapping the window, emits one keyframe per segment (`(crop_t, cx_norm, cy_norm)`) mapped via `_source_to_crop_time` to the **pre-atempo** post-trim+concat clock that ffmpeg's crop filter uses, smooths sub-1%-of-frame moves, and feeds the result to `crop=w:h:x:y` as **piecewise-linear expressions** of `t` (`if(lt(t, t1), p0+(p1-p0)*(t-t0)/(t1-t0), if(...))`). Crop **dimensions stay fixed** (aspect ratio preserved); only x/y track the speaker. Falls back to static crop when face_segments has 0-1 useful entries in the window. Validated end-to-end against ffmpeg 8.0.1: expression parsing + crop applied frame-accurately on a synthesized 22s 1280×720 source → 404×720 vertical crop.
+
 ### Validation
 
 - All inline smoke tests pass (synthetic + real `video_context.json` from staging)
@@ -306,7 +309,7 @@ Stages register themselves at module import via `register_stage_handler`. The or
 
 ### High-value, medium-effort
 
-🔲 **LLM-driven DIRECTOR (Phase 2c)** — replace deterministic template with LLM-generated overlay specs. New `REEL_DIRECTOR_SYSTEM_PROMPT` (see plan §2.4). Per-shot variety, hook text tuned to content, micro-hook at midpoint, loop-back ending, b-roll cues. Schema: `OverlaySpec[]` with `type/t_start/t_end/text/position/color_intent`. Falls back to current template on LLM failure.
+✅ **LLM-driven DIRECTOR (Phase 2c)** — `reels_llm_director_service.py` introduces `LLMDirector.generate_overlays()` which calls Haiku-class (default `anthropic/claude-3-5-haiku`, overridable via `REELS_DIRECTOR_LLM_MODEL`) with `REEL_DIRECTOR_SYSTEM_PROMPT` and gets back a list of `OverlaySpec{type, t_start, t_end, text, color_intent}`. Hard validation: hook starts ≤0.3s and ends ≤2.6s; micro_hook lands in 30-70% of reel; loop_back is in the last 1.5s; emphasis (max 2) is anywhere inside the reel; all overlays ≤6 words / ≤60 chars / 0.5-4.0s duration; CTA kill-phrases (`follow me`, `subscribe`, `link in bio`, …) reject the overlay. Spec→`_Shot` mapping in `_OVERLAY_STYLE_BY_TYPE` + `_OVERLAY_COLOR_BY_INTENT` gives each type a distinct visual treatment (font weight, top position, color from the caption palette). On LLM failure / disabled / empty response → deterministic single-hook fallback (Phase 1 behavior). Disable via env `REELS_LLM_DIRECTOR_DISABLED=1`. Method (`llm` vs `deterministic_fallback`) is recorded on `AiReel.extra_metadata.director_overlay_method` so we can audit usage.
 
 🔲 **Path B validation against staging** — apply Flyway V245 to staging RDS, fire a real `POST /render` against a live indexed asset, watch a real MP4 land. Catches integration issues (S3 IAM, worker version mismatches, real render times).
 
@@ -332,7 +335,7 @@ Stages register themselves at module import via `register_stage_handler`. The or
 
 🔲 **Per-stage retry on transient failures** — currently FAILED is terminal. Worker hiccup forces full re-render.
 
-🔲 **`/render` idempotency** — double-click on FE → two reel rows + two background renders. Needs idempotency-key header or "find existing IN_PROGRESS for (institute, candidate, config_hash)".
+✅ **`/render` idempotency** — backend computes a `render_config_hash` from the RenderRequest body (minus input_asset_id, which is implied by the candidate FK) and stashes it inside `AiReel.config["render_config_hash"]`. Before creating a new reel row, `AiReelRepository.find_active_for_candidate(institute, candidate, hash)` looks up any non-terminal reel (PENDING/IN_PROGRESS) with the same key and returns it instead of dispatching a duplicate render. COMPLETED/FAILED reels are NOT matched — the user can still re-render after a failure or after a code fix lands. FE adds a ref-based guard (`renderingCandidateRef`) so a sub-tick double-click is a no-op before the network call even fires. Residual race: two requests landing within DB roundtrip time can still produce two rows; closing that requires a partial UNIQUE index (deferred — not user-reachable from a button).
 
 🔲 **Stuck-render reaper** — periodic job to mark PENDING > 10min as FAILED (catches the "initial flip failed silently" case from G8 review).
 
@@ -490,7 +493,8 @@ app/
     ├── reels_director_service.py                    ← DIRECTOR
     ├── reels_assemble_service.py                    ← ASSEMBLE
     ├── reels_render_finalize_service.py             ← RENDER
-    └── reels_frame_service.py                       ← editor /frame/{add,update,delete}
+    ├── reels_frame_service.py                       ← editor /frame/{add,update,delete}
+    └── reels_llm_director_service.py                ← LLMDirector + OverlaySpec (Phase 2c)
 ```
 
 ### Flyway (`vacademy_platform/admin_core_service/src/main/resources/db/migration/`)

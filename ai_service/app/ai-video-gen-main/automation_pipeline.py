@@ -3093,6 +3093,30 @@ class VideoGenerationPipeline:
                         else:
                             print("⚠️ Audio duration unknown — skipping Director stage")
 
+                # ── Thumbnail batch (Vimotion) ─────────────────────────────
+                # Fire 4 Seedream calls in a background daemon thread the
+                # moment the Director plan is finalised. Soft-fails; never
+                # blocks per-shot HTML or render. Skipped on checkpoint resume
+                # (a prior run already produced thumbnails) and when the
+                # Director plan is missing. Regenerate is exposed as an
+                # explicit external API for the FE.
+                if (
+                    _director_plan
+                    and _director_plan.get("shots")
+                    and content_type == "VIDEO"
+                    and not getattr(self, "_thumbnails_started", False)
+                    and not (run_dir / "thumbnails.json").exists()
+                ):
+                    try:
+                        self._run_thumbnail_batch_bg(
+                            script_plan=script_plan,
+                            director_plan=_director_plan,
+                            run_name=run_name,
+                            run_dir=run_dir,
+                        )
+                    except Exception as _tb_err:
+                        print(f"   ⚠️ Could not start thumbnail batch: {_tb_err}")
+
                 if _director_plan and _director_plan.get("shots"):
                     # Per-shot HTML generation using Director plan
                     print(f"🎬 Using Director plan: {len(_director_plan['shots'])} shots")
@@ -16390,6 +16414,120 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 self._progress_callback(event)
             except Exception:
                 pass  # never let a callback error break the pipeline
+
+    def _run_thumbnail_batch_bg(
+        self,
+        *,
+        script_plan: Dict[str, Any],
+        director_plan: Dict[str, Any],
+        run_name: Optional[str],
+        run_dir: Path,
+    ) -> None:
+        """Fire 4 Seedream thumbnail calls in a daemon thread.
+
+        On success emits a `thumbnails_ready` progress event carrying the full
+        thumbnail set; the service layer picks it up and persists it to the
+        `ai_gen_video.thumbnails` JSONB column. A `thumbnails.json` checkpoint
+        is also written into `run_dir` so re-runs of the same stage don't
+        repeat the work (and as a manual debug aid).
+
+        Soft-fails entirely: any exception inside the thread is logged and
+        swallowed. The render pipeline never blocks on thumbnail completion.
+        """
+        import threading as _threading_thumb
+
+        # Mark started so we don't double-trigger inside the same run().
+        self._thumbnails_started = True
+
+        # Resolve a brand_kit-shaped dict from style_config — only `palette`
+        # is consumed by Seedream prompts. Heading font + watermark are
+        # applied client-side by the FE overlay so they always reflect the
+        # currently-active brand kit (not whatever was active at gen time).
+        _style = getattr(self, "_current_style_config", None) or {}
+        palette: Dict[str, str] = {}
+        for src_key, dst_key in (
+            ("primary_color", "primary"),
+            ("secondary_color", "secondary"),
+            ("accent_color", "accent"),
+            ("background_color", "background"),
+        ):
+            v = _style.get(src_key)
+            if isinstance(v, str) and v.strip():
+                palette[dst_key] = v.strip()
+        brand_kit = {"palette": palette} if palette else None
+
+        # Use the script_client for the small headline LLM call — same model
+        # the script/director uses, so token usage is accounted for cleanly.
+        try:
+            _llm_chat = self.script_client.chat
+        except AttributeError:
+            _llm_chat = None  # subject_extractor pattern: pass None → fallback
+
+        def _worker() -> None:
+            try:
+                from thumbnail_generator import run as _run_thumb  # type: ignore
+            except Exception as _imp_err:
+                print(f"   ⚠️ thumbnail_generator import failed: {_imp_err}")
+                return
+
+            try:
+                self._emit_progress({
+                    "type": "sub_stage",
+                    "sub_stage": "thumbnails_generating",
+                    "message": "Generating thumbnail options...",
+                })
+
+                _w = int(getattr(self, "video_width", 1920) or 1920)
+                _h = int(getattr(self, "video_height", 1080) or 1080)
+                _orientation = "portrait" if _h > _w else "landscape"
+
+                # The pipeline wraps the LLM-returned JSON inside
+                # `script_plan["plan"]`; thumbnail_generator only needs the
+                # inner JSON (title / intent / visual_style / script).
+                _inner_plan = (script_plan or {}).get("plan") or script_plan or {}
+
+                thumb_set = _run_thumb(
+                    seedream_call=self._call_image_generation_llm,
+                    run_id=run_name or run_dir.name,
+                    script_plan=_inner_plan,
+                    director_plan=director_plan,
+                    orientation=_orientation,
+                    subjects_list=[],
+                    brand_kit=brand_kit,
+                    llm_chat=_llm_chat,
+                )
+
+                if not thumb_set or not thumb_set.get("options"):
+                    self._emit_progress({
+                        "type": "sub_stage",
+                        "sub_stage": "thumbnails_failed",
+                        "message": "Thumbnail generation produced no options.",
+                    })
+                    return
+
+                # Local checkpoint — pure debug + idempotency aid.
+                try:
+                    (run_dir / "thumbnails.json").write_text(
+                        json.dumps(thumb_set, indent=2, ensure_ascii=False)
+                    )
+                except Exception:
+                    pass
+
+                self._emit_progress({
+                    "type": "thumbnails_ready",
+                    "sub_stage": "thumbnails_done",
+                    "message": f"Thumbnails ready ({len(thumb_set['options'])} options)",
+                    "thumbnails": thumb_set,
+                })
+            except Exception as e:
+                print(f"   ⚠️ Thumbnail worker crashed: {e}")
+                self._emit_progress({
+                    "type": "sub_stage",
+                    "sub_stage": "thumbnails_failed",
+                    "message": "Thumbnail generation failed.",
+                })
+
+        _threading_thumb.Thread(target=_worker, name="thumbnail-batch", daemon=True).start()
 
     def _resolve_run_dir(self, run_name: Optional[str], resume_run: Optional[str]) -> Path:
         if resume_run:

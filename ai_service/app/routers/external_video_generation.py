@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional, List
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Header
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
 
@@ -34,6 +34,9 @@ from ..schemas.video_generation import (
     AudioTrackResponse,
     VideoCostPreviewRequest,
     VideoCostPreviewResponse,
+    ThumbnailSet,
+    UpdateThumbnailRequest,
+    RegenerateThumbnailsResponse,
 )
 from ..services.video_estimation_service import estimate_video_generation
 from pydantic import BaseModel, Field
@@ -900,6 +903,136 @@ async def get_video_urls_external(
         updated_at=updated_at_str,
         error_message=error_message,
         render_job_id=_render_job_id,
+        thumbnails=status.get("thumbnails") or None,
+    )
+
+
+@router.get(
+    "/thumbnail/{video_id}",
+    response_model=ThumbnailSet,
+    summary="Get the full thumbnail set for a video (External)",
+)
+async def get_video_thumbnails_external(
+    video_id: str,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> ThumbnailSet:
+    """
+    Return the intent-aware thumbnail set for a video.
+
+    Returns an empty set (`options=[]`) when the thumbnail stage hasn't run
+    yet — the frontend shows its placeholder until options arrive.
+    """
+    status = service.get_video_status(video_id)
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+
+    thumbs = status.get("thumbnails") or {}
+    return ThumbnailSet(
+        selected_id=thumbs.get("selected_id"),
+        intent=thumbs.get("intent"),
+        orientation=thumbs.get("orientation"),
+        generated_at=thumbs.get("generated_at"),
+        options=thumbs.get("options") or [],
+    )
+
+
+@router.patch(
+    "/thumbnail/{video_id}",
+    response_model=ThumbnailSet,
+    summary="Swap which thumbnail option is selected (External)",
+)
+async def update_video_thumbnail_external(
+    video_id: str,
+    payload: UpdateThumbnailRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> ThumbnailSet:
+    """
+    Change which thumbnail option is selected.
+
+    400 if `selected_id` doesn't match an option in the set.
+    404 if the video doesn't exist or has no thumbnails yet.
+    """
+    repo = AiVideoRepository(db)
+    updated = repo.set_selected_thumbnail(video_id, payload.selected_id)
+    if updated is None:
+        # Distinguish missing video from bad selected_id by re-reading state.
+        status = service.get_video_status(video_id)
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+        if not (status.get("thumbnails") or {}).get("options"):
+            raise HTTPException(
+                status_code=404,
+                detail=f"Video {video_id} has no thumbnails yet",
+            )
+        raise HTTPException(
+            status_code=400,
+            detail=f"selected_id '{payload.selected_id}' not in this video's option set",
+        )
+    return ThumbnailSet(
+        selected_id=updated.get("selected_id"),
+        intent=updated.get("intent"),
+        orientation=updated.get("orientation"),
+        generated_at=updated.get("generated_at"),
+        options=updated.get("options") or [],
+    )
+
+
+@router.post(
+    "/thumbnail/{video_id}/regenerate",
+    response_model=RegenerateThumbnailsResponse,
+    summary="Regenerate the thumbnail set for a video (External)",
+)
+async def regenerate_video_thumbnails_external(
+    video_id: str,
+    background_tasks: BackgroundTasks,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> RegenerateThumbnailsResponse:
+    """
+    Re-run the 4-option thumbnail batch for an existing video.
+
+    Requires the video to have a persisted Director plan (i.e. the HTML stage
+    has completed). Runs synchronously in a background task so the HTTP
+    response returns immediately; the new set is written to the DB when ready.
+    Cost is bundled into the original video generation budget (no extra
+    credit charge for regenerate).
+    """
+    status = service.get_video_status(video_id)
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Video {video_id} not found")
+    raw_status = (status.get("status") or "").upper()
+    existing_thumbs = status.get("thumbnails") or {}
+    has_thumbs = bool(existing_thumbs.get("options"))
+
+    # Race guard: while the original pipeline is still IN_PROGRESS and hasn't
+    # produced its own thumbnail set yet, the pipeline's daemon thread is
+    # going to write thumbnails any moment. If we let a regenerate fire here,
+    # the pipeline's later write could clobber the user's regenerated set.
+    # Once thumbnails already exist (or the pipeline has finished/failed),
+    # regenerate is safe.
+    if raw_status in ("PENDING",) or (raw_status == "IN_PROGRESS" and not has_thumbs):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Video is still producing its initial thumbnail set — "
+                "wait for the first set to appear before regenerating."
+            ),
+        )
+
+    background_tasks.add_task(
+        service.regenerate_video_thumbnails,
+        video_id=video_id,
+        institute_id=institute_id,
+    )
+    return RegenerateThumbnailsResponse(
+        video_id=video_id,
+        status="queued",
+        message="Thumbnail regeneration started — poll GET /thumbnail/{video_id} for updates.",
     )
 
 

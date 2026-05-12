@@ -91,7 +91,12 @@ class AiGenVideo(Base):
     # Additional metadata (can store generation options, resolution, etc.)
     # Using 'extra_metadata' as Python attribute, mapped to 'metadata' column in DB
     extra_metadata = Column('metadata', JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
-    
+
+    # Intent-aware thumbnails (Vimotion). Empty {} until the thumbnail stage runs.
+    # Shape: {selected_id, intent, orientation, generated_at,
+    #         options:[{id, image_url, headline, layout, subject_focus, intent_style}]}
+    thumbnails = Column(JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb"))
+
     # Timestamps
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -115,6 +120,7 @@ class AiGenVideo(Base):
             "language": self.language,
             "error_message": self.error_message,
             "metadata": _meta,
+            "thumbnails": self.thumbnails or {},
             "token_usage": _meta.get("token_usage"),
             # Real-time sub-stage progress — updated by the SSE polling loop.
             # Contains the last significant pipeline event (director_done, shot_done, etc.)

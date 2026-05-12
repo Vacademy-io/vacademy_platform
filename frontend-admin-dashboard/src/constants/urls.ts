@@ -68,6 +68,13 @@ export const VIMOTION_BRAND_KIT_SCRAPE = `${AI_SERVICE_BASE_URL}/admin/vimotion/
 export const VIMOTION_AVATARS = `${BASE_URL}/admin-core-service/vimotion/v1/avatars`;
 export const VIMOTION_AVATAR_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/vimotion/v1/avatars/${id}`;
+
+// Vimotion intent-aware thumbnails (ai_service, X-Institute-Key auth).
+// GET returns the current set; PATCH swaps `selected_id`; POST regenerates.
+export const VIMOTION_VIDEO_THUMBNAIL = (videoId: string) =>
+    `${AI_SERVICE_BASE_URL}/external/video/v1/thumbnail/${videoId}`;
+export const VIMOTION_VIDEO_THUMBNAIL_REGENERATE = (videoId: string) =>
+    `${AI_SERVICE_BASE_URL}/external/video/v1/thumbnail/${videoId}/regenerate`;
 export const UPDATE_USER_DETAILS = `${BASE_URL}/auth-service/v1/user-details/update-user`;
 export const CONFIGURE_CERTIFICATE_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/certificate/update-setting`;
 export const AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/v1/audience/campaign`;

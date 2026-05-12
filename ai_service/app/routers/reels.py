@@ -115,6 +115,24 @@ def _config_hash(input_asset_id: str, req: ScanRequest) -> str:
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def _render_config_hash(req: RenderRequest) -> str:
+    """Stable hash of a /render request body — drives idempotent dedup.
+
+    Two POSTs with identical config + candidate produce the same hash. The
+    /render handler uses this to find any already-in-flight reel for the
+    same (institute, candidate, hash) before creating a new one. A user
+    double-click on "Render this clip" thus maps to one reel row + one
+    background task, not two.
+
+    Excludes `input_asset_id` because the candidate's FK already pins it.
+    Uses pydantic's dump (with mode='json') so Literal types serialize
+    consistently with how they're stored in `AiReel.config`.
+    """
+    body = req.model_dump(mode="json", exclude={"input_asset_id"})
+    serialized = json.dumps(body, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
 async def _fetch_context_json(context_url: str) -> dict:
     """Fetch video_context.json from S3 and parse. Streams with a hard size
     cap so a corrupt/hostile artifact can't OOM the worker.
@@ -598,10 +616,34 @@ async def render_reel(
     ):
         raise HTTPException(status_code=404, detail="Candidate not found")
 
-    # 3. Create the AiReel row.
+    # 3. Idempotency check — dedup double-clicks before we spin up a render.
+    # The hash captures the full RenderRequest minus input_asset_id (already
+    # implied by the candidate). If a non-terminal reel for the same
+    # (institute, candidate, hash) is already in flight, return that row.
+    # Note: this protects the obvious case (user double-clicks "Render this
+    # clip"). A simultaneous-within-DB-roundtrip race can still produce two
+    # rows; a partial UNIQUE index would close that, but in practice the FE
+    # debounce + sub-millisecond click windows make it unreachable.
     reel_repo = AiReelRepository(session=db)
+    render_config_hash = _render_config_hash(request)
+    existing = reel_repo.find_active_for_candidate(
+        institute_id=institute_id,
+        candidate_id=str(candidate.id),
+        render_config_hash=render_config_hash,
+    )
+    if existing is not None:
+        logger.info(
+            f"[/render] dedup: reel {existing.reel_id} already in flight for "
+            f"candidate={candidate.id} hash={render_config_hash[:8]}…"
+        )
+        return _reel_row_to_response(existing)
+
+    # 4. Create the AiReel row.
     reel_id = f"reel-{uuid4().hex[:12]}"
     config_dict = request.model_dump()
+    # Stash the hash inside the persisted config so find_active_for_candidate
+    # can match future requests without recomputing from disparate columns.
+    config_dict["render_config_hash"] = render_config_hash
     # G4: Snapshot the candidate's current `enriched` payload (title,
     # rationale, word_importance, cut_plan) into the reel's config at
     # /render time. The render reads from this snapshot, NOT from

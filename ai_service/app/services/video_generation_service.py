@@ -1657,6 +1657,16 @@ class VideoGenerationService:
                                     self.repository.update_generation_progress(video_id, _ev)
                                 except Exception:
                                     pass
+                            elif _ev.get("type") == "thumbnails_ready":
+                                # Persist the full thumbnail set so Recent grid
+                                # picks it up as soon as the background thread
+                                # finishes (which can land before render does).
+                                _thumbs = _ev.get("thumbnails") or {}
+                                if _thumbs:
+                                    try:
+                                        self.repository.update_thumbnails(video_id, _thumbs)
+                                    except Exception:
+                                        pass
                             yield _ev
                         await asyncio.sleep(0.25)
                     # Drain any remaining events after the future completes
@@ -1671,6 +1681,16 @@ class VideoGenerationService:
                                     self.repository.update_generation_progress(video_id, _ev)
                                 except Exception:
                                     pass
+                            elif _ev.get("type") == "thumbnails_ready":
+                                # Persist the full thumbnail set so Recent grid
+                                # picks it up as soon as the background thread
+                                # finishes (which can land before render does).
+                                _thumbs = _ev.get("thumbnails") or {}
+                                if _thumbs:
+                                    try:
+                                        self.repository.update_thumbnails(video_id, _thumbs)
+                                    except Exception:
+                                        pass
                             yield _ev
                         except _queue.Empty:
                             break
@@ -2965,6 +2985,110 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             f"Return the updated HTML with the run context honored."
         )
         return system, user
+
+    def regenerate_video_thumbnails(
+        self,
+        video_id: str,
+        institute_id: Optional[str] = None,
+    ) -> None:
+        """Re-run the 4-option thumbnail batch for an existing video.
+
+        Runs synchronously (intended to be invoked via FastAPI BackgroundTasks).
+        Reuses what's already persisted on the video row — prompt for the
+        title, prior `thumbnails.intent`/`orientation` if set — so we don't
+        need to reload the original script_plan or director_plan from disk.
+
+        On success persists the new set via `repository.update_thumbnails`.
+        Cost is bundled into the original video budget — no extra ledger line.
+        """
+        import sys as _sys
+        import logging as _logging
+        _logger_t = _logging.getLogger(__name__)
+
+        try:
+            record = self.repository.get_by_video_id(video_id)
+            if not record:
+                _logger_t.warning(f"[Thumbs] regenerate: video {video_id} not found")
+                return
+
+            from ..config import get_settings as _gs
+            api_key = (_gs().openrouter_api_key or "").strip()
+            if not api_key:
+                _logger_t.error("[Thumbs] regenerate: OPENROUTER_API_KEY not set")
+                return
+
+            existing_thumbs = dict(record.thumbnails or {})
+            prior_intent = existing_thumbs.get("intent")
+            prior_orientation = existing_thumbs.get("orientation")
+
+            # Best-effort: derive orientation from prior thumbnails, else fall
+            # back to the user_selections snapshot the pipeline writes to meta.
+            orientation = prior_orientation
+            if not orientation:
+                _meta = dict(record.extra_metadata or {})
+                _sel = _meta.get("user_selections") or {}
+                orientation = _sel.get("orientation") or "landscape"
+            orientation = "portrait" if orientation == "portrait" else "landscape"
+
+            # Title comes from the user's original prompt. We deliberately
+            # don't try to recover the script_plan's polished title here —
+            # it's stored on disk in the run dir and not always available
+            # across deploys. The prompt is always on the row.
+            title = (record.prompt or "").strip() or "New video"
+
+            # Synthesize a minimal script_plan for the generator.
+            stub_script_plan: Dict[str, Any] = {
+                "title": title,
+                "intent": prior_intent or "explainer",
+                "visual_style": "realistic cinematic photograph",
+            }
+
+            # v1: regenerate produces thumbnails from the script title +
+            # intent alone — we don't reload the original Director plan or
+            # script_plan from S3. The hero subject is derived from the title;
+            # for the like-for-like fidelity of the first batch you'd need to
+            # snapshot the full script_plan to S3 at generation time and
+            # re-fetch it here.
+            director_plan: Optional[Dict[str, Any]] = None
+
+            # Load the standalone thumbnail generator.
+            _sys.path.insert(0, str(self.video_gen_root))
+            try:
+                from thumbnail_generator import (
+                    run as _run_thumb,
+                    make_standalone_seedream_call,
+                )
+            except Exception as _imp_err:
+                _logger_t.error(f"[Thumbs] regenerate import failed: {_imp_err}")
+                return
+
+            seedream_call = make_standalone_seedream_call(api_key)
+
+            thumb_set = _run_thumb(
+                seedream_call=seedream_call,
+                run_id=video_id,
+                script_plan=stub_script_plan,
+                director_plan=director_plan,
+                orientation=orientation,
+                subjects_list=[],
+                brand_kit=None,
+                llm_chat=None,
+            )
+
+            if not thumb_set or not thumb_set.get("options"):
+                _logger_t.warning(f"[Thumbs] regenerate produced no options for {video_id}")
+                return
+
+            try:
+                self.repository.update_thumbnails(video_id, thumb_set)
+                _logger_t.info(
+                    f"[Thumbs] regenerated {len(thumb_set['options'])} options "
+                    f"for {video_id}"
+                )
+            except Exception as _persist_err:
+                _logger_t.error(f"[Thumbs] regenerate persist failed: {_persist_err}")
+        except Exception as e:
+            _logger_t.error(f"[Thumbs] regenerate crashed for {video_id}: {e}")
 
     async def regenerate_video_frame(
         self,

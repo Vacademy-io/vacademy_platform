@@ -16,6 +16,9 @@ import {
 } from '@/routes/video-api-studio/-services/video-generation';
 import { cn } from '@/lib/utils';
 import { useVimotionApiKey } from './hooks/useVimotionApiKey';
+import { getDefaultBrandKit } from '@/features/vimotion/api/brandKits';
+import type { BrandKit } from '@/features/vimotion/api/dashboardTypes';
+import { ThumbnailRenderer } from './ThumbnailRenderer';
 
 const PAGE_SIZE = 20;
 
@@ -28,7 +31,27 @@ export function RecentTab() {
         queryFn: () => getRemoteHistory(apiKey.data!, PAGE_SIZE, 0),
         enabled: !!apiKey.data,
         staleTime: 30_000,
+        // Thumbnails arrive ~mid-render in a background job. Keep polling
+        // while anything is still generating; once completed/failed the row
+        // state is final (a completed video with no thumbnails means the
+        // batch failed — no amount of polling will fill it in).
+        refetchInterval: (q) => {
+            const items = (q.state.data as HistoryItem[] | undefined) ?? [];
+            const anyInFlight = items.some(
+                (it) => it.status !== 'completed' && it.status !== 'failed'
+            );
+            return anyInFlight ? 10_000 : false;
+        },
     });
+
+    // Shared key with OnboardingBanner — react-query dedupes the network call.
+    const brandKitQuery = useQuery<BrandKit | null>({
+        queryKey: ['vimotion-default-brand-kit', instituteId],
+        queryFn: () => getDefaultBrandKit(instituteId ?? ''),
+        enabled: !!instituteId,
+        staleTime: 60_000,
+    });
+    const brandKit = brandKitQuery.data ?? null;
 
     if (apiKey.isError) {
         return <ErrorState message="Could not connect to the video service. Please try again." />;
@@ -51,13 +74,19 @@ export function RecentTab() {
     return (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => (
-                <HistoryCard key={item.id} item={item} />
+                <HistoryCard key={item.id} item={item} brandKit={brandKit} />
             ))}
         </div>
     );
 }
 
-function HistoryCard({ item }: { item: HistoryItem }) {
+function HistoryCard({
+    item,
+    brandKit,
+}: {
+    item: HistoryItem;
+    brandKit: BrandKit | null;
+}) {
     // Only completed videos have artifacts to render in the production view.
     // Generating/pending/failed items aren't clickable here — users wait or
     // retry from the workspace itself (once we wire that into Recent later).
@@ -70,12 +99,31 @@ function HistoryCard({ item }: { item: HistoryItem }) {
         isViewable ? 'hover:border-neutral-300' : 'cursor-default'
     );
 
+    // Pick the selected thumbnail (or fall back to the first option if the
+    // selected_id has drifted somehow).
+    const thumbs = item.thumbnails;
+    const selectedThumb =
+        thumbs?.options.find((o) => o.id === thumbs.selected_id) ||
+        thumbs?.options[0] ||
+        null;
+    const orientation =
+        (thumbs?.orientation as 'landscape' | 'portrait' | undefined) ?? 'landscape';
+
     const inner = (
         <>
-            <div className="relative aspect-video w-full bg-neutral-100">
-                <div className="flex size-full items-center justify-center text-neutral-400">
-                    <Clapperboard className="size-8" />
-                </div>
+            <div className="relative w-full bg-neutral-100">
+                {selectedThumb ? (
+                    <ThumbnailRenderer
+                        thumb={selectedThumb}
+                        brandKit={brandKit}
+                        size="sm"
+                        orientation={orientation}
+                    />
+                ) : (
+                    <div className="flex aspect-video size-full items-center justify-center text-neutral-400">
+                        <Clapperboard className="size-8" />
+                    </div>
+                )}
                 {isViewable && (
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
                         <div className="flex size-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm">

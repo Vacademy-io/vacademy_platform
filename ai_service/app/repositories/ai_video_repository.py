@@ -332,6 +332,54 @@ class AiVideoRepository:
             if not self.session:
                 session.close()
 
+    def update_thumbnails(self, video_id: str, thumbnails: Dict[str, Any]) -> None:
+        """Replace the thumbnails JSONB blob for a video.
+
+        Used by the pipeline after the thumbnail stage produces a set, and by
+        the external API when the user swaps selection or regenerates.
+        """
+        session = self._get_fresh_session()
+        try:
+            video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
+            if not video:
+                return
+            video.thumbnails = thumbnails or {}
+            flag_modified(video, "thumbnails")
+            video.updated_at = datetime.utcnow()
+            session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            if not self.session:
+                session.close()
+
+    def set_selected_thumbnail(self, video_id: str, selected_id: str) -> Optional[Dict[str, Any]]:
+        """Swap which option is selected. Returns the updated thumbnails blob, or None on miss.
+
+        Returns None if the video doesn't exist or the selected_id isn't in the option set.
+        """
+        session = self._get_fresh_session()
+        try:
+            video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
+            if not video:
+                return None
+            current = dict(video.thumbnails or {})
+            options = current.get("options") or []
+            if not any(isinstance(o, dict) and o.get("id") == selected_id for o in options):
+                return None
+            current["selected_id"] = selected_id
+            video.thumbnails = current
+            flag_modified(video, "thumbnails")
+            video.updated_at = datetime.utcnow()
+            session.commit()
+            return current
+        except Exception:
+            session.rollback()
+            return None
+        finally:
+            if not self.session:
+                session.close()
+
     def update_generation_progress(
         self,
         video_id: str,

@@ -23,9 +23,18 @@ Endpoints:
       Rate-limited: max 1 rebuild per meeting per 30 minutes.
       Returns {status, internalMeetingId, previousState, message}
       status: REBUILD_TRIGGERED | ALREADY_PUBLISHED | NOT_FOUND | RATE_LIMITED | ERROR
+
+  POST /republish?recordId=xxx
+      Re-runs the post-publish S3 upload hook for an already-published recording.
+      Use when the recording reached 'published' state on BBB but the hook
+      failed to upload/register (e.g. backend HTTP 000). Runs async — the hook
+      takes several minutes. Rate-limited: max 1 republish per recordId per 30 min.
+      Returns {status, recordId, message}
+      status: REPUBLISH_TRIGGERED | NOT_FOUND | RATE_LIMITED | ERROR
 """
 
 import os
+import re
 import glob
 import json
 import time
@@ -40,11 +49,18 @@ PORT = int(os.environ.get('BBB_HEAL_PORT', '9091'))
 LOG_FILE = '/var/log/bigbluebutton/vacademy-heal-service.log'
 RAW_DIR = '/var/bigbluebutton/recording/raw'
 STATUS_DIR = '/var/bigbluebutton/recording/status'
+PUBLISHED_PRESENTATION_DIR = '/var/bigbluebutton/published/presentation'
+POST_PUBLISH_HOOK = '/usr/local/bigbluebutton/core/scripts/post_publish/post-publish-s3-upload.sh'
 PIPELINE_STAGES = ['published', 'processed', 'recorded', 'sanity']
 RATE_LIMIT_SECONDS = 30 * 60  # 30 minutes
 
+# BBB record IDs are sha1(meetingId+ts).hex + '-' + ts_ms — strict shape.
+# Reject anything else (leading dash flag injection, path traversal, etc).
+RECORD_ID_RE = re.compile(r'^[a-f0-9]{40}-[0-9]{13}$')
+
 _rate_limit_lock = Lock()
 _last_heal_at = {}  # {internal_id: timestamp}
+_last_republish_at = {}  # {record_id: timestamp}
 
 
 def log(msg):
@@ -104,6 +120,47 @@ def trigger_rebuild(internal_id):
         return (False, '', str(e))
 
 
+def check_republish_rate_limit(record_id):
+    """Return True if allowed, False if another republish ran in the last 30 min."""
+    now = time.time()
+    with _rate_limit_lock:
+        last = _last_republish_at.get(record_id, 0)
+        if now - last < RATE_LIMIT_SECONDS:
+            return False
+        _last_republish_at[record_id] = now
+    return True
+
+
+def trigger_republish(record_id):
+    """Fire-and-forget: spawn post-publish-s3-upload.sh in the background.
+    The hook writes its own log at /var/log/bigbluebutton/vacademy-recording-upload.log.
+
+    We use a double-fork via `setsid nohup` so the child is fully detached
+    from the heal-service process. Without this, the child stays as a
+    <defunct> zombie in our process table until we wait() on it (which we
+    never do, because we want the HTTP call to return immediately)."""
+    try:
+        # `setsid` daemonises; `nohup` ignores SIGHUP so the child survives
+        # heal-service restarts. Both are POSIX-standard on Ubuntu 22.04.
+        proc = subprocess.Popen(
+            ['setsid', 'nohup', POST_PUBLISH_HOOK, record_id],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        # `setsid` itself exits almost immediately after exec'ing nohup+hook,
+        # so a tiny wait() collects its exit status (preventing zombie).
+        # The grandchild (the hook) is reparented to init and runs on.
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        return (True, '')
+    except Exception as e:
+        return (False, str(e))
+
+
 class HealHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         log(f"{self.address_string()} {format % args}")
@@ -124,12 +181,13 @@ class HealHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
         external_id = params.get('externalMeetingId', [None])[0]
-        return parsed.path.rstrip('/'), external_id
+        record_id = params.get('recordId', [None])[0]
+        return parsed.path.rstrip('/'), external_id, record_id
 
     def do_GET(self):
         if not self._auth_ok():
             return self._respond(403, {"error": "forbidden"})
-        path, external_id = self._parse()
+        path, external_id, _record_id = self._parse()
         if path == '/state':
             if not external_id:
                 return self._respond(400, {"error": "externalMeetingId required"})
@@ -151,7 +209,9 @@ class HealHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._auth_ok():
             return self._respond(403, {"error": "forbidden"})
-        path, external_id = self._parse()
+        path, external_id, record_id = self._parse()
+        if path == '/republish':
+            return self._handle_republish(record_id)
         if path != '/heal':
             return self._respond(404, {"error": "not found"})
         if not external_id:
@@ -207,6 +267,41 @@ class HealHandler(BaseHTTPRequestHandler):
             "internalMeetingId": internal_id,
             "previousState": state,
             "message": "Pipeline restarted. Recording will be published in ~10 minutes."
+        })
+
+    def _handle_republish(self, record_id):
+        if not record_id:
+            return self._respond(400, {"error": "recordId required"})
+        # Strict shape check — same rationale as the dashboard's delete endpoint.
+        if not RECORD_ID_RE.match(record_id):
+            return self._respond(400, {"error": "invalid recordId"})
+        presentation_dir = os.path.join(PUBLISHED_PRESENTATION_DIR, record_id)
+        if not os.path.isdir(presentation_dir):
+            log(f"republish: not_found recordId={record_id}")
+            return self._respond(200, {
+                "status": "NOT_FOUND",
+                "recordId": record_id,
+                "message": "No published presentation directory for this recordId on this server"
+            })
+        if not check_republish_rate_limit(record_id):
+            return self._respond(200, {
+                "status": "RATE_LIMITED",
+                "recordId": record_id,
+                "message": "Republish already triggered recently. Hook still running."
+            })
+        log(f"republish: triggering recordId={record_id}")
+        ok, err = trigger_republish(record_id)
+        if not ok:
+            log(f"republish: spawn FAILED recordId={record_id} err={err}")
+            return self._respond(500, {
+                "status": "ERROR",
+                "recordId": record_id,
+                "message": f"Failed to spawn hook: {err[:200]}"
+            })
+        return self._respond(200, {
+            "status": "REPUBLISH_TRIGGERED",
+            "recordId": record_id,
+            "message": "Post-publish hook restarted. Recording will be available in ~2-5 minutes."
         })
 
 

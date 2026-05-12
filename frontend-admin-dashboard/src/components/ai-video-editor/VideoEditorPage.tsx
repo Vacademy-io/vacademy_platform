@@ -13,6 +13,7 @@ import {
     PanelLeftClose,
     Monitor,
     ImagePlus,
+    Image as ImageIcon,
     FilePlus2,
     Film,
     Download,
@@ -31,6 +32,8 @@ import { AddShotDialog } from './AddShotDialog';
 import { AudioTracksPanel } from './AudioTracksPanel';
 import { PlaybackBar } from './playback/PlaybackBar';
 import { RenderSettingsDialog } from '@/routes/video-api-studio/-components/RenderSettingsDialog';
+import { ThumbnailPickerPanel } from '@/routes/video-api-studio/-components/pipeline/ThumbnailPickerPanel';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
     requestVideoRender,
     getRenderStatus,
@@ -603,6 +606,34 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                     <ImagePlus className="size-4" />
                 </Button>
             </div>
+
+            {/* Thumbnail picker — opens a popover with the selected option +
+                alternates + regenerate. Lives next to the export group because
+                thumbnails are part of "ship this video" workflow. */}
+            {props.videoId && props.apiKey && (
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-8 text-gray-500 hover:text-gray-900"
+                            title="Thumbnail"
+                            data-tour="editor-thumbnail"
+                        >
+                            <ImageIcon className="size-4" />
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[360px] p-0" align="end" side="bottom">
+                        <div className="p-3">
+                            <ThumbnailPickerPanel
+                                videoId={props.videoId}
+                                apiKey={props.apiKey}
+                                variant="compact"
+                            />
+                        </div>
+                    </PopoverContent>
+                </Popover>
+            )}
 
             {/* Save + Render + Preview — grouped so the tour can highlight the
                 full export workflow with one anchor. */}

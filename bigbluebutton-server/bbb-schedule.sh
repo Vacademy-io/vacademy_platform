@@ -301,6 +301,33 @@ cmd_stop() {
     status=$(echo "$server" | jq -r '.status')
     log "Found server $server_id (status: $status)"
 
+    # Step 0: Drain pending recording uploads before snapshot.
+    # The post-publish hook queues recordIds while the server is up and a
+    # systemd timer drains continuously; this is a last-mile safety net so
+    # a recording that finished in the last few minutes before stop still
+    # uploads to S3 before we destroy the server.
+    #
+    # We invoke the drain SCRIPT directly under flock instead of going
+    # through `systemctl start --wait`. The systemctl approach has a race:
+    # if the minute-timer started the unit one second before our call,
+    # `--wait` returns immediately with success and we'd snapshot with the
+    # queue still full. flock blocks until any concurrent drainer finishes
+    # AND owns the lock for our run, so the queue is empty when we return.
+    local server_ip
+    server_ip=$(echo "$server" | jq -r '.public_net.ipv4.ip')
+    if [ "$status" = "running" ] && [ -n "$server_ip" ] && [ "$server_ip" != "null" ]; then
+        log "Draining recording-upload queue on $server_ip ..."
+        # 1800s = 30 min — long enough for several queued recordings to finish.
+        # `timeout` on the outer SSH guarantees the stop pipeline can't hang
+        # indefinitely even if the BBB host is completely unresponsive.
+        timeout 1900 ssh -o StrictHostKeyChecking=no -o BatchMode=yes \
+            -o ConnectTimeout=15 \
+            "root@$server_ip" \
+            "flock -w 1800 /var/lock/bbb-recording-drain.lock sudo -u bigbluebutton /usr/local/bin/bbb-recording-drain.sh" \
+            >> /var/log/bbb-schedule.log 2>&1 \
+            || log "WARNING: queue drain failed, timed out, or host unreachable — proceeding with snapshot anyway"
+    fi
+
     # Step 1: Shutdown if running
     if [ "$status" = "running" ]; then
         log "Shutting down server..."

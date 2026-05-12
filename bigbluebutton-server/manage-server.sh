@@ -835,7 +835,7 @@ cmd_sync() {
     echo ""
 
     echo "[1/6] Scripts to /root/..."
-    local root_scripts=(configure-bbb.sh install-recording-hook.sh post-publish-s3-upload.sh setup-hetzner.sh)
+    local root_scripts=(configure-bbb.sh install-recording-hook.sh post-publish-s3-upload.sh setup-hetzner.sh bbb-recording-drain.sh)
     for f in "${root_scripts[@]}"; do
         [ -f "$SCRIPT_DIR/$f" ] && scp $ssh_opts "$SCRIPT_DIR/$f" "root@$ip:/root/$f" && echo "  ✓ $f"
     done
@@ -845,6 +845,22 @@ cmd_sync() {
     for f in "${svc_files[@]}"; do
         [ -f "$SCRIPT_DIR/$f" ] && scp $ssh_opts "$SCRIPT_DIR/$f" "root@$ip:/root/$f" && echo "  ✓ $f"
     done
+
+    # systemd drop-ins consumed by install-recording-hook.sh — preserve directory layout.
+    if [ -d "$SCRIPT_DIR/systemd" ]; then
+        echo "[2b] systemd unit files + drop-ins to /root/systemd/..."
+        ssh $ssh_opts "root@$ip" "mkdir -p /root/systemd/bbb-rap-resque-worker.service.d /root/systemd/freeswitch.service.d /root/systemd/bbb-webrtc-sfu.service.d"
+        local systemd_files=(
+            "systemd/bbb-recording-drain.service"
+            "systemd/bbb-recording-drain.timer"
+            "systemd/bbb-rap-resque-worker.service.d/lowprio.conf"
+            "systemd/freeswitch.service.d/highprio.conf"
+            "systemd/bbb-webrtc-sfu.service.d/highprio.conf"
+        )
+        for f in "${systemd_files[@]}"; do
+            [ -f "$SCRIPT_DIR/$f" ] && scp $ssh_opts "$SCRIPT_DIR/$f" "root@$ip:/root/$f" && echo "  ✓ $f"
+        done
+    fi
 
     echo "[3/6] Boot-time IP fix..."
     [ -f "$SCRIPT_DIR/bbb-fix-ip-on-boot.sh" ] && scp $ssh_opts "$SCRIPT_DIR/bbb-fix-ip-on-boot.sh" "root@$ip:/opt/" && echo "  ✓ bbb-fix-ip-on-boot.sh"

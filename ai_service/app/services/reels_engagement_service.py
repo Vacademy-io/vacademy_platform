@@ -1031,14 +1031,32 @@ def _build_snippet(t_start: float, t_end: float, transcript: list[dict]) -> str:
     Always returns a usable string even if transcript is empty or window
     falls in a silent stretch — FE shows the timestamp range as fallback.
 
-    Includes any sentence that *overlaps* the window (not just fully
-    contained), so cards still show readable text even when the window
-    starts mid-sentence after silence trimming snapped the boundaries.
+    Only includes sentences with at least one WORD inside the window. A
+    sentence-level overlap check alone (`s.start <= t_end AND s.end >= t_start`)
+    pulls in sentences that merely touch the window's edges — e.g. a sentence
+    whose start equals t_end has zero word content in the window, and a
+    sentence that only catches the window's first ~0.2s likely has all but
+    its last word outside. Both produce misleading snippets that disagree
+    with the words /preview's `_extract_window_words` extracts for the
+    same window. Word-level filtering keeps the two in sync.
     """
-    inside = [
-        s for s in transcript
-        if s.get("end", 0) >= t_start and s.get("start", 999) <= t_end
-    ]
+    inside: list[dict] = []
+    for s in transcript:
+        if s.get("end", 0) < t_start or s.get("start", 1e9) > t_end:
+            continue
+        # Require at least one word with non-trivial overlap. A sentence at
+        # start=t_end has all its words at t_end-or-later → strict `<` excludes
+        # it; a sentence at end=t_start has all its words at t_start-or-earlier
+        # → strict `>` excludes it.
+        words = s.get("words") or []
+        has_inside_word = any(
+            float(w.get("end", 0.0) or 0.0) > t_start
+            and float(w.get("start", 0.0) or 0.0) < t_end
+            for w in words
+        )
+        if not has_inside_word:
+            continue
+        inside.append(s)
     if not inside:
         return ""
     if len(inside) == 1:

@@ -13,6 +13,7 @@ Endpoints:
 """
 
 import os
+import re
 import hmac
 import hashlib
 import json
@@ -20,8 +21,12 @@ import time
 import shutil
 import subprocess
 import xml.etree.ElementTree as ET
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
+
+# BBB record IDs are sha1(meetingId+ts).hex + '-' + ts_ms — strict shape.
+# Anything else (path traversal, leading dash, null bytes, log injection) is rejected.
+RECORD_ID_RE = re.compile(r'^[a-f0-9]{40}-[0-9]{13}$')
 from urllib.request import urlopen
 from urllib.error import URLError
 
@@ -127,6 +132,225 @@ def get_recording_stats():
     return {
         'count': total_count,
         'size_gb': round(total_bytes / (1024 ** 3), 2),
+    }
+
+
+PUBLISHED_DIR = '/var/bigbluebutton/published/presentation'
+QUEUE_FILE = '/var/spool/bbb-recording-queue.txt'
+UPLOADED_DIR = '/var/spool/bbb-recording-uploaded'
+UPLOADING_MARKER = '/var/spool/bbb-recording-uploading'
+
+# Per-recordId cache for on-demand size lookups (du is expensive).
+_size_cache = {}  # recordId -> (size_bytes, computed_at)
+_SIZE_CACHE_TTL_SEC = 300
+
+
+def _read_queue_set():
+    """Return the set of recordIds currently sitting in the upload queue."""
+    try:
+        with open(QUEUE_FILE, 'r') as f:
+            return {line.strip() for line in f if line.strip()}
+    except FileNotFoundError:
+        return set()
+    except Exception:
+        return set()
+
+
+def _read_current_drainer_recid():
+    """The recordId the drainer is processing right now, or None."""
+    try:
+        with open(UPLOADING_MARKER, 'r') as f:
+            v = f.read().strip()
+            return v or None
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+
+def _is_uploaded(record_id):
+    return os.path.isfile(os.path.join(UPLOADED_DIR, record_id))
+
+
+def _parse_metadata_xml(path):
+    """Extract meetingName, start_time (ms), end_time (ms) from a BBB metadata.xml.
+    Falls back to None for any field we can't find."""
+    try:
+        root = ET.parse(path).getroot()
+    except Exception:
+        return {'meetingName': None, 'start_time': None, 'end_time': None}
+
+    def first_text(*tags):
+        for tag in tags:
+            el = root.find(f'.//{tag}')
+            if el is not None and el.text:
+                return el.text.strip()
+        return None
+
+    start = first_text('start_time', 'startTime')
+    end = first_text('end_time', 'endTime')
+    name = first_text('meetingName', 'meeting_name')
+    # Some BBB versions store name as attribute on <meeting meetingName="…">
+    if not name:
+        m = root.find('.//meeting')
+        if m is not None:
+            name = m.get('meetingName') or m.get('name')
+    try:
+        start = int(start) if start else None
+    except ValueError:
+        start = None
+    try:
+        end = int(end) if end else None
+    except ValueError:
+        end = None
+    return {'meetingName': name, 'start_time': start, 'end_time': end}
+
+
+def _recording_status(record_id, queued_set, current_recid):
+    """Decide which status badge applies."""
+    if record_id == current_recid:
+        return 'Uploading'
+    if _is_uploaded(record_id):
+        return 'Uploaded'
+    if record_id in queued_set:
+        return 'Queued'
+    return 'Published'  # rap-worker done but our hook hasn't queued yet (rare)
+
+
+def list_recordings(page=1, page_size=25):
+    """Scan /var/bigbluebutton/published/presentation/* and return one page,
+    newest-first. Size is NOT computed here — clients fetch it lazily."""
+    queued = _read_queue_set()
+    current = _read_current_drainer_recid()
+
+    rows = []
+    try:
+        for entry in os.scandir(PUBLISHED_DIR):
+            if not entry.is_dir():
+                continue
+            meta_path = os.path.join(entry.path, 'metadata.xml')
+            meta = _parse_metadata_xml(meta_path) if os.path.isfile(meta_path) else \
+                   {'meetingName': None, 'start_time': None, 'end_time': None}
+            status = _recording_status(entry.name, queued, current)
+            duration_sec = None
+            if meta['start_time'] and meta['end_time']:
+                duration_sec = max(0, (meta['end_time'] - meta['start_time']) // 1000)
+            rows.append({
+                'recordId': entry.name,
+                'meetingName': meta['meetingName'] or '(unnamed)',
+                'startTimeMs': meta['start_time'],
+                'durationSeconds': duration_sec,
+                'status': status,
+                'canDelete': status == 'Uploaded',
+            })
+    except FileNotFoundError:
+        pass
+
+    # Newest first (entries without a startTime sink to the bottom).
+    rows.sort(key=lambda r: r['startTimeMs'] or 0, reverse=True)
+
+    total = len(rows)
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    page = max(1, min(page, total_pages))
+    start = (page - 1) * page_size
+    return {
+        'page': page,
+        'page_size': page_size,
+        'total': total,
+        'total_pages': total_pages,
+        'current_drainer': current,
+        'queued_count': len(queued),
+        'recordings': rows[start:start + page_size],
+    }
+
+
+def recording_size_bytes(record_id):
+    """Lazy size lookup (du) with a 5-minute cache."""
+    now = time.time()
+    cached = _size_cache.get(record_id)
+    if cached and (now - cached[1]) < _SIZE_CACHE_TTL_SEC:
+        return cached[0]
+
+    # Walk both published + raw for this id.
+    total = 0
+    for root_dir in (PUBLISHED_DIR, '/var/bigbluebutton/recording/raw'):
+        path = os.path.join(root_dir, record_id)
+        if not os.path.isdir(path):
+            continue
+        for dirpath, _dirs, files in os.walk(path):
+            for f in files:
+                try:
+                    total += os.path.getsize(os.path.join(dirpath, f))
+                except OSError:
+                    pass
+    _size_cache[record_id] = (total, now)
+    return total
+
+
+def delete_recording_from_bbb(record_id):
+    """Delete a single recording from BBB disk only. S3 copy untouched.
+    Uses bbb-record --delete which handles published/, raw/, and status/.
+    Refuses to delete unless the recording has already been uploaded to S3."""
+    # Strict shape check (sha1-hex + dash + 13-digit ms timestamp) so a malicious
+    # recordId can't smuggle in a leading dash that bbb-record would parse as a flag,
+    # path-traversal segments, newlines for log injection, etc.
+    if not record_id or not RECORD_ID_RE.match(record_id):
+        return False, 'invalid recordId'
+    if not _is_uploaded(record_id):
+        return False, 'recording is not yet uploaded to S3 — refusing to delete'
+    # Race guard: if the drainer is currently processing this recordId, refuse.
+    # Without this, bbb-record --delete would yank published/<id> out from
+    # under the running ffmpeg → corrupt upload + S3 garbage.
+    if _read_current_drainer_recid() == record_id:
+        return False, 'recording is currently being uploaded — try again in a few minutes'
+
+    try:
+        result = subprocess.run(
+            ['bbb-record', '--delete', record_id],
+            capture_output=True, text=True, timeout=120,
+        )
+        ok = result.returncode == 0
+        out = (result.stdout or '') + (result.stderr or '')
+        # Clean up our own markers so the status flips back to "not present"
+        if ok:
+            try: os.remove(os.path.join(UPLOADED_DIR, record_id))
+            except OSError: pass
+            _size_cache.pop(record_id, None)
+        return ok, out[-4000:]  # tail any noisy output
+    except subprocess.TimeoutExpired:
+        return False, 'bbb-record --delete timed out'
+    except Exception as e:
+        return False, str(e)
+
+
+def get_upload_queue_stats():
+    """Recordings queued for deferred S3 upload by the post-publish hook.
+    Reads /var/spool/bbb-recording-queue.txt (written by the hook in queue
+    mode, drained by bbb-recording-drain.timer)."""
+    queue_file = '/var/spool/bbb-recording-queue.txt'
+    drainer_active = False
+    try:
+        # systemctl is-active returns 0 only when the service is currently running
+        rc = subprocess.run(
+            ['systemctl', 'is-active', '--quiet', 'bbb-recording-drain.service'],
+            timeout=2,
+        ).returncode
+        drainer_active = (rc == 0)
+    except Exception:
+        pass
+
+    queued = 0
+    try:
+        with open(queue_file, 'r') as f:
+            queued = sum(1 for line in f if line.strip())
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+
+    return {
+        'queued': queued,
+        'drainer_active': drainer_active,
     }
 
 
@@ -285,12 +509,44 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .timestamp { color: var(--muted); font-size: 0.75rem; }
-  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } body { padding: 10px; } }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .tab { background: transparent; border: none; color: var(--muted); padding: 10px 18px; cursor: pointer; font-size: 0.9rem; font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  table.recordings { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  table.recordings th, table.recordings td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  table.recordings th { color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
+  table.recordings tr:hover { background: rgba(255,255,255,0.02); }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+  .badge-uploaded { background: rgba(34,197,94,0.18); color: var(--green); }
+  .badge-queued { background: rgba(234,179,8,0.18); color: var(--yellow); }
+  .badge-uploading { background: rgba(249,115,22,0.18); color: var(--orange); }
+  .badge-published { background: rgba(148,163,184,0.18); color: var(--muted); }
+  .size-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+  .size-btn:hover { color: var(--text); border-color: var(--accent); }
+  .row-delete { background: transparent; border: 1px solid var(--red); color: var(--red); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
+  .row-delete:hover { background: var(--red); color: #fff; }
+  .row-delete:disabled { opacity: 0.3; cursor: not-allowed; }
+  .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-size: 0.85rem; color: var(--muted); }
+  .pagination button { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 4px; cursor: pointer; margin: 0 4px; }
+  .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .pagination button:not(:disabled):hover { border-color: var(--accent); }
+  .recid { font-family: monospace; font-size: 0.7rem; color: var(--muted); }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } body { padding: 10px; } table.recordings { font-size: 0.75rem; } table.recordings th, table.recordings td { padding: 6px 4px; } }
 </style>
 </head>
 <body>
 <h1>BBB Server Health</h1>
 <p class="subtitle" id="domain">DOMAIN_PLACEHOLDER</p>
+
+<div class="tabs">
+  <button class="tab active" id="tabBtnOverview" onclick="switchTab('overview')">Overview</button>
+  <button class="tab" id="tabBtnRecordings" onclick="switchTab('recordings')">Recordings</button>
+</div>
+
+<div id="tab-overview" class="tab-panel active">
 
 <div class="refresh-bar">
   <span class="timestamp" id="lastUpdate">Loading...</span>
@@ -338,6 +594,25 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         </button>
         <div class="action-output" id="outRestart"></div>
       </div>
+    </div>
+  </div>
+</div>
+</div>
+<!-- /tab-overview -->
+
+<div id="tab-recordings" class="tab-panel">
+  <div class="card">
+    <div class="refresh-bar">
+      <span class="timestamp" id="recordingsMeta">Click Refresh to load.</span>
+      <button class="refresh-btn" onclick="loadRecordings(1)">Refresh</button>
+    </div>
+    <div id="recordingsTableWrap"></div>
+    <div class="pagination" id="recordingsPagination" style="display:none">
+      <span id="paginationInfo"></span>
+      <span>
+        <button id="prevPage" onclick="loadRecordings(currentPage - 1)">‹ Prev</button>
+        <button id="nextPage" onclick="loadRecordings(currentPage + 1)">Next ›</button>
+      </span>
     </div>
   </div>
 </div>
@@ -411,11 +686,20 @@ async function loadMetrics() {
 
     // Recordings
     const rec = d.recordings;
+    const q = d.upload_queue || {queued: 0, drainer_active: false};
+    const queueColor = q.queued > 10 ? 'var(--red)'
+                     : q.queued > 0  ? 'var(--yellow)'
+                                     : 'var(--text)';
+    const drainerLabel = q.drainer_active ? 'Drainer running'
+                       : q.queued > 0     ? 'Queued — waiting'
+                                          : 'Idle';
     document.getElementById('recordingsContent').innerHTML = `
       <div class="recording-stats">
         <div class="stat-box"><div class="stat-num">${rec.count}</div><div class="stat-label">Directories</div></div>
         <div class="stat-box"><div class="stat-num">${rec.size_gb}</div><div class="stat-label">GB on disk</div></div>
-      </div>`;
+        <div class="stat-box"><div class="stat-num" style="color:${queueColor}">${q.queued}</div><div class="stat-label">Upload queue</div></div>
+      </div>
+      <div style="margin-top:8px;font-size:0.8rem;color:var(--text-dim)">${drainerLabel}</div>`;
 
     document.getElementById('domain').textContent = d.domain || '';
     document.getElementById('lastUpdate').textContent = 'Updated: ' + new Date().toLocaleTimeString();
@@ -452,9 +736,159 @@ async function runAction(action, btnId, outId) {
   }
 }
 
-// Initial load + auto-refresh every 30s
+// ── Tabs ──────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tabBtn' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'recordings' && !recordingsLoadedOnce) {
+    recordingsLoadedOnce = true;
+    loadRecordings(1);
+  }
+}
+
+// ── Recordings tab ────────────────────────────────────────
+let currentPage = 1;
+let recordingsLoadedOnce = false;
+
+function badgeClass(status) {
+  return 'badge badge-' + status.toLowerCase();
+}
+
+function fmtTime(ms) {
+  if (!ms) return '—';
+  return new Date(ms).toLocaleString();
+}
+
+function fmtDuration(sec) {
+  if (sec == null) return '—';
+  if (sec < 60) return sec + 's';
+  if (sec < 3600) return Math.floor(sec / 60) + 'm ' + (sec % 60) + 's';
+  return Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
+}
+
+function fmtBytes(bytes) {
+  if (bytes == null) return '—';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB';
+}
+
+async function loadRecordings(page) {
+  if (!page || page < 1) return;
+  currentPage = page;
+  const wrap = document.getElementById('recordingsTableWrap');
+  wrap.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)"><span class="spinner"></span> Loading recordings...</div>';
+  document.getElementById('recordingsPagination').style.display = 'none';
+
+  try {
+    const res = await fetch(apiUrl('/api/recordings') + '&page=' + page);
+    const d = await res.json();
+
+    document.getElementById('recordingsMeta').textContent =
+      `${d.total} recording(s) on disk · ${d.queued_count} queued for upload · ` +
+      (d.current_drainer ? `now uploading: ${d.current_drainer.slice(0, 12)}…` : 'no upload in progress');
+
+    if (d.recordings.length === 0) {
+      wrap.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">No recordings on disk.</div>';
+      return;
+    }
+
+    let html = `<table class="recordings"><thead><tr>
+      <th>Meeting</th><th>Started</th><th>Duration</th><th>Status</th><th>Size</th><th></th>
+    </tr></thead><tbody>`;
+    for (const r of d.recordings) {
+      // The server validates recordIds with a strict regex (sha1-hex-13digit),
+      // but escape everywhere anyway as defence in depth — if a future code
+      // path ever surfaces an unvalidated id, this still blocks XSS.
+      const safeId = r.recordId.replace(/[^a-z0-9-]/gi, '');
+      const ridAttr = escapeHtml(r.recordId);
+      const ridJs = escapeJs(r.recordId);
+      const nameJs = escapeJs(r.meetingName || '');
+      html += `<tr id="rec-${safeId}">
+        <td>
+          <div>${escapeHtml(r.meetingName)}</div>
+          <div class="recid">${ridAttr}</div>
+        </td>
+        <td>${fmtTime(r.startTimeMs)}</td>
+        <td>${fmtDuration(r.durationSeconds)}</td>
+        <td><span class="${badgeClass(r.status)}">${r.status}</span></td>
+        <td><button class="size-btn" onclick="loadSize('${ridJs}', this)">Show</button></td>
+        <td><button class="row-delete" ${r.canDelete ? '' : 'disabled title="Only available once uploaded to S3"'} onclick="deleteRecording('${ridJs}', '${nameJs}')">Delete from BBB</button></td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    wrap.innerHTML = html;
+
+    const pag = document.getElementById('recordingsPagination');
+    pag.style.display = 'flex';
+    document.getElementById('paginationInfo').textContent =
+      `Page ${d.page} of ${d.total_pages}`;
+    document.getElementById('prevPage').disabled = d.page <= 1;
+    document.getElementById('nextPage').disabled = d.page >= d.total_pages;
+  } catch (e) {
+    wrap.innerHTML = '<div style="color:var(--red);padding:20px">Failed to load: ' + e.message + '</div>';
+  }
+}
+
+async function loadSize(recordId, btn) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const res = await fetch(apiUrl('/api/recordings/' + encodeURIComponent(recordId) + '/size'));
+    const d = await res.json();
+    btn.replaceWith(document.createTextNode(fmtBytes(d.size_bytes)));
+  } catch (e) {
+    btn.textContent = 'err';
+    btn.disabled = false;
+  }
+}
+
+async function deleteRecording(recordId, name) {
+  if (!confirm(`Delete recording "${name}" from BBB?\n\nrecordId: ${recordId}\n\nThis removes the BBB-local copy ONLY. The S3 copy is untouched.`)) {
+    return;
+  }
+  try {
+    const res = await fetch(apiUrl('/api/recordings/' + encodeURIComponent(recordId) + '/delete'), {
+      method: 'POST'
+    });
+    const d = await res.json();
+    if (d.success) {
+      // refresh the page to reflect deletion
+      loadRecordings(currentPage);
+    } else {
+      alert('Delete failed: ' + (d.output || d.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Delete failed: ' + e.message);
+  }
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+function escapeJs(s) {
+  if (!s) return '';
+  // Escape quote chars and the special JS line terminators (U+2028 / U+2029)
+  // plus < to neutralise </script> in any future template literal context.
+  return String(s)
+    .replace(/[\\'"]/g, '\\$&')
+    .replace(/\n/g, '\\n').replace(/\r/g, '\\r')
+    .replace(/ /g, '\\u2028').replace(/ /g, '\\u2029')
+    .replace(/</g, '\\u003c');
+}
+
+// Initial load + auto-refresh every 30s (Overview tab only)
 loadMetrics();
-setInterval(loadMetrics, 30000);
+setInterval(() => {
+  if (document.getElementById('tab-overview').classList.contains('active')) {
+    loadMetrics();
+  }
+}, 30000);
 </script>
 </body>
 </html>
@@ -503,10 +937,34 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 'cpu': get_cpu_info(),
                 'services': get_service_statuses(),
                 'recordings': get_recording_stats(),
+                'upload_queue': get_upload_queue_stats(),
                 'meetings': get_bbb_meetings(),
                 'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
             }
             return self._respond(200, data)
+
+        if path == '/api/recordings':
+            params = parse_qs(urlparse(self.path).query)
+            try:
+                page = int(params.get('page', ['1'])[0])
+            except ValueError:
+                page = 1
+            try:
+                page_size = int(params.get('page_size', ['25'])[0])
+            except ValueError:
+                page_size = 25
+            page_size = max(1, min(page_size, 100))
+            return self._respond(200, list_recordings(page=page, page_size=page_size))
+
+        # GET /api/recordings/<recordId>/size  → lazy size lookup
+        if path.startswith('/api/recordings/') and path.endswith('/size'):
+            recid = path[len('/api/recordings/'):-len('/size')]
+            if not recid or not RECORD_ID_RE.match(recid):
+                return self._respond(400, {"error": "invalid recordId"})
+            return self._respond(200, {
+                'recordId': recid,
+                'size_bytes': recording_size_bytes(recid),
+            })
 
         return self._respond(404, {"error": "not found"})
 
@@ -528,6 +986,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
             log(f"ACTION: restart-bbb result={'ok' if ok else 'fail'}")
             return self._respond(200, {"success": ok, "output": output})
 
+        # POST /api/recordings/<recordId>/delete  → bbb-record --delete (BBB only)
+        if path.startswith('/api/recordings/') and path.endswith('/delete'):
+            recid = path[len('/api/recordings/'):-len('/delete')]
+            log(f"ACTION: delete-recording recordId={recid}")
+            ok, output = delete_recording_from_bbb(recid)
+            log(f"ACTION: delete-recording result={'ok' if ok else 'fail'}")
+            code = 200 if ok else 400
+            return self._respond(code, {"success": ok, "output": output})
+
         return self._respond(404, {"error": "not found"})
 
 
@@ -536,7 +1003,10 @@ def main():
         log("ERROR: HEALTH_DASHBOARD_TOKEN not set in environment")
         raise SystemExit("HEALTH_DASHBOARD_TOKEN not set")
     log(f"Starting health dashboard on 127.0.0.1:{PORT} (domain={BBB_DOMAIN})")
-    HTTPServer(('127.0.0.1', PORT), DashboardHandler).serve_forever()
+    # ThreadingHTTPServer so a slow request (du, getMeetings, systemctl)
+    # doesn't block all others — important now that the Recordings tab can
+    # trigger per-row size walks while the Overview is also polling.
+    ThreadingHTTPServer(('127.0.0.1', PORT), DashboardHandler).serve_forever()
 
 
 if __name__ == '__main__':

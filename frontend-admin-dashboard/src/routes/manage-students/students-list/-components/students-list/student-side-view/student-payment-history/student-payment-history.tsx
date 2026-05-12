@@ -42,6 +42,23 @@ function formatCurrency(amount: number | null | undefined, currency?: string): s
     return `${sym}${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/**
+ * Compact label for the Invoice # column. Real invoice numbers (e.g.
+ * "INV-20260512-0001") are returned as-is. Synthetic SFP-derived numbers
+ * carry a status prefix + UUID (e.g. "PARTIAL-1f2f1396-…") — those get
+ * trimmed to "PARTIAL-1f2f1396" so the column doesn't push the rest of
+ * the table off-screen in the side-panel layout. The full value remains
+ * available via the cell's title attribute.
+ */
+function shortInvoiceLabel(invoiceNumber: string | null | undefined, fallbackId: string): string {
+    const raw = invoiceNumber || fallbackId;
+    if (!raw) return '';
+    // Match "STATUS-<uuid-or-id>" and keep the prefix + first UUID segment only.
+    const m = /^(PAID|PARTIAL|DUE|OVERDUE|WAIVED)-([a-f0-9]{8})/i.exec(raw);
+    if (m) return `${m[1].toUpperCase()}-${m[2]}`;
+    return raw;
+}
+
 function getStatusBadge(status: string) {
     const styles: Record<string, string> = {
         GENERATED: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -79,7 +96,10 @@ const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
     }
 
     return (
-        <div className="overflow-hidden rounded-lg border border-gray-200">
+        // overflow-x-auto so the trailing Status + Action columns are reachable
+        // by horizontal scroll on narrow side-panels. The earlier overflow-hidden
+        // clipped them — the Download button was rendered but never visible.
+        <div className="overflow-x-auto rounded-lg border border-gray-200">
             <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                     <tr>
@@ -93,8 +113,15 @@ const InvoicesList = ({ invoices }: { invoices: InvoiceDTO[] }) => {
                 <tbody className="divide-y divide-gray-100 bg-white">
                     {paged.map((inv) => (
                         <tr key={inv.id} className="transition-colors hover:bg-gray-50">
-                            <td className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-gray-900">
-                                {inv.invoice_number || inv.id.substring(0, 8)}
+                            <td
+                                className="whitespace-nowrap px-3 py-2.5 text-sm font-medium text-gray-900"
+                                title={inv.invoice_number || inv.id}
+                            >
+                                {/* Synthetic invoice numbers carry a status prefix + full SFP UUID
+                                    (e.g. "PARTIAL-1f2f1396-…"). Showing the full string pushes
+                                    the Action column off-screen in narrow side-panels. Truncate
+                                    visually but expose the full id via title= for forensics. */}
+                                {shortInvoiceLabel(inv.invoice_number, inv.id)}
                             </td>
                             <td className="whitespace-nowrap px-3 py-2.5 text-sm text-gray-600">
                                 {/* Prefer due_date so each row matches its installment's

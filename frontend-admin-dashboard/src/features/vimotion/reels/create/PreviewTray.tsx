@@ -287,10 +287,12 @@ function EnrichedCard({
         }
         // Defensive fallback: derive from word_importance bounds.
         const words = enriched.word_importance;
-        if (words.length > 0) {
+        const first = words[0];
+        const last = words[words.length - 1];
+        if (first && last) {
             return {
-                sourceStartS: words[0].t_start,
-                sourceEndS: words[words.length - 1].t_end,
+                sourceStartS: first!.t_start,
+                sourceEndS: last!.t_end,
             };
         }
         return { sourceStartS: 0, sourceEndS: 0 };

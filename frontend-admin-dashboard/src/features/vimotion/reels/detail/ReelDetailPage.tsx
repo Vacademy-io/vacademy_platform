@@ -7,13 +7,10 @@
  *   - FAILED               → error message + retry path back to picker
  *
  * Editor handoff search params built from the reel's persisted artifacts
- * — see VIDEO_EDITOR_REVIEW.md §1.2 for the contract.
- *
- * NB: editing-then-saving a reel from the editor will currently POST to
- * /external/video/v1/frame/* (the generation pipeline's save endpoints)
- * which writes to the wrong table. Slice 5 ships the `kind=reel` switch
- * that routes saves to the reels-specific endpoints — until then, the
- * editor is read/preview-only for reels.
+ * — see VIDEO_EDITOR_REVIEW.md §1.2 for the contract. We pass `kind=reel`
+ * so the editor's saveChanges routes /frame/{add,update,delete} to
+ * /external/reels/v1/frame/* (which updates `ai_reels.s3_urls.time_based_frame`)
+ * rather than the AI-gen-video table.
  */
 import { useMemo } from 'react';
 import { useNavigate } from '@tanstack/react-router';
@@ -445,6 +442,7 @@ function buildEditorSearch(
     avatarUrl: string | undefined;
     apiKey: string | undefined;
     orientation: string;
+    kind: 'reel';
     focusTime: number | undefined;
 } | null {
     const htmlUrl = reel.s3_urls?.time_based_frame;
@@ -459,6 +457,7 @@ function buildEditorSearch(
         avatarUrl: undefined,
         apiKey: apiKey || undefined,
         orientation,
+        kind: 'reel',
         focusTime: undefined,
     };
 }

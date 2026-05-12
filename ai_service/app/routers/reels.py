@@ -34,11 +34,14 @@ from ..repositories.ai_reel_repository import (
 )
 from uuid import uuid4
 from ..schemas.reels import (
+    AddReelFrameRequest,
     CutSpan,
+    DeleteReelFrameRequest,
     EnrichedCandidate,
     PreviewRequest,
     PreviewResponse,
     ReelCandidate,
+    ReelFrameResponse,
     ReelResponse,
     ReelStatusResponse,
     RenderRequest,
@@ -47,6 +50,7 @@ from ..schemas.reels import (
     ScoreAxes,
     ScoreBreakdown,
     StageProgress,
+    UpdateReelFrameRequest,
     WordImportance,
 )
 from ..services.reels_engagement_service import (
@@ -735,3 +739,113 @@ async def delete_reel(
         raise HTTPException(status_code=404, detail="Reel not found")
     repo.delete_by_id(str(row.id))
     return {"deleted": True}
+
+
+# ---------------------------------------------------------------------------
+# Frame editing — POST /frame/{add,update,delete}
+#
+# Reused by the editor (`/vim/edit/$videoId?kind=reel`) so user edits land
+# in the reel's `time_based_frame.json` rather than the AI-gen-video table.
+# Sync I/O is offloaded to `asyncio.to_thread` so the loop stays responsive.
+# ---------------------------------------------------------------------------
+
+from ..services.reels_frame_service import (  # noqa: E402  (router-local import)
+    ReelTimelineNotFound,
+    ReelsFrameService,
+)
+
+
+def _frame_error_status(exc: Exception) -> int:
+    """Map service errors to HTTP status codes consistently.
+
+    `ReelTimelineNotFound` is a client error (open after assemble); plain
+    `ValueError`/`IndexError` are bad-request shape; everything else is 500
+    and we let FastAPI's default handler surface the message.
+    """
+    if isinstance(exc, ReelTimelineNotFound):
+        return 409  # render not finished → conflict, not 404 (the reel exists)
+    if isinstance(exc, (ValueError, IndexError)):
+        return 400
+    return 500
+
+
+@router.post("/frame/add", response_model=ReelFrameResponse)
+async def add_reel_frame(
+    payload: AddReelFrameRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> ReelFrameResponse:
+    """Insert a new entry into the reel's timeline JSON on S3.
+
+    Used by the editor's `saveChanges` for newly-added shots while editing
+    a reel. Same request shape as `/external/video/v1/frame/add` except
+    `reel_id` instead of `video_id`.
+    """
+    service = ReelsFrameService(repo=AiReelRepository(session=db))
+    try:
+        result = await asyncio.to_thread(
+            service.add_frame,
+            reel_id=payload.reel_id,
+            institute_id=institute_id,
+            html=payload.html,
+            in_time=payload.in_time,
+            exit_time=payload.exit_time,
+            z=payload.z or 0,
+            entry_id=payload.entry_id,
+            html_start_x=payload.html_start_x,
+            html_start_y=payload.html_start_y,
+            html_end_x=payload.html_end_x,
+            html_end_y=payload.html_end_y,
+        )
+        return ReelFrameResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=_frame_error_status(e), detail=str(e))
+
+
+@router.post("/frame/update", response_model=ReelFrameResponse)
+async def update_reel_frame(
+    payload: UpdateReelFrameRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> ReelFrameResponse:
+    """Update an entry's HTML (and optionally its timing/z) in the reel's
+    timeline. Persists immediately to S3 — there's no draft buffer."""
+    service = ReelsFrameService(repo=AiReelRepository(session=db))
+    try:
+        result = await asyncio.to_thread(
+            service.update_frame,
+            reel_id=payload.reel_id,
+            institute_id=institute_id,
+            frame_index=payload.frame_index,
+            new_html=payload.new_html,
+            in_time=payload.in_time,
+            exit_time=payload.exit_time,
+            z=payload.z,
+            entry_id=payload.entry_id,
+        )
+        return ReelFrameResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=_frame_error_status(e), detail=str(e))
+
+
+@router.post("/frame/delete", response_model=ReelFrameResponse)
+async def delete_reel_frame(
+    payload: DeleteReelFrameRequest,
+    institute_id: str = Depends(get_institute_from_api_key),
+    db: Session = Depends(db_dependency),
+) -> ReelFrameResponse:
+    """Remove an entry from the reel's timeline. `entry_id` is order-
+    independent and preferred; `frame_index` is the fallback for callers
+    that only know the position."""
+    service = ReelsFrameService(repo=AiReelRepository(session=db))
+    try:
+        result = await asyncio.to_thread(
+            service.delete_frame,
+            reel_id=payload.reel_id,
+            institute_id=institute_id,
+            entry_id=payload.entry_id,
+            frame_index=payload.frame_index,
+        )
+        return ReelFrameResponse(**result)
+    except Exception as e:
+        raise HTTPException(status_code=_frame_error_status(e), detail=str(e))

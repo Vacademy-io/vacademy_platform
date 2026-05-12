@@ -74,6 +74,7 @@ function DashboardShell() {
                 avatarUrl: undefined,
                 apiKey: params.apiKey || undefined,
                 orientation: params.orientation || 'landscape',
+                kind: undefined,
                 focusTime: undefined,
             },
         });

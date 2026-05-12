@@ -9,6 +9,14 @@ import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 import { clamp } from '../utils/coord-convert';
 import { buildTransitionCss, TransitionPair, Transition } from '../utils/transitions';
 
+/**
+ * Which backend table this timeline lives in. `'reel'` routes `/frame/*`
+ * saves to `/external/reels/v1/frame/*` (which updates
+ * `ai_reels.s3_urls.time_based_frame`) instead of the AI-gen-video table.
+ * Defaults to `'video'` for compatibility with every existing caller.
+ */
+export type EditorKind = 'video' | 'reel';
+
 export interface InitParams {
     videoId: string;
     htmlUrl: string;
@@ -17,6 +25,7 @@ export interface InitParams {
     avatarUrl?: string;
     apiKey?: string;
     orientation?: string;
+    kind?: EditorKind;
 }
 
 export interface EntryTransform {
@@ -217,6 +226,10 @@ export interface VideoEditorState {
     avatarUrl?: string;
     apiKey?: string;
     orientation: string;
+    /** Backend kind — drives which `/frame/*` base URL `saveChanges` hits.
+     *  `'video'` (default) → `/external/video/v1/frame/*`,
+     *  `'reel'`             → `/external/reels/v1/frame/*`. */
+    kind: EditorKind;
 
     // Timeline data
     entries: Entry[];
@@ -424,6 +437,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     avatarUrl: undefined,
     apiKey: undefined,
     orientation: 'landscape',
+    kind: 'video',
     entries: [],
     meta: getDefaultMeta('VIDEO'),
     isLoading: false,
@@ -455,6 +469,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             avatarUrl: params.avatarUrl,
             apiKey: params.apiKey,
             orientation: params.orientation ?? 'landscape',
+            kind: params.kind ?? 'video',
             entries: [],
             meta: getDefaultMeta('VIDEO'),
             isLoading: false,
@@ -895,6 +910,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         const {
             videoId,
             apiKey,
+            kind,
             entries,
             dirtyEntryIds,
             newEntryIds,
@@ -903,6 +919,15 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             entryBackgrounds,
             entryTransitions,
         } = get();
+
+        // Reels and AI-gen videos live in different DB tables, so frame
+        // saves go to different endpoints. The payload shape diverges in
+        // exactly one place: reels expect `reel_id` instead of `video_id`.
+        const isReel = kind === 'reel';
+        const frameBase = isReel
+            ? `${AI_SERVICE_BASE_URL}/external/reels/v1/frame`
+            : `${AI_SERVICE_BASE_URL}/external/video/v1/frame`;
+        const idField = isReel ? 'reel_id' : 'video_id';
 
         // Collect entries that need saving
         const toSave = entries.filter(
@@ -927,14 +952,14 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             // refer to the post-deletion timeline. Delete by entry_id (order-
             // independent), so the order within deletedEntryIds doesn't matter.
             for (const entryId of deletedEntryIds) {
-                const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/frame/delete`, {
+                const res = await fetch(`${frameBase}/delete`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-Institute-Key': apiKey,
                     },
                     body: JSON.stringify({
-                        video_id: videoId,
+                        [idField]: videoId,
                         entry_id: entryId,
                     }),
                 });
@@ -958,14 +983,14 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 const isNew = newEntryIds.includes(entry.id);
 
                 if (isNew) {
-                    const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/frame/add`, {
+                    const res = await fetch(`${frameBase}/add`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'X-Institute-Key': apiKey,
                         },
                         body: JSON.stringify({
-                            video_id: videoId,
+                            [idField]: videoId,
                             html: newHtml,
                             in_time: entry.inTime ?? entry.start ?? null,
                             exit_time: entry.exitTime ?? entry.end ?? null,
@@ -979,25 +1004,22 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     }
                 } else {
                     const frameIndex = entries.indexOf(entry);
-                    const res = await fetch(
-                        `${AI_SERVICE_BASE_URL}/external/video/v1/frame/update`,
-                        {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-Institute-Key': apiKey,
-                            },
-                            body: JSON.stringify({
-                                video_id: videoId,
-                                frame_index: frameIndex,
-                                new_html: newHtml,
-                                in_time: entry.inTime ?? entry.start ?? null,
-                                exit_time: entry.exitTime ?? entry.end ?? null,
-                                z: entry.z ?? 0,
-                                entry_id: entry.id,
-                            }),
-                        }
-                    );
+                    const res = await fetch(`${frameBase}/update`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Institute-Key': apiKey,
+                        },
+                        body: JSON.stringify({
+                            [idField]: videoId,
+                            frame_index: frameIndex,
+                            new_html: newHtml,
+                            in_time: entry.inTime ?? entry.start ?? null,
+                            exit_time: entry.exitTime ?? entry.end ?? null,
+                            z: entry.z ?? 0,
+                            entry_id: entry.id,
+                        }),
+                    });
                     if (!res.ok) {
                         const text = await res.text().catch(() => res.statusText);
                         throw new Error(`Frame ${frameIndex}: ${text}`);

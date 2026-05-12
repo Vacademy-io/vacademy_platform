@@ -21,9 +21,10 @@ function VimVideoEditorRoute() {
 function VimVideoEditorShell() {
     const navigate = useNavigate();
     const { videoId } = useParams({ from: '/vim/edit/$videoId/' });
-    const { htmlUrl, audioUrl, wordsUrl, avatarUrl, apiKey, orientation, focusTime } = useSearch({
-        from: '/vim/edit/$videoId/',
-    });
+    const { htmlUrl, audioUrl, wordsUrl, avatarUrl, apiKey, orientation, kind, focusTime } =
+        useSearch({
+            from: '/vim/edit/$videoId/',
+        });
     const { startTourIfNew } = useVimTour();
 
     // Back from the editor returns to the production view of this video so the
@@ -83,6 +84,7 @@ function VimVideoEditorShell() {
             avatarUrl={avatarUrl}
             apiKey={apiKey}
             orientation={orientation}
+            kind={kind}
             focusTime={focusTime}
             onBack={handleBack}
         />

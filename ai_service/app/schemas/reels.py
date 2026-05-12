@@ -274,3 +274,53 @@ class ReelStatusResponse(BaseModel):
     progress: int = 0
     stages: list[StageProgress] = Field(default_factory=list)
     error_message: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# Frame editing — POST /frame/{add,update,delete}
+#
+# Lets the editor (`/vim/edit/$videoId?kind=reel`) persist user edits back
+# into the reel's `time_based_frame.json` on S3. Mirrors the AI-gen-video
+# frame endpoints field-for-field, except the identifier is `reel_id` and
+# the target file is `AiReel.s3_urls.time_based_frame`.
+# ---------------------------------------------------------------------------
+
+class AddReelFrameRequest(BaseModel):
+    """Insert a new entry into a reel's timeline."""
+    reel_id: str = Field(..., description="User-facing reel id (not the UUID pk)")
+    html: str = Field(..., description="HTML body fragment for the new shot")
+    in_time: Optional[float] = Field(None, description="Start time in reel seconds")
+    exit_time: Optional[float] = Field(None, description="End time in reel seconds")
+    entry_id: Optional[str] = Field(None, description="Client-generated entry id (optional)")
+    z: Optional[int] = Field(0, description="Z-index layer (0=base, 500+=overlay, 8000+=caption)")
+    html_start_x: Optional[int] = Field(None, description="Left edge in pixels (defaults to 0)")
+    html_start_y: Optional[int] = Field(None, description="Top edge in pixels (defaults to 0)")
+    html_end_x: Optional[int] = Field(None, description="Right edge in pixels (defaults to frame width)")
+    html_end_y: Optional[int] = Field(None, description="Bottom edge in pixels (defaults to frame height)")
+
+
+class UpdateReelFrameRequest(BaseModel):
+    """Update a single entry's HTML and optionally its timing/z."""
+    reel_id: str = Field(..., description="User-facing reel id")
+    frame_index: int = Field(..., description="Position of the entry in the timeline")
+    new_html: str = Field(..., description="Replacement HTML body fragment")
+    in_time: Optional[float] = Field(None, description="New start time (reel seconds)")
+    exit_time: Optional[float] = Field(None, description="New end time (reel seconds)")
+    z: Optional[int] = Field(None, description="New z-index")
+    entry_id: Optional[str] = Field(None, description="Stable entry id for verification")
+
+
+class DeleteReelFrameRequest(BaseModel):
+    """Remove an entry from a reel's timeline. `entry_id` is order-independent
+    and preferred; `frame_index` is accepted as a fallback."""
+    reel_id: str = Field(..., description="User-facing reel id")
+    entry_id: Optional[str] = Field(None, description="Stable entry id to remove")
+    frame_index: Optional[int] = Field(None, description="Position fallback when entry_id is missing")
+
+
+class ReelFrameResponse(BaseModel):
+    status: str
+    reel_id: str
+    entry_id: Optional[str] = None
+    frame_index: int
+    message: str

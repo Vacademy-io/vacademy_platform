@@ -1105,12 +1105,23 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                         setIsFirstPlay(false);
 
                         if (!updateIntervalRef.current) {
+                            // Periodic sync cadence = min(video duration, 60s).
+                            // Short videos sync at their own length, so a 6s
+                            // clip never has more than ~6s of unsynced data
+                            // sitting in storage if the user closes the tab.
+                            const durSec = videoRef.current?.duration;
+                            const periodMs = Math.max(
+                                1000,
+                                Math.min(
+                                    Number.isFinite(durSec) && (durSec as number) > 0
+                                        ? Math.round((durSec as number) * 1000)
+                                        : 60000,
+                                    60000
+                                )
+                            );
                             updateIntervalRef.current = setInterval(() => {
-                                console.log(
-                                    "integrate update video activity api now"
-                                );
                                 syncVideoTrackingData();
-                            }, 60 * 1000);
+                            }, periodMs);
                         }
                     }
 
@@ -1260,23 +1271,38 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
             const now = getEpochTimeInMillis();
             videoEndTime.current = now;
 
-            const currentStartTimeInSeconds = convertTimeToSeconds(
-                currentStartTimeRef.current
-            );
-            const endTimeInSeconds =
-                currentStartTimeInSeconds + timestampDurationRef.current;
-            const endTimeStamp = formatVideoTime(endTimeInSeconds);
+            // On natural end, snap the interval end to the player's actual
+            // duration rather than a wall-clock-tick estimate. The 1-Hz timer
+            // can lag the onEnded event by up to ~1 s, undercounting the watch.
+            const startTimeInMillis =
+                convertTimeToSeconds(currentStartTimeRef.current) * 1000;
+            const playerDuration = videoRef.current?.duration;
+            const endTimeInMillis =
+                Number.isFinite(playerDuration) && (playerDuration as number) > 0
+                    ? Math.round((playerDuration as number) * 1000)
+                    : startTimeInMillis;
 
-            currentTimestamps.current.push({
-                id: uuidv4(),
-                start_time: currentStartTimeRef.current,
-                end_time: endTimeStamp,
-                start: convertTimeToSeconds(currentStartTimeRef.current) * 1000,
-                end: convertTimeToSeconds(endTimeStamp) * 1000,
-            });
+            if (endTimeInMillis > startTimeInMillis) {
+                const endTimeStamp = formatVideoTime(endTimeInMillis / 1000);
+                currentTimestamps.current.push({
+                    id: uuidv4(),
+                    start_time: currentStartTimeRef.current,
+                    end_time: endTimeStamp,
+                    start: startTimeInMillis,
+                    end: endTimeInMillis,
+                });
+            }
 
             currentStartTimeRef.current = formatVideoTime(currentTime);
             timestampDurationRef.current = 0;
+
+            // Sync immediately on natural end so the learner sees 100%
+            // without waiting for the periodic timer (or for tab close).
+            // syncVideoTrackingData reads from Capacitor Preferences which
+            // is populated by the activity-tracking useEffect on every tick;
+            // by the time onEnded fires, the latest interval push has
+            // already been written.
+            syncVideoTrackingData();
         };
 
         const handleVideoPlay = () => {
@@ -1296,10 +1322,20 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                 setIsFirstPlay(false);
 
                 if (!updateIntervalRef.current) {
+                    // Periodic sync cadence = min(video duration, 60s).
+                    const durSec = videoRef.current?.duration;
+                    const periodMs = Math.max(
+                        1000,
+                        Math.min(
+                            Number.isFinite(durSec) && (durSec as number) > 0
+                                ? Math.round((durSec as number) * 1000)
+                                : 60000,
+                            60000
+                        )
+                    );
                     updateIntervalRef.current = setInterval(() => {
-                        console.log("integrate update video activity api now");
                         syncVideoTrackingData();
-                    }, 60 * 1000);
+                    }, periodMs);
                 }
             }
 
@@ -1317,20 +1353,27 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
             const now = getEpochTimeInMillis();
             videoEndTime.current = now;
 
-            const currentStartTimeInSeconds = convertTimeToSeconds(
-                currentStartTimeRef.current
-            );
-            const endTimeInSeconds =
-                currentStartTimeInSeconds + timestampDurationRef.current;
-            const endTimeStamp = formatVideoTime(endTimeInSeconds);
+            // Use the player's actual playback position rather than a
+            // wall-clock-tick estimate. The 1-Hz timer rounds down to the
+            // last whole second, undercounting partial seconds.
+            const startTimeInMillis =
+                convertTimeToSeconds(currentStartTimeRef.current) * 1000;
+            const playerCurrent = videoRef.current?.currentTime;
+            const endTimeInMillis =
+                Number.isFinite(playerCurrent) && (playerCurrent as number) >= 0
+                    ? Math.round((playerCurrent as number) * 1000)
+                    : startTimeInMillis;
 
-            currentTimestamps.current.push({
-                id: uuidv4(),
-                start_time: currentStartTimeRef.current,
-                end_time: endTimeStamp,
-                start: convertTimeToSeconds(currentStartTimeRef.current) * 1000,
-                end: convertTimeToSeconds(endTimeStamp) * 1000,
-            });
+            if (endTimeInMillis > startTimeInMillis) {
+                const endTimeStamp = formatVideoTime(endTimeInMillis / 1000);
+                currentTimestamps.current.push({
+                    id: uuidv4(),
+                    start_time: currentStartTimeRef.current,
+                    end_time: endTimeStamp,
+                    start: startTimeInMillis,
+                    end: endTimeInMillis,
+                });
+            }
 
             currentStartTimeRef.current = formatVideoTime(currentTime);
             timestampDurationRef.current = 0;

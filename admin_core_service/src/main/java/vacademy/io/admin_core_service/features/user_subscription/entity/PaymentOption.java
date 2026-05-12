@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.user_subscription.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
@@ -18,6 +19,11 @@ import java.util.Objects;
 @Entity
 @Table(name = "payment_option")
 @Data
+// payment_option_json snapshots stored on user_plan carry an extra
+// "cpo_discount_state" key (CPO-level discount + per-installment overrides
+// audit). Existing readers deserialize the snapshot back into PaymentOption
+// via JsonUtil; ignore unknown keys so they don't choke on the extra field.
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class PaymentOption {
     @Id
     @UuidGenerator

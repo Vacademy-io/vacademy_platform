@@ -48,4 +48,14 @@ public class AssignmentItemDTO {
      *               Invoice is generated.
      */
     private String cpoPaymentMode;
+
+    /**
+     * Structured per-learner CPO configuration: per-installment date/amount/discount
+     * overrides, whole-CPO discount, and the offline-payment fields above in a
+     * single nested object.
+     *
+     * <p>When non-null, this supersedes {@link #cpoPaymentAmount} / {@link #cpoPaymentMode}
+     * for this assignment. When null, the legacy fields apply unchanged.
+     */
+    private CpoEnrollmentConfigDTO cpoConfig;
 }

@@ -131,24 +131,14 @@ export const AssignCourseDialog = ({
     };
 
     const buildRequest = (dryRun: boolean): BulkAssignRequest => {
-        const assignments: AssignmentItem[] = psConfigs.map((cfg) => {
-            // CPO is detected from either an explicitly-picked invite or the auto-resolved
-            // panel state (cfg.cpoPayment is only set when the panel was rendered).
-            const cpoMode = cfg.cpoPayment?.mode ?? null;
-            const cpoAmount =
-                cpoMode === 'OFFLINE' && cfg.cpoPayment?.amount && cfg.cpoPayment.amount > 0
-                    ? cfg.cpoPayment.amount
-                    : null;
-            return {
-                package_session_id: cfg.packageSessionId,
-                enroll_invite_id: cfg.isAutoMode ? null : cfg.selectedInvite?.id || null,
-                payment_option_id: cfg.isAutoMode ? null : cfg.resolvedPaymentOption?.id || null,
-                plan_id: cfg.isAutoMode ? null : cfg.resolvedPaymentPlan?.id || null,
-                access_days: cfg.accessDaysOverride,
-                cpo_payment_mode: cpoMode,
-                cpo_payment_amount: cpoAmount,
-            };
-        });
+        const assignments: AssignmentItem[] = psConfigs.map((cfg) => ({
+            package_session_id: cfg.packageSessionId,
+            enroll_invite_id: cfg.isAutoMode ? null : cfg.selectedInvite?.id || null,
+            payment_option_id: cfg.isAutoMode ? null : cfg.resolvedPaymentOption?.id || null,
+            plan_id: cfg.isAutoMode ? null : cfg.resolvedPaymentPlan?.id || null,
+            access_days: cfg.accessDaysOverride,
+            cpo_config: cfg.cpoConfig ?? null,
+        }));
 
         return {
             institute_id: instituteId,
@@ -399,8 +389,8 @@ export const AssignCourseDialog = ({
                             previewResult?.cpo_total_amount ?? null;
                         const cpoCount =
                             previewResult?.cpo_installment_count ?? null;
-                        const cpoMode = cfg.cpoPayment?.mode ?? 'SKIP';
-                        const cpoAmount = cfg.cpoPayment?.amount ?? null;
+                        const cpoMode = cfg.cpoConfig?.payment_mode ?? 'SKIP';
+                        const cpoAmount = cfg.cpoConfig?.payment_amount ?? null;
                         return (
                             <div
                                 key={cfg.packageSessionId}
@@ -690,7 +680,10 @@ export const AssignCourseDialog = ({
             heading={`Assign to ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}`}
             open={open}
             onOpenChange={onOpenChange}
-            dialogWidth="max-w-lg"
+            // Match the bulk Enroll Learner dialog (~820px) so per-installment
+            // configuration has room to breathe — the narrow max-w-lg made the
+            // dates + override + discount cells crowd into each other.
+            dialogWidth="w-[820px] max-w-[820px]"
             footer={footer}
         >
             {renderStepper()}

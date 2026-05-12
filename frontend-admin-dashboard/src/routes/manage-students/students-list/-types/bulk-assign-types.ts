@@ -1,5 +1,35 @@
 // ==================== REQUEST TYPES ====================
 
+import type { DiscountSpec } from './cpo-side-view-types';
+
+/**
+ * Per-installment override carried inside `cpo_config.installment_overrides`.
+ * Identifies the template row via `aft_installment_id` (the `i_id` column on
+ * the freshly-generated SFP). Any field can be null = "leave default."
+ *
+ * If both `amount` and `discount` are set, `amount` wins and the discount's
+ * reason is recorded as the manual-override audit reason.
+ */
+export interface InstallmentOverride {
+    aft_installment_id: string;
+    start_date?: string | null;
+    due_date?: string | null;
+    amount?: number | null;
+    discount?: DiscountSpec | null;
+}
+
+/**
+ * Structured CPO config for one assignment. When set, supersedes the legacy
+ * `cpo_payment_amount` / `cpo_payment_mode` fields on the same AssignmentItem.
+ */
+export interface CpoEnrollmentConfig {
+    installment_overrides?: InstallmentOverride[];
+    cpo_discount?: DiscountSpec | null;
+    payment_mode?: 'OFFLINE' | 'SKIP' | null;
+    payment_amount?: number | null;
+    payment_reference?: string | null;
+}
+
 export interface AssignmentItem {
     package_session_id: string;
     enroll_invite_id?: string | null;
@@ -15,6 +45,12 @@ export interface AssignmentItem {
 
     /** CPO only. "OFFLINE" if recording a payment, "SKIP" (default) otherwise. */
     cpo_payment_mode?: 'OFFLINE' | 'SKIP' | null;
+
+    /**
+     * Structured CPO config (per-installment overrides + CPO discount + offline
+     * payment). When non-null, supersedes the two flat cpo_payment_* fields.
+     */
+    cpo_config?: CpoEnrollmentConfig | null;
 }
 
 export interface AssignOptions {
@@ -238,12 +274,12 @@ export interface SelectedPackageSession {
     accessDays?: number | null;
 
     /**
-     * CPO-only per-course state, used when the resolved invite carries a CPO PaymentOption.
-     * mode='OFFLINE' records `amount` (in [1, totalCpoFee]) now; otherwise no payment is
-     * recorded and the learner pays installments online later.
+     * Structured CPO config carried per package-session in the bulk wizard:
+     * per-installment date/amount/discount overrides, whole-CPO discount,
+     * and the offline-payment fields. Sent verbatim as `cpo_config` on the
+     * AssignmentItem. Applies to every learner selected in the bulk run.
      */
-    cpoPaymentMode?: 'OFFLINE' | 'SKIP' | null;
-    cpoPaymentAmount?: number | null;
+    cpoConfig?: CpoEnrollmentConfig;
 }
 
 /** Global bulk enroll options (Step 3) */

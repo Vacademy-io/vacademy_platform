@@ -111,20 +111,12 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
             institute_id: INSTITUTE_ID || '',
             user_ids: existingUserIds.length > 0 ? existingUserIds : undefined,
             new_users: newUsers.length > 0 ? newUsers : undefined,
-            assignments: selectedPackageSessions.map((ps) => {
-                const cpoMode = ps.cpoPaymentMode ?? null;
-                const cpoAmount =
-                    cpoMode === 'OFFLINE' && ps.cpoPaymentAmount && ps.cpoPaymentAmount > 0
-                        ? ps.cpoPaymentAmount
-                        : null;
-                return {
-                    package_session_id: ps.packageSessionId,
-                    enroll_invite_id: ps.enrollInviteId ?? null,
-                    access_days: ps.accessDays ?? null,
-                    cpo_payment_mode: cpoMode,
-                    cpo_payment_amount: cpoAmount,
-                };
-            }),
+            assignments: selectedPackageSessions.map((ps) => ({
+                package_session_id: ps.packageSessionId,
+                enroll_invite_id: ps.enrollInviteId ?? null,
+                access_days: ps.accessDays ?? null,
+                cpo_config: ps.cpoConfig ?? null,
+            })),
             options: {
                 duplicate_handling: options.duplicateHandling,
                 notify_learners: options.notifyLearners,

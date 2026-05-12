@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/select';
 import { BulkEnrollOptions, SelectedPackageSession } from '../../../../-types/bulk-assign-types';
 import { InvitePickerDropdown } from '../../components/InvitePickerDropdown';
-import { CpoInstallmentPanel } from '../../components/CpoInstallmentPanel';
+import { CpoEnrollmentConfigPanel } from '../../components/CpoEnrollmentConfigPanel';
 import { useResolvedInviteDetails } from '../../../../-hooks/useResolvedInviteDetails';
 import { BookOpen } from '@phosphor-icons/react';
 import { Calendar } from '@/components/ui/calendar';
@@ -72,8 +72,9 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
                             onUpdate({
                                 enrollInviteId: id,
                                 enrollInviteName: name,
-                                cpoPaymentMode: null,
-                                cpoPaymentAmount: null,
+                                // Reset CPO state on invite change — different invite may carry
+                                // a different (or no) CPO mirror.
+                                cpoConfig: undefined,
                             })
                         }
                     />
@@ -119,19 +120,10 @@ const CourseConfigRow = ({ instituteId, ps, onUpdate }: CourseConfigRowProps) =>
             )}
 
             {isCpo && cpoId && (
-                <CpoInstallmentPanel
+                <CpoEnrollmentConfigPanel
                     cpoId={cpoId}
-                    value={
-                        ps.cpoPaymentMode
-                            ? { mode: ps.cpoPaymentMode, amount: ps.cpoPaymentAmount ?? null }
-                            : undefined
-                    }
-                    onChange={(v) =>
-                        onUpdate({
-                            cpoPaymentMode: v.mode,
-                            cpoPaymentAmount: v.amount,
-                        })
-                    }
+                    value={ps.cpoConfig}
+                    onChange={(v) => onUpdate({ cpoConfig: v })}
                 />
             )}
         </div>

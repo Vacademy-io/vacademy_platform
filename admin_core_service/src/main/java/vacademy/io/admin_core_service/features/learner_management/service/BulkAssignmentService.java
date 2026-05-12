@@ -87,6 +87,7 @@ public class BulkAssignmentService {
     private final vacademy.io.admin_core_service.features.audience.service.UserLeadProfileService userLeadProfileService;
     private final StudentFeePaymentGenerationService studentFeePaymentGenerationService;
     private final FeeLedgerAllocationService feeLedgerAllocationService;
+    private final vacademy.io.admin_core_service.features.fee_management.service.CpoEnrollmentConfigApplier cpoEnrollmentConfigApplier;
     private final FeeTypeRepository feeTypeRepository;
     private final AssignedFeeValueRepository assignedFeeValueRepository;
     private final AftInstallmentRepository aftInstallmentRepository;
@@ -539,7 +540,8 @@ public class BulkAssignmentService {
                 ? summarizeCpoFromTemplate(config.getPaymentOption().getComplexPaymentOptionId())
                 : null;
         String cpoMode = isCpo ? resolveCpoMode(assignment) : null;
-        Double cpoAmount = isCpo && "OFFLINE".equals(cpoMode) ? assignment.getCpoPaymentAmount() : null;
+        Double cpoAmount = isCpo && "OFFLINE".equals(cpoMode) ? resolveCpoAmount(assignment) : null;
+        CpoEnrollmentConfigDTO cpoConfig = isCpo ? assignment.getCpoConfig() : null;
 
         if (dryRun) {
             BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder b = BulkAssignResultItemDTO.builder()
@@ -654,10 +656,11 @@ public class BulkAssignmentService {
         String transactionId = options != null ? options.getTransactionId() : null;
 
         // CPO post-enrollment side effects: always generate the installment schedule;
-        // optionally record an admin-collected offline payment that FIFOs against those rows.
+        // apply per-learner overrides + CPO discount if supplied; optionally record
+        // an admin-collected offline payment that FIFOs against the resulting rows.
         if (isCpo) {
             applyCpoEnrollmentSideEffects(
-                    userId, instituteId, userPlan, config, cpoMode, cpoAmount,
+                    userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
                     perUserPaymentDate, globalPaymentDate, transactionId,
                     generateInvoiceOnManualEnroll);
         }
@@ -757,7 +760,8 @@ public class BulkAssignmentService {
                 ? summarizeCpoFromTemplate(config.getPaymentOption().getComplexPaymentOptionId())
                 : null;
         String cpoMode = isCpo ? resolveCpoMode(assignment) : null;
-        Double cpoAmount = isCpo && "OFFLINE".equals(cpoMode) ? assignment.getCpoPaymentAmount() : null;
+        Double cpoAmount = isCpo && "OFFLINE".equals(cpoMode) ? resolveCpoAmount(assignment) : null;
+        CpoEnrollmentConfigDTO cpoConfig = isCpo ? assignment.getCpoConfig() : null;
 
         if (dryRun) {
             BulkAssignResultItemDTO.BulkAssignResultItemDTOBuilder b = BulkAssignResultItemDTO.builder()
@@ -837,10 +841,11 @@ public class BulkAssignmentService {
         subOrgAutoLinkService.linkIfSubOrgAdmin(userId, config.getPackageSession().getId(), existingMapping.getId(), adminUserId);
 
         // CPO re-enrollment: regenerate the installment schedule for the fresh UserPlan,
-        // and optionally record the admin's offline payment against it.
+        // apply per-learner overrides if supplied, and optionally record the admin's
+        // offline payment against the resulting rows.
         if (isCpo) {
             applyCpoEnrollmentSideEffects(
-                    userId, instituteId, userPlan, config, cpoMode, cpoAmount,
+                    userId, instituteId, userPlan, config, cpoMode, cpoAmount, cpoConfig, adminUserId,
                     null, null, null,
                     false);
         }
@@ -1224,15 +1229,34 @@ public class BulkAssignmentService {
                 && PaymentOptionType.CPO.name().equalsIgnoreCase(po.getType());
     }
 
-    /** "OFFLINE" if an offline payment is being recorded; "SKIP" otherwise. */
+    /**
+     * "OFFLINE" if an offline payment is being recorded; "SKIP" otherwise.
+     * cpoConfig (when present) supersedes the legacy cpoPaymentMode/Amount fields.
+     */
     private static String resolveCpoMode(AssignmentItemDTO assignment) {
         if (assignment == null) return "SKIP";
-        String mode = assignment.getCpoPaymentMode();
-        Double amount = assignment.getCpoPaymentAmount();
+        String mode;
+        Double amount;
+        if (assignment.getCpoConfig() != null) {
+            mode = assignment.getCpoConfig().getPaymentMode();
+            amount = assignment.getCpoConfig().getPaymentAmount();
+        } else {
+            mode = assignment.getCpoPaymentMode();
+            amount = assignment.getCpoPaymentAmount();
+        }
         if ("OFFLINE".equalsIgnoreCase(mode) && amount != null && amount > 0.0) {
             return "OFFLINE";
         }
         return "SKIP";
+    }
+
+    /** Resolves the offline-payment amount, preferring cpoConfig over the legacy field. */
+    private static Double resolveCpoAmount(AssignmentItemDTO assignment) {
+        if (assignment == null) return null;
+        if (assignment.getCpoConfig() != null && assignment.getCpoConfig().getPaymentAmount() != null) {
+            return assignment.getCpoConfig().getPaymentAmount();
+        }
+        return assignment.getCpoPaymentAmount();
     }
 
     /** Total contract value + installment count, read from the CPO template (not from SFP rows). */
@@ -1284,6 +1308,7 @@ public class BulkAssignmentService {
             String userId, String instituteId, UserPlan userPlan,
             DefaultInviteResolver.ResolvedConfig config,
             String cpoMode, Double cpoAmount,
+            CpoEnrollmentConfigDTO cpoConfig, String adminUserId,
             Date perUserPaymentDate, Date globalPaymentDate, String transactionId,
             boolean generateInvoiceOnManualEnroll) {
 
@@ -1303,6 +1328,18 @@ public class BulkAssignmentService {
             log.error("Failed to generate fee bills (bulk-assign) for userPlan={}, cpo={}: {}",
                     userPlan.getId(), cpoId, e.getMessage(), e);
             throw new VacademyException("Failed to generate fee bills: " + e.getMessage());
+        }
+
+        // 1b. Apply per-learner installment overrides and CPO-level discount BEFORE
+        //     allocating any offline payment. Discount math must finalize first so
+        //     FIFO targets the post-discount net amounts, not the template gross.
+        if (cpoConfig != null) {
+            try {
+                cpoEnrollmentConfigApplier.apply(userPlan.getId(), cpoConfig, adminUserId);
+            } catch (Exception e) {
+                log.error("Failed to apply cpoConfig for userPlan={}: {}", userPlan.getId(), e.getMessage(), e);
+                throw new VacademyException("Failed to apply CPO configuration: " + e.getMessage());
+            }
         }
 
         // 2. Optionally record an offline payment.
@@ -1338,8 +1375,11 @@ public class BulkAssignmentService {
                     paymentDate);
 
             Map<String, Object> paymentSpecificData = new HashMap<>();
-            if (StringUtils.hasText(transactionId)) {
-                paymentSpecificData.put("transaction_id", transactionId);
+            String paymentReference = cpoConfig != null && StringUtils.hasText(cpoConfig.getPaymentReference())
+                    ? cpoConfig.getPaymentReference()
+                    : transactionId;
+            if (StringUtils.hasText(paymentReference)) {
+                paymentSpecificData.put("transaction_id", paymentReference);
             }
             paymentSpecificData.put("source", "BULK_ASSIGN_CPO");
 

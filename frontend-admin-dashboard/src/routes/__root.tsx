@@ -68,6 +68,7 @@ const publicRoutes = [
     '/content',
     '/vim/onboarding',
     '/vim/login',
+    '/error-page',
 ];
 
 const isVimotionHost = () =>

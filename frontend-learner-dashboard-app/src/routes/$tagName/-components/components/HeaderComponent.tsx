@@ -5,7 +5,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { RouteMatcher } from "../../-services/route-matcher";
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, ShoppingCart } from "lucide-react";
 import { useCartStore } from "../../-stores/cart-store";
 import { isIOSPlatform } from "@/hooks/useIsIOS";
@@ -15,15 +15,20 @@ import { SystemAlertsBar } from "@/components/announcements";
 import { LogoutSidebar } from "@/components/common/layout-container/sidebar/logoutSidebar";
 import useStore from "@/components/common/layout-container/sidebar/useSidebar";
 import { List } from "@phosphor-icons/react";
+import { AuthModal, AuthModalRef } from "@/components/common/auth/modal/AuthModal";
+import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import type { StudentAuthPresentation } from "@/types/student-display-settings";
 
 export const HeaderComponent: React.FC<HeaderProps & {
   navigation?: Array<{ label: string; route: string; openInSameTab?: boolean }>;
   authLinks?: Array<{ label: string; route: string }>;
+  useAuthModal?: boolean;
   catalogueData?: CourseCatalogueData;
   tagName?: string;
 }> = ({
   navigation = [],
   authLinks = [],
+  useAuthModal = false,
   catalogueData,
   tagName = "home",
 }) => {
@@ -45,6 +50,38 @@ export const HeaderComponent: React.FC<HeaderProps & {
     const [hamburgerButtonRef, setHamburgerButtonRef] = useState<HTMLButtonElement | null>(null);
     const isIOS = isIOSPlatform();
     const isAndroid = Capacitor.getPlatform() === 'android';
+
+    const loginAuthModalRef = useRef<AuthModalRef | null>(null);
+    const signupAuthModalRef = useRef<AuthModalRef | null>(null);
+
+    // Resolved from Student Display Settings on mount. JSON `useAuthModal`
+    // remains a per-page override; if either signals "modal", we open in-place.
+    const [authPresentation, setAuthPresentation] = useState<StudentAuthPresentation | null>(null);
+    const [signupEnabled, setSignupEnabled] = useState<boolean>(true);
+    useEffect(() => {
+      let cancelled = false;
+      (async () => {
+        try {
+          const settings = await getStudentDisplaySettings();
+          if (!cancelled) {
+            setAuthPresentation(settings?.signup?.presentation ?? 'page');
+            setSignupEnabled(settings?.signup?.enabled ?? true);
+          }
+        } catch {
+          // Network/cache miss — leave defaults (signup visible, page nav).
+        }
+      })();
+      return () => { cancelled = true; };
+    }, []);
+    const useModalForAuth = authPresentation === 'modal' || useAuthModal;
+
+    const normalizeRoute = (route: string) =>
+      (route || '').replace(/^\//, '').toLowerCase();
+
+    // Filter out "Sign Up" auth links when signup is disabled at the institute level.
+    const visibleAuthLinks = signupEnabled
+      ? authLinks
+      : authLinks.filter((link) => normalizeRoute(link.route) !== 'signup');
 
     // Calculate cart item count based on current mode (Buy or Rent)
     useEffect(() => {
@@ -559,13 +596,19 @@ export const HeaderComponent: React.FC<HeaderProps & {
                     </button>
                   </div>
                 ) : (
-                  authLinks.map((link, index) => (
+                  visibleAuthLinks.map((link, index) => (
                     <button
                       key={index}
                       onClick={() => {
-                        if (link.route === 'login' || link.route === 'signup') {
-                          window.location.href = `/${link.route}`;
-                        } else if (link.route === '' || link.route === 'get-started') {
+                        const r = normalizeRoute(link.route);
+                        if (r === 'login' || r === 'signup') {
+                          if (useModalForAuth) {
+                            (r === 'login' ? loginAuthModalRef : signupAuthModalRef)
+                              .current?.setIsOpen(true);
+                          } else {
+                            window.location.href = `/${r}`;
+                          }
+                        } else if (r === '' || r === 'get-started') {
                           window.dispatchEvent(new CustomEvent('openLeadCollection'));
                         } else {
                           handleNavigation(link.route, link.label);
@@ -819,13 +862,20 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           </div>
                         </>
                       ) : (
-                        authLinks.map((link, index) => (
+                        visibleAuthLinks.map((link, index) => (
                           <button
                             key={`auth-${index}`}
                             onClick={() => {
-                              if (link.route === 'login' || link.route === 'signup') {
-                                navigate({ to: `/${link.route}` });
-                              } else if (link.route === 'getStarted' || link.label.toLowerCase().includes('get started')) {
+                              const r = normalizeRoute(link.route);
+                              setIsMobileMenuOpen(false);
+                              if (r === 'login' || r === 'signup') {
+                                if (useModalForAuth) {
+                                  (r === 'login' ? loginAuthModalRef : signupAuthModalRef)
+                                    .current?.setIsOpen(true);
+                                } else {
+                                  navigate({ to: `/${r}` });
+                                }
+                              } else if (r === 'getstarted' || link.label.toLowerCase().includes('get started')) {
                                 const event = new CustomEvent('openLeadCollection', {
                                   detail: { source: 'mobileMenu' }
                                 });
@@ -833,7 +883,6 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               } else {
                                 navigate({ to: link.route });
                               }
-                              setIsMobileMenuOpen(false);
                             }}
                             className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-all duration-200 ${index === 0
                               ? 'text-white hover:opacity-90'
@@ -858,6 +907,23 @@ export const HeaderComponent: React.FC<HeaderProps & {
         </div>
 
         {/* Search Bar - Only for hero section header */}
+
+        {/* Hidden triggers — opened programmatically from header auth buttons.
+            Only mounted when the tenant opts into the in-place modal flow. */}
+        {useModalForAuth && (
+          <>
+            <AuthModal
+              ref={loginAuthModalRef}
+              initialMode="login"
+              trigger={<span style={{ display: 'none' }} aria-hidden="true" />}
+            />
+            <AuthModal
+              ref={signupAuthModalRef}
+              initialMode="signup"
+              trigger={<span style={{ display: 'none' }} aria-hidden="true" />}
+            />
+          </>
+        )}
       </header>
     );
   };

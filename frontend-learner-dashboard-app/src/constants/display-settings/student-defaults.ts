@@ -100,6 +100,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
   dashboard: { widgets: defaultDashboardWidgets() },
   ui: { type: "default" },
   signup: {
+    enabled: true,
     providers: {
       google: true,
       github: true,
@@ -110,6 +111,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     usernameStrategy: "manual",
     passwordStrategy: "manual",
     passwordDelivery: "none",
+    presentation: "page",
   },
   permissions: {
     canViewProfile: true,

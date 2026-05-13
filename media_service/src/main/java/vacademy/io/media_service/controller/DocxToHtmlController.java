@@ -381,12 +381,15 @@ public class DocxToHtmlController {
                         MCQEvaluationDTO.MCQData mcqData = new MCQEvaluationDTO.MCQData();
 
                         try {
-                            mcqData.setCorrectOptionIds(List.of(getAnswerId(contentAfterAns).toString()));
-                            mcqEvaluation.setData(mcqData);
+                            Integer answerId = getAnswerId(contentAfterAns);
+                            if (answerId != null) {
+                                mcqData.setCorrectOptionIds(List.of(answerId.toString()));
+                                mcqEvaluation.setData(mcqData);
 
-                            question.setAutoEvaluationJson(setEvaluationJson(mcqEvaluation));
-                            question.setParsedEvaluationObject(
-                                    EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
+                                question.setAutoEvaluationJson(setEvaluationJson(mcqEvaluation));
+                                question.setParsedEvaluationObject(
+                                        EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
+                            }
                         } catch (JsonProcessingException e) {
                             throw new VacademyException(e.getMessage());
                         }
@@ -514,19 +517,23 @@ public class DocxToHtmlController {
 
                         try {
                             List<String> correctOptionIds = Arrays.stream(contentAfterAns.split(","))
-                                    .map(String::trim) // Remove spaces
-                                    .map(option -> getAnswerId(option).toString()) // Convert to ID
+                                    .map(String::trim)
+                                    .map(this::getAnswerId)
+                                    .filter(Objects::nonNull)
+                                    .map(Object::toString)
                                     .toList();
-                            if (correctOptionIds.size() > 1) {
-                                mcqEvaluation.setType(QuestionTypes.MCQM.name());
-                                question.setQuestionType(QuestionTypes.MCQM.name());
-                            }
-                            mcqData.setCorrectOptionIds(correctOptionIds);
-                            mcqEvaluation.setData(mcqData);
+                            if (!correctOptionIds.isEmpty()) {
+                                if (correctOptionIds.size() > 1) {
+                                    mcqEvaluation.setType(QuestionTypes.MCQM.name());
+                                    question.setQuestionType(QuestionTypes.MCQM.name());
+                                }
+                                mcqData.setCorrectOptionIds(correctOptionIds);
+                                mcqEvaluation.setData(mcqData);
 
-                            question.setAutoEvaluationJson(setEvaluationJson(mcqEvaluation));
-                            question.setParsedEvaluationObject(
-                                    EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
+                                question.setAutoEvaluationJson(setEvaluationJson(mcqEvaluation));
+                                question.setParsedEvaluationObject(
+                                        EvaluationJsonToMapConverter.convertJsonToMap(question.getAutoEvaluationJson()));
+                            }
                         } catch (JsonProcessingException e) {
                             throw new VacademyException(e.getMessage());
                         }
@@ -673,18 +680,11 @@ public class DocxToHtmlController {
     }
 
     private Integer getAnswerId(String text) {
-        switch (text.toLowerCase()) {
-            case "a":
-                return 0;
-            case "b":
-                return 1;
-            case "c":
-                return 2;
-            case "d":
-                return 3;
-            default:
-                return null;
-        }
+        if (text == null) return null;
+        String normalized = text.replaceAll("[^a-zA-Z]", "").toLowerCase();
+        if (normalized.isEmpty()) return null;
+        char c = normalized.charAt(0);
+        return (c >= 'a' && c <= 'd') ? c - 'a' : null;
     }
 
     public File convertMultiPartToFile(MultipartFile file) throws IOException {

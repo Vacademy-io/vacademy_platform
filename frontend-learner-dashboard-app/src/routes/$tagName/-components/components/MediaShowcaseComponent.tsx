@@ -168,7 +168,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   const renderYouTubePlayer = () => {
     const embedUrl = convertToYouTubeEmbedUrl(resolvedUrl);
     return (
-      <div className={`relative w-full h-64 bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+      <div className={`relative w-full aspect-video bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
         <iframe
           src={embedUrl}
           title={item.caption || "Video"}
@@ -186,7 +186,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   const renderVimeoPlayer = () => {
     const embedUrl = convertToVimeoEmbedUrl(resolvedUrl);
     return (
-      <div className={`relative w-full h-64 bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+      <div className={`relative w-full aspect-video bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
         <iframe
           src={embedUrl}
           title={item.caption || "Video"}
@@ -203,7 +203,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   // Render native video player for uploaded videos
   const renderNativeVideoPlayer = () => {
     return (
-      <div className={`relative w-full h-64 bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+      <div className={`relative w-full aspect-video bg-black overflow-hidden ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
         <video
           src={resolvedUrl}
           controls
@@ -227,7 +227,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   // Render video fallback (placeholder with play icon)
   const renderVideoFallback = () => {
     return (
-      <div className={`relative w-full h-64 bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+      <div className={`relative w-full aspect-video bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
         <div className="flex flex-col items-center justify-center text-white/70">
           <Play className="w-16 h-16 mb-2 opacity-50" />
           <p className="text-sm">Video unavailable</p>
@@ -243,7 +243,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
       <img
         src={imageSrc}
         alt={item.caption}
-        className={`w-full h-64 object-cover shadow-lg ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}
+        className={`w-full aspect-video object-cover shadow-lg ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}
         onError={(e) => {
           if (!hasTriedLoading) {
             e.currentTarget.src = "/api/placeholder/400/300";
@@ -259,14 +259,14 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
   // Loading state
   if (isLoading) {
     return (
-      <div className={`relative w-full h-64 bg-gray-200 animate-pulse flex items-center justify-center ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
+      <div className={`relative w-full aspect-video max-w-4xl mx-auto bg-gray-200 animate-pulse flex items-center justify-center ${roundedEdges ? 'rounded-lg' : 'rounded-none'}`}>
         <div className="text-gray-400 text-sm">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="relative group">
+    <div className="relative group max-w-4xl mx-auto">
       {item.type === "video" ? (
         <>
           {/* Check if it's a YouTube or Vimeo URL */}

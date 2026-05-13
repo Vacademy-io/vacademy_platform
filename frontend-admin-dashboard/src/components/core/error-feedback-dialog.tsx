@@ -39,28 +39,136 @@ function getInstituteName(): string {
     return domain.charAt(0).toUpperCase() + domain.slice(1);
 }
 
-interface ReportPayload {
-    type: 'user_feedback';
-    description: string;
-    userName: string;
-    userEmail: string;
-    instituteName: string;
-    timezone: string;
-    route: string;
-    errorMessage: string;
-    attachments: { name: string; size: number; type: string }[];
+// All Slack calls go through a server-side proxy:
+//   /slack-api/*   → https://slack.com/api/*     (Authorization injected server-side)
+//   /slack-files/* → https://files.slack.com/*   (pre-signed URL, no auth needed)
+// Dev: vite.config.ts `server.proxy` block reads SLACK_BOT_TOKEN from .env.local.
+// Prod: functions/slack-api/[[path]].js reads context.env.SLACK_BOT_TOKEN.
+// The bot token is NEVER bundled into client code.
+const SLACK_API = '/slack-api';
+const SLACK_FILES = '/slack-files';
+
+async function uploadFileToSlack(file: File): Promise<string | null> {
+    try {
+        const urlRes = await fetch(
+            `${SLACK_API}/files.getUploadURLExternal?filename=${encodeURIComponent(file.name)}&length=${file.size}`
+        );
+        const urlData = await urlRes.json();
+        if (!urlData.ok) return null;
+
+        const proxyUploadUrl = (urlData.upload_url as string).replace(
+            'https://files.slack.com',
+            SLACK_FILES
+        );
+        await fetch(proxyUploadUrl, {
+            method: 'POST',
+            body: file,
+            headers: { 'Content-Type': file.type || 'application/octet-stream' },
+        });
+
+        return urlData.file_id as string;
+    } catch {
+        return null;
+    }
 }
 
-// POSTs to the Cloudflare Pages Function at /send-alert. The function reads
-// SLACK_WEBHOOK_URL from `context.env` (server-side only) and forwards to
-// Slack — so the webhook URL never touches the client bundle.
-async function postReport(payload: ReportPayload): Promise<void> {
-    const res = await fetch('/send-alert', {
+async function completeSlackUploads(
+    fileIds: string[],
+    channelId: string,
+    initialComment: string
+) {
+    await fetch(`${SLACK_API}/files.completeUploadExternal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+            files: fileIds.map((id) => ({ id })),
+            channel_id: channelId,
+            initial_comment: initialComment,
+        }),
     });
-    if (!res.ok) throw new Error(`send-alert returned ${res.status}`);
+}
+
+async function sendToSlack({
+    instituteName,
+    timezone,
+    username,
+    email,
+    description,
+    files,
+    route,
+    error,
+}: {
+    instituteName: string;
+    timezone: string;
+    username: string;
+    email: string;
+    description: string;
+    files: FileList | null;
+    route: string;
+    error: unknown;
+}) {
+    // Support channel — user reports land here.
+    const channelId = import.meta.env.VITE_SLACK_SUPPORT_CHANNEL_ID;
+    if (!channelId) return;
+
+    const errorText = error ? String(error) : 'No error object';
+
+    const blocks = [
+        {
+            type: 'header',
+            text: { type: 'plain_text', text: '🚨 Error Report from Admin Dashboard', emoji: true },
+        },
+        {
+            type: 'section',
+            fields: [
+                { type: 'mrkdwn', text: `*Institute:*\n${instituteName}` },
+                { type: 'mrkdwn', text: `*Timezone:*\n${timezone}` },
+                { type: 'mrkdwn', text: `*User:*\n${username}` },
+                { type: 'mrkdwn', text: `*Email:*\n${email}` },
+            ],
+        },
+        { type: 'divider' },
+        {
+            type: 'section',
+            text: { type: 'mrkdwn', text: `*What Went Wrong:*\n${description}` },
+        },
+        { type: 'divider' },
+        {
+            type: 'context',
+            elements: [
+                {
+                    type: 'mrkdwn',
+                    text: `*Route:* \`${route}\` | *Error:* \`${errorText.slice(0, 200)}\``,
+                },
+            ],
+        },
+    ];
+
+    const msgRes = await fetch(`${SLACK_API}/chat.postMessage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            channel: channelId,
+            text: `Error report from ${username} (${instituteName})`,
+            blocks,
+        }),
+    });
+    const msgData = await msgRes.json();
+
+    if (files && files.length > 0 && msgData.ok) {
+        const fileIds: string[] = [];
+        for (const file of Array.from(files)) {
+            const id = await uploadFileToSlack(file);
+            if (id) fileIds.push(id);
+        }
+        if (fileIds.length > 0) {
+            await completeSlackUploads(
+                fileIds,
+                channelId,
+                `Attachments for error report by ${username} (${instituteName})`
+            );
+        }
+    }
 }
 
 export function ErrorFeedbackDialog({
@@ -92,20 +200,15 @@ export function ErrorFeedbackDialog({
             const username = (tokenData?.username ?? name) || 'Anonymous';
             const userEmail = (tokenData?.email ?? email) || 'unknown@example.com';
 
-            const attachments = files
-                ? Array.from(files).map((f) => ({ name: f.name, size: f.size, type: f.type }))
-                : [];
-
-            await postReport({
-                type: 'user_feedback',
-                description,
-                userName: username,
-                userEmail,
+            await sendToSlack({
                 instituteName: getInstituteName(),
                 timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                username,
+                email: userEmail,
+                description,
+                files,
                 route: location.pathname,
-                errorMessage: error ? String(error).slice(0, 500) : '',
-                attachments,
+                error,
             });
 
             if (import.meta.env.VITE_ENABLE_SENTRY === 'true') {
@@ -226,7 +329,7 @@ export function ErrorFeedbackDialog({
                         />
                         {files && files.length > 0 && (
                             <p className="text-xs text-gray-500 mt-1">
-                                {files.length} file(s) selected — file names will be included in the report.
+                                {files.length} file(s) selected
                             </p>
                         )}
                     </div>

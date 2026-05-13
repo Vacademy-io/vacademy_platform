@@ -77,7 +77,7 @@ export const InstituteType = ['Coaching Institute', 'School', 'University', 'Cor
 
 export const RoleType = [
     { id: '1', name: 'ADMIN' },
-    { id: '2', name: 'COURSE CREATOR' },
+    { id: '2', name: 'CONTENT CREATOR' },
     { id: '3', name: 'ASSESSMENT CREATOR' },
     { id: '4', name: 'EVALUATOR' },
     { id: '5', name: 'TEACHER' },
@@ -86,7 +86,7 @@ export const RoleType = [
 
 export const RoleTypeExceptStudent = [
     { id: '1', name: 'ADMIN' },
-    { id: '2', name: 'COURSE CREATOR' },
+    { id: '2', name: 'CONTENT CREATOR' },
     { id: '3', name: 'ASSESSMENT CREATOR' },
     { id: '4', name: 'EVALUATOR' },
     { id: '5', name: 'TEACHER' },

@@ -12,8 +12,9 @@ import type {
     TokenUsage,
     VideoOrientation,
     VideoStage,
+    VideoStatusMetadata,
     VideoStatusResponse,
-    VideoUrls,
+    VideoStatusUserSelections,
 } from '../../../-services/video-generation';
 import {
     NODE_STAGE,
@@ -148,7 +149,14 @@ export interface FinalCutArtifact {
 }
 
 export interface PipelineState {
-    status: 'in_production' | 'wrapped' | 'halted';
+    /**
+     * `awaiting_review` covers review-mode runs that have wrapped at SCRIPT
+     * but haven't been kicked through to TTS yet — the user must accept /
+     * edit the script before the pipeline resumes. Today consumers don't
+     * fully differentiate it from `in_production`; consumer migration in
+     * the next phase will add review-specific UI affordances.
+     */
+    status: 'in_production' | 'wrapped' | 'halted' | 'awaiting_review';
     videoId: string;
     prompt: string;
     contentType: ContentType;
@@ -692,51 +700,84 @@ export function derivePipelineFromLive(
     };
 }
 
-// ── Polled source: VideoStatusResponse + VideoUrls ──────────────────────
+// ── Canonical source: VideoStatusResponse (status-first model) ──────────
+//
+// Single derivation that produces a `PipelineState` from `/status` alone —
+// the dual-path (live SSE → currentGeneration vs. polled status) collapses
+// here. URLs come from `status.s3_urls`, configuration from
+// `status.metadata.user_selections`, Research/Talent/Score enrichment from
+// `status.metadata.{intent_outcomes,host,audio_tracks}`.
+//
+// Live runs feed this via `useVideoState`'s React Query polling; SSE only
+// triggers re-fetches and is not the data channel. History-restored runs go
+// through the same path with no separate hydration step.
 
 export function derivePipelineFromStatus(
     status: VideoStatusResponse,
-    urls: VideoUrls,
-    extra?: {
-        prompt?: string;
-        contentType?: ContentType;
-        orientation?: VideoOrientation;
+    opts?: {
+        /** When provided, drives the "Elapsed" counter. Caller pins this once
+         *  at submit time so derivation stays pure. */
         startedAtMs?: number;
+        /** Fallbacks when the BE status payload omits a field (mostly
+         *  defensive — modern /status responses include all three). */
+        promptOverride?: string;
+        contentTypeOverride?: ContentType;
+        orientationOverride?: VideoOrientation;
     },
     nowMs: number = Date.now()
 ): PipelineState {
     const gp = status.generation_progress ?? null;
+    const meta = status.metadata ?? null;
+    const userSel: VideoStatusUserSelections = meta?.user_selections ?? {};
     const pipelineStage = (status.current_stage as PipelineStage) ?? 'PENDING';
-    const halted = status.status === 'FAILED' || status.status === 'STALLED';
 
-    const s3 = (status.s3_urls ?? {}) as Record<string, string | undefined>;
+    // ── BE-driven top-level status ─────────────────────────────────────
+    // Trust `status.status` as the source of truth; the old "infer from URL
+    // presence" trick is brittle once /status returns URLs incrementally.
+    const beStatus = status.status;
+    const halted = beStatus === 'FAILED' || beStatus === 'STALLED' || beStatus === 'CANCELLED';
+    const beCompleted = beStatus === 'COMPLETED';
+
+    // S3 URLs flattened from `s3_urls` (BE returns every populated key).
+    const s3 = status.s3_urls ?? {};
     const scriptUrl = s3.script;
-    const audioUrl = urls.audio_url ?? s3.audio ?? undefined;
-    const wordsUrl = urls.words_url ?? s3.words ?? undefined;
-    const timelineUrl = urls.html_url ?? s3.timeline ?? undefined;
-    const videoMp4Url = urls.video_url ?? s3.video ?? undefined;
+    const audioUrl = s3.audio;
+    const wordsUrl = s3.words;
+    const timelineUrl = s3.timeline;
+    const videoMp4Url = s3.video;
 
+    // Content metadata: prefer caller override, then user_selections snapshot,
+    // then the status's top-level content_type / language. `prompt` follows
+    // the same precedence.
     const contentType: ContentType =
-        extra?.contentType ??
-        (status as unknown as { content_type?: ContentType }).content_type ??
-        'VIDEO';
-    const orientation: VideoOrientation = extra?.orientation ?? 'landscape';
-    const prompt = extra?.prompt ?? (status as unknown as { prompt?: string }).prompt ?? '';
+        opts?.contentTypeOverride ?? userSel.content_type ?? status.content_type ?? 'VIDEO';
+    const orientation: VideoOrientation =
+        opts?.orientationOverride ?? userSel.orientation ?? 'landscape';
+    const prompt = opts?.promptOverride ?? status.prompt ?? userSel.prompt ?? '';
 
-    // Same master flag as the live derivation: timeline + audio (when needed)
-    // means the run is unambiguously finished, regardless of which stage the
-    // BE record happens to report.
+    // Review-mode detection: a run that wraps at SCRIPT and was explicitly
+    // target_stage='SCRIPT' is awaiting user review, not done. The console's
+    // `reviewing` state subscribes to this.
+    const targetStage = userSel.target_stage;
+    const awaitingReview = beCompleted && targetStage === 'SCRIPT' && pipelineStage === 'SCRIPT';
+
+    // The "everything upstream is done" flag — drives retroactive wrapping
+    // when the BE status hits COMPLETED. For SLIDES content_type the audio
+    // gate is bypassed (no narration produced).
     const audioReadyOrNotRequired = !!audioUrl || contentType === 'SLIDES';
-    const runWrapped = !!timelineUrl && audioReadyOrNotRequired;
-    const allLinearWrapped = runWrapped;
+    const runWrapped = beCompleted && !awaitingReview && !!timelineUrl && audioReadyOrNotRequired;
 
+    // ── Pitch ─────────────────────────────────────────────────────────
+    // Always wrapped — the prompt exists from t=0. Phase 2 will expand
+    // PitchArtifact to carry the full user_selections snapshot.
     const pitch: NodeSlot<PitchArtifact> = {
         state: 'wrapped',
-        data: { prompt, referenceCount: 0 },
+        data: { prompt, referenceCount: userSel.reference_files_count ?? 0 },
     };
 
+    // ── Screenplay ────────────────────────────────────────────────────
     const screenplay: NodeSlot<ScreenplayArtifact> =
-        scriptUrl || allLinearWrapped
+        scriptUrl || runWrapped || awaitingReview
             ? { state: 'wrapped', data: { scriptUrl } }
             : pipelineStage === 'SCRIPT'
               ? { state: 'in_production' }
@@ -744,8 +785,9 @@ export function derivePipelineFromStatus(
                 ? { state: 'wrapped', data: {} }
                 : { state: 'scheduled' };
 
+    // ── Narration ─────────────────────────────────────────────────────
     const narration: NodeSlot<NarrationArtifact> =
-        audioUrl || allLinearWrapped
+        audioUrl || runWrapped
             ? { state: 'wrapped', data: { audioUrl, wordsUrl } }
             : pipelineStage === 'TTS' || pipelineStage === 'WORDS'
               ? { state: 'in_production' }
@@ -753,52 +795,44 @@ export function derivePipelineFromStatus(
                 ? { state: 'wrapped', data: {} }
                 : { state: 'scheduled' };
 
+    // ── Storyboard ────────────────────────────────────────────────────
     const shotPlan = gp?.shot_plan ?? [];
     const shotsCompleted = gp?.shots_completed ?? 0;
     const shotsTotal = gp?.shots_total ?? 0;
-
+    const storyboardScenes = shotPlan.map((s, arrayIdx) => ({
+        index: typeof s.shot_index === 'number' ? s.shot_index : arrayIdx,
+        shotType: s.shot_type,
+        startTime: s.start_time,
+        endTime: s.end_time,
+        durationS: s.duration_s,
+        narrationExcerpt: s.narration_excerpt,
+    }));
     const storyboard: NodeSlot<StoryboardArtifact> =
-        shotPlan.length > 0 || allLinearWrapped
-            ? {
-                  state: 'wrapped',
-                  data: {
-                      scenes: shotPlan.map((s, arrayIdx) => ({
-                          index: typeof s.shot_index === 'number' ? s.shot_index : arrayIdx,
-                          shotType: s.shot_type,
-                          startTime: s.start_time,
-                          endTime: s.end_time,
-                          durationS: s.duration_s,
-                          narrationExcerpt: s.narration_excerpt,
-                      })),
-                  },
-              }
+        shotPlan.length > 0 || runWrapped
+            ? { state: 'wrapped', data: { scenes: storyboardScenes } }
             : pipelineStage === 'HTML'
               ? { state: 'in_production' }
               : { state: 'scheduled' };
 
-    const filming: NodeSlot<FilmingArtifact> = allLinearWrapped
+    // ── Filming (aggregate counter; also drives the legacy free-tier node) ──
+    const filming: NodeSlot<FilmingArtifact> = runWrapped
         ? {
               state: 'wrapped',
               data: { shotsCompleted: shotsTotal || shotsCompleted, shotsTotal },
           }
         : halted
-          ? { state: 'cut', error: 'Production halted' }
+          ? { state: 'cut', error: status.error_message || 'Production halted' }
           : pipelineStage === 'HTML' && shotsTotal > 0
-            ? {
-                  state: 'in_production',
-                  partialData: { shotsCompleted, shotsTotal },
-              }
+            ? { state: 'in_production', partialData: { shotsCompleted, shotsTotal } }
             : { state: 'scheduled' };
 
-    // Per-scene slots from the polled shot plan. State derives from
-    // `shots_completed` (and `errors[]` once we wire up post-fix retry
-    // visualization).
+    // ── Per-scene slots ───────────────────────────────────────────────
     const errors = gp?.errors ?? [];
     const scenes: SceneSlot[] = shotPlan.map((s, arrayIdx) => {
         const idx = typeof s.shot_index === 'number' ? s.shot_index : arrayIdx;
         const errEntry = errors.find((e) => e.shot_index === idx);
         let sceneState: NodeState = 'scheduled';
-        if (allLinearWrapped) sceneState = 'wrapped';
+        if (runWrapped) sceneState = 'wrapped';
         else if (errEntry && !errEntry.retrying) sceneState = 'cut';
         else if (errEntry && errEntry.retrying) sceneState = 'reshoot';
         else if (idx < shotsCompleted) sceneState = 'wrapped';
@@ -815,6 +849,7 @@ export function derivePipelineFromStatus(
         };
     });
 
+    // ── Final Cut ─────────────────────────────────────────────────────
     const finalCut: NodeSlot<FinalCutArtifact> = runWrapped
         ? {
               state: 'wrapped',
@@ -827,17 +862,61 @@ export function derivePipelineFromStatus(
               },
           }
         : halted
-          ? { state: 'cut', error: 'Production halted' }
-          : { state: 'in_production' };
+          ? { state: 'cut', error: status.error_message || 'Production halted' }
+          : { state: awaitingReview ? 'scheduled' : 'in_production' };
 
-    // FE's VideoStatusResponse type doesn't currently include token_usage,
-    // even though the BE Pydantic schema does. Read it via cast.
-    const tokenUsage = ((status as unknown as { token_usage?: TokenUsage | null }).token_usage ??
-        null) as TokenUsage | null;
+    // ── Research (from metadata.intent_outcomes) ──────────────────────
+    // intent_outcomes is written ONCE at gen start before any pipeline stage
+    // runs — so the moment /status is polled, sources / screenshots / excerpts
+    // are available. Absorbs the PipelineFlow.enrichedState research branch.
+    const research = derivedResearchFromStatus({
+        prompt,
+        intent: meta?.intent_outcomes,
+        routingOverrides: userSel.routing_overrides,
+        pipelineStage,
+        runWrapped,
+        halted,
+    });
+
+    // ── Talent (from metadata.host) ───────────────────────────────────
+    // Host outputs are accumulated server-side as the avatar batch runs.
+    // Phase 3 BE work will flush per-shot. Until then, the artifacts arrive
+    // at batch end — same UX as today for already-finished videos.
+    const talent = derivedTalentFromStatus({
+        userSelHostType: userSel.host?.type,
+        userSelGenerateAvatar: userSel.generate_avatar,
+        metaHost: meta?.host,
+        runWrapped,
+        halted,
+    });
+
+    // ── Score (from user_selections + metadata.audio_tracks) ──────────
+    // The merged Lyria track is in timeline.json today (`meta.audio_tracks`);
+    // Phase 3 BE work will mirror it into status.metadata.audio_tracks. We
+    // read defensively from status — if missing, PipelineFlow's existing
+    // `useBackgroundMusicTrack` hook continues to backfill the URL until BE
+    // exposure lands.
+    const score = derivedScoreFromStatus({
+        userSelEnabled: userSel.background_music_enabled,
+        metaEnabled: meta?.background_music_enabled,
+        audioTracks: meta?.audio_tracks,
+        runWrapped,
+        halted,
+    });
+
+    const tokenUsage = status.token_usage ?? null;
     const cumulativeTokens = gp?.cumulative_tokens;
 
+    const pipelineStatus: PipelineState['status'] = awaitingReview
+        ? 'awaiting_review'
+        : halted
+          ? 'halted'
+          : runWrapped
+            ? 'wrapped'
+            : 'in_production';
+
     return {
-        status: halted ? 'halted' : timelineUrl ? 'wrapped' : 'in_production',
+        status: pipelineStatus,
         videoId: status.video_id,
         prompt,
         contentType,
@@ -848,9 +927,12 @@ export function derivePipelineFromStatus(
         storyboard,
         scenes,
         filming,
+        ...(research ? { research } : {}),
+        ...(talent ? { talent } : {}),
+        ...(score ? { score } : {}),
         finalCut,
         stats: {
-            elapsedMs: extra?.startedAtMs ? nowMs - extra.startedAtMs : undefined,
+            elapsedMs: opts?.startedAtMs ? nowMs - opts.startedAtMs : undefined,
             cumulativeTokens,
             tokenUsage,
         },
@@ -862,4 +944,139 @@ export function derivePipelineFromStatus(
             videoMp4: videoMp4Url,
         },
     };
+}
+
+// ── Helpers for derivePipelineFromStatus ────────────────────────────────
+//
+// Three internal helpers absorb the enrichment logic previously held in
+// PipelineFlow's `enrichedState` memo. Hoisting them here gives a single
+// shape contract for any consumer of `/status` and avoids the dual
+// "live state + memo enrichment" path.
+
+function derivedResearchFromStatus(args: {
+    prompt: string;
+    intent: VideoStatusMetadata['intent_outcomes'];
+    routingOverrides?: Record<string, unknown> | null;
+    pipelineStage: PipelineStage;
+    runWrapped: boolean;
+    halted: boolean;
+}): NodeSlot<ResearchArtifact> | undefined {
+    const { intent, runWrapped, halted, pipelineStage, prompt } = args;
+    const hasUrl = promptContainsUrl(prompt);
+    const overrides = (
+        args.routingOverrides as
+            | { tools?: { scrape_url?: boolean; web_search?: boolean } }
+            | undefined
+    )?.tools;
+    const explicitScrape = overrides?.scrape_url === true;
+    const explicitSearch = overrides?.web_search === true;
+    const explicitSkip = overrides?.scrape_url === false && overrides?.web_search === false;
+
+    const toolsEnabled = intent?.tools_enabled ?? [];
+    const scrapeArt = intent?.scrape_url_artifacts;
+    const searchArt = intent?.web_search_artifacts;
+    const intentHappened =
+        toolsEnabled.includes('scrape_url') ||
+        toolsEnabled.includes('web_search') ||
+        !!scrapeArt ||
+        !!searchArt;
+
+    if (explicitSkip) return undefined;
+    if (!intentHappened && !hasUrl && !explicitScrape && !explicitSearch) return undefined;
+
+    const enrichedData: ResearchArtifact = {
+        scrapedAny: !!scrapeArt && !scrapeArt.error,
+        searchedAny: !!searchArt && !searchArt.error,
+        urlsAttempted:
+            scrapeArt?.urls_attempted ?? (hasUrl ? extractPromptUrls(prompt) : undefined),
+        screenshots: (scrapeArt?.files_captured ?? [])
+            .filter((f) => !!f.url)
+            .map((f) => ({ url: f.url as string, name: f.name })),
+        scrapedExcerpt: scrapeArt?.text_excerpt,
+        searchAnswer: searchArt?.answer,
+        sources: (searchArt?.sources ?? [])
+            .filter((s) => !!s.url)
+            .map((s) => ({ url: s.url as string, host: s.host, title: s.title })),
+        searchQuery: searchArt?.query,
+    };
+
+    if (halted) return { state: 'cut', error: 'Research cut from production' };
+
+    // Research runs entirely pre-SCRIPT. Once the pipeline has moved past
+    // SCRIPT (or the run is wrapped), it's done. While in PENDING/SCRIPT,
+    // it's actively running and its artifacts may be partial.
+    const isPreOrInScript =
+        pipelineStage === 'PENDING' ||
+        STAGE_ORDER.indexOf(pipelineStage) <= STAGE_ORDER.indexOf('SCRIPT');
+
+    if (runWrapped || !isPreOrInScript) {
+        return { state: 'wrapped', data: enrichedData };
+    }
+    return { state: 'in_production', partialData: enrichedData };
+}
+
+function derivedTalentFromStatus(args: {
+    userSelHostType?: 'avatar' | 'raw';
+    userSelGenerateAvatar?: boolean;
+    metaHost?: VideoStatusMetadata['host'];
+    runWrapped: boolean;
+    halted: boolean;
+}): NodeSlot<TalentArtifact> | undefined {
+    const { userSelHostType, userSelGenerateAvatar, metaHost, runWrapped, halted } = args;
+    const requested = userSelHostType === 'avatar' || userSelGenerateAvatar === true;
+    const hostEnabled = metaHost ? metaHost.enabled !== false : false;
+    const isAvatarBlock =
+        metaHost?.type === 'avatar' || (metaHost && !metaHost.type && !!metaHost.avatar);
+
+    if (!requested && !(hostEnabled && isAvatarBlock)) return undefined;
+
+    const outputs = metaHost?.outputs;
+    const takes = (outputs?.shot_artifacts ?? []).map((a) => ({
+        shotIndex: a.shot_index,
+        hostImageUrl: a.host_image_url,
+        avatarVideoUrl: a.avatar_video_url,
+        durationS: a.duration_s_actual ?? a.duration_s,
+        status: a.status,
+        error: a.error,
+    }));
+    const completedTakes = takes.filter(
+        (t) => t.status === 'completed' || !!t.avatarVideoUrl || !!t.hostImageUrl
+    );
+    const total = outputs?.host_shot_count ?? takes.length ?? 0;
+
+    if (halted) return { state: 'cut', error: 'Talent cut from production' };
+    if (runWrapped || completedTakes.length > 0) {
+        return {
+            state: 'wrapped',
+            data: {
+                completed: completedTakes.length || total,
+                total: total || completedTakes.length,
+                takes,
+            },
+        };
+    }
+    // Phase 3 will populate partialData.takes here once BE flushes per-shot.
+    // Until then, "requested but not yet wrapped" shows as scheduled.
+    return { state: 'scheduled' };
+}
+
+function derivedScoreFromStatus(args: {
+    userSelEnabled?: boolean | null;
+    metaEnabled?: boolean | null;
+    audioTracks?: VideoStatusMetadata['audio_tracks'];
+    runWrapped: boolean;
+    halted: boolean;
+}): NodeSlot<ScoreArtifact> | undefined {
+    const enabled = args.userSelEnabled === true || args.metaEnabled === true;
+    const bgTrack = (args.audioTracks ?? []).find((t) => t?.id === 'background-music');
+    const url = bgTrack?.url;
+
+    if (!enabled && !url) return undefined;
+    if (args.halted) return { state: 'cut', error: 'Score cut from production' };
+    if (args.runWrapped || url) {
+        return { state: 'wrapped', data: { audioUrl: url, label: bgTrack?.label } };
+    }
+    // Phase 3 BE work will surface segment counters; until then "enabled but
+    // not yet wrapped" shows as scheduled.
+    return { state: 'scheduled' };
 }

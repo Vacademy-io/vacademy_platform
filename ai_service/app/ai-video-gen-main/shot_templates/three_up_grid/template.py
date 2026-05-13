@@ -9,7 +9,7 @@ import html as _html
 
 METADATA = {
     "id": "three_up_grid",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "title": "Three-Up Grid",
     "description": "2-4 equal cells with numbered headers, optional headline. Staggered slide-up reveal.",
     "use_when": "Listing 2-4 parallel concepts ('three reasons', 'three pillars', 'three benefits', step summaries). Best at 5-8s shot duration.",
@@ -46,15 +46,19 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     sp = pack.get("spacing", {})
     ez = pack.get("ease", {})
 
-    fs_h1 = fs.get("h1", "5rem")
-    fs_h2 = fs.get("h2", "3rem")
-    fs_body = fs.get("body", "1.6rem")
-    fs_caption = fs.get("caption", "1.2rem")
-    fs_micro = fs.get("micro", "0.95rem")
+    fs_h1 = fs.get("h1", "clamp(3rem, min(10vw, 22vh), 16rem)")
+    fs_h2 = fs.get("h2", "clamp(2rem, min(7vw, 12vh), 8rem)")
+    fs_body = fs.get("body", "clamp(1.2rem, min(2.4vw, 4.4vh), 2.4rem)")
+    fs_caption = fs.get("caption", "clamp(1rem, min(2.4vw, 3vh), 1.8rem)")
+    fs_micro = fs.get("micro", "clamp(0.85rem, min(1.8vw, 2.3vh), 1.4rem)")  # noqa: F841 (kept for parity with other templates)
     safe = sp.get("safe_area", "4%")
     gap_md = sp.get("md", "24px")
     gap_lg = sp.get("lg", "40px")
     ease_entry = ez.get("entry", "power3.out")
+
+    canvas_w = int(ctx.get("canvas_w", 1920) or 1920)
+    canvas_h = int(ctx.get("canvas_h", 1080) or 1080)
+    is_portrait = canvas_h > canvas_w
 
     headline = (params.get("headline") or "").strip()
     show_numbers = params.get("show_numbers", True) is not False
@@ -87,7 +91,10 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
         )
 
     n = len(items)
-    grid_cols = "1fr " * n
+    # Portrait: stack vertically (single column) so each cell breathes — three
+    # ~310px columns on a 1080-wide portrait canvas are unreadable. Landscape:
+    # keep the equal-column grid.
+    grid_cols = "1fr" if is_portrait else "1fr " * n
     html = (
         f'<div class="{sid}-stage stage-drift" data-cells="{n}">'
         f'{headline_html}'
@@ -105,7 +112,7 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
 }}
 .{sid}-headline {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
-  font-size:clamp(2rem,{fs_h1},6rem);
+  font-size:{fs_h1};
   letter-spacing:0.01em; line-height:1.05; opacity:0;
   text-align:center; max-width:90%; margin:0 auto;
 }}
@@ -123,19 +130,19 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   color:var(--brand-accent); font-weight:700;
 }}
 .{sid}-rule {{
-  width:2.5rem; height:3px; background:var(--brand-accent);
+  width:clamp(2rem, 5vmin, 4rem); height:3px; background:var(--brand-accent);
   border-radius:2px; transform-origin:left center;
 }}
 .{sid}-ctitle {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
-  font-size:clamp(1.6rem,{fs_h2},3.5rem);
+  font-size:{fs_h2};
   line-height:1.05; color:var(--brand-text);
 }}
 .{sid}-cdesc {{
   font-family:'Inter',sans-serif;
-  font-size:clamp(1rem,{fs_body},1.7rem);
+  font-size:{fs_body};
   line-height:1.5; color:var(--brand-text-secondary);
-  max-width:36ch;
+  max-width:46ch;
 }}
 """
 

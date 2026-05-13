@@ -19,7 +19,7 @@ import html as _html
 
 METADATA = {
     "id": "split_comparison",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "title": "Split Comparison",
     "description": "Side-by-side comparison with synchronized reveals — two columns, optional headline, center 'VS' divider.",
     "use_when": "Comparing exactly two concepts, products, options, eras, approaches, or before/after. Best at 4-7s shot duration.",
@@ -64,14 +64,18 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     sp = pack.get("spacing", {})
     ez = pack.get("ease", {})
 
-    fs_display = fs.get("display", "9rem")
-    fs_h2 = fs.get("h2", "3.25rem")
-    fs_caption = fs.get("caption", "1.35rem")
-    fs_micro = fs.get("micro", "1.05rem")
+    fs_display = fs.get("display", "clamp(4rem, min(18vw, 32vh), 24rem)")
+    fs_h2 = fs.get("h2", "clamp(2rem, min(7vw, 12vh), 8rem)")
+    fs_caption = fs.get("caption", "clamp(1rem, min(2.4vw, 3vh), 1.8rem)")
+    fs_micro = fs.get("micro", "clamp(0.85rem, min(1.8vw, 2.3vh), 1.4rem)")
     safe = sp.get("safe_area", "4%")
     gap_lg = sp.get("lg", "40px")
     ease_entry = ez.get("entry", "power3.out")
     ease_emph = ez.get("emphasis", "back.out(1.6)")
+
+    canvas_w = int(ctx.get("canvas_w", 1920) or 1920)
+    canvas_h = int(ctx.get("canvas_h", 1080) or 1080)
+    is_portrait = canvas_h > canvas_w
 
     headline = (params.get("headline") or "").strip()
     divider = (params.get("divider_text") or "VS").strip()
@@ -119,6 +123,41 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
         f'</div>'
     )
 
+    # Orientation-aware layout — portrait stacks vertically with horizontal
+    # divider; landscape keeps the classic 1fr | auto | 1fr grid.
+    if is_portrait:
+        grid_css = f"""
+.{sid}-grid {{
+  display:flex; flex-direction:column; align-items:stretch;
+  width:100%; gap:{gap_lg};
+}}
+.{sid}-divider {{
+  display:flex; flex-direction:row; align-items:center; gap:1rem;
+  width:65%; align-self:center; height:auto; opacity:0;
+}}
+.{sid}-divider-line {{
+  height:2px; flex:1; background:linear-gradient(to right,
+    transparent, var(--brand-text-secondary) 30%, var(--brand-text-secondary) 70%, transparent);
+}}
+"""
+        text_max = "max-width:18ch;"
+    else:
+        grid_css = f"""
+.{sid}-grid {{
+  display:grid; grid-template-columns:1fr auto 1fr;
+  align-items:center; width:100%; gap:{gap_lg};
+}}
+.{sid}-divider {{
+  display:flex; flex-direction:column; align-items:center; gap:1rem;
+  height:60%; opacity:0;
+}}
+.{sid}-divider-line {{
+  width:2px; flex:1; background:linear-gradient(to bottom,
+    transparent, var(--brand-text-secondary) 30%, var(--brand-text-secondary) 70%, transparent);
+}}
+"""
+        text_max = "max-width:14ch;"
+
     css = f"""
 .{sid}-stage {{
   position:absolute; inset:0; padding:{safe}; display:flex;
@@ -131,10 +170,7 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   letter-spacing:0.02em; color:var(--brand-text); opacity:0;
   text-align:center; max-width:90%;
 }}
-.{sid}-grid {{
-  display:grid; grid-template-columns:1fr auto 1fr;
-  align-items:center; width:100%; gap:{gap_lg};
-}}
+{grid_css}
 .{sid}-col {{ display:flex; flex-direction:column; align-items:center; gap:0.6rem; opacity:0; }}
 .{sid}-label {{
   font-family:'Inter',sans-serif; font-size:{fs_micro};
@@ -143,9 +179,9 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
 }}
 .{sid}-text {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
-  font-size:clamp(2.4rem,{fs_display},6.5rem);
+  font-size:{fs_display};
   line-height:0.95; letter-spacing:0.01em; color:var(--brand-text);
-  text-align:center; max-width:14ch;
+  text-align:center; {text_max}
 }}
 .{sid}-left .{sid}-text {{ color:var(--brand-text); }}
 .{sid}-right .{sid}-text {{ color:var(--brand-primary); }}
@@ -157,14 +193,6 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   font-family:'Inter',sans-serif; font-size:{fs_caption};
   color:var(--brand-text-secondary); font-style:italic; opacity:0;
 }}
-.{sid}-divider {{
-  display:flex; flex-direction:column; align-items:center; gap:1rem;
-  height:60%; opacity:0;
-}}
-.{sid}-divider-line {{
-  width:2px; flex:1; background:linear-gradient(to bottom,
-    transparent, var(--brand-text-secondary) 30%, var(--brand-text-secondary) 70%, transparent);
-}}
 .{sid}-divider-text {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
   font-size:{fs_h2}; color:var(--brand-accent); letter-spacing:0.05em;
@@ -172,11 +200,23 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
 }}
 """
 
+    # Portrait stacks vertically → slide from top/bottom. Landscape stays
+    # side-by-side → slide from left/right.
+    if is_portrait:
+        L_from, L_to = "y:-40", "y:0"
+        R_from, R_to = "y:40", "y:0"
+        # On portrait the divider spans horizontally → scale on X axis.
+        div_scale_from, div_scale_axis = "scaleX:0.6", "scaleX:1"
+    else:
+        L_from, L_to = "x:-40", "x:0"
+        R_from, R_to = "x:40", "x:0"
+        div_scale_from, div_scale_axis = "scaleY:0.6", "scaleY:1"
+
     js = f"""
 gsap.to('#{sid}-h',{{opacity:1, y:-6, duration:0.5, delay:0.10, ease:'{ease_entry}'}});
-gsap.fromTo('#{sid}-D',{{opacity:0, scaleY:0.6}},{{opacity:1, scaleY:1, duration:0.45, delay:0.35, ease:'{ease_emph}', transformOrigin:'center center'}});
-gsap.fromTo('#{sid}-L',{{opacity:0, x:-40}},{{opacity:1, x:0, duration:0.55, delay:0.50, ease:'{ease_entry}'}});
-gsap.fromTo('#{sid}-R',{{opacity:0, x:40}},{{opacity:1, x:0, duration:0.55, delay:0.55, ease:'{ease_entry}'}});
+gsap.fromTo('#{sid}-D',{{opacity:0, {div_scale_from}}},{{opacity:1, {div_scale_axis}, duration:0.45, delay:0.35, ease:'{ease_emph}', transformOrigin:'center center'}});
+gsap.fromTo('#{sid}-L',{{opacity:0, {L_from}}},{{opacity:1, {L_to}, duration:0.55, delay:0.50, ease:'{ease_entry}'}});
+gsap.fromTo('#{sid}-R',{{opacity:0, {R_from}}},{{opacity:1, {R_to}, duration:0.55, delay:0.55, ease:'{ease_entry}'}});
 gsap.to('#{sid}-Lr',{{width:'70%', duration:0.45, delay:0.95, ease:'{ease_entry}'}});
 gsap.to('#{sid}-Rr',{{width:'70%', duration:0.45, delay:1.00, ease:'{ease_entry}'}});
 gsap.to('#{sid}-Lc',{{opacity:1, duration:0.4, delay:1.20, ease:'power2.out'}});

@@ -200,7 +200,7 @@ export const DEFAULT_LIVE_CLASS_SCHEDULING_SETTINGS: LiveClassSchedulingSettings
 // Per-role control over which roles this role can see/select in the Team tab —
 // in the role-type filter chips and the "Role Type" dropdown of the Invite
 // User dialog. Keys are role names uppercased (matches backend authorities and
-// RoleType.name from dummy-data), e.g. 'ADMIN', 'TEACHER', 'COURSE CREATOR'.
+// RoleType.name from dummy-data), e.g. 'ADMIN', 'TEACHER', 'CONTENT CREATOR'.
 // Missing keys default to true so existing institutes are unaffected.
 export interface TeamManagementSettings {
     visibleRoles: Record<string, boolean>;

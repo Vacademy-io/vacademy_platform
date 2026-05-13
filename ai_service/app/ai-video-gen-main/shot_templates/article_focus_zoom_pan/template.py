@@ -29,7 +29,7 @@ import html as _html
 
 METADATA = {
     "id": "article_focus_zoom_pan",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "title": "Article Focus — Zoom-Pan with Quote Overlay",
     "description": (
         "Full-frame article page screenshot, slow GSAP zoom-pan toward a "
@@ -187,9 +187,13 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
             + "</div>"
         )
 
-    fs_caption = fs.get("caption", "1.4rem")
-    fs_body = fs.get("body", "1.8rem")
+    fs_caption = fs.get("caption", "clamp(1rem, min(2.4vw, 3vh), 1.8rem)")
+    fs_body = fs.get("body", "clamp(1.2rem, min(2.4vw, 4.4vh), 2.4rem)")
     ease_entry = ez.get("entry", "power3.out")
+
+    canvas_w = int(ctx.get("canvas_w", 1920) or 1920)
+    canvas_h = int(ctx.get("canvas_h", 1080) or 1080)
+    is_portrait = canvas_h > canvas_w
 
     text_color = palette.get("text", "#ffffff") if isinstance(palette, dict) else "#ffffff"
     bg_color = palette.get("background", "#0a0a0a") if isinstance(palette, dict) else "#0a0a0a"
@@ -228,12 +232,14 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   letter-spacing:0.06em; text-transform:uppercase;
 }}
 .{sid}-quote-card {{
-  position:absolute; left:6%; right:6%; bottom:7%;
-  display:flex; gap:1.1rem; align-items:flex-start;
-  padding:1.4rem 1.6rem;
+  position:absolute; left:{"5%" if is_portrait else "6%"};
+  right:{"5%" if is_portrait else "6%"};
+  bottom:{"9%" if is_portrait else "7%"};
+  display:flex; gap:1.3rem; align-items:flex-start;
+  padding:{"1.8rem 1.8rem" if is_portrait else "1.6rem 1.8rem"};
   background: rgba(10,10,10,0.78);
   backdrop-filter: blur(10px);
-  border-radius: 14px;
+  border-radius: 16px;
   border: 1px solid rgba(255,255,255,0.08);
   opacity: 0;
   transform: translateY(20px);
@@ -247,15 +253,15 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
 }}
 .{sid}-quote-body {{
   font-family:'Inter','Georgia',serif;
-  font-size: clamp(1.05rem, {fs_body}, 2.2rem);
+  font-size: {fs_body};
   line-height: 1.35;
   color: {text_color};
   font-weight: 500;
 }}
 .{sid}-mark {{ color: {accent}; margin: 0 0.18em; font-weight: 700; }}
 .{sid}-attr {{
-  margin-top: 0.6rem;
-  font-size: clamp(0.85rem, {fs_caption}, 1.3rem);
+  margin-top: 0.7rem;
+  font-size: {fs_caption};
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: {text_secondary};

@@ -39,7 +39,7 @@ export default function RoleDisplaySettingsMain() {
         'STUDENT',
         'LEARNER',
         'EVALUATOR',
-        'COURSE CREATOR',
+        'CONTENT CREATOR',
         'ASSESSMENT CREATOR',
     ]);
     const filteredCustomRoles = (customRoles || []).filter(

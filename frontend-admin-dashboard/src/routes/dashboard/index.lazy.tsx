@@ -404,7 +404,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
     });
     const [roleTypeCount, setRoleTypeCount] = useState({
         ADMIN: 0,
-        'COURSE CREATOR': 0,
+        'CONTENT CREATOR': 0,
         'ASSESSMENT CREATOR': 0,
         EVALUATOR: 0,
         TEACHER: 0,
@@ -864,7 +864,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                                                         RoleTerms.CourseCreator,
                                                         SystemTerms.CourseCreator
                                                     ),
-                                                    count: roleTypeCount['COURSE CREATOR'],
+                                                    count: roleTypeCount['CONTENT CREATOR'],
                                                     bg: 'bg-[#E6FCEF]',
                                                     textCol: 'text-green-700',
                                                     borderCol: 'border-green-200',

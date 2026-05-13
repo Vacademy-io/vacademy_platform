@@ -1,12 +1,24 @@
 import { useNavigate } from '@tanstack/react-router';
 import { forwardRef } from 'react';
-import { Clapperboard, FolderOpen, LogOut, Palette, Scissors, Sparkles, UserSquare2, Wand2, Coins } from 'lucide-react';
+import {
+    Clapperboard,
+    FolderOpen,
+    LogOut,
+    Palette,
+    Scissors,
+    Sparkles,
+    UserSquare2,
+    Users,
+    Wand2,
+    Coins,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAiCreditsQuery } from '@/services/ai-credits/get-ai-credits';
 import { AiCreditsPanel } from '@/components/common/ai-credits/AiCreditsPanel';
 import { removeCookiesAndLogout } from '@/lib/auth/sessionUtility';
 import { useStudioName } from './hooks/useStudioName';
 import { HelpMenu } from '../tour/HelpMenu';
+import { useVimotionRole } from '../auth/useVimotionRole';
 import type { DashboardTab } from './tabsConfig';
 
 interface SidebarProps {
@@ -15,19 +27,29 @@ interface SidebarProps {
     onTabChange: (tab: DashboardTab) => void;
 }
 
-const NAV_ITEMS: { id: DashboardTab; label: string; Icon: typeof Clapperboard }[] = [
+type NavItem = {
+    id: DashboardTab;
+    label: string;
+    Icon: typeof Clapperboard;
+    adminOnly?: boolean;
+};
+
+const NAV_ITEMS: NavItem[] = [
     { id: 'create', label: 'Create', Icon: Wand2 },
     { id: 'recent', label: 'Recent', Icon: Clapperboard },
     { id: 'reels', label: 'Reels', Icon: Scissors },
     { id: 'assets', label: 'Assets', Icon: FolderOpen },
     { id: 'avatars', label: 'Avatars', Icon: UserSquare2 },
     { id: 'brand-kits', label: 'Brand Kits', Icon: Palette },
+    { id: 'team', label: 'Team', Icon: Users, adminOnly: true },
 ];
 
 export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
     const navigate = useNavigate();
     const studioName = useStudioName(instituteId);
     const credits = useAiCreditsQuery(!!instituteId);
+    const { isAdmin } = useVimotionRole();
+    const navItems = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
     const handleLogout = () => {
         removeCookiesAndLogout();
@@ -55,7 +77,7 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
             {/* Nav */}
             <nav className="flex-1 px-3">
                 <ul className="space-y-0.5">
-                    {NAV_ITEMS.map(({ id, label, Icon }) => {
+                    {navItems.map(({ id, label, Icon }) => {
                         const active = activeTab === id;
                         return (
                             <li key={id}>
@@ -88,6 +110,7 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
                         popoverAlign="end"
                         popoverSideOffset={12}
                         trigger={<CreditsCardTrigger data={credits.data} />}
+                        hideTopUp={!isAdmin}
                     />
                 )}
                 <HelpMenu />

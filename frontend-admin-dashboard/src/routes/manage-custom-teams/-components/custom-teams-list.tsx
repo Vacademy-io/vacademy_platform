@@ -74,7 +74,7 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                 // Strip system role names defensively even if the backend lists them.
                 const SYSTEM_ROLES = new Set([
                     'ADMIN', 'TEACHER', 'STUDENT', 'EVALUATOR',
-                    'COURSE CREATOR', 'ASSESSMENT CREATOR',
+                    'CONTENT CREATOR', 'ASSESSMENT CREATOR',
                 ]);
                 const customRoleNames = activeRoles
                     .map((r: any) => r.name)

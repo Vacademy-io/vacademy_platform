@@ -112,6 +112,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
         selectEntry,
         dirtyEntryIds,
         deletedEntryIds,
+        pendingReorders,
         entryTransforms,
         past,
         future,
@@ -312,7 +313,11 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
             if (!props.apiKey || !props.videoId) return;
             // Render reads the server-side timeline; unsaved local edits would
             // be silently missing from the MP4. Save first if needed.
-            if (dirtyEntryIds.length > 0 || deletedEntryIds.length > 0) {
+            if (
+                dirtyEntryIds.length > 0 ||
+                deletedEntryIds.length > 0 ||
+                pendingReorders.length > 0
+            ) {
                 try {
                     await saveChanges();
                     toast.info('Saved pending edits before rendering');
@@ -345,6 +350,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
             startRenderPolling,
             dirtyEntryIds,
             deletedEntryIds,
+            pendingReorders,
             saveChanges,
         ]
     );
@@ -361,6 +367,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     const isDirty =
         dirtyEntryIds.length > 0 ||
         deletedEntryIds.length > 0 ||
+        pendingReorders.length > 0 ||
         Object.values(entryTransforms).some(
             (t) => t.x !== 0 || t.y !== 0 || t.scale !== 1 || t.rotation !== 0
         );
@@ -646,11 +653,21 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                     title={
                         !props.apiKey
                             ? 'API key required to save to backend; changes saved locally'
-                            : dirtyEntryIds.length + deletedEntryIds.length > 0
-                              ? `Save ${dirtyEntryIds.length} edit${dirtyEntryIds.length === 1 ? '' : 's'}` +
-                                (deletedEntryIds.length > 0
-                                    ? ` and ${deletedEntryIds.length} deletion${deletedEntryIds.length === 1 ? '' : 's'}`
-                                    : '')
+                            : dirtyEntryIds.length +
+                                    deletedEntryIds.length +
+                                    pendingReorders.length >
+                                0
+                              ? [
+                                    `Save ${dirtyEntryIds.length} edit${dirtyEntryIds.length === 1 ? '' : 's'}`,
+                                    deletedEntryIds.length > 0
+                                        ? `${deletedEntryIds.length} deletion${deletedEntryIds.length === 1 ? '' : 's'}`
+                                        : '',
+                                    pendingReorders.length > 0
+                                        ? `${pendingReorders.length} reorder${pendingReorders.length === 1 ? '' : 's'}`
+                                        : '',
+                                ]
+                                    .filter(Boolean)
+                                    .join(', ')
                               : 'Save changes'
                     }
                     onClick={handleSave}
@@ -664,9 +681,14 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                         <>
                             <Save className="mr-1 size-3" />
                             Save
-                            {dirtyEntryIds.length + deletedEntryIds.length > 0 && (
+                            {dirtyEntryIds.length +
+                                deletedEntryIds.length +
+                                pendingReorders.length >
+                                0 && (
                                 <span className="ml-1 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-700">
-                                    {dirtyEntryIds.length + deletedEntryIds.length}
+                                    {dirtyEntryIds.length +
+                                        deletedEntryIds.length +
+                                        pendingReorders.length}
                                 </span>
                             )}
                         </>

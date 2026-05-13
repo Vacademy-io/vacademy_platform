@@ -874,6 +874,100 @@ _DIRECTOR_FAMILY_BIAS: Dict[str, Dict[str, str]] = {
 }
 
 
+def build_ai_video_director_block(
+    *,
+    enabled: bool,
+    audio_enabled: bool = False,
+    cost_cap_usd: float = 1.50,
+) -> str:
+    """Build the AI_VIDEO_HERO teaching block appended to the Director system
+    prompt when the run has AI video enabled (Phase 3b).
+
+    Returns "" when `enabled=False`, keeping the Director prompt clean for
+    the vast majority of runs that don't use AI video. When enabled, this
+    block:
+      - introduces AI_VIDEO_HERO as a shot type
+      - states the cost ceiling so the Director uses it sparingly
+      - locks the allowed durations (4/6/8s) and the per-shot fields
+      - reminds the Director NOT to schedule two consecutive heroes
+      - covers the audio variant separately so the prompt doesn't bloat
+        on runs without audio
+
+    Single-segment (≤8s) only for Phase 3b; multi-segment chains via
+    `ai_video_segments` ship in Phase 4 — this block will get extended
+    then. The Director may already emit `ai_video_segments`; orchestrator
+    truncates to the first segment with a warning during Phase 3.
+    """
+    if not enabled:
+        return ""
+
+    lines: List[str] = [
+        "",
+        "## AI_VIDEO_HERO (fal.ai Veo 3.1 Lite — ENABLED FOR THIS RUN)",
+        "",
+        "You MAY emit shots with `shot_type: \"AI_VIDEO_HERO\"` when content fits.",
+        f"Each AI video shot costs $0.24-$0.40 — there is a hard "
+        f"${cost_cap_usd:.2f} ceiling per video, after which AI video shots "
+        f"fall back to a non-AI alternative automatically. Use AI_VIDEO_HERO "
+        f"SPARINGLY (1-3 per video typically).",
+        "",
+        "**Best fit for AI_VIDEO_HERO:**",
+        "- Cinematic moments where stock footage can't capture the intent "
+        "(branded characters, abstract concepts, hard-to-source actions)",
+        "- Hooks and CTAs that want a strong sensory beat",
+        "- Continuity shots where a specific scene/character persists across multiple beats",
+        "",
+        "**Worst fit (do NOT use AI_VIDEO_HERO):**",
+        "- Anything text or animation could convey better (use TEXT_DIAGRAM, KINETIC_TEXT)",
+        "- Anything requiring readable text in-frame (Veo handles text poorly)",
+        "- Routine explanation shots (use stock, AI image, or motion graphics)",
+        "",
+        "**Per-shot fields you MUST set when picking AI_VIDEO_HERO:**",
+        "  `ai_video_prompt` (string, REQUIRED) — detailed visual description in "
+        "third-person present tense; describe action, subject, framing, lighting; "
+        "avoid in-frame text",
+        "  `ai_video_duration_s` (integer, REQUIRED) — one of 4, 6, or 8",
+        "",
+        "**Fallback hint (recommended):** also set `video_query` (stock-video "
+        "search terms) on the same shot. If Veo fails (safety block, timeout, "
+        "cost cap), the shot falls back to a stock VIDEO_HERO using "
+        "`video_query` — no LLM regen needed.",
+        "",
+        "**Hero-pacing rule still applies:** never schedule two consecutive "
+        "AI_VIDEO_HERO shots, and never adjacent to IMAGE_HERO / VIDEO_HERO "
+        "/ PRODUCT_HERO either. Heroes always need a motion-graphic or "
+        "text shot between them.",
+    ]
+    if audio_enabled:
+        lines.extend([
+            "",
+            "**AUDIO MODE IS ON for this run.** You MAY additionally set "
+            "`ai_video_audio: true` on an AI_VIDEO_HERO shot when the visual "
+            "moment carries audio better than narration (e.g. a crowd cheer, "
+            "thunder, a synthesized swell). When you set "
+            "`ai_video_audio: true`:",
+            "  - the shot's master narration is silenced during that window",
+            "  - the Veo clip's generated audio plays alone (Veo's "
+            "`generate_audio: true`)",
+            "  - cost rises from $0.03/s to $0.05/s — use sparingly",
+            "  - the per-shot narration field should be empty or a brief "
+            "non-spoken note (the audio gap is real)",
+            "",
+            "Default to `ai_video_audio: false` (or omit) unless the moment "
+            "specifically benefits from Veo audio. Most AI_VIDEO_HERO shots "
+            "should stay narrated by the master TTS.",
+        ])
+    else:
+        lines.extend([
+            "",
+            "Audio mode is OFF for this run — do NOT set `ai_video_audio: "
+            "true`. The Veo clip is muted; master narration plays normally "
+            "during the shot.",
+        ])
+    lines.append("")
+    return "\n".join(lines)
+
+
 def build_visual_preferences_director_block(
     prefs: Optional[Dict[str, Any]],
     *,

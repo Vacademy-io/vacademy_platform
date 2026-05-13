@@ -301,8 +301,31 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
             working = { ...working, research };
         }
 
+        // 6. Stats enrichment — history-restored runs only get whatever
+        //    `currentGeneration.tokenUsage` was hydrated from HistoryItem,
+        //    and never get `cumulativeTokens`. /status carries both. Fill
+        //    in whichever the parent didn't have so the right-rail Production
+        //    Budget block + RunSummaryFooter populate consistently.
+        const statusTokenUsage = (
+            statusResp as { token_usage?: typeof working.stats.tokenUsage } | undefined
+        )?.token_usage;
+        const statusCumulative = gp?.cumulative_tokens;
+        if (
+            (!working.stats.cumulativeTokens && statusCumulative) ||
+            (!working.stats.tokenUsage && statusTokenUsage)
+        ) {
+            working = {
+                ...working,
+                stats: {
+                    ...working.stats,
+                    cumulativeTokens: working.stats.cumulativeTokens ?? statusCumulative,
+                    tokenUsage: working.stats.tokenUsage ?? statusTokenUsage,
+                },
+            };
+        }
+
         return working;
-    }, [state, gp, thumbnails, meta, musicTrack]);
+    }, [state, gp, thumbnails, meta, musicTrack, statusResp]);
 
     /**
      * React Flow's `onNodeClick` is the canonical hook for "user clicked

@@ -85,7 +85,7 @@ import { getSubOrgInstituteQuery } from '@/services/student-list-section/getInst
 export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolean }) {
     const roleColors: Record<string, string> = {
         ADMIN: '#F4F9FF',
-        'COURSE CREATOR': '#F4FFF9',
+        'CONTENT CREATOR': '#F4FFF9',
         'ASSESSMENT CREATOR': '#FFF4F5',
         TEACHER: '#FFF4F5',
         EVALUATOR: '#F5F0FF',

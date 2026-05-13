@@ -115,7 +115,10 @@ class Settings(BaseSettings):
 
     # fal.ai Configuration (per-shot host-avatar talking-head video).
     # Used by app/services/fal_avatar_client.py when request.host.type == "avatar".
-    # Two supported models: fal-ai/kling-video/ai-avatar/v2/standard and veed/fabric-1.0.
+    # Supported custom-avatar models (see schemas/video_generation.py::AvatarModelLiteral
+    # for the source of truth): fal-ai/flashtalk, fal-ai/kling-video/ai-avatar/v2/{standard,pro},
+    # fal-ai/heygen/avatar4/image-to-video, veed/fabric-1.0. Plus the built-in
+    # catalog routes argil/avatars/audio-to-video and veed/avatars/audio-to-video.
     fal_api_key: Optional[str] = None
 
     # YouTube API Configuration

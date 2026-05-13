@@ -2,12 +2,15 @@
 fal.ai client for per-shot host-avatar talking-head video generation.
 
 Used by `automation_pipeline._run_avatar_batch` during the HTML stage when
-`request.host.type == "avatar"`. Four supported endpoints, dispatched by
+`request.host.type == "avatar"`. Supported endpoints, dispatched by
 `provider`:
 
   Custom (image + audio → video — needs Seedream-generated host image upstream):
+    • fal-ai/flashtalk                           ($0.0200 / sec, fastest/cheapest, fixed 768x448)
     • fal-ai/kling-video/ai-avatar/v2/standard  ($0.0562 / sec, default)
     • veed/fabric-1.0                            ($0.0800 / sec)
+    • fal-ai/heygen/avatar4/image-to-video       ($0.1000 / sec, supports aspect ratio)
+    • fal-ai/kling-video/ai-avatar/v2/pro        ($0.1150 / sec, highest fidelity)
 
   Built-in catalog (enum + audio → video — no Seedream, no face image):
     • argil/avatars/audio-to-video               ($0.02  / input-sec)
@@ -155,13 +158,19 @@ def _build_payload(
     quality: str,
     details_prompt: str = "",
     external_avatar_id: Optional[str] = None,
+    orientation: str = "landscape",
 ) -> Dict[str, Any]:
     """Map canonical inputs → model-specific fal.ai payload.
 
     `provider` selects the dispatch family:
-      'custom' → image-conditioned (Kling / Fabric)
+      'custom' → image-conditioned (Kling / Fabric / HeyGen / FlashTalk)
       'argil'  → catalog enum (`avatar` field) + `audio_url: {url}` object
       'veed'   → catalog enum (`avatar_id` field) + `audio_url` plain string
+
+    `orientation` ('landscape' | 'portrait') currently only feeds HeyGen's
+    `aspect_ratio` field (16:9 vs 9:16). Other models ignore it — they either
+    don't expose an aspect param (Kling, Fabric) or have a fixed output size
+    (FlashTalk: 768x448).
     """
     if provider == "custom":
         if model == "fal-ai/kling-video/ai-avatar/v2/standard":
@@ -173,6 +182,15 @@ def _build_payload(
                            "A person speaking naturally with subtle head movements."),
                 "resolution": "720p" if quality == "720p" else "480p",
             }
+        if model == "fal-ai/kling-video/ai-avatar/v2/pro":
+            # Kling v2 pro: image_url + audio_url + optional prompt. No
+            # resolution field in the schema — fal picks the output size.
+            return {
+                "image_url": image_url,
+                "audio_url": audio_url,
+                "prompt": (details_prompt or
+                           "A person speaking naturally with subtle head movements."),
+            }
         if model == "veed/fabric-1.0":
             # VEED Fabric 1.0: image-to-video talking avatar. Schema uses
             # `resolution` (same key as Kling), not `video_size`. No `prompt` field.
@@ -180,6 +198,28 @@ def _build_payload(
                 "image_url": image_url,
                 "audio_url": audio_url,
                 "resolution": "720p" if quality == "720p" else "480p",
+            }
+        if model == "fal-ai/heygen/avatar4/image-to-video":
+            # HeyGen Avatar 4: image_url + audio_url + optional prompt +
+            # resolution (360p/480p/540p/720p/1080p) + aspect_ratio. We map
+            # the canonical quality to the matching enum, and orientation
+            # to aspect ratio so portrait videos don't get a letterboxed
+            # 16:9 host clip.
+            return {
+                "image_url": image_url,
+                "audio_url": audio_url,
+                "prompt": (details_prompt or
+                           "A person speaking naturally with subtle head movements."),
+                "resolution": "720p" if quality == "720p" else "480p",
+                "aspect_ratio": "9:16" if orientation == "portrait" else "16:9",
+            }
+        if model == "fal-ai/flashtalk":
+            # FlashTalk: image_url + audio_url only. Fixed 768x448 output —
+            # the `resolution` and `prompt` fields don't exist on this model,
+            # so they're intentionally omitted (sending them throws a 422).
+            return {
+                "image_url": image_url,
+                "audio_url": audio_url,
             }
         raise ValueError(f"Unsupported custom-avatar model: {model!r}")
 
@@ -340,11 +380,13 @@ class FalAvatarClient:
         details_prompt: str = "",
         provider: str = "custom",
         external_avatar_id: Optional[str] = None,
+        orientation: str = "landscape",
     ) -> FalSubmission:
         """POST /queue.fal.run/{endpoint} → {request_id, status_url}.
 
         For provider in {'argil','veed'}, the endpoint is the catalog audio-to-video
         path and `image_url` is ignored (identity comes from external_avatar_id).
+        `orientation` only affects HeyGen (aspect_ratio); other models ignore it.
         """
         payload = _build_payload(
             provider=provider,
@@ -354,6 +396,7 @@ class FalAvatarClient:
             quality=quality,
             details_prompt=details_prompt,
             external_avatar_id=external_avatar_id,
+            orientation=orientation,
         )
         endpoint = _resolve_endpoint_model(provider, model)
 
@@ -439,6 +482,7 @@ class FalAvatarClient:
         details_prompt: str = "",
         provider: str = "custom",
         external_avatar_id: Optional[str] = None,
+        orientation: str = "landscape",
     ) -> AvatarShotResult:
         """Submit + poll a single shot under the bounded concurrency semaphore.
 
@@ -457,6 +501,7 @@ class FalAvatarClient:
                     details_prompt=details_prompt,
                     provider=provider,
                     external_avatar_id=external_avatar_id,
+                    orientation=orientation,
                 )
                 result.fal_request_id = submission.request_id
             except AudioCapExceeded as e:
@@ -523,14 +568,16 @@ class FalAvatarClient:
         details_prompt: str = "",
         provider: str = "custom",
         external_avatar_id: Optional[str] = None,
+        orientation: str = "landscape",
     ) -> List[AvatarShotResult]:
         """Render N shots concurrently (bounded by the semaphore).
 
         `shots` is a list of dicts with keys:
             shot_index, image_url (custom only — empty string for built-ins), audio_url
 
-        `provider` and `external_avatar_id` apply to the whole batch — the run's
-        host config picks one identity that's used across every host shot.
+        `provider`, `external_avatar_id`, and `orientation` apply to the whole
+        batch — the run's host config picks one identity / canvas shape that's
+        used across every host shot.
         """
         coros = [
             self.render_shot(
@@ -542,6 +589,7 @@ class FalAvatarClient:
                 details_prompt=details_prompt,
                 provider=provider,
                 external_avatar_id=external_avatar_id,
+                orientation=orientation,
             )
             for s in shots
         ]

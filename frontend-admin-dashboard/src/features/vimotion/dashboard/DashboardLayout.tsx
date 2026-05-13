@@ -9,9 +9,11 @@ import { ReelsTab } from './ReelsTab';
 import { AssetsTab } from './AssetsTab';
 import { AvatarsTab } from './AvatarsTab';
 import { BrandKitsTab } from './BrandKitsTab';
+import { TeamTab } from './TeamTab';
 import { OnboardingBanner } from './OnboardingBanner';
 import { isTab, type DashboardTab } from './tabsConfig';
 import { VimTourProvider, useVimTour } from '../tour/VimTourProvider';
+import { useVimotionRole } from '../auth/useVimotionRole';
 
 export function DashboardLayout() {
     const instituteId = getInstituteId();
@@ -26,7 +28,11 @@ function DashboardShell() {
     const navigate = useNavigate();
     const instituteId = getInstituteId();
     const search = useSearch({ strict: false }) as { tab?: string; videoId?: string };
-    const tab: DashboardTab = isTab(search.tab) ? search.tab : 'recent';
+    const requestedTab: DashboardTab = isTab(search.tab) ? search.tab : 'recent';
+    const { isAdmin } = useVimotionRole();
+    // Team tab is admin-only. If a content creator deep-links to ?tab=team,
+    // silently fall back to Recent — no redirect, no toast.
+    const tab: DashboardTab = requestedTab === 'team' && !isAdmin ? 'recent' : requestedTab;
     const videoId = typeof search.videoId === 'string' && search.videoId ? search.videoId : null;
     const { startTourIfNew } = useVimTour();
 
@@ -123,6 +129,7 @@ function DashboardShell() {
                             {tab === 'assets' && <AssetsTab />}
                             {tab === 'avatars' && <AvatarsTab />}
                             {tab === 'brand-kits' && <BrandKitsTab />}
+                            {tab === 'team' && <TeamTab />}
                         </div>
                     </main>
                 )}

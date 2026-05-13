@@ -64,7 +64,10 @@ class ReferenceFileItem(BaseModel):
 
 AvatarModelLiteral = Literal[
     "fal-ai/kling-video/ai-avatar/v2/standard",
+    "fal-ai/kling-video/ai-avatar/v2/pro",
+    "fal-ai/heygen/avatar4/image-to-video",
     "veed/fabric-1.0",
+    "fal-ai/flashtalk",
 ]
 
 # Provider for studio_avatar / saved-avatar resolution. Single source of truth —
@@ -205,6 +208,14 @@ class VisualPreferences(BaseModel):
     app_ui_mockup: Optional[FamilyBias] = Field(
         default=None,
         description="Bias for DEVICE_MOCKUP (HTML-rendered app/web/mobile UI).",
+    )
+    ai_video: Optional[FamilyBias] = Field(
+        default=None,
+        description=(
+            "Bias for AI_VIDEO_HERO and inline <aivideo> clips (fal.ai Veo). "
+            "Ultra+ tiers only; even when set, requires per-run "
+            "ai_video_enabled=true to actually trigger Veo calls."
+        ),
     )
     text_density: Optional[TextDensity] = Field(
         default=None,
@@ -418,6 +429,37 @@ class VideoGenerationRequest(BaseModel):
             "Advanced Settings sliders. Free-text phrases in the prompt "
             "(e.g. 'use more SVG diagrams', 'less text on screen') override "
             "individual fields via the IntentRouter free-text scanner."
+        ),
+    )
+
+    # ---------------------------------------------------------------------
+    # AI video generation (fal.ai veo3.1/lite) — ultra+ only, opt-in per run
+    # ---------------------------------------------------------------------
+    ai_video_enabled: bool = Field(
+        default=False,
+        description=(
+            "Enable AI video generation (fal.ai Veo) for this run. Ultra and "
+            "super_ultra tiers only; ignored on lower tiers. When true, the "
+            "Director may emit AI_VIDEO_HERO shots and per-shot HTML may "
+            "include inline <aivideo> tags. Each call costs $0.24-$0.40; "
+            "circuit-broken at $1.50 per video."
+        ),
+    )
+    ai_video_audio_enabled: bool = Field(
+        default=False,
+        description=(
+            "When ai_video_enabled is on, this lets Veo clips bring their own "
+            "audio (generate_audio=true on the Veo call). Master narration is "
+            "silenced during those shots. Veo audio is $0.05/s instead of "
+            "$0.03/s; only meaningful with ai_video_enabled=true."
+        ),
+    )
+    ai_video_model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional override for the AI video model. Defaults to "
+            "'fal-ai/veo3.1/lite'. Currently the only supported value; the "
+            "field exists so future models slot in without a schema change."
         ),
     )
 
@@ -716,6 +758,32 @@ class DeleteFrameResponse(BaseModel):
     video_id: str
     entry_id: Optional[str]
     frame_index: int
+    message: str
+
+
+class ReorderFrameRequest(BaseModel):
+    """Request for moving a frame to a new position in the timeline.
+
+    Identifies the entry by `entry_id` (the only safe key — positional
+    indices shift after every reorder, so a positional source index from
+    the client can race the server's view). `to_index` is clamped to
+    [0, len(entries) - 1].
+
+    Used by the editor's drag-to-reorder UI. The backend re-saves the
+    timeline JSON with the entry spliced to the new position; no other
+    fields are changed.
+    """
+    video_id: str = Field(..., description="Video ID")
+    entry_id: str = Field(..., description="Stable entry ID to move")
+    to_index: int = Field(..., description="Target 0-based index in the post-move timeline")
+
+
+class ReorderFrameResponse(BaseModel):
+    status: str
+    video_id: str
+    entry_id: str
+    from_index: int
+    to_index: int
     message: str
 
 

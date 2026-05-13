@@ -112,6 +112,7 @@ function DetailSheetContents({
                         <p className="text-sm text-muted-foreground">Scene data not available.</p>
                     )}
                 </div>
+                <RunSummaryFooter state={state} />
             </>
         );
     }
@@ -127,8 +128,168 @@ function DetailSheetContents({
             <div className="mt-4">
                 <NodeDetailBody kind={target.kind} state={state} />
             </div>
+            <RunSummaryFooter state={state} />
         </>
     );
+}
+
+/**
+ * Run-wide summary footer shown on every node sheet so the user always
+ * has the "what did this whole video cost / where are its files" answer
+ * without jumping back to the right rail.
+ *
+ * Renders four sections (each conditional, but the footer itself is always
+ * shown for wrapped runs so the user has *something* useful even when token
+ * data is missing on older history-restored runs):
+ *   - Tokens (from cumulativeTokens, fall back to legacy tokenUsage)
+ *   - Estimated cost
+ *   - Elapsed (only present for runs that started in this session)
+ *   - Artifact URLs (script / audio / words / timeline / mp4 / videoId)
+ */
+function RunSummaryFooter({ state }: { state: PipelineState }) {
+    const cum = state.stats.cumulativeTokens;
+    const tokenUsage = state.stats.tokenUsage;
+    const totalTokens = cum?.total_tokens ?? tokenUsage?.total_tokens;
+    const promptTokens = cum?.prompt_tokens ?? tokenUsage?.prompt_tokens;
+    const completionTokens = cum?.completion_tokens ?? tokenUsage?.completion_tokens;
+    const cost =
+        cum?.estimated_cost_usd ??
+        (tokenUsage as { estimated_cost_usd?: number | null } | null | undefined)
+            ?.estimated_cost_usd;
+    const elapsedMs = state.stats.elapsedMs;
+    const imageCount = tokenUsage?.image_count;
+    const ttsChars = tokenUsage?.tts_character_count;
+
+    const hasAnyTokenData =
+        totalTokens != null ||
+        cost != null ||
+        elapsedMs != null ||
+        imageCount != null ||
+        ttsChars != null;
+
+    const artifacts = state.artifactUrls;
+    const hasArtifacts =
+        !!artifacts.script ||
+        !!artifacts.audio ||
+        !!artifacts.words ||
+        !!artifacts.timeline ||
+        !!artifacts.videoMp4;
+
+    return (
+        <div className="mt-6 space-y-4 border-t pt-3">
+            <section>
+                <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Production budget
+                </div>
+                {hasAnyTokenData ? (
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                        {totalTokens != null && (
+                            <>
+                                <span className="text-muted-foreground">Total tokens</span>
+                                <span className="text-right font-mono tabular-nums text-foreground">
+                                    {totalTokens.toLocaleString()}
+                                </span>
+                            </>
+                        )}
+                        {promptTokens != null && (
+                            <>
+                                <span className="text-muted-foreground">· Prompt</span>
+                                <span className="text-right font-mono tabular-nums text-muted-foreground">
+                                    {promptTokens.toLocaleString()}
+                                </span>
+                            </>
+                        )}
+                        {completionTokens != null && (
+                            <>
+                                <span className="text-muted-foreground">· Completion</span>
+                                <span className="text-right font-mono tabular-nums text-muted-foreground">
+                                    {completionTokens.toLocaleString()}
+                                </span>
+                            </>
+                        )}
+                        {imageCount != null && imageCount > 0 && (
+                            <>
+                                <span className="text-muted-foreground">Images generated</span>
+                                <span className="text-right font-mono tabular-nums text-foreground">
+                                    {imageCount.toLocaleString()}
+                                </span>
+                            </>
+                        )}
+                        {ttsChars != null && ttsChars > 0 && (
+                            <>
+                                <span className="text-muted-foreground">TTS characters</span>
+                                <span className="text-right font-mono tabular-nums text-foreground">
+                                    {ttsChars.toLocaleString()}
+                                </span>
+                            </>
+                        )}
+                        {cost != null && (
+                            <>
+                                <span className="text-muted-foreground">Estimated cost</span>
+                                <span className="text-right font-mono tabular-nums text-foreground">
+                                    ${cost.toFixed(4)}
+                                </span>
+                            </>
+                        )}
+                        {elapsedMs != null && elapsedMs > 0 && (
+                            <>
+                                <span className="text-muted-foreground">Elapsed</span>
+                                <span className="text-right font-mono tabular-nums text-foreground">
+                                    {formatElapsed(elapsedMs)}
+                                </span>
+                            </>
+                        )}
+                    </div>
+                ) : (
+                    <p className="text-xs text-muted-foreground">
+                        Token + cost telemetry wasn&apos;t persisted for this run. (Older videos
+                        from before token accounting was added.)
+                    </p>
+                )}
+                <p className="mt-2 text-[10px] text-muted-foreground">
+                    Cumulative for the whole run. Per-stage breakdown isn&apos;t available yet.
+                </p>
+            </section>
+
+            {hasArtifacts && (
+                <section>
+                    <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Artifacts
+                    </div>
+                    <div className="space-y-1 text-xs">
+                        {artifacts.script && <ArtifactRow label="Script" url={artifacts.script} />}
+                        {artifacts.audio && <ArtifactRow label="Narration" url={artifacts.audio} />}
+                        {artifacts.words && (
+                            <ArtifactRow label="Word timings" url={artifacts.words} />
+                        )}
+                        {artifacts.timeline && (
+                            <ArtifactRow label="Timeline" url={artifacts.timeline} />
+                        )}
+                        {artifacts.videoMp4 && (
+                            <ArtifactRow label="Rendered MP4" url={artifacts.videoMp4} />
+                        )}
+                    </div>
+                </section>
+            )}
+
+            <section>
+                <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Run
+                </div>
+                <p className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                    {state.videoId}
+                </p>
+            </section>
+        </div>
+    );
+}
+
+function formatElapsed(ms: number): string {
+    const sec = Math.round(ms / 1000);
+    if (sec < 60) return `${sec}s`;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}m ${s.toString().padStart(2, '0')}s`;
 }
 
 const STATE_BADGE: Record<NodeState, { label: string; cls: string; icon: React.ReactNode }> = {
@@ -400,13 +561,20 @@ function ResearchDetail({ state }: { state: PipelineState }) {
 
 function ScreenplayDetail({ state }: { state: PipelineState }) {
     const slot = state.screenplay;
-    const scriptUrl = slot.state === 'wrapped' ? slot.data.scriptUrl : undefined;
+    // History-restored wrapped runs sometimes have `slot.data.scriptUrl`
+    // unset (the History sidebar doesn't always hydrate it). Fall back to
+    // `state.artifactUrls.script`, which is populated from the same /status
+    // source and the PipelineFlow enrichment can backfill.
+    const scriptUrl =
+        (slot.state === 'wrapped' ? slot.data.scriptUrl : undefined) ?? state.artifactUrls.script;
     const [text, setText] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [fetchFailed, setFetchFailed] = useState(false);
     useEffect(() => {
         if (!scriptUrl) return;
         setLoading(true);
+        setFetchFailed(false);
         fetchScriptText(scriptUrl)
             .then((raw) => {
                 let display = raw;
@@ -423,7 +591,10 @@ function ScreenplayDetail({ state }: { state: PipelineState }) {
                 }
                 setText(display);
             })
-            .catch(() => setText(null))
+            .catch(() => {
+                setText(null);
+                setFetchFailed(true);
+            })
             .finally(() => setLoading(false));
     }, [scriptUrl]);
 
@@ -477,6 +648,23 @@ function ScreenplayDetail({ state }: { state: PipelineState }) {
                     <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
                         {text}
                     </pre>
+                ) : !scriptUrl ? (
+                    <p className="text-sm text-muted-foreground">
+                        Screenplay URL not available for this run. The narration audio + word
+                        timings are still accessible from the Narration node.
+                    </p>
+                ) : fetchFailed ? (
+                    <div className="space-y-2 text-sm">
+                        <p className="text-muted-foreground">
+                            Inline preview failed to load. Use{' '}
+                            <span className="font-medium text-foreground">Open raw file</span> above
+                            to view the screenplay directly.
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                            (S3 CORS, network drop, or the file is no longer present at the
+                            persisted URL.)
+                        </p>
+                    </div>
                 ) : (
                     <p className="text-sm text-muted-foreground">
                         Could not load the screenplay text.
@@ -580,12 +768,27 @@ function StoryboardDetail({ state }: { state: PipelineState }) {
             </div>
         );
     }
-    const scenes = (slot.data as StoryboardArtifact).scenes;
+    // Storyboard's own scenes can be empty on history-restored wrapped
+    // runs (the live SSE shotPlan never arrived). The enriched `state.scenes`
+    // is synthesized from /status.shot_plan by PipelineFlow's enrichedState
+    // memo, so it's the more reliable source for the wrapped list.
+    const storyScenes = (slot.data as StoryboardArtifact).scenes;
+    const scenes =
+        storyScenes.length > 0
+            ? storyScenes
+            : state.scenes.map((s) => ({
+                  index: s.index,
+                  shotType: s.shotType,
+                  startTime: s.startTime,
+                  endTime: s.endTime,
+                  durationS: s.durationS,
+                  narrationExcerpt: s.narrationExcerpt,
+              }));
     if (scenes.length === 0) {
         return (
             <div className="text-sm text-muted-foreground">
-                Shot plan finalized — every scene appears as its own node in the diagram. Click any
-                scene there to inspect it.
+                Shot plan finalized — scene details aren&apos;t available for this run, but each
+                scene still appears as its own node in the diagram.
             </div>
         );
     }
@@ -635,18 +838,33 @@ function FilmingDetail({ state }: { state: PipelineState }) {
         completed = slot.partialData.shotsCompleted ?? 0;
         total = slot.partialData.shotsTotal ?? 0;
     }
+    // History-restored wrapped runs may have lost the shotsCompleted/Total
+    // counters but the enriched `state.scenes` is synthesized from
+    // /status.shot_plan. Use it as the canonical count when the filming
+    // slot's own counter is missing — otherwise we'd render "hasn't
+    // started" on a video that's already done.
+    const wrappedWithoutCounter = slot.state === 'wrapped' && total === 0;
+    if (wrappedWithoutCounter && state.scenes.length > 0) {
+        total = state.scenes.length;
+        completed = state.scenes.filter((s) => s.state === 'wrapped').length || state.scenes.length;
+    }
+    const isWrapped = slot.state === 'wrapped';
     return (
         <div className="space-y-3">
             {total > 0 ? (
                 <div>
                     <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Scenes filmed
+                        {isWrapped ? 'Scenes wrapped' : 'Scenes filmed'}
                     </div>
                     <p className="mt-1 text-2xl font-semibold tabular-nums text-foreground">
                         {completed}{' '}
                         <span className="text-base text-muted-foreground">/ {total}</span>
                     </p>
                 </div>
+            ) : isWrapped ? (
+                <p className="text-sm text-muted-foreground">
+                    Filming wrapped — per-scene counters aren&apos;t available for this run.
+                </p>
             ) : (
                 <p className="text-sm text-muted-foreground">Filming hasn&apos;t started yet.</p>
             )}

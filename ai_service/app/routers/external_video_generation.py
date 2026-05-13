@@ -28,6 +28,7 @@ from ..schemas.video_generation import (
     UpdateFrameRequest,
     AddFrameRequest,
     DeleteFrameRequest,
+    ReorderFrameRequest,
     AddAudioTrackRequest,
     UpdateAudioTrackRequest,
     DeleteAudioTrackRequest,
@@ -329,6 +330,10 @@ async def generate_video_external(
                         host=p.host,
                         brand_kit_id=getattr(p, "brand_kit_id", None),
                         visual_preferences=getattr(p, "visual_preferences", None),
+                        # AI video (Phase 3b): forward from request body. The
+                        # service / pipeline gates tier eligibility internally.
+                        ai_video_enabled=bool(getattr(p, "ai_video_enabled", False)),
+                        ai_video_audio_enabled=bool(getattr(p, "ai_video_audio_enabled", False)),
                     ):
                         await q.put(json.dumps(event))
             except asyncio.CancelledError:
@@ -610,6 +615,11 @@ async def resume_video_external(
                         background_music_volume=_meta.get("background_music_volume"),
                         sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                         visual_preferences=_meta.get("visual_preferences"),
+                        # AI video (Phase 3b): rehydrate from saved metadata
+                        # on resume so the original intent of the run is
+                        # preserved. Resumed runs default OFF when absent.
+                        ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
+                        ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -737,6 +747,9 @@ async def retry_video_external(
                     background_music_volume=_meta.get("background_music_volume"),
                     sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     visual_preferences=_meta.get("visual_preferences"),
+                    # AI video (Phase 3b) — retry rehydrates from saved meta
+                    ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
+                    ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),
                 ):
                     await q.put(json.dumps(event))
         except Exception as exc:
@@ -1137,6 +1150,45 @@ async def update_frame_external(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except IndexError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/frame/reorder",
+    summary="Move a frame to a new position in the timeline (External)"
+)
+async def reorder_frame_external(
+    payload: ReorderFrameRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key)
+):
+    """
+    Move a single frame to a new positional index. Identified by `entry_id`
+    (positional indices shift after every reorder, so a client-provided
+    from_index can race the server's view; entry_id is the only safe key).
+
+    Atomic on the server — the timeline JSON is rewritten in one S3 PUT,
+    so there's no partial-failure window where the timeline could end up
+    missing an entry. Use this instead of sequential `/frame/update` calls
+    when reordering — sequential updates would destroy the entry at the
+    target position because /frame/update overwrites by index.
+
+    meta.total_duration, meta.sentences[], and per-entry timing fields are
+    left untouched.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    try:
+        result = await service.reorder_video_frame(
+            video_id=payload.video_id,
+            entry_id=payload.entry_id,
+            to_index=payload.to_index,
+        )
+        return result
+    except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

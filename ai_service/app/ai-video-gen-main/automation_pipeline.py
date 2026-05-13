@@ -546,6 +546,12 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # Use cheap flash model for all LLM calls in this tier
         "preferred_script_model": "google/gemini-3-flash-preview",
         "preferred_shot_model": "google/gemini-3-flash-preview",
+        # Per-shot TTS migration flag (Phase 0). Off everywhere by default; the
+        # legacy monolithic TTS path remains live. Flip true on a tier to opt
+        # into per-shot TTS once the implementation lands and verifies.
+        "tts_per_shot_enabled": False,
+        # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
+        "ai_video_eligible": False,
     },
     "standard": {
         "script_temperature": 0.5,
@@ -572,6 +578,14 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_vision_review": True,
         "vision_review_run_cost_cap_usd": 0.40,
         "vision_review_max_regens_pct": 30,
+        # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
+        "tts_per_shot_enabled": False,
+        # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
+        # everywhere by default; Phase 2 flips it on per tier once the
+        # Director-consumes-beats integration ships.
+        "beat_planner_enabled": False,
+        # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
+        "ai_video_eligible": False,
     },
     "premium": {
         "script_temperature": 0.6,
@@ -601,6 +615,14 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_vision_review": True,
         "vision_review_run_cost_cap_usd": 0.50,
         "vision_review_max_regens_pct": 30,
+        # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
+        "tts_per_shot_enabled": False,
+        # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
+        # everywhere by default; Phase 2 flips it on per tier once the
+        # Director-consumes-beats integration ships.
+        "beat_planner_enabled": False,
+        # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
+        "ai_video_eligible": False,
     },
     "ultra": {
         "script_temperature": 0.6,
@@ -656,6 +678,18 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_vision_review": True,
         "vision_review_run_cost_cap_usd": 0.60,
         "vision_review_max_regens_pct": 30,
+        # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
+        "tts_per_shot_enabled": False,
+        # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
+        # everywhere by default; Phase 2 flips it on per tier once the
+        # Director-consumes-beats integration ships.
+        "beat_planner_enabled": False,
+        # AI video gen (fal.ai veo3.1/lite) — ELIGIBLE on this tier, but still
+        # gated on per-run user opt-in via AdvancedSettings.ai_video_enabled.
+        # The eligible flag controls whether the toggle is exposed in the UI;
+        # the request-time enable flag controls whether Veo actually fires.
+        "ai_video_eligible": True,
+        "ai_video_per_video_cost_cap_usd": 1.50,
     },
     "super_ultra": {
         "script_temperature": 0.6,
@@ -700,6 +734,16 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "shot_vision_review": True,
         "vision_review_run_cost_cap_usd": 0.60,
         "vision_review_max_regens_pct": 30,
+        # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
+        "tts_per_shot_enabled": False,
+        # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
+        # everywhere by default; Phase 2 flips it on per tier once the
+        # Director-consumes-beats integration ships.
+        "beat_planner_enabled": False,
+        # AI video gen (fal.ai veo3.1/lite) — ELIGIBLE on this tier (see ultra
+        # for the eligible-vs-enabled distinction).
+        "ai_video_eligible": True,
+        "ai_video_per_video_cost_cap_usd": 1.50,
     },
 }
 
@@ -1898,6 +1942,12 @@ class VideoGenerationPipeline:
         video_type_plan: Optional[Dict[str, Any]] = None,
         host_plan: Optional[Dict[str, Any]] = None,
         visual_preferences: Optional[Dict[str, Any]] = None,
+        # AI video (Phase 3b): per-run opt-in, ultra+ only. Tier eligibility is
+        # gated by `QUALITY_TIERS[tier]["ai_video_eligible"]`; passing
+        # ai_video_enabled=True on an ineligible tier downgrades to False with a
+        # warning rather than failing, so the rest of the run still works.
+        ai_video_enabled: bool = False,
+        ai_video_audio_enabled: bool = False,
         progress_callback: Optional[Any] = None,
         stop_event: Optional[Any] = None,
     ) -> Dict[str, Any]:
@@ -2079,6 +2129,73 @@ class VideoGenerationPipeline:
         # read the same dict for the Director and per-shot HTML calls.
         # None / empty / all-auto → no behavior change anywhere downstream.
         self._visual_preferences: Dict[str, Any] = visual_preferences or {}
+
+        # ── AI video per-run state (Phase 3b) ──────────────────────────
+        # Two gates must agree to actually fire Veo: tier eligibility
+        # (`ai_video_eligible` from QUALITY_TIERS) AND per-run user opt-in
+        # (`ai_video_enabled` from the request). When the run-level flag is
+        # set but the tier is ineligible, we downgrade to False with a
+        # warning rather than rejecting the run — the user's other options
+        # are still valid, AI video just doesn't fire.
+        _tier_ai_eligible = bool(self._tier_config.get("ai_video_eligible"))
+        if ai_video_enabled and not _tier_ai_eligible:
+            print(
+                f"⚠️  ai_video_enabled=true on tier '{self._quality_tier}' which is "
+                f"not eligible — downgrading to disabled for this run. Use ultra "
+                f"or super_ultra to enable AI video."
+            )
+            ai_video_enabled = False
+            ai_video_audio_enabled = False
+        # Audio implies enabled — defensive normalization in case a caller
+        # sets audio without enabling AI video itself.
+        if ai_video_audio_enabled and not ai_video_enabled:
+            ai_video_audio_enabled = False
+        self._ai_video_run_enabled: bool = bool(ai_video_enabled)
+        self._ai_video_audio_run_enabled: bool = bool(ai_video_audio_enabled)
+        self._fal_veo_client = None
+        self._ai_video_cost_tracker = None
+        if self._ai_video_run_enabled:
+            # Lazy-import the client + tracker so a run without AI video pays
+            # no import cost. Any failure here (import error, missing key)
+            # downgrades the run to non-AI rather than crash — same posture as
+            # the tier-ineligible branch above.
+            #
+            # Import paths:
+            #   - `app.services.fal_veo_client` is canonical; works when the
+            #     FastAPI server has `ai_service/` as its working dir (so
+            #     `app/` is a top-level package).
+            #   - `ai_video_orchestrator` lives inside `app/ai-video-gen-main/`
+            #     which is hyphenated and therefore NOT importable as a Python
+            #     package. The directory IS on sys.path (inserted by the
+            #     service before constructing this pipeline) so a bare
+            #     `import ai_video_orchestrator` works.
+            try:
+                from app.services.fal_veo_client import (
+                    FalVeoClient, get_fal_api_key_from_env,
+                )
+                from ai_video_orchestrator import AiVideoCostTracker
+            except Exception as _imp_err:
+                print(
+                    f"⚠️  AI video enabled but module import failed "
+                    f"({type(_imp_err).__name__}: {_imp_err}); disabling."
+                )
+                self._ai_video_run_enabled = False
+                self._ai_video_audio_run_enabled = False
+            if self._ai_video_run_enabled:
+                _fal_key = get_fal_api_key_from_env()
+                if not _fal_key:
+                    print("⚠️  AI video enabled but neither FAL_KEY nor FAL_API_KEY is set; disabling.")
+                    self._ai_video_run_enabled = False
+                    self._ai_video_audio_run_enabled = False
+                else:
+                    self._fal_veo_client = FalVeoClient(_fal_key)
+                    _cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or 1.50)
+                    self._ai_video_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
+                    print(
+                        f"🎬 AI video enabled (tier={self._quality_tier}, audio="
+                        f"{'on' if self._ai_video_audio_run_enabled else 'off'}, "
+                        f"cap=${_cap:.2f})"
+                    )
 
         # When enabled=False (default): pipeline behaves identically to today.
         self._host_plan: Dict[str, Any] = host_plan or {}
@@ -4094,14 +4211,22 @@ class VideoGenerationPipeline:
     # --- Edge TTS bridge (Free, Timed) -------------------------------------------------
     @retry_with_backoff(max_retries=3, initial_delay=2.0)
     def _synthesize_voice(
-        self, 
+        self,
         script_path: Path,
         run_dir: Path,
         language: str = "English",
         voice_gender: str = "female",
         tts_provider: str = "standard",
         voice_id: Optional[str] = None,
+        output_audio_path: Optional[Path] = None,
+        output_response_json: Optional[Path] = None,
     ) -> Dict[str, Any]:
+        # output_audio_path / output_response_json (Phase 0 per-shot TTS): when
+        # provided, route the synthesized MP3 + raw JSON to these paths instead
+        # of the legacy `narration.mp3` / `narration_raw.json` in run_dir. Used
+        # by `_synthesize_voice_for_shot` to produce shot-scoped TTS without
+        # clobbering the master-narration files. Existing callers pass None
+        # and get the legacy behavior unchanged.
         # Map new tier names to internal provider keys
         # "standard" → edge, "premium" → sarvam (Indian) or google (global)
         # Legacy values "edge"/"google" still supported for backward compatibility
@@ -4142,8 +4267,8 @@ class VideoGenerationPipeline:
         import edge_tts
         from edge_tts import submaker
 
-        response_json = run_dir / "narration_raw.json"
-        audio_path = run_dir / "narration.mp3"
+        response_json = output_response_json if output_response_json is not None else (run_dir / "narration_raw.json")
+        audio_path = output_audio_path if output_audio_path is not None else (run_dir / "narration.mp3")
         script_text = script_path.read_text().strip()
 
         # --- Sarvam AI TTS Path (premium, Indian languages) ---
@@ -4475,6 +4600,601 @@ class VideoGenerationPipeline:
                 raise e
         
         return {"response_json": response_json, "audio_path": audio_path, "tts_character_count": len(script_text)}
+
+    # --- Per-shot TTS support helpers (Phase 0) ----------------------------
+    @staticmethod
+    def _normalize_word_entry(w: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Coerce a single word entry into {word, start, end} (floats, seconds).
+        Returns None if `w` is malformed."""
+        if not isinstance(w, dict):
+            return None
+        try:
+            start_v = w.get("start")
+            end_v = w.get("end")
+            start = float(start_v) if start_v is not None else 0.0
+            end = float(end_v) if end_v is not None else start
+        except (TypeError, ValueError):
+            return None
+        token = w.get("word")
+        if token is None:
+            token = w.get("text")
+        return {
+            "word": str(token) if token is not None else "",
+            "start": start,
+            "end": end,
+        }
+
+    @staticmethod
+    def _sarvam_chars_to_words(
+        chars: List[str], starts: List[float], ends: List[float]
+    ) -> List[Dict[str, Any]]:
+        """Aggregate Sarvam's character-level alignment into word-level entries.
+        Sarvam writes `alignment.{characters, character_start_times_seconds,
+        character_end_times_seconds}` — a flat per-character stream. Group
+        runs of non-space chars into one word with start=first char's start
+        and end=last char's end."""
+        if not (len(chars) == len(starts) == len(ends)) or not chars:
+            return []
+        out: List[Dict[str, Any]] = []
+        buf: List[str] = []
+        word_start: Optional[float] = None
+        last_end: Optional[float] = None
+        for c, s, e in zip(chars, starts, ends):
+            try:
+                s_f = float(s)
+                e_f = float(e)
+            except (TypeError, ValueError):
+                continue
+            c_str = str(c) if c is not None else ""
+            if c_str.isspace() or c_str == "":
+                if buf and word_start is not None and last_end is not None:
+                    out.append({
+                        "word": "".join(buf),
+                        "start": round(word_start, 3),
+                        "end": round(last_end, 3),
+                    })
+                buf = []
+                word_start = None
+                last_end = None
+                continue
+            if word_start is None:
+                word_start = s_f
+            buf.append(c_str)
+            last_end = e_f
+        if buf and word_start is not None and last_end is not None:
+            out.append({
+                "word": "".join(buf),
+                "start": round(word_start, 3),
+                "end": round(last_end, 3),
+            })
+        return out
+
+    @classmethod
+    def _read_per_shot_words(cls, raw_json_path: Path) -> List[Dict[str, Any]]:
+        """Read a per-shot TTS raw_json file and return normalized word entries.
+
+        Provider-aware: handles all three formats `_synthesize_voice` can
+        produce:
+          - Edge / Whisper fallback: {word_entries: [...]} dict
+          - Google: top-level [...] list
+          - Sarvam: {alignment: {characters, character_start_times_seconds,
+                                 character_end_times_seconds}}
+        Returns [] on any parse error or unrecognized shape so the concat
+        step degrades gracefully (silent gap in word timings) instead of
+        crashing the whole regen call.
+        """
+        try:
+            raw = json.loads(Path(raw_json_path).read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        # Google: top-level list of word entries
+        if isinstance(raw, list):
+            return [w for w in (cls._normalize_word_entry(x) for x in raw) if w is not None]
+        if not isinstance(raw, dict):
+            return []
+        # Edge / Whisper: {word_entries: [...]}
+        we = raw.get("word_entries")
+        if isinstance(we, list):
+            return [w for w in (cls._normalize_word_entry(x) for x in we) if w is not None]
+        # Sarvam: {alignment: {...}}
+        align = raw.get("alignment")
+        if isinstance(align, dict):
+            chars = align.get("characters") or []
+            starts = align.get("character_start_times_seconds") or []
+            ends = align.get("character_end_times_seconds") or []
+            if isinstance(chars, list) and isinstance(starts, list) and isinstance(ends, list):
+                return cls._sarvam_chars_to_words(chars, starts, ends)
+        # Last-ditch: {words: [...]}
+        ws = raw.get("words")
+        if isinstance(ws, list):
+            return [w for w in (cls._normalize_word_entry(x) for x in ws) if w is not None]
+        return []
+
+    @staticmethod
+    def _coerce_shot_index(value: Any, fallback: int) -> int:
+        """Best-effort int coercion for a shot_index field. Accepts int, str
+        digits ('3'), and floats; falls back to `fallback` on None / nonsense."""
+        if isinstance(value, bool):  # bool is an int subtype — exclude it explicitly
+            return fallback
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return fallback
+        if isinstance(value, str):
+            try:
+                return int(value.strip())
+            except (TypeError, ValueError):
+                return fallback
+        return fallback
+
+    # --- Per-shot TTS (Phase 0) --------------------------------------------
+    # These two helpers wrap `_synthesize_voice` to produce shot-scoped TTS
+    # files instead of one monolithic narration.mp3. Used by:
+    #   (a) the editor's per-shot re-narrate endpoint, which needs to
+    #       regenerate one shot's audio without touching the rest
+    #   (b) Phase 2+ pipeline runs (when `tts_per_shot_enabled` flips true on
+    #       a tier) that produce per-shot MP3s then concat into the master
+    # Outputs live at `<run_dir>/tts/shot_{idx:03d}.mp3` and
+    # `<run_dir>/tts/shot_{idx:03d}_raw.json`. The legacy
+    # `<run_dir>/narration.mp3` is rebuilt by `_concat_master_narration`.
+    def _synthesize_voice_for_shot(
+        self,
+        shot_idx: int,
+        narration_text: str,
+        run_dir: Path,
+        language: str = "English",
+        voice_gender: str = "female",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Synthesize TTS for ONE shot.
+
+        Writes `narration_text` to a temp script file, invokes
+        `_synthesize_voice` with shot-scoped output paths, and returns a dict
+        with the produced paths. Empty/whitespace-only `narration_text`
+        short-circuits: returns a record marked `skipped=True` so the caller
+        (concat helper) can insert a silent gap of the appropriate duration.
+
+        Caller is responsible for choosing `narration_text` for the shot —
+        typically by slicing the master script by word timings or by reading
+        the shot's beat-level narration field. This helper does not introspect
+        shot dicts; it just takes text.
+        """
+        narration_text = (narration_text or "").strip()
+        if not narration_text:
+            return {
+                "shot_idx": shot_idx,
+                "skipped": True,
+                "reason": "empty_narration",
+                "mp3_path": None,
+                "raw_json_path": None,
+                "char_count": 0,
+            }
+
+        tts_dir = run_dir / "tts"
+        tts_dir.mkdir(parents=True, exist_ok=True)
+        shot_script_path = tts_dir / f"shot_{shot_idx:03d}_script.txt"
+        shot_audio_path = tts_dir / f"shot_{shot_idx:03d}.mp3"
+        shot_raw_json = tts_dir / f"shot_{shot_idx:03d}_raw.json"
+        shot_script_path.write_text(narration_text, encoding="utf-8")
+
+        tts_result = self._synthesize_voice(
+            shot_script_path,
+            run_dir,
+            language=language,
+            voice_gender=voice_gender,
+            tts_provider=tts_provider,
+            voice_id=voice_id,
+            output_audio_path=shot_audio_path,
+            output_response_json=shot_raw_json,
+        )
+        return {
+            "shot_idx": shot_idx,
+            "skipped": False,
+            "mp3_path": tts_result.get("audio_path", shot_audio_path),
+            "raw_json_path": tts_result.get("response_json", shot_raw_json),
+            "char_count": tts_result.get("tts_character_count", len(narration_text)),
+        }
+
+    def _synthesize_voice_per_shot(
+        self,
+        shot_plan: List[Dict[str, Any]],
+        run_dir: Path,
+        language: str = "English",
+        voice_gender: str = "female",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
+        narration_key: str = "narration_text",
+    ) -> List[Dict[str, Any]]:
+        """Loop `_synthesize_voice_for_shot` across every shot in shot_plan.
+
+        `narration_key` is the dict key used to pull a shot's narration text —
+        defaults to "narration_text". Shots whose value at that key is empty
+        or missing are recorded as `skipped` (no MP3 produced; concat fills
+        with silence equal to `shot_duration_s` if present, else 0).
+
+        Returns a list of per-shot result dicts in the same order as
+        shot_plan. Each result carries `shot_idx` (echoed from shot["shot_index"]
+        or the loop index as fallback), `mp3_path`, `raw_json_path`,
+        `char_count`, and `skipped`/`reason` flags.
+        """
+        outputs: List[Dict[str, Any]] = []
+        for loop_idx, shot in enumerate(shot_plan):
+            shot_idx = self._coerce_shot_index(shot.get("shot_index"), loop_idx)
+            narration_text = shot.get(narration_key) or ""
+            try:
+                duration_s = float(shot.get("shot_duration_s") or shot.get("duration_s") or 0.0)
+            except (TypeError, ValueError):
+                duration_s = 0.0
+            # Isolate per-shot failures — one bad TTS call must not kill the
+            # batch. The concat helper turns failed shots into silent gaps so
+            # downstream timing is preserved.
+            try:
+                result = self._synthesize_voice_for_shot(
+                    shot_idx=shot_idx,
+                    narration_text=narration_text,
+                    run_dir=run_dir,
+                    language=language,
+                    voice_gender=voice_gender,
+                    tts_provider=tts_provider,
+                    voice_id=voice_id,
+                )
+            except Exception as tts_err:
+                print(f"⚠️  Per-shot TTS failed for shot {shot_idx}: {tts_err}")
+                result = {
+                    "shot_idx": shot_idx,
+                    "skipped": True,
+                    "reason": f"tts_error: {type(tts_err).__name__}",
+                    "mp3_path": None,
+                    "raw_json_path": None,
+                    "char_count": 0,
+                }
+            result["intended_duration_s"] = duration_s
+            outputs.append(result)
+        return outputs
+
+    def _concat_master_narration(
+        self,
+        per_shot_outputs: List[Dict[str, Any]],
+        run_dir: Path,
+        output_audio_path: Optional[Path] = None,
+        output_raw_json: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        """Concat per-shot TTS MP3s into a single master narration + stitched
+        word-timings JSON. Skipped shots become silent gaps of their
+        `intended_duration_s`.
+
+        Output paths default to `<run_dir>/narration.mp3` and
+        `<run_dir>/narration_raw.json` (the legacy paths) so the rest of the
+        pipeline can consume them unchanged.
+
+        Returns: {audio_path, raw_json_path, total_duration_s, shot_offsets[]}
+        where shot_offsets carries each shot's `{shot_idx, start_s, dur_s,
+        skipped}` — the editor needs this to align UI sentence regions when
+        only one shot was re-narrated.
+        """
+        import subprocess as _sp
+
+        if not per_shot_outputs:
+            raise RuntimeError("_concat_master_narration called with no per-shot outputs")
+
+        master_audio_path = output_audio_path if output_audio_path is not None else (run_dir / "narration.mp3")
+        master_raw_json = output_raw_json if output_raw_json is not None else (run_dir / "narration_raw.json")
+        tts_dir = run_dir / "tts"
+        tts_dir.mkdir(parents=True, exist_ok=True)
+
+        # ── 1. Materialize silence MP3s for skipped shots ─────────────────
+        # We re-encode the whole concat list at the end, so silence files just
+        # need to be valid MP3 of the right duration. Cache by duration so
+        # repeat runs reuse them.
+        silence_cache: Dict[str, Path] = {}
+        def _silence_mp3(duration_s: float) -> Path:
+            dur_key = f"{max(0.05, duration_s):.3f}"
+            if dur_key in silence_cache:
+                return silence_cache[dur_key]
+            silence_path = tts_dir / f"silence_{dur_key.replace('.', '_')}s.mp3"
+            if not silence_path.exists():
+                cmd = [
+                    "ffmpeg", "-y", "-loglevel", "error",
+                    "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+                    "-t", dur_key,
+                    "-c:a", "libmp3lame", "-q:a", "4",
+                    str(silence_path),
+                ]
+                _r = _sp.run(cmd, capture_output=True, text=True)
+                if _r.returncode != 0 or not silence_path.exists():
+                    raise RuntimeError(
+                        f"ffmpeg silence generation failed for {duration_s:.3f}s: "
+                        f"{_r.stderr.strip() if _r.stderr else 'no stderr'}"
+                    )
+            silence_cache[dur_key] = silence_path
+            return silence_path
+
+        # ── 2. Build concat list + per-shot offsets ───────────────────────
+        # Use ffprobe to get the ACTUAL duration of each per-shot MP3 (the
+        # intended duration is the planner's estimate; real TTS may run
+        # longer/shorter and downstream needs the truth).
+        def _probe_duration(path: Path) -> float:
+            try:
+                _r = _sp.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                return float((_r.stdout or "0").strip() or 0.0)
+            except Exception:
+                # Last-ditch: mutagen
+                try:
+                    from mutagen.mp3 import MP3 as _MP3
+                    return float(_MP3(str(path)).info.length)
+                except Exception:
+                    return 0.0
+
+        concat_list_path = tts_dir / "master_concat_list.txt"
+        concat_lines: List[str] = []
+        shot_offsets: List[Dict[str, Any]] = []
+        cum_offset = 0.0
+        for out in per_shot_outputs:
+            shot_idx = self._coerce_shot_index(out.get("shot_idx"), 0)
+            try:
+                intended_dur = float(out.get("intended_duration_s") or 0.0)
+            except (TypeError, ValueError):
+                intended_dur = 0.0
+            if out.get("skipped"):
+                # Skipped shot → silent gap of intended duration. Falls back to
+                # 0.5s when no duration was provided (a placeholder that
+                # downstream timing reconciliation should overwrite).
+                target_dur = intended_dur if intended_dur > 0 else 0.5
+                silence_path = _silence_mp3(target_dur)
+                # Probe the silence file's REAL duration — ffmpeg may produce a
+                # file that differs by a few ms from the requested duration, and
+                # cum_offset must track real audio time for downstream word
+                # offsets to line up.
+                real_dur = _probe_duration(silence_path) or target_dur
+                concat_lines.append(f"file '{silence_path.absolute()}'")
+                shot_offsets.append({
+                    "shot_idx": shot_idx, "start_s": round(cum_offset, 3),
+                    "dur_s": round(real_dur, 3), "skipped": True,
+                    "reason": out.get("reason"),
+                })
+                cum_offset += real_dur
+                continue
+            mp3_path = out.get("mp3_path")
+            if not mp3_path or not Path(mp3_path).exists():
+                # Failed shot — treat as silence so the timeline doesn't shift.
+                target_dur = intended_dur if intended_dur > 0 else 0.5
+                silence_path = _silence_mp3(target_dur)
+                real_dur = _probe_duration(silence_path) or target_dur
+                concat_lines.append(f"file '{silence_path.absolute()}'")
+                shot_offsets.append({
+                    "shot_idx": shot_idx, "start_s": round(cum_offset, 3),
+                    "dur_s": round(real_dur, 3), "skipped": True, "reason": "missing_mp3",
+                })
+                cum_offset += real_dur
+                continue
+            real_dur = _probe_duration(Path(mp3_path))
+            concat_lines.append(f"file '{Path(mp3_path).absolute()}'")
+            shot_offsets.append({
+                "shot_idx": shot_idx, "start_s": round(cum_offset, 3),
+                "dur_s": round(real_dur, 3), "skipped": False,
+            })
+            cum_offset += real_dur
+
+        concat_list_path.write_text("\n".join(concat_lines), encoding="utf-8")
+
+        # ── 3. Run ffmpeg concat → master narration.mp3 ───────────────────
+        # Re-encode (not stream-copy) because per-shot MP3s may come from
+        # different providers (Edge/Google/Sarvam) with different sample rates
+        # and encoding params. Re-encoding to a uniform 44.1kHz stereo MP3
+        # guarantees a clean concat at the cost of one extra encode pass.
+        master_audio_path.parent.mkdir(parents=True, exist_ok=True)
+        concat_cmd = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-f", "concat", "-safe", "0",
+            "-i", str(concat_list_path),
+            "-c:a", "libmp3lame", "-q:a", "4",
+            "-ar", "44100", "-ac", "2",
+            str(master_audio_path),
+        ]
+        _r = _sp.run(concat_cmd, capture_output=True, text=True)
+        if _r.returncode != 0 or not master_audio_path.exists():
+            raise RuntimeError(
+                f"ffmpeg concat failed: {_r.stderr.strip() if _r.stderr else 'no stderr'}"
+            )
+
+        # ── 4. Stitch per-shot word timings → master narration_raw.json ───
+        # Each per-shot raw_json may be in one of three provider formats:
+        #   - Edge / Whisper: {word_entries: [{word, start, end}, ...]}  (dict)
+        #   - Google:         [{word, start, end}, ...]                  (list)
+        #   - Sarvam:         {alignment: {characters, character_start_times_seconds,
+        #                                  character_end_times_seconds}}
+        # `_read_per_shot_words` normalizes all three to a flat list. Offset
+        # each entry by its shot's start_s and concatenate. Skipped shots
+        # contribute no words (silent gap).
+        master_words: List[Dict[str, Any]] = []
+        for out, offset_rec in zip(per_shot_outputs, shot_offsets):
+            if out.get("skipped"):
+                continue
+            raw_path = out.get("raw_json_path")
+            if not raw_path or not Path(raw_path).exists():
+                continue
+            words = self._read_per_shot_words(Path(raw_path))
+            try:
+                offset = float(offset_rec.get("start_s") or 0.0)
+            except (TypeError, ValueError):
+                offset = 0.0
+            for w in words:
+                master_words.append({
+                    "word": w["word"],
+                    "start": round(w["start"] + offset, 3),
+                    "end": round(w["end"] + offset, 3),
+                })
+
+        master_payload = {
+            "metadata": {
+                "tts_provider": "per_shot_concat",
+                "total_duration_s": round(cum_offset, 3),
+                "shot_count": len(per_shot_outputs),
+                "concat_source": "per_shot_v1",
+            },
+            "word_entries": master_words,
+            "shot_offsets": shot_offsets,
+        }
+        master_raw_json.write_text(json.dumps(master_payload), encoding="utf-8")
+
+        return {
+            "audio_path": master_audio_path,
+            "raw_json_path": master_raw_json,
+            "total_duration_s": cum_offset,
+            "shot_offsets": shot_offsets,
+        }
+
+    def regen_shot_narration(
+        self,
+        shot_plan: List[Dict[str, Any]],
+        target_shot_idx: int,
+        new_narration_text: str,
+        run_dir: Path,
+        language: str = "English",
+        voice_gender: str = "female",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
+        narration_key: str = "narration_text",
+    ) -> Dict[str, Any]:
+        """Public-API entry for editor 're-narrate this shot'.
+
+        Re-TTSes ONE shot identified by `target_shot_idx`, reuses cached
+        per-shot MP3s for every other shot, then rebuilds the master
+        `narration.mp3` + `narration_raw.json` via `_concat_master_narration`.
+
+        Inputs:
+          - `shot_plan`: the current shot list (each shot has `shot_index`,
+            `narration_text`, optionally `shot_duration_s`)
+          - `target_shot_idx`: which shot's narration changed
+          - `new_narration_text`: the new text for that shot (may be empty —
+            becomes a silent gap in the master)
+          - `run_dir`: video's run directory; per-shot MP3s live under
+            `<run_dir>/tts/shot_{idx:03d}.mp3`
+
+        Returns a dict carrying the rebuilt master paths + shot offsets so
+        the caller can re-upload to S3 and patch the timeline. Other shots'
+        per-shot MP3s are reused from disk; only the target shot incurs a
+        Veo/TTS call.
+
+        Idempotent on no-op edits: if `new_narration_text` matches the
+        cached script at `<run_dir>/tts/shot_{N}_script.txt`, the cached
+        MP3 is reused (no TTS call).
+        """
+        target_idx = self._coerce_shot_index(target_shot_idx, -1)
+        if target_idx < 0:
+            raise ValueError(f"regen_shot_narration: invalid target_shot_idx {target_shot_idx!r}")
+        per_shot_outputs: List[Dict[str, Any]] = []
+        tts_dir = run_dir / "tts"
+        tts_dir.mkdir(parents=True, exist_ok=True)
+
+        for loop_idx, shot in enumerate(shot_plan):
+            shot_idx = self._coerce_shot_index(shot.get("shot_index"), loop_idx)
+            try:
+                duration_s = float(shot.get("shot_duration_s") or shot.get("duration_s") or 0.0)
+            except (TypeError, ValueError):
+                duration_s = 0.0
+
+            if shot_idx == target_idx:
+                narration_text = (new_narration_text or "").strip()
+                # Idempotency: skip TTS if cached script matches the new text
+                cached_script = tts_dir / f"shot_{shot_idx:03d}_script.txt"
+                cached_mp3 = tts_dir / f"shot_{shot_idx:03d}.mp3"
+                cached_raw = tts_dir / f"shot_{shot_idx:03d}_raw.json"
+                cache_hit = (
+                    narration_text
+                    and cached_script.exists()
+                    and cached_mp3.exists()
+                    and cached_raw.exists()
+                    and cached_script.read_text(encoding="utf-8").strip() == narration_text
+                )
+                if cache_hit:
+                    result = {
+                        "shot_idx": shot_idx,
+                        "skipped": False,
+                        "mp3_path": cached_mp3,
+                        "raw_json_path": cached_raw,
+                        "char_count": len(narration_text),
+                        "intended_duration_s": duration_s,
+                        "cache_hit": True,
+                    }
+                else:
+                    try:
+                        result = self._synthesize_voice_for_shot(
+                            shot_idx=shot_idx,
+                            narration_text=narration_text,
+                            run_dir=run_dir,
+                            language=language,
+                            voice_gender=voice_gender,
+                            tts_provider=tts_provider,
+                            voice_id=voice_id,
+                        )
+                    except Exception as tts_err:
+                        print(f"⚠️  regen TTS failed for target shot {shot_idx}: {tts_err}")
+                        # Target-shot TTS failure: re-raise so caller knows the
+                        # edit didn't take. The cached files (if any) remain
+                        # intact, so the editor can retry without losing prior
+                        # state. We don't ship silence for the target — that
+                        # would silently produce the wrong audio.
+                        raise
+                    result["intended_duration_s"] = duration_s
+                per_shot_outputs.append(result)
+                continue
+
+            # Non-target shots: reuse cached per-shot MP3 if it exists; else
+            # synth fresh (first-run case for a video that hasn't been editor-
+            # rebuilt yet). The first regen on a v1-pipeline video will cost
+            # one TTS call per shot — subsequent regens are single-shot.
+            cached_mp3 = tts_dir / f"shot_{shot_idx:03d}.mp3"
+            cached_raw = tts_dir / f"shot_{shot_idx:03d}_raw.json"
+            if cached_mp3.exists() and cached_raw.exists():
+                per_shot_outputs.append({
+                    "shot_idx": shot_idx,
+                    "skipped": False,
+                    "mp3_path": cached_mp3,
+                    "raw_json_path": cached_raw,
+                    "char_count": len((shot.get(narration_key) or "").strip()),
+                    "intended_duration_s": duration_s,
+                    "cache_hit": True,
+                })
+            else:
+                narration_text = (shot.get(narration_key) or "").strip()
+                # Non-target shots: isolate failures (silence fallback) so a
+                # single bad shot doesn't kill the whole regen.
+                try:
+                    result = self._synthesize_voice_for_shot(
+                        shot_idx=shot_idx,
+                        narration_text=narration_text,
+                        run_dir=run_dir,
+                        language=language,
+                        voice_gender=voice_gender,
+                        tts_provider=tts_provider,
+                        voice_id=voice_id,
+                    )
+                except Exception as tts_err:
+                    print(f"⚠️  regen TTS failed for non-target shot {shot_idx}: {tts_err}")
+                    result = {
+                        "shot_idx": shot_idx,
+                        "skipped": True,
+                        "reason": f"tts_error: {type(tts_err).__name__}",
+                        "mp3_path": None,
+                        "raw_json_path": None,
+                        "char_count": 0,
+                    }
+                result["intended_duration_s"] = duration_s
+                per_shot_outputs.append(result)
+
+        concat_result = self._concat_master_narration(per_shot_outputs, run_dir)
+        concat_result["per_shot_outputs"] = per_shot_outputs
+        concat_result["target_shot_idx"] = target_idx
+        return concat_result
 
     # --- Sarvam AI TTS (premium, Indian languages) -------------------------
     def _synthesize_voice_sarvam(
@@ -5263,25 +5983,28 @@ class VideoGenerationPipeline:
         """
         palette = style_guide.get("palette", {}) or {}
         is_portrait = height > width
-        # Font scale — portrait pushes display type larger relative to viewport
-        # because reels hold attention on a single text block, not a layout grid.
+        # Font scale — viewport-relative clamps so display typography actually fills
+        # the canvas. `min(Xvw, Yvh)` means "X% of width, but never taller than Y%
+        # of height" — display type grows large on portrait reels (where vertical
+        # space is generous) while never breaking out of the safe area in landscape.
+        # The outer clamp() caps both extremes so templates don't need their own.
         if is_portrait:
             font_scale = {
-                "display": "9rem",
-                "h1": "5.5rem",
-                "h2": "3.25rem",
-                "body": "1.9rem",
-                "caption": "1.35rem",
-                "micro": "1.05rem",
+                "display": "clamp(5rem, min(34vw, 25vh), 28rem)",
+                "h1":      "clamp(3.5rem, min(18vw, 16vh), 16rem)",
+                "h2":      "clamp(2.4rem, min(10vw, 11vh), 8rem)",
+                "body":    "clamp(1.4rem, min(4vw, 3.5vh), 3rem)",
+                "caption": "clamp(1.1rem, min(3vw, 2.6vh), 2rem)",
+                "micro":   "clamp(0.9rem, min(2.4vw, 2vh), 1.5rem)",
             }
         else:
             font_scale = {
-                "display": "8rem",
-                "h1": "4.5rem",
-                "h2": "2.75rem",
-                "body": "1.75rem",
-                "caption": "1.2rem",
-                "micro": "0.95rem",
+                "display": "clamp(4rem, min(18vw, 32vh), 24rem)",
+                "h1":      "clamp(3rem, min(10vw, 22vh), 16rem)",
+                "h2":      "clamp(2rem, min(6vw, 14vh), 10rem)",
+                "body":    "clamp(1.2rem, min(2.4vw, 4.4vh), 2.4rem)",
+                "caption": "clamp(0.95rem, min(1.8vw, 3.4vh), 1.8rem)",
+                "micro":   "clamp(0.85rem, min(1.4vw, 2.6vh), 1.4rem)",
             }
         safe_area = "4%" if is_portrait else "6%"
         return {
@@ -5479,7 +6202,14 @@ class VideoGenerationPipeline:
     # IMAGE_CLIP shows user-uploaded imagery — vision review treats off-brand
     # photos as low-quality and would regenerate the HTML, losing the image
     # URL injected by the IMAGE_CLIP post-processor (see L10334+).
-    _VISION_REVIEW_SKIP_SHOT_TYPES = frozenset({"KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP", "IMAGE_CLIP"})
+    _VISION_REVIEW_SKIP_SHOT_TYPES = frozenset({
+        "KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP", "IMAGE_CLIP",
+        # AI_VIDEO_HERO (Phase 3b): the visible content is the Veo model's
+        # MP4, not LLM-emitted HTML — reviewing the empty <video> wrapper is
+        # meaningless. Veo's own `safety_tolerance` + `auto_fix` are the
+        # content gates here.
+        "AI_VIDEO_HERO",
+    })
 
     def _vision_review_emit_banner_once(self) -> None:
         """Emit a once-per-run banner showing the configured state of vision
@@ -6869,6 +7599,19 @@ class VideoGenerationPipeline:
             director_system = director_system + SUPER_ULTRA_DIRECTOR_EXTENSION
         if self._is_background_music_enabled():
             director_system = director_system + MUSIC_PLAN_EXTENSION
+        # AI video teaching block (Phase 3b) — only appended when AI video is
+        # enabled for this run, keeping the Director prompt clean otherwise.
+        if getattr(self, "_ai_video_run_enabled", False):
+            try:
+                from director_prompts import build_ai_video_director_block
+                _av_cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or 1.50)
+                director_system = director_system + build_ai_video_director_block(
+                    enabled=True,
+                    audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                    cost_cap_usd=_av_cap,
+                )
+            except Exception as _av_err:
+                print(f"   ⚠️ AI video Director block unavailable ({_av_err}); continuing without AI_VIDEO_HERO instructions")
         # Routing-plan-driven extensions:
         #   • source_clip_priority=high  → strict 60% SOURCE_CLIP rule
         #   • infographic_mode=overlay  → overlay_slots[] shot-spec
@@ -7535,6 +8278,12 @@ class VideoGenerationPipeline:
                 "ANIMATED_ASSET":  "motion_graphics",
                 "KINETIC_TEXT":    "motion_graphics",
                 "DEVICE_MOCKUP":   "app_ui_mockup",
+                # Phase 3b: AI_VIDEO_HERO maps to the new `ai_video` family so
+                # the realized-vs-declared VisualPreferences telemetry counts
+                # AI video shots correctly. Without this entry the family
+                # tally undercounts ai_video and produces spurious mismatch
+                # warnings on declared=ai_video:high runs.
+                "AI_VIDEO_HERO":   "ai_video",
             }
             _family_counts: Dict[str, int] = {}
             _override_count = 0
@@ -7666,7 +8415,11 @@ class VideoGenerationPipeline:
 
         shot_type = shot.get("shot_type", "")
         # Never split typography-only shots — they are already a single beat.
-        if shot_type in ("KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP"):
+        # AI_VIDEO_HERO is atomic too: the Veo clip is one MP4, and decomposing
+        # it into "sub-shots" would either double-bill the Veo call or produce
+        # mismatched halves. Multi-segment chains (Phase 4) handle long shots
+        # via `ai_video_segments` inside a single shot, not via decomposition.
+        if shot_type in ("KINETIC_TEXT", "KINETIC_TITLE", "SOURCE_CLIP", "AI_VIDEO_HERO"):
             return [shot]
 
         complexity = shot.get("complexity_level", "moderate")
@@ -7737,8 +8490,25 @@ class VideoGenerationPipeline:
         ):
             return [shot]
 
-        # Field inheritance — copy parent context the decomposer didn't set
-        _inherit_keys = ("image_prompt", "video_query", "notes", "overlay", "beat_index")
+        # Field inheritance — copy parent context the decomposer didn't set.
+        # Phase 1/2/3 additions: BeatPlanner emits `visual_type_hint`,
+        # `intent_role`, `narration_hint`, `intended_narration`; AudioPolicyPlanner
+        # emits `audio_policy`; Phase 3 Director emits `ai_video_prompt`,
+        # `ai_video_duration_s`, `ai_video_segments`, `ai_video_audio`. All
+        # must propagate to decomposed sub-shots so downstream stages see
+        # consistent metadata regardless of whether decomposition fired.
+        _inherit_keys = (
+            "image_prompt", "video_query", "notes", "overlay", "beat_index",
+            # Phase 1: BeatPlanner / DefaultShotMapper fields
+            "visual_type_hint", "intent_role", "narration_hint",
+            "intended_narration", "label",
+            # Phase 2: AudioPolicyPlanner fields
+            "audio_policy",
+            # Phase 3: AI video fields (carry across decomposition so each
+            # sub-shot still routes to Veo correctly)
+            "ai_video_prompt", "ai_video_duration_s", "ai_video_segments",
+            "ai_video_audio",
+        )
         for _ss in (a, b):
             for _k in _inherit_keys:
                 if _k not in _ss and _k in shot:
@@ -8191,6 +8961,7 @@ class VideoGenerationPipeline:
                     details_prompt=details_prompt,
                     provider=host_provider,
                     external_avatar_id=external_avatar_id,
+                    orientation=("portrait" if self.video_width < self.video_height else "landscape"),
                 )
             )
         except Exception as e:
@@ -8706,6 +9477,7 @@ class VideoGenerationPipeline:
                     details_prompt=details_prompt,
                     provider="custom",
                     external_avatar_id=None,
+                    orientation=("portrait" if self.video_width < self.video_height else "landscape"),
                 )
             )
         except Exception as e:
@@ -9722,6 +10494,7 @@ class VideoGenerationPipeline:
                         details_prompt=details_prompt,
                         provider=host_provider,
                         external_avatar_id=external_avatar_id,
+                        orientation=("portrait" if self.video_width < self.video_height else "landscape"),
                     )
                 )
             except Exception as e:
@@ -10015,7 +10788,9 @@ class VideoGenerationPipeline:
                 + "\n```\n"
                 "Rules:\n"
                 "- COLORS: use only CSS vars from `color_tokens` (var(--brand-primary) etc.). Never hardcode hex.\n"
-                "- TYPOGRAPHY: use `font_scale` values (e.g. `font-size: 9rem` for display). Never pick your own size.\n"
+                "- TYPOGRAPHY: paste `font_scale` values verbatim into `font-size:` "
+                "(they are viewport-relative clamps — e.g. `font-size: clamp(...)`). "
+                "Never substitute a plain rem/px size.\n"
                 "- SPACING: use `spacing` tokens for padding/margin/gap. Use `safe_area` for outer padding.\n"
                 "- EASES: use `ease` tokens in GSAP tweens (ease: 'power3.out' → use `ease_tokens.entry`).\n"
                 "- IDs: prefix every element id with `s{shot_idx}_` (replace {shot_idx} with this shot's index) "
@@ -10092,6 +10867,118 @@ class VideoGenerationPipeline:
                     f"(text_density={_td_shot}; KINETIC_TEXT is text-only by design)"
                 )
                 shot_type = _swap_to
+
+            # ── AI_VIDEO_HERO bypass (Phase 3b, ultra+ only, opt-in) ──
+            # When the Director sets shot_type=AI_VIDEO_HERO AND the run has
+            # AI video enabled, route through fal.ai Veo instead of the
+            # per-shot HTML LLM. On any failure (Veo error, circuit breaker
+            # exhausted, missing prompt), we downgrade shot_type to a
+            # sensible fallback (IMAGE_HERO when video_query is absent,
+            # VIDEO_HERO when present) and fall through to the regular path
+            # — the LLM regenerates the shot without AI_VIDEO_HERO. This
+            # matches the plan's "max 1 regen, ship a non-AI alternative"
+            # fallback policy.
+            if shot_type == "AI_VIDEO_HERO":
+                if not getattr(self, "_ai_video_run_enabled", False):
+                    # Director emitted AI_VIDEO_HERO but the run isn't AI-
+                    # video-enabled (tier-ineligible or user didn't opt in).
+                    # Downgrade silently; this is not a fatal mismatch.
+                    _fallback_st = "VIDEO_HERO" if shot.get("video_query") else "IMAGE_HERO"
+                    print(
+                        f"   ⚠️  {_log_label} AI_VIDEO_HERO requested but run "
+                        f"disabled — falling back to {_fallback_st}"
+                    )
+                    shot_type = _fallback_st
+                    # Keep `shot` dict in sync with the local `shot_type` so
+                    # downstream helpers that re-read `shot["shot_type"]` (e.g.
+                    # template composer, sound planner) see the corrected type.
+                    shot["shot_type"] = _fallback_st
+                else:
+                    # `ai-video-gen-main/` is on sys.path (inserted by the
+                    # service before this pipeline imports), so the direct
+                    # import below is the canonical path. No fallback is
+                    # possible — the directory name has a hyphen so it can
+                    # never be imported as `app.ai_video_orchestrator`.
+                    from ai_video_orchestrator import orchestrate_ai_video_shot
+                    _av_canvas = "portrait" if _h > _w else "landscape"
+                    _av_result = orchestrate_ai_video_shot(
+                        shot=shot,
+                        shot_idx=shot_idx,
+                        run_dir=run_dir,
+                        veo_client=self._fal_veo_client,
+                        cost_tracker=self._ai_video_cost_tracker,
+                        canvas=_av_canvas,
+                        run_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                        safety_tolerance="3",
+                        log_fn=print,
+                    )
+                    if _av_result.error is None:
+                        # Success — build entry and return, mirroring the
+                        # template-bypass shape so downstream stages see
+                        # consistent structure.
+                        _av_html = self._ensure_fonts(_av_result.html)
+                        _av_entry = {
+                            "start": start_time,
+                            "end": end_time,
+                            "htmlStartX": 0, "htmlStartY": 0,
+                            "htmlEndX": _w, "htmlEndY": _h,
+                            "html": _av_html,
+                            "id": _entry_id,
+                            "index": shot_idx,
+                            "z": shot.get("z", 10),
+                            "_shot_type": "AI_VIDEO_HERO",
+                            "_narration_excerpt": shot.get("narration_excerpt", ""),
+                            "_visual_description": shot.get("visual_description", ""),
+                            # No sound cues for AI video shots (the Veo clip's
+                            # own audio, when enabled, is the sole audio
+                            # source). Empty list mirrors the template-bypass
+                            # entry shape so downstream stages don't branch.
+                            "_skill_audio_events": [],
+                            # AI-video telemetry — kept on the entry so the
+                            # editor sidebar can render cost / segment info
+                            # and Phase 7 polish can aggregate to a run-level
+                            # summary then strip the per-entry copies.
+                            "_ai_video_request_id": _av_result.request_id,
+                            "_ai_video_url": _av_result.video_url,
+                            "_ai_video_cost_usd": _av_result.cost_usd,
+                            "_ai_video_elapsed_s": _av_result.elapsed_s,
+                            "_ai_video_segments": _av_result.segments,
+                            "_ai_video_audio_on": _av_result.audio_on,
+                        }
+                        if on_segment_done:
+                            try:
+                                on_segment_done([_av_entry])
+                            except Exception:
+                                pass
+                        try:
+                            _cache_path.write_text(
+                                json.dumps({"entries": [_av_entry], "usage": {}}, default=str)
+                            )
+                        except Exception:
+                            pass
+                        return [_av_entry], {}
+                    else:
+                        # Failure — downgrade to a non-AI shot type and fall
+                        # through to the LLM path. The cost tracker already
+                        # refunded the reservation (orchestrator handles it).
+                        _fallback_st = "VIDEO_HERO" if shot.get("video_query") else "IMAGE_HERO"
+                        print(
+                            f"   ⚠️  {_log_label} AI_VIDEO_HERO {_av_result.error_class}: "
+                            f"{_av_result.error} — falling back to {_fallback_st}"
+                        )
+                        shot_type = _fallback_st
+                        # Keep `shot` dict in sync with the local — downstream
+                        # helpers (template composer, sound planner, vision
+                        # reviewer) may re-read `shot["shot_type"]`.
+                        shot["shot_type"] = _fallback_st
+                        # Strip AI-video fields so the LLM doesn't try to use
+                        # them under the new shot_type. Mutating `shot` here
+                        # is safe — the sub-shot decomposer's `_inherit_keys`
+                        # already ran (or didn't fire); downstream sees the
+                        # corrected shape.
+                        for _k in ("ai_video_prompt", "ai_video_duration_s",
+                                   "ai_video_segments", "ai_video_audio"):
+                            shot.pop(_k, None)
 
             # ── Shot template bypass (premium / ultra / super_ultra) ──
             # When the Director sets `template_id` on a shot AND the template

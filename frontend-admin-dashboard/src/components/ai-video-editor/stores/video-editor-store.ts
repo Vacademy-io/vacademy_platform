@@ -40,6 +40,12 @@ export const DEFAULT_TRANSFORM: EntryTransform = { x: 0, y: 0, scale: 1, rotatio
 /** Minimum shot duration (seconds) — edges clamp against this so we can't crush a shot to zero. */
 export const MIN_SHOT_DURATION = 0.2;
 
+/** Timeline snap granularity (seconds). All edge/body moves quantize against this. */
+export const SNAP_S = 0.1;
+export function snapTime(t: number): number {
+    return Math.round(t / SNAP_S) * SNAP_S;
+}
+
 /** A span on the timeline where audio plays but no base-channel visual exists.
  *  These are the user-actionable gaps the "+ Add shot here" affordance fills. */
 export interface TimelineGap {
@@ -215,6 +221,14 @@ interface HistorySnapshot {
     dirtyEntryIds: string[];
     newEntryIds: string[];
     deletedEntryIds: string[];
+    pendingReorders: ReorderOp[];
+}
+
+/** One queued frame reorder, applied to the server-side timeline on save. */
+export interface ReorderOp {
+    entry_id: string;
+    /** Target index in the post-move local entries array. */
+    to_index: number;
 }
 
 export interface VideoEditorState {
@@ -258,6 +272,13 @@ export interface VideoEditorState {
      *  but has not yet saved. saveChanges() calls /frame/delete for each one
      *  before processing adds/updates so frame indices don't shift mid-save. */
     deletedEntryIds: string[];
+    /** Queued reorder operations (drag-to-reorder in EntryListPanel). Sent to
+     *  /frame/reorder before adds/updates so subsequent /frame/update calls
+     *  hit the right server-side positional indices. Routing through this
+     *  endpoint avoids the partial-failure destruction that sequential
+     *  /frame/update calls would cause (positional writes overwrite the entry
+     *  currently at that index). */
+    pendingReorders: ReorderOp[];
 
     // Extra audio tracks (background music, SFX, etc.)
     audioTracks: AudioTrack[];
@@ -348,6 +369,38 @@ export interface VideoEditorState {
         newTime: number,
         mode: 'slip' | 'roll' | 'ripple'
     ) => void;
+
+    /**
+     * Move one or more time_driven entries by `deltaTime` seconds.
+     *
+     *  - `move`   : shift only the listed entries; downstream entries untouched.
+     *               Clamps so no inTime < 0 and no exitTime > total_duration.
+     *  - `ripple` : shift the listed entries AND every non-branding entry whose
+     *               inTime >= max(originalExitTime of listed entries) by the
+     *               same delta. total_duration grows/shrinks accordingly. Audio
+     *               narration is NOT shifted — caller surfaces a warning.
+     *
+     * Branding entries (`id.startsWith('branding-')`) are silently skipped in
+     * the listed set and in the downstream-ripple sweep, so branding-outro
+     * stays anchored at the end of the timeline.
+     *
+     * IMPORTANT: never call from a pointer-move handler. Commit only on
+     * pointer-up so undo records one history entry per drag.
+     */
+    moveEntries: (ids: string[], deltaTime: number, mode: 'move' | 'ripple') => void;
+
+    /**
+     * Reorder the entries array by moving entries[fromIndex] to position
+     * toIndex. Queues a `/frame/reorder` op (atomic on the server) instead of
+     * marking entries dirty — sequential `/frame/update` calls would be
+     * destructive because they overwrite by positional index.
+     *
+     * Branding entries cannot be moved (they must stay at the ends).
+     * Does NOT modify inTime/exitTime — visual timeline order in the
+     * scrubber stays driven by inTime.
+     */
+    reorderEntries: (fromIndex: number, toIndex: number) => void;
+
     undo: () => void;
     redo: () => void;
     saveChanges: () => Promise<void>;
@@ -419,6 +472,7 @@ function snapshot(s: VideoEditorState): HistorySnapshot {
         dirtyEntryIds: s.dirtyEntryIds,
         newEntryIds: s.newEntryIds,
         deletedEntryIds: s.deletedEntryIds,
+        pendingReorders: s.pendingReorders,
     };
 }
 
@@ -449,6 +503,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     dirtyEntryIds: [],
     newEntryIds: [],
     deletedEntryIds: [],
+    pendingReorders: [],
     audioTracks: [],
     entryTransforms: {},
     entryBackgrounds: {},
@@ -481,6 +536,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             dirtyEntryIds: [],
             newEntryIds: [],
             deletedEntryIds: [],
+            pendingReorders: [],
             audioTracks: [],
             entryTransforms: {},
             entryBackgrounds: {},
@@ -649,6 +705,11 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     isNew || s.deletedEntryIds.includes(entryId)
                         ? s.deletedEntryIds
                         : [...s.deletedEntryIds, entryId],
+                // Drop any queued reorder for an entry that's about to be
+                // gone from the server — the /frame/delete will happen first
+                // on save and a follow-up /frame/reorder for the same id
+                // would 404.
+                pendingReorders: s.pendingReorders.filter((op) => op.entry_id !== entryId),
                 entryTransforms: nextT,
                 entryBackgrounds: nextB,
                 entryTransitions: nextX,
@@ -699,7 +760,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             const outT = entry.exitTime ?? entry.end ?? inT + 1;
 
             // Normalize: quantize to 0.1s, clamp to non-negative
-            const snap = (t: number) => Math.max(0, Math.round(t * 10) / 10);
+            const snap = (t: number) => Math.max(0, snapTime(t));
 
             const dirty = new Set(s.dirtyEntryIds);
             let newEntries = [...s.entries];
@@ -801,6 +862,116 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         });
     },
 
+    moveEntries: (ids, deltaTime, mode) => {
+        set((s) => {
+            if (s.meta.navigation !== 'time_driven') return {};
+            const movingIds = ids.filter((id) => !id.startsWith('branding-'));
+            if (movingIds.length === 0) return {};
+
+            let delta = snapTime(deltaTime);
+            if (delta === 0) return {};
+
+            const moving = s.entries.filter((e) => movingIds.includes(e.id));
+            if (moving.length === 0) return {};
+
+            const minStart = Math.min(...moving.map((e) => e.inTime ?? e.start ?? 0));
+            const totalDuration = s.meta.total_duration;
+
+            if (minStart + delta < 0) delta = -minStart;
+            if (mode === 'move' && totalDuration != null) {
+                const maxEnd = Math.max(...moving.map((e) => e.exitTime ?? e.end ?? 0));
+                if (maxEnd + delta > totalDuration) {
+                    delta = totalDuration - maxEnd;
+                }
+            }
+            delta = snapTime(delta);
+            if (delta === 0) return {};
+
+            // Capture the ripple boundary BEFORE mutating any entry — the
+            // boundary is the latest original exitTime among the moving set.
+            const rippleBoundary =
+                mode === 'ripple'
+                    ? Math.max(...moving.map((e) => e.exitTime ?? e.end ?? 0))
+                    : Infinity;
+
+            const movingSet = new Set(movingIds);
+            const dirty = new Set(s.dirtyEntryIds);
+
+            const newEntries = s.entries.map((e) => {
+                if (movingSet.has(e.id)) {
+                    dirty.add(e.id);
+                    return {
+                        ...e,
+                        inTime: (e.inTime ?? 0) + delta,
+                        exitTime: (e.exitTime ?? 0) + delta,
+                    };
+                }
+                if (
+                    mode === 'ripple' &&
+                    !e.id.startsWith('branding-') &&
+                    (e.inTime ?? Infinity) >= rippleBoundary
+                ) {
+                    dirty.add(e.id);
+                    return {
+                        ...e,
+                        inTime: (e.inTime ?? 0) + delta,
+                        exitTime: (e.exitTime ?? 0) + delta,
+                    };
+                }
+                return e;
+            });
+
+            const nextTotal =
+                mode === 'ripple' && totalDuration != null
+                    ? Math.max(0, totalDuration + delta)
+                    : totalDuration;
+
+            return {
+                ...pushPast(s),
+                entries: newEntries,
+                dirtyEntryIds: Array.from(dirty),
+                meta:
+                    nextTotal !== s.meta.total_duration
+                        ? { ...s.meta, total_duration: nextTotal }
+                        : s.meta,
+            };
+        });
+    },
+
+    reorderEntries: (fromIndex, toIndex) => {
+        set((s) => {
+            if (fromIndex === toIndex) return {};
+            if (fromIndex < 0 || fromIndex >= s.entries.length) return {};
+            if (toIndex < 0 || toIndex >= s.entries.length) return {};
+            const moved = s.entries[fromIndex]!;
+            if (moved.id.startsWith('branding-')) return {};
+
+            const nextEntries = [...s.entries];
+            nextEntries.splice(fromIndex, 1);
+            nextEntries.splice(toIndex, 0, moved);
+
+            // Queue a /frame/reorder call instead of marking entries dirty.
+            // Sequential /frame/update calls would be destructive here — the
+            // backend addresses frames positionally, so updating index N with
+            // entry X's content overwrites whatever was at N. /frame/reorder
+            // is atomic on the server (one S3 PUT of the rewritten timeline).
+            //
+            // If the same entry has been reordered earlier this session,
+            // collapse the prior op into the latest target index.
+            const filtered = s.pendingReorders.filter((op) => op.entry_id !== moved.id);
+            const nextReorders: ReorderOp[] = [
+                ...filtered,
+                { entry_id: moved.id, to_index: toIndex },
+            ];
+
+            return {
+                ...pushPast(s),
+                entries: nextEntries,
+                pendingReorders: nextReorders,
+            };
+        });
+    },
+
     updateEntryTransition: (entryId, which, transition) => {
         set((s) => {
             const next = { ...s.entryTransitions };
@@ -875,6 +1046,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 dirtyEntryIds: prev.dirtyEntryIds,
                 newEntryIds: prev.newEntryIds,
                 deletedEntryIds: prev.deletedEntryIds,
+                pendingReorders: prev.pendingReorders,
             };
         });
     },
@@ -893,6 +1065,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 dirtyEntryIds: next.dirtyEntryIds,
                 newEntryIds: next.newEntryIds,
                 deletedEntryIds: next.deletedEntryIds,
+                pendingReorders: next.pendingReorders,
             };
         });
     },
@@ -915,6 +1088,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             dirtyEntryIds,
             newEntryIds,
             deletedEntryIds,
+            pendingReorders,
             entryTransforms,
             entryBackgrounds,
             entryTransitions,
@@ -938,7 +1112,8 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 !!entryTransitions[e.id]
         );
 
-        if (toSave.length === 0 && deletedEntryIds.length === 0) return;
+        if (toSave.length === 0 && deletedEntryIds.length === 0 && pendingReorders.length === 0)
+            return;
 
         set({ isSaving: true });
 
@@ -966,6 +1141,32 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 if (!res.ok) {
                     const text = await res.text().catch(() => res.statusText);
                     throw new Error(`Delete frame failed (${entryId}): ${text}`);
+                }
+            }
+
+            // Process reorders after deletes (deleted entries are already
+            // gone from pendingReorders via deleteEntry's filter) and before
+            // adds/updates (so subsequent /frame/update frame_index values
+            // line up with the post-reorder server-side positions).
+            // /frame/reorder is atomic on the server; sequential single-frame
+            // updates would destroy entries at the target positions, which is
+            // why we route through this dedicated endpoint.
+            for (const op of pendingReorders) {
+                const res = await fetch(`${frameBase}/reorder`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Institute-Key': apiKey,
+                    },
+                    body: JSON.stringify({
+                        [idField]: videoId,
+                        entry_id: op.entry_id,
+                        to_index: op.to_index,
+                    }),
+                });
+                if (!res.ok) {
+                    const text = await res.text().catch(() => res.statusText);
+                    throw new Error(`Reorder frame failed (${op.entry_id}): ${text}`);
                 }
             }
 
@@ -1045,6 +1246,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 dirtyEntryIds: [],
                 newEntryIds: [], // all new entries are now persisted
                 deletedEntryIds: [], // server-side deletions completed above
+                pendingReorders: [], // server-side reorders completed above
                 past: [],
                 future: [],
                 isSaving: false,

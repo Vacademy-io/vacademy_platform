@@ -97,7 +97,7 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
 
     // Fetch Roles. In subOrg mode, system roles are hidden — sub-org admins can only assign
     // custom roles to their team members.
-    const SYSTEM_ROLE_NAMES = ['ADMIN', 'TEACHER', 'STUDENT', 'EVALUATOR', 'COURSE CREATOR', 'ASSESSMENT CREATOR'];
+    const SYSTEM_ROLE_NAMES = ['ADMIN', 'TEACHER', 'STUDENT', 'EVALUATOR', 'CONTENT CREATOR', 'ASSESSMENT CREATOR'];
     const { data: rolesRaw = [] } = useQuery({
         queryKey: ['roles'],
         queryFn: getAllRoles,

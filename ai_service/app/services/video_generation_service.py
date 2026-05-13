@@ -227,6 +227,8 @@ class VideoGenerationService:
         host: Optional[Any] = None,
         brand_kit_id: Optional[str] = None,
         visual_preferences: Optional[Any] = None,
+        ai_video_enabled: bool = False,
+        ai_video_audio_enabled: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -511,6 +513,8 @@ class VideoGenerationService:
                     brand_kit_id=brand_kit_id,
                     resolved_saved_avatar=resolved_saved_avatar,
                     visual_preferences=visual_preferences,
+                    ai_video_enabled=ai_video_enabled,
+                    ai_video_audio_enabled=ai_video_audio_enabled,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -602,6 +606,11 @@ class VideoGenerationService:
         brand_kit_id: Optional[str] = None,
         resolved_saved_avatar: Optional[Dict[str, Any]] = None,
         visual_preferences: Optional[Any] = None,
+        # AI video (Phase 3b) — per-run opt-in, ultra+ only. Passed through
+        # to pipeline.run; the pipeline downgrades to False on ineligible
+        # tiers, so callers can pass these flags unconditionally.
+        ai_video_enabled: bool = False,
+        ai_video_audio_enabled: bool = False,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -1203,6 +1212,10 @@ class VideoGenerationService:
                     "content_type": content_type,
                     "quality_tier": quality_tier,
                     "model": model,
+                    # Persist target_stage (canonical uppercase: SCRIPT/TTS/WORDS/HTML/RENDER)
+                    # so the FE can distinguish review-mode runs (target_stage='SCRIPT')
+                    # from full runs without depending on SSE replay state.
+                    "target_stage": self.STAGES[target_stage_idx],
                     "target_duration": target_duration,
                     "target_audience": target_audience,
                     "orientation": orientation,
@@ -1629,6 +1642,11 @@ class VideoGenerationService:
                     # IntentRouter free-text scan (free-text wins on overlap).
                     # Empty / all-None → pipeline behaves identically to today.
                     visual_preferences=visual_prefs_resolved or None,
+                    # AI video (Phase 3b): the pipeline gates eligibility by
+                    # tier internally and downgrades silently when ineligible,
+                    # so it's safe to forward whatever the request had.
+                    ai_video_enabled=bool(ai_video_enabled),
+                    ai_video_audio_enabled=bool(ai_video_audio_enabled),
                     progress_callback=_progress_cb,
                     stop_event=stop_event,
                 )
@@ -3368,6 +3386,85 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 "video_id": video_id,
                 "updated_frame_index": frame_index,
                 "message": "Frame updated successfully. Player should reflect changes immediately."
+            }
+
+
+    async def reorder_video_frame(
+        self,
+        video_id: str,
+        entry_id: str,
+        to_index: int,
+    ) -> Dict[str, Any]:
+        """
+        Move a frame to a new positional index in the timeline.
+
+        Looked up by entry_id (the only safe key — positional indices shift
+        after every reorder, so a client-provided from_index can race the
+        server's view). The entry is spliced from its current position and
+        inserted at `to_index`, clamped to [0, len-1]. All other fields
+        (html, inTime/exitTime, z, meta.total_duration) are left untouched.
+
+        Atomic on the server side — the timeline JSON is reloaded, modified
+        in memory, and re-uploaded as one S3 PUT. No partial-failure window
+        where the timeline could end up missing an entry.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        if not entry_id:
+            raise ValueError("entry_id is required for reorder")
+
+        from ..config import get_settings
+        with tempfile.TemporaryDirectory() as temp_dir:
+            data, entries, _meta, is_wrapped, key, file_path = self._load_timeline(video_id, temp_dir)
+            settings = get_settings()
+            bucket = settings.aws_bucket_name
+
+            from_index = -1
+            for i, e in enumerate(entries):
+                if e.get("id") == entry_id:
+                    from_index = i
+                    break
+            if from_index < 0:
+                raise ValueError(
+                    f"Entry '{entry_id}' not found in video '{video_id}'"
+                )
+
+            # Clamp to_index to a valid range. The post-splice length is
+            # len(entries) (we re-insert what we just removed), so the
+            # valid insert range is [0, len-1].
+            clamped_to = max(0, min(to_index, len(entries) - 1))
+            if clamped_to == from_index:
+                logger.info(
+                    "reorder_video_frame: entry %s already at index %d, no-op",
+                    entry_id, from_index,
+                )
+                return {
+                    "status": "success",
+                    "video_id": video_id,
+                    "entry_id": entry_id,
+                    "from_index": from_index,
+                    "to_index": from_index,
+                    "message": "Frame already at target index (no-op).",
+                }
+
+            moved = entries.pop(from_index)
+            entries.insert(clamped_to, moved)
+
+            if is_wrapped:
+                data["entries"] = entries
+            else:
+                data = entries
+
+            self._save_timeline(data, file_path, bucket, key)
+
+            return {
+                "status": "success",
+                "video_id": video_id,
+                "entry_id": entry_id,
+                "from_index": from_index,
+                "to_index": clamped_to,
+                "message": "Frame reordered successfully.",
             }
 
 

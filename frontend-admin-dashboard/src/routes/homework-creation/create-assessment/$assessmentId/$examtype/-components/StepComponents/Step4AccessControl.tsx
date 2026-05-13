@@ -240,7 +240,7 @@ const Step4AccessControl: React.FC<StepContentProps> = ({
             fetchInstituteDashboardUsers(instituteId, {
                 roles: [
                     { id: '1', name: 'ADMIN' },
-                    { id: '2', name: 'COURSE CREATOR' },
+                    { id: '2', name: 'CONTENT CREATOR' },
                     { id: '3', name: 'ASSESSMENT CREATOR' },
                     { id: '4', name: 'EVALUATOR' },
                     { id: '5', name: 'TEACHER' },
@@ -505,7 +505,7 @@ const AccessControlCards = ({
             selectedFilter: {
                 roles: [
                     { id: '1', name: 'ADMIN' },
-                    { id: '2', name: 'COURSE CREATOR' },
+                    { id: '2', name: 'CONTENT CREATOR' },
                     { id: '3', name: 'ASSESSMENT CREATOR' },
                     { id: '4', name: 'EVALUATOR' },
                     { id: '5', name: 'TEACHER' },
@@ -525,7 +525,7 @@ const AccessControlCards = ({
             selectedFilter: {
                 roles: [
                     { id: '1', name: 'ADMIN' },
-                    { id: '2', name: 'COURSE CREATOR' },
+                    { id: '2', name: 'CONTENT CREATOR' },
                     { id: '3', name: 'ASSESSMENT CREATOR' },
                     { id: '4', name: 'EVALUATOR' },
                     { id: '5', name: 'TEACHER' },
@@ -724,7 +724,7 @@ const AccessControlCards = ({
                                                                             'ADMIN'
                                                                                 ? 'bg-[#F4F9FF]'
                                                                                 : role.roleName ===
-                                                                                    'COURSE CREATOR'
+                                                                                    'CONTENT CREATOR'
                                                                                   ? 'bg-[#F4FFF9]'
                                                                                   : role.roleName ===
                                                                                       'ASSESSMENT CREATOR'
@@ -832,7 +832,7 @@ const AccessControlCards = ({
                                                                     role.roleName === 'ADMIN'
                                                                         ? 'bg-[#F4F9FF]'
                                                                         : role.roleName ===
-                                                                            'COURSE CREATOR'
+                                                                            'CONTENT CREATOR'
                                                                           ? 'bg-[#F4FFF9]'
                                                                           : role.roleName ===
                                                                               'ASSESSMENT CREATOR'

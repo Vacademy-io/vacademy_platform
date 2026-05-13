@@ -43,7 +43,7 @@ const InviteUsersTab: React.FC<InviteUsersTabProps> = ({
                                                             role.role_name === 'ADMIN'
                                                                 ? 'bg-[#F4F9FF]'
                                                                 : role.role_name ===
-                                                                    'COURSE CREATOR'
+                                                                    'CONTENT CREATOR'
                                                                   ? 'bg-[#F4FFF9]'
                                                                   : role.role_name ===
                                                                       'ASSESSMENT CREATOR'

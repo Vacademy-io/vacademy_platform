@@ -79,7 +79,7 @@ const InstituteUsersComponent: React.FC<InviteUsersTabProps> = ({
                                                         className={`whitespace-nowrap rounded-lg border border-neutral-300 py-1.5 font-thin shadow-none ${role.role_name === 'ADMIN'
                                                                 ? 'bg-[#F4F9FF]'
                                                                 : role.role_name ===
-                                                                    'COURSE CREATOR'
+                                                                    'CONTENT CREATOR'
                                                                     ? 'bg-[#F4FFF9]'
                                                                     : role.role_name ===
                                                                         'ASSESSMENT CREATOR'

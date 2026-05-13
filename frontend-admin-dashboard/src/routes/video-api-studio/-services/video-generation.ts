@@ -1,7 +1,13 @@
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 
 export type VideoStage = 'PENDING' | 'SCRIPT' | 'TTS' | 'WORDS' | 'HTML' | 'RENDER';
-export type VideoStatusType = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'STALLED';
+export type VideoStatusType =
+    | 'PENDING'
+    | 'IN_PROGRESS'
+    | 'COMPLETED'
+    | 'FAILED'
+    | 'STALLED'
+    | 'CANCELLED';
 
 export type VoiceGender = 'female' | 'male';
 export type TtsProvider = 'standard' | 'premium';
@@ -201,7 +207,12 @@ export interface ReferenceFile {
 // Mirrors the BE schema in app/schemas/video_generation.py (HostConfig).
 // Available on ultra / super_ultra only — lower tiers reject at the API edge.
 
-export type AvatarModel = 'fal-ai/kling-video/ai-avatar/v2/standard' | 'veed/fabric-1.0';
+export type AvatarModel =
+    | 'fal-ai/kling-video/ai-avatar/v2/standard'
+    | 'fal-ai/kling-video/ai-avatar/v2/pro'
+    | 'fal-ai/heygen/avatar4/image-to-video'
+    | 'veed/fabric-1.0'
+    | 'fal-ai/flashtalk';
 
 export type AvatarQuality = '480p' | '720p';
 
@@ -251,6 +262,11 @@ export interface HostConfig {
 
 export const AVATAR_MODELS: Array<{ value: AvatarModel; label: string; perSecondUsd: number }> = [
     {
+        value: 'fal-ai/flashtalk',
+        label: 'FlashTalk (fast, budget)',
+        perSecondUsd: 0.02,
+    },
+    {
         value: 'fal-ai/kling-video/ai-avatar/v2/standard',
         label: 'Kling AI Avatar v2 (Standard)',
         perSecondUsd: 0.0562,
@@ -259,6 +275,16 @@ export const AVATAR_MODELS: Array<{ value: AvatarModel; label: string; perSecond
         value: 'veed/fabric-1.0',
         label: 'VEED Fabric 1.0',
         perSecondUsd: 0.08,
+    },
+    {
+        value: 'fal-ai/heygen/avatar4/image-to-video',
+        label: 'HeyGen Avatar 4',
+        perSecondUsd: 0.1,
+    },
+    {
+        value: 'fal-ai/kling-video/ai-avatar/v2/pro',
+        label: 'Kling AI Avatar v2 (Pro)',
+        perSecondUsd: 0.115,
     },
 ];
 
@@ -696,19 +722,64 @@ export interface VideoMetadataIntentOutcomes {
 }
 
 /**
+ * Snapshot of the GenerateVideoRequest the BE persisted at gen start —
+ * everything the pipeline view's Pitch / Configuration card displays. BE
+ * writes this once at `extra_metadata.user_selections` after the intent
+ * router resolves, so it's available from the first poll onward (no SSE
+ * dependency).
+ */
+export interface VideoStatusUserSelections {
+    prompt?: string;
+    content_type?: ContentType;
+    quality_tier?: QualityTier;
+    model?: string;
+    /** Canonical uppercase target stage (SCRIPT/TTS/WORDS/HTML/RENDER). Lets
+     *  the FE distinguish review-mode runs from full runs without SSE state. */
+    target_stage?: VideoStage;
+    target_duration?: string;
+    target_audience?: string;
+    orientation?: VideoOrientation;
+    language?: string;
+    voice_gender?: VoiceGender;
+    tts_provider?: TtsProvider;
+    voice_id?: string | null;
+    html_quality?: 'classic' | 'advanced';
+    captions_enabled?: boolean;
+    generate_avatar?: boolean;
+    avatar_image_url?: string | null;
+    sound_effects_enabled?: boolean | null;
+    background_music_enabled?: boolean | null;
+    background_music_volume?: number | null;
+    sub_shots_enabled?: boolean;
+    mute_tts_on_source_clips_kwarg?: boolean;
+    input_video_ids?: string[];
+    input_video_audio?: 'original' | 'tts' | null;
+    reference_files_count?: number;
+    routing_overrides?: Record<string, unknown> | null;
+    /** Top-level mirror of HostConfig — full shape on the request type. */
+    host?: {
+        type?: 'avatar' | 'raw';
+        host_in_video_percentage?: number;
+        avatar?: Record<string, unknown>;
+        raw?: Record<string, unknown>;
+    };
+    visual_preferences?: Record<string, unknown> | null;
+}
+
+/**
  * Subset of `extra_metadata` the FE pipeline view reads. Returned inside
  * `VideoStatusResponse.metadata` (BE writes `metadata` via `extra_metadata`).
  */
 export interface VideoStatusMetadata {
-    user_selections?: {
-        host?: { type?: 'avatar' | 'raw' };
-        generate_avatar?: boolean;
-        background_music_enabled?: boolean | null;
-    };
+    user_selections?: VideoStatusUserSelections;
     host?: VideoMetadataHostBlock;
     /** Top-level legacy mirror of background_music_enabled. */
     background_music_enabled?: boolean | null;
     intent_outcomes?: VideoMetadataIntentOutcomes;
+    /** Background-music track URL once the BE writes the merged Lyria track
+     *  to metadata. Not populated today — comes online when Phase 3 BE work
+     *  flushes music outputs to /status. Read defensively. */
+    audio_tracks?: Array<{ id?: string; url?: string; label?: string }>;
     [key: string]: unknown;
 }
 
@@ -717,12 +788,25 @@ export interface VideoStatusResponse {
     video_id: string;
     current_stage: VideoStage;
     status: VideoStatusType;
+    content_type?: ContentType;
+    /** Original prompt as persisted on the video record. */
+    prompt?: string | null;
+    language?: string;
+    /** BE returns every populated key; FE reads defensively via lookup. */
     s3_urls: {
         script?: string;
         audio?: string;
+        words?: string;
+        timeline?: string;
+        avatar?: string;
         video?: string;
+        [key: string]: string | undefined;
     };
+    file_ids?: Record<string, string | null | undefined>;
+    error_message?: string | null;
     created_at: string;
+    updated_at?: string | null;
+    completed_at?: string | null;
     /** Real-time sub-stage breakdown — populated while generation is in progress and after completion */
     generation_progress?: GenerationProgress | null;
     /** BE-side `extra_metadata` — see VideoStatusMetadata for the surface area we read. */

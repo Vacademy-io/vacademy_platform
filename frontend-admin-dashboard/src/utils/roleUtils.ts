@@ -3,7 +3,7 @@ import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSett
 
 const ROLE_MAPPING = {
     ADMIN: SystemTerms.Admin,
-    'COURSE CREATOR': SystemTerms.CourseCreator,
+    'CONTENT CREATOR': SystemTerms.CourseCreator,
     'ASSESSMENT CREATOR': SystemTerms.AssessmentCreator,
     EVALUATOR: SystemTerms.Evaluator,
     TEACHER: SystemTerms.Teacher,
@@ -16,7 +16,7 @@ type BackendRole = keyof typeof ROLE_MAPPING;
 const specialRoleMapping = (roleName: string): string => {
     // Remove spaces and convert to proper case for special roles
     switch (roleName) {
-        case 'COURSE CREATOR':
+        case 'CONTENT CREATOR':
             return RoleTerms.CourseCreator;
         case 'ASSESSMENT CREATOR':
             return RoleTerms.AssessmentCreator;
@@ -26,7 +26,7 @@ const specialRoleMapping = (roleName: string): string => {
 };
 
 const isSpecialRole = (roleName: string): boolean => {
-    return roleName === 'COURSE CREATOR' || roleName === 'ASSESSMENT CREATOR';
+    return roleName === 'CONTENT CREATOR' || roleName === 'ASSESSMENT CREATOR';
 };
 /**
  * Maps a backend role name to its custom terminology based on naming settings

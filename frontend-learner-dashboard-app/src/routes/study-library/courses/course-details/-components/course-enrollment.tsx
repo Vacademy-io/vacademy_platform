@@ -81,6 +81,7 @@ interface CourseEnrollmentProps {
   hasRightSidebar: boolean;
   paymentType?: string | null;
   certificateUrl?: string | null;
+  packageSessionIdForCurrentLevel?: string | null;
   onBatchChange: (value: string) => void;
   onEnrollmentClick: () => void;
 }
@@ -100,6 +101,7 @@ export const CourseEnrollment = ({
   hasRightSidebar,
   paymentType,
   certificateUrl,
+  packageSessionIdForCurrentLevel,
   onBatchChange,
   onEnrollmentClick,
 }: CourseEnrollmentProps) => {
@@ -136,12 +138,26 @@ export const CourseEnrollment = ({
     selectedTab === "ALL" &&
     !isEnrolledInCourse;
   const showNoSessionsWarning = safeSessionOptions.length === 0;
+  const currentPackageSessionId =
+    selectedBatchId || packageSessionIdForCurrentLevel || "";
   const isAlreadyEnrolledInCurrent = safeEnrolledSessions.some(
-    (enrolledSession) =>
-      enrolledSession.package_dto.id === courseId &&
-      enrolledSession.session.id === selectedSession &&
-      enrolledSession.level.id === selectedLevel &&
-      (!selectedBatchId || enrolledSession.id === selectedBatchId),
+    (enrolledSession) => {
+      // Original trio match (preserved).
+      if (
+        enrolledSession.package_dto.id === courseId &&
+        enrolledSession.session.id === selectedSession &&
+        enrolledSession.level.id === selectedLevel &&
+        (!selectedBatchId || enrolledSession.id === selectedBatchId)
+      ) {
+        return true;
+      }
+      // Additive: match by package_session_id when session/level on the
+      // enrollment record are empty/placeholder.
+      return (
+        !!currentPackageSessionId &&
+        enrolledSession.id === currentPackageSessionId
+      );
+    },
   );
   const showInlineEnroll =
     !hasRightSidebar &&
@@ -304,15 +320,7 @@ export const CourseEnrollment = ({
           selectedTab === "ALL" &&
           (() => {
             if (!selectedSession || !selectedLevel) return null;
-            const safeEnrolledSessions = enrolledSessions || [];
-            const isAlreadyEnrolled = safeEnrolledSessions.some(
-              (enrolledSession) =>
-                enrolledSession.package_dto.id === courseId &&
-                enrolledSession.session.id === selectedSession &&
-                enrolledSession.level.id === selectedLevel &&
-                (!selectedBatchId || enrolledSession.id === selectedBatchId),
-            );
-            if (isAlreadyEnrolled) return null;
+            if (isAlreadyEnrolledInCurrent) return null;
             return (
               <div className="mt-4 pt-4 border-t border-border/50">
                 <Button

@@ -120,12 +120,23 @@ export const CourseSidebar = ({
   const capitalizeFirst = (text: string): string => text;
 
   const safeEnrolledSessions = enrolledSessions || [];
-  const isAlreadyEnrolled = safeEnrolledSessions.some(
-    (enrolledSession) =>
+  const isAlreadyEnrolled = safeEnrolledSessions.some((enrolledSession) => {
+    // Original trio match — works when session/level resolve to real UUIDs.
+    if (
       enrolledSession.package_dto.id === courseId &&
       enrolledSession.session.id === selectedSession &&
-      enrolledSession.level.id === selectedLevel,
-  );
+      enrolledSession.level.id === selectedLevel
+    ) {
+      return true;
+    }
+    // Additive: match by package_session_id (unique batch key). Covers cases
+    // where the enrollment record carries empty/DEFAULT session/level ids
+    // (e.g. backend PROGRESS results for courses with placeholder sessions).
+    return (
+      !!packageSessionIdForCurrentLevel &&
+      enrolledSession.id === packageSessionIdForCurrentLevel
+    );
+  });
 
   // Compute total duration
   const totalDuration = (() => {

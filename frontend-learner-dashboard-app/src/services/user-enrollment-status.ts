@@ -1,10 +1,111 @@
 import axios from "axios";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
-import { BASE_URL } from "@/constants/urls";
+import { BASE_URL, urlPublicCourseDetails } from "@/constants/urls";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 
 const LEARNER_INFO_URL = `${BASE_URL}/admin-core-service/learner/info/v1/details`;
 const USER_PLAN_URL = `${BASE_URL}/admin-core-service/v1/user-plan`;
+
+export interface EnrolledCourseSummary {
+  id: string;
+  package_name: string;
+  package_session_id: string;
+  level_id: string | null;
+  level_name: string | null;
+  session_id: string | null;
+  session_name: string | null;
+}
+
+interface LearnerPackagesSearchResponse {
+  content: Array<{
+    id: string;
+    package_name: string;
+    package_session_id: string;
+    level_id: string | null;
+    level_name: string | null;
+    session_id: string | null;
+    session_name: string | null;
+  }>;
+  totalPages: number;
+  last: boolean;
+  number: number;
+}
+
+const ENROLLED_PAGE_SIZE = 100;
+
+const fetchEnrolledByType = async (
+  instituteId: string,
+  type: "PROGRESS" | "COMPLETED",
+): Promise<LearnerPackagesSearchResponse["content"]> => {
+  const requestPage = async (page: number) => {
+    const response =
+      await authenticatedAxiosInstance.post<LearnerPackagesSearchResponse>(
+        urlPublicCourseDetails,
+        {
+          status: [],
+          level_ids: [],
+          faculty_ids: [],
+          search_by_name: "",
+          tag: [],
+          min_percentage_completed: 0,
+          max_percentage_completed: 0,
+          type,
+          sort_columns: { created_at: "DESC" },
+        },
+        {
+          params: { instituteId, page, size: ENROLLED_PAGE_SIZE },
+          headers: { accept: "*/*", "Content-Type": "application/json" },
+        },
+      );
+    return response.data;
+  };
+
+  const first = await requestPage(0);
+  const all = [...(first?.content ?? [])];
+  if (first && !first.last && first.totalPages > 1) {
+    const remaining = await Promise.all(
+      Array.from({ length: first.totalPages - 1 }, (_, i) =>
+        requestPage(i + 1),
+      ),
+    );
+    remaining.forEach((page) => all.push(...(page?.content ?? [])));
+  }
+  return all;
+};
+
+// Returns courses the learner is enrolled in — both in-progress and completed —
+// so the "All Courses" tab can hide "Enroll Now" for either state.
+export const fetchEnrolledCoursePackages = async (
+  instituteId: string,
+): Promise<EnrolledCourseSummary[]> => {
+  const [progress, completed] = await Promise.all([
+    fetchEnrolledByType(instituteId, "PROGRESS").catch(() => []),
+    fetchEnrolledByType(instituteId, "COMPLETED").catch(() => []),
+  ]);
+
+  const byPackageSessionId = new Map<
+    string,
+    LearnerPackagesSearchResponse["content"][number]
+  >();
+  // Order matters only for dedup tiebreak; both responses carry the same shape.
+  for (const c of progress) byPackageSessionId.set(c.package_session_id, c);
+  for (const c of completed) {
+    if (!byPackageSessionId.has(c.package_session_id)) {
+      byPackageSessionId.set(c.package_session_id, c);
+    }
+  }
+
+  return Array.from(byPackageSessionId.values()).map((c) => ({
+    id: c.id,
+    package_name: c.package_name,
+    package_session_id: c.package_session_id,
+    level_id: c.level_id,
+    level_name: c.level_name,
+    session_id: c.session_id,
+    session_name: c.session_name,
+  }));
+};
 
 export interface LearnerInfo {
   id: string;

@@ -178,6 +178,61 @@ export function GlobalDefaultsSection({
                         </div>
                     )}
 
+                    {/* Default Validity (Days) — hidden when ONE_TIME with toggle off */}
+                    {(globalDefaults.payment_config.payment_type === 'SUBSCRIPTION' ||
+                        (globalDefaults.payment_config.payment_type === 'ONE_TIME' &&
+                            globalDefaults.payment_config.is_validity_applicable !== false)) && (
+                        <div className="space-y-1.5">
+                            <Label className="text-xs text-neutral-600">
+                                Default Validity (Days)
+                            </Label>
+                            <Input
+                                type="number"
+                                className="h-8 text-xs"
+                                placeholder="e.g., 365"
+                                value={globalDefaults.payment_config.validity_in_days ?? ''}
+                                onChange={(e) =>
+                                    onUpdate({
+                                        payment_config: {
+                                            ...globalDefaults.payment_config,
+                                            validity_in_days: e.target.value
+                                                ? Number(e.target.value)
+                                                : undefined,
+                                        },
+                                    })
+                                }
+                            />
+                        </div>
+                    )}
+
+                    {/* Set Validity toggle (ONE_TIME only) */}
+                    {globalDefaults.payment_config.payment_type === 'ONE_TIME' && (
+                        <div className="flex items-center gap-2 pt-5">
+                            <Switch
+                                id="global-set-validity"
+                                checked={globalDefaults.payment_config.is_validity_applicable !== false}
+                                onCheckedChange={(checked) =>
+                                    onUpdate({
+                                        payment_config: {
+                                            ...globalDefaults.payment_config,
+                                            is_validity_applicable: checked,
+                                            validity_in_days: checked
+                                                ? globalDefaults.payment_config.validity_in_days
+                                                : null,
+                                        },
+                                    })
+                                }
+                            />
+                            <Label
+                                htmlFor="global-set-validity"
+                                className="text-xs text-neutral-600"
+                                title="Turn off for one-time purchases that don't expire"
+                            >
+                                Set validity
+                            </Label>
+                        </div>
+                    )}
+
                     {/* Max Slots */}
                     <div className="space-y-1.5">
                         <Label className="text-xs text-neutral-600">

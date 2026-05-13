@@ -232,7 +232,7 @@ if (!rootElement.innerHTML) {
         <ColorThemeProvider>
           <QueryClientProvider client={queryClient}>
             <NotificationWrapper>
-              <SidebarProvider defaultOpen={false}>
+              <SidebarProvider defaultOpen={true}>
                 <RouterProvider router={router} />
                 <Toaster />
               </SidebarProvider>

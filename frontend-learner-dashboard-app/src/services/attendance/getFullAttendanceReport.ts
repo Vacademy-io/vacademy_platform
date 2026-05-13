@@ -78,8 +78,10 @@ export const fetchFullAttendanceReport = async (
   if (params.batchId) queryParams.batchId = params.batchId;
   if (params.instituteId) queryParams.instituteId = params.instituteId;
   if (params.daysBack !== undefined) queryParams.daysBack = String(params.daysBack);
-  // Note: backend currently uses daysBack — from/to are accepted as URL params
-  // for deep-linking from the email but the backend computes the window itself.
+  // from/to take precedence over daysBack on the backend. The email "View Full
+  // Report" link passes the exact window the email summarised, so the portal
+  // report matches the email line-for-line. When only daysBack is supplied
+  // (no deep link), the backend computes "today and the last N days".
   if (params.from) queryParams.from = params.from;
   if (params.to) queryParams.to = params.to;
 

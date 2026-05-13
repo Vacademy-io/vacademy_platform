@@ -41,10 +41,12 @@ function getInstituteName(): string {
     return domain.charAt(0).toUpperCase() + domain.slice(1);
 }
 
-// In dev: Vite proxies /slack-api → https://slack.com/api and /slack-files → https://files.slack.com
-// In prod: set VITE_SLACK_API_BASE to your backend proxy URL
-const SLACK_API = import.meta.env.VITE_SLACK_API_BASE ?? '/slack-api';
-const SLACK_FILES = import.meta.env.VITE_SLACK_FILES_BASE ?? '/slack-files';
+// Set VITE_SLACK_API_BASE / VITE_SLACK_FILES_BASE to a backend proxy that forwards
+// to slack.com/api and files.slack.com. Without a proxy we cannot use the bot-token
+// path (browser CORS + token would leak), so we fall back to the webhook.
+const SLACK_API = import.meta.env.VITE_SLACK_API_BASE as string | undefined;
+const SLACK_FILES = import.meta.env.VITE_SLACK_FILES_BASE as string | undefined;
+const HAS_SLACK_PROXY = !!SLACK_API && !!SLACK_FILES;
 
 async function uploadFileToSlack(file: File, token: string): Promise<string | null> {
     try {
@@ -57,9 +59,10 @@ async function uploadFileToSlack(file: File, token: string): Promise<string | nu
         if (!urlData.ok) return null;
 
         // Step 2: upload file — rewrite upload_url to go through our proxy
+        // (only reached when HAS_SLACK_PROXY is true, so SLACK_FILES is defined)
         const proxyUploadUrl = (urlData.upload_url as string).replace(
             'https://files.slack.com',
-            SLACK_FILES
+            SLACK_FILES!
         );
         await fetch(proxyUploadUrl, {
             method: 'POST',
@@ -145,8 +148,8 @@ async function sendToSlack({
         },
     ];
 
-    // If bot token + channel are set, use the proper API (supports file uploads)
-    if (botToken && channelId) {
+    // If bot token + channel + a working proxy are set, use the proper API (supports file uploads)
+    if (botToken && channelId && HAS_SLACK_PROXY) {
         const msgRes = await fetch(`${SLACK_API}/chat.postMessage`, {
             method: 'POST',
             headers: {
@@ -155,7 +158,7 @@ async function sendToSlack({
             },
             body: JSON.stringify({ channel: channelId, blocks }),
         });
-        const msgData = await msgRes.json();
+        const msgData = await msgRes.json().catch(() => ({ ok: false }));
 
         // Upload files if any
         if (files && files.length > 0 && msgData.ok) {

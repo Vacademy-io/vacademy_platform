@@ -100,7 +100,7 @@ export const StudentsListSection = () => {
         setAppliedFilters,
         handleSessionChange,
         setColumnFilters,
-    } = useStudentFilters();
+    } = useStudentFilters({ allowAllSessions: true });
 
     const filters = GetFilterData(instituteDetails, currentSession.id);
 

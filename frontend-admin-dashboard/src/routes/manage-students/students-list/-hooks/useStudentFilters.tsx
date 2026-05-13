@@ -8,8 +8,13 @@ import {
     DropdownValueType,
 } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
 import { useNavigate, useSearch } from '@tanstack/react-router';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
-export const useStudentFilters = () => {
+export const ALL_SESSIONS_ID = '__ALL__';
+
+export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) => {
+    const { allowAllSessions = false } = options;
     const navigate = useNavigate();
     const searchParams = useSearch({ strict: false }) as Record<string, any>;
     const INSTITUTE_ID = getCurrentInstituteId();
@@ -22,18 +27,26 @@ export const useStudentFilters = () => {
     const [searchFilter, setSearchFilter] = useState('');
     const [clearFilters, setClearFilters] = useState<boolean>(false);
     const hasInitializedFilters = useRef(false);
-    const [sessionList, setSessionList] = useState<DropdownItemType[]>(
-        getAllSessions().map((session) => ({
+    const buildAllOption = (): DropdownItemType => ({
+        id: ALL_SESSIONS_ID,
+        name: `All ${getTerminologyPlural(ContentTerms.Session, SystemTerms.Session)}`,
+    });
+    const buildSessionList = (): DropdownItemType[] => {
+        const sessions = getAllSessions().map((session) => ({
             id: session.id,
             name: session.session_name,
-        }))
-    );
+        }));
+        return allowAllSessions ? [buildAllOption(), ...sessions] : sessions;
+    };
+
+    const [sessionList, setSessionList] = useState<DropdownItemType[]>(buildSessionList());
     const [currentSession, setCurrentSession] = useState<DropdownItemType>(() => {
         const urlSessionId = searchParams.session as string | undefined;
         if (urlSessionId) {
             const urlSession = sessionList.find((s) => s.id === urlSessionId);
             if (urlSession) return urlSession;
         }
+        if (allowAllSessions) return buildAllOption();
         const defaultSession = sessionList[0] || { id: '', name: '' };
         return selectedSession && sessionList.find((session) => session.id === selectedSession.id)
             ? { id: selectedSession.id, name: selectedSession.session_name }
@@ -41,12 +54,9 @@ export const useStudentFilters = () => {
     });
 
     useEffect(() => {
-        setSessionList(
-            getAllSessions().map((session) => ({
-                id: session.id,
-                name: session.session_name,
-            }))
-        );
+        setSessionList(buildSessionList());
+        // Preserve the synthetic "All" selection across institute reloads.
+        if (currentSession?.id === ALL_SESSIONS_ID) return;
         if (currentSession && sessionList.includes(currentSession)) {
             const session = getAllSessions().find((session) => session.id === currentSession.id);
             if (session) {
@@ -72,21 +82,30 @@ export const useStudentFilters = () => {
 
     // Compute initial package session IDs from current session
     const getPackageSessionIdsForSession = useCallback((sessionId: string) => {
+        if (sessionId === ALL_SESSIONS_ID) return [];
         return (instituteDetails?.batches_for_sessions || [])
             .filter((batch) => batch.session.id === sessionId)
             .map((batch) => batch.id);
     }, [instituteDetails]);
 
     const [appliedFilters, setAppliedFilters] = useState<StudentFilterRequest>(() => {
-        // URL session param takes highest priority so refresh preserves the selected session
-        const initialSessionId =
-            (searchParams.session as string) ||
-            selectedSession?.id ||
-            getAllSessions()[0]?.id ||
-            '';
-        const initialPksIds = (instituteDetails?.batches_for_sessions || [])
-            .filter((batch) => batch.session.id === initialSessionId)
-            .map((batch) => batch.id);
+        // URL session param takes highest priority so refresh preserves the selected session.
+        // When "All sessions" is the default (no URL param), send empty PS list — backend treats
+        // empty as "no filter" and returns customers across every session.
+        const urlSessionId = searchParams.session as string | undefined;
+        let initialPksIds: string[];
+        if (!urlSessionId && allowAllSessions) {
+            initialPksIds = [];
+        } else {
+            const initialSessionId =
+                urlSessionId ||
+                selectedSession?.id ||
+                getAllSessions()[0]?.id ||
+                '';
+            initialPksIds = (instituteDetails?.batches_for_sessions || [])
+                .filter((batch) => batch.session.id === initialSessionId)
+                .map((batch) => batch.id);
+        }
 
         return {
             name: '',
@@ -163,8 +182,9 @@ export const useStudentFilters = () => {
                     package_session_ids: sessionPksIds,
                 }));
             }
-        } else if (currentSession?.id) {
-            // Set session in URL if not present
+        } else if (currentSession?.id && currentSession.id !== ALL_SESSIONS_ID) {
+            // Set session in URL if not present. Skip for the synthetic "All" — we
+            // intentionally keep the URL clean so refresh stays on the All view.
             const currentParams = new URLSearchParams(window.location.search);
             currentParams.set('session', currentSession.id);
             const newUrl = `${window.location.pathname}?${currentParams.toString()}`;
@@ -419,6 +439,24 @@ export const useStudentFilters = () => {
         if (value && typeof value === 'object' && 'id' in value && 'name' in value) {
             const newSessionId = (value as DropdownItemType).id;
             setCurrentSession(value as DropdownItemType);
+
+            // "All sessions" branch: clear PS scoping, drop session/batch from URL.
+            // Leave useSelectedSessionStore untouched — it's shared with other pages
+            // (Study Library, reports, etc.) that require a real session selection.
+            if (newSessionId === ALL_SESSIONS_ID) {
+                setColumnFilters((prev) => prev.filter((f) => f.id !== 'batch'));
+                setAppliedFilters((prev) => ({
+                    ...prev,
+                    package_session_ids: [],
+                }));
+                const currentParams = new URLSearchParams(window.location.search);
+                currentParams.delete('session');
+                currentParams.delete('batch');
+                const newUrl = `${window.location.pathname}?${currentParams.toString()}`;
+                window.history.replaceState({}, '', newUrl);
+                return;
+            }
+
             const session = getAllSessions().find(
                 (session) => session.id === newSessionId
             );
@@ -591,9 +629,11 @@ export const useStudentFilters = () => {
             });
         }
 
-        // Keep session
-        if (currentSession?.id) {
+        // Keep session — but never write the synthetic "All" sentinel to the URL.
+        if (currentSession?.id && currentSession.id !== ALL_SESSIONS_ID) {
             currentParams.set('session', currentSession.id);
+        } else {
+            currentParams.delete('session');
         }
 
         // Add new filter values
@@ -657,9 +697,11 @@ export const useStudentFilters = () => {
         setSearchFilter('');
         setSearchInput('');
 
-        const pksids = (instituteDetails?.batches_for_sessions || [])
-            .filter((batch) => batch.session.id === currentSession.id)
-            .map((batch) => batch.id);
+        const pksids = currentSession.id === ALL_SESSIONS_ID
+            ? []
+            : (instituteDetails?.batches_for_sessions || [])
+                .filter((batch) => batch.session.id === currentSession.id)
+                .map((batch) => batch.id);
 
         // Clear filter params but preserve other URL params (like courseId)
         const currentParams = new URLSearchParams(window.location.search);
@@ -682,9 +724,11 @@ export const useStudentFilters = () => {
             });
         }
 
-        // Keep session
-        if (currentSession?.id) {
+        // Keep session — but never write the synthetic "All" sentinel to the URL.
+        if (currentSession?.id && currentSession.id !== ALL_SESSIONS_ID) {
             currentParams.set('session', currentSession.id);
+        } else {
+            currentParams.delete('session');
         }
 
         const newUrl = `${window.location.pathname}?${currentParams.toString()}`;

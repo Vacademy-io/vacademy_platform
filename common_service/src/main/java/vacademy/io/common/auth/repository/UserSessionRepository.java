@@ -45,6 +45,8 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
        @Query("UPDATE UserSession u SET u.isActive = false, u.logoutTime = :logoutTime WHERE u.sessionToken = :sessionToken")
        void endSession(@Param("sessionToken") String sessionToken, @Param("logoutTime") LocalDateTime logoutTime);
 
+       // End inactive sessions — uses SKIP LOCKED so the bulk cleanup never deadlocks
+       // with a concurrent endSession/endAllSessions call that holds a row lock.
        @Modifying
        @Transactional
        @Query(value = "UPDATE user_session SET is_active = false, logout_time = :logoutTime " +

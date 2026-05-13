@@ -26,13 +26,25 @@ import type {
     SilenceTrim,
 } from '../services/reels-api';
 
+/** Where the background video for stacked / PiP comes from.
+ *  - `auto` → backend extracts a concept from the transcript and pulls a
+ *             matching b-roll from Pexels. `background_video_url` stays null.
+ *  - `url`  → user provides their own URL via the input field. */
+export type BgvSource = 'auto' | 'url';
+
 /**
  * Shape the panel produces — a subset of `RenderRequest`. PreviewTray
  * merges this with `input_asset_id` + `candidate_id` before POSTing.
+ *
+ * `bgv_source` is FE-only — it controls UI behavior (input visibility,
+ * validation gating) but isn't sent to the backend. The backend treats
+ * `background_video_url: null` + `layout=stacked/pip` as "auto-fetch",
+ * which is exactly what the `auto` source produces.
  */
 export interface RenderConfigValue {
     aspect: Aspect;
     layout: Layout;
+    bgv_source: BgvSource;
     background_video_url: string | null;
     pace: Required<PaceConfig>;
     audio_strategy: AudioStrategy;
@@ -48,6 +60,7 @@ export interface RenderConfigValue {
 export const DEFAULT_RENDER_CONFIG: RenderConfigValue = {
     aspect: '9:16',
     layout: 'full_speaker_with_overlays',
+    bgv_source: 'auto',
     background_video_url: null,
     pace: {
         silence_trim: 'on',
@@ -147,6 +160,7 @@ export function RenderConfigPanel({
                     />
                     <LayoutGroup
                         layout={value.layout}
+                        bgvSource={value.bgv_source}
                         bgvUrl={value.background_video_url}
                         onChange={(patch) => onChange({ ...value, ...patch })}
                     />
@@ -213,21 +227,25 @@ const LAYOUTS_REQUIRING_BGV: ReadonlySet<Layout> = new Set([
 
 function LayoutGroup({
     layout,
+    bgvSource,
     bgvUrl,
     onChange,
 }: {
     layout: Layout;
+    bgvSource: BgvSource;
     bgvUrl: string | null;
     onChange: (patch: {
         layout?: Layout;
+        bgv_source?: BgvSource;
         background_video_url?: string | null;
     }) => void;
 }) {
     const wantsBgv = LAYOUTS_REQUIRING_BGV.has(layout);
     const fillCopy =
         layout === 'pip_corner_speaker'
-            ? 'Plays muted + looped behind the speaker. Without a URL, falls back to full-speaker.'
-            : 'Plays muted + looped in the bottom half. Without a URL, falls back to full-speaker.';
+            ? 'Plays muted + looped behind the speaker.'
+            : 'Plays muted + looped in the bottom half.';
+
     return (
         <Fieldset label="Layout">
             <div className="space-y-2.5">
@@ -244,24 +262,61 @@ function LayoutGroup({
                     ))}
                 </div>
                 {wantsBgv && (
-                    <div className="space-y-2 rounded-md border border-neutral-200 bg-neutral-50 p-3">
-                        <label className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-neutral-500">
-                            <Film className="size-3" />
-                            B-roll video URL
-                        </label>
-                        <input
-                            type="url"
-                            inputMode="url"
-                            placeholder="https://… (mp4, webm)"
-                            value={bgvUrl ?? ''}
-                            onChange={(e) =>
-                                onChange({
-                                    background_video_url: e.target.value.trim() || null,
-                                })
-                            }
-                            className="block w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none"
-                        />
-                        <p className="text-[11px] text-neutral-500">{fillCopy}</p>
+                    <div className="space-y-2.5 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                        <div>
+                            <p className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-neutral-500">
+                                <Film className="size-3" />
+                                B-roll source
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                                <Chip
+                                    active={bgvSource === 'auto'}
+                                    // Switching back to Auto: clear any URL the
+                                    // user typed so the request body doesn't
+                                    // accidentally send a stale value.
+                                    onClick={() =>
+                                        onChange({
+                                            bgv_source: 'auto',
+                                            background_video_url: null,
+                                        })
+                                    }
+                                    title="We pick a relevant clip from Pexels based on your transcript"
+                                >
+                                    Auto (Pexels)
+                                </Chip>
+                                <Chip
+                                    active={bgvSource === 'url'}
+                                    onClick={() => onChange({ bgv_source: 'url' })}
+                                    title="Provide your own mp4 / webm URL"
+                                >
+                                    Use URL
+                                </Chip>
+                            </div>
+                        </div>
+                        {bgvSource === 'url' ? (
+                            <div className="space-y-1.5">
+                                <input
+                                    type="url"
+                                    inputMode="url"
+                                    placeholder="https://… (mp4, webm)"
+                                    value={bgvUrl ?? ''}
+                                    onChange={(e) =>
+                                        onChange({
+                                            background_video_url:
+                                                e.target.value.trim() || null,
+                                        })
+                                    }
+                                    className="block w-full rounded-md border border-neutral-300 bg-white px-2.5 py-1.5 text-sm placeholder:text-neutral-400 focus:border-neutral-500 focus:outline-none"
+                                />
+                                <p className="text-[11px] text-neutral-500">{fillCopy}</p>
+                            </div>
+                        ) : (
+                            <p className="text-[11px] text-neutral-500">
+                                Picks a relevant clip from Pexels based on the
+                                most-emphasized topic in your reel.{' '}
+                                {fillCopy.slice(0, -1)} — no manual sourcing.
+                            </p>
+                        )}
                     </div>
                 )}
             </div>
@@ -525,10 +580,15 @@ function Toggle({
 
 function formatSummary(c: RenderConfigValue): string {
     const parts: string[] = [c.aspect];
-    if (c.layout === 'stacked_speaker_with_broll') {
-        parts.push(c.background_video_url ? 'stacked + b-roll' : 'stacked (no URL)');
-    } else if (c.layout === 'pip_corner_speaker') {
-        parts.push(c.background_video_url ? 'pip + b-roll' : 'pip (no URL)');
+    if (c.layout === 'stacked_speaker_with_broll' || c.layout === 'pip_corner_speaker') {
+        const label = c.layout === 'pip_corner_speaker' ? 'pip' : 'stacked';
+        if (c.bgv_source === 'auto') {
+            parts.push(`${label} · auto b-roll`);
+        } else if (c.background_video_url) {
+            parts.push(`${label} · custom URL`);
+        } else {
+            parts.push(`${label} (no URL)`);
+        }
     }
     if (c.pace.silence_trim !== 'on') parts.push(`silence: ${c.pace.silence_trim}`);
     if (c.pace.speed_multiplier !== 1.0) parts.push(`${c.pace.speed_multiplier.toFixed(1)}×`);

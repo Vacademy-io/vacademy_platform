@@ -27,7 +27,7 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import httpx
@@ -65,10 +65,60 @@ CTA_KILL_PHRASES = (
     "link in bio", "check the link", "hit follow",
 )
 
-# Allowed types — keep tight; FE/Director needs to know how to render each.
-_OVERLAY_TYPES = {"hook", "micro_hook", "loop_back", "emphasis"}
+# Text-only overlay types — these emit caption-style text positioned over
+# the speaker. Use the existing OverlaySpec.text field.
+_TEXT_OVERLAY_TYPES = {"hook", "micro_hook", "loop_back", "emphasis"}
+# Media overlay types (Phase 2c.5 Slice 1) — these emit a Pexels-fetched
+# video or image positioned per spec.position. Use OverlaySpec.concept.
+_MEDIA_OVERLAY_TYPES = {"broll_video", "broll_image"}
+# Stat / motion-graphic overlay types (Phase 2c.5 Slice 2) — HTML/CSS only,
+# no network. `animated_stat` uses `value` + optional `subtitle`;
+# `motion_graphic` uses `graphic_kind` + `bars`.
+_STAT_OVERLAY_TYPES = {"animated_stat", "motion_graphic"}
+# Combined "non-text visual" set — these share the cardinality cap (max 3
+# total across all four types) and the hook/loop-back protection windows.
+_NON_TEXT_VISUAL_TYPES = _MEDIA_OVERLAY_TYPES | _STAT_OVERLAY_TYPES
+# Union — keep tight; FE/Director needs to know how to render each.
+_OVERLAY_TYPES = _TEXT_OVERLAY_TYPES | _NON_TEXT_VISUAL_TYPES
 # Allowed color intents — match the caption palette so the look stays cohesive.
+# Media types ignore this field but we accept it for schema uniformity.
 _COLOR_INTENTS = {"neutral", "important", "definition", "warning"}
+# Allowed positions for media overlays.
+#   full         — replaces the speaker for the spec's duration
+#   corner       — top-right PiP-style overlay; speaker still visible
+#   lower_third  — bottom strip; speaker still visible (top 70%)
+_MEDIA_POSITIONS = {"full", "corner", "lower_third"}
+
+# Non-text-visual cardinality + timing constraints. Applies to ALL four
+# types (broll_video, broll_image, animated_stat, motion_graphic). The
+# prompt references these so the LLM stays in bounds; validator enforces.
+MAX_MEDIA_OVERLAYS = 3
+MIN_MEDIA_DURATION_S = 1.2
+MAX_MEDIA_DURATION_S = 3.5
+# Concept length cap mirrors what Pexels search handles well — short
+# phrases hit the relevance index better than long descriptions.
+MAX_CONCEPT_LEN = 40
+MIN_CONCEPT_WORDS = 1
+MAX_CONCEPT_WORDS = 4
+
+# animated_stat caps. `value` is the BIG number/word — short enough to
+# render at ~14vw without wrapping. `subtitle` is one supporting line.
+MAX_STAT_VALUE_LEN = 12
+MAX_STAT_SUBTITLE_LEN = 32
+
+# motion_graphic caps — per-kind. Each `graphic_kind` has its own
+# bar-count band, value-shape rule, and label-length cap because the
+# visual treatment differs (3 bars max for bar_chart vs 5 points max for
+# line_chart vs 2 cards exactly for comparison_icons). The director-side
+# renderer (`_build_motion_graphic_html`) MUST have a matching branch
+# per kind — add new ones to BOTH places.
+_GRAPHIC_KIND_SPECS: dict[str, dict] = {
+    "bar_chart":        {"min_bars": 2, "max_bars": 3, "values_required": True,  "max_label_len": 14},
+    "line_chart":       {"min_bars": 2, "max_bars": 5, "values_required": True,  "max_label_len": 8},
+    "pie_chart":        {"min_bars": 2, "max_bars": 4, "values_required": True,  "max_label_len": 14},
+    "comparison_icons": {"min_bars": 2, "max_bars": 2, "values_required": False, "max_label_len": 20},
+}
+_SUPPORTED_GRAPHIC_KINDS = set(_GRAPHIC_KIND_SPECS.keys())
 
 
 # ---------------------------------------------------------------------------
@@ -77,25 +127,67 @@ _COLOR_INTENTS = {"neutral", "important", "definition", "warning"}
 
 @dataclass
 class OverlaySpec:
-    """One overlay text the director will turn into a `_Shot` entry.
+    """One overlay the director will turn into a `_Shot` entry.
 
     All times are in REEL TIMELINE seconds (post-trim, post-atempo) — the
     LLM is fed remapped word timestamps so it operates entirely in reel
     coordinates and never has to think about the source video's clock.
+
+    Four flavors share this struct (only the type-relevant fields are
+    consulted by the renderer; the rest stay at defaults):
+
+      * **Text overlays** (`hook` / `micro_hook` / `loop_back` / `emphasis`)
+        — use `text` for the visible caption-style copy.
+
+      * **Media overlays** (`broll_video` / `broll_image`, Phase 2c.5
+        Slice 1) — use `concept` as the Pexels search query.
+
+      * **Stat overlays** (`animated_stat`, Phase 2c.5 Slice 2) — use
+        `value` for the headline number/word and `subtitle` for the
+        supporting copy.
+
+      * **Motion graphics** (`motion_graphic`, Phase 2c.5 Slice 2/3) —
+        use `graphic_kind` to pick the chart variant (bar_chart /
+        line_chart / pie_chart / comparison_icons) and `bars` for the
+        data points. Renderer in `reels_director_service` branches by
+        kind.
+
+    Validation enforces the type-specific required fields; the resolver
+    (`reels_director_service`) inspects `type` to choose HTML strategy.
     """
-    type: str             # "hook" | "micro_hook" | "loop_back" | "emphasis"
+    type: str
     t_start: float
     t_end: float
-    text: str
-    color_intent: str = "neutral"   # "neutral" | "important" | "definition" | "warning"
+    # Universally applicable
+    position: str = "full"
+    color_intent: str = "neutral"
+    # Text overlays
+    text: str = ""
+    # Media overlays (broll_video / broll_image)
+    concept: str = ""
+    # animated_stat
+    value: str = ""             # headline (e.g. "47%", "2x", "14 YEARS")
+    subtitle: str = ""          # supporting copy (e.g. "of users churn")
+    # motion_graphic
+    graphic_kind: str = ""      # one of _SUPPORTED_GRAPHIC_KINDS
+    # Reused across all graphic_kinds as the generic "label + value" data
+    # array — bars (bar_chart), points (line_chart), wedges (pie_chart),
+    # cards (comparison_icons). Field name kept as `bars` to avoid churn.
+    bars: list[dict] = field(default_factory=list)  # [{label: str, value: float}, …]
 
     def to_dict(self) -> dict:
         return {
             "type": self.type,
             "t_start": round(self.t_start, 3),
             "t_end": round(self.t_end, 3),
-            "text": self.text,
+            "position": self.position,
             "color_intent": self.color_intent,
+            "text": self.text,
+            "concept": self.concept,
+            "value": self.value,
+            "subtitle": self.subtitle,
+            "graphic_kind": self.graphic_kind,
+            "bars": self.bars,
         }
 
 
@@ -103,42 +195,98 @@ class OverlaySpec:
 # Prompt
 # ---------------------------------------------------------------------------
 
-REEL_DIRECTOR_SYSTEM_PROMPT = """You direct overlay text for short-form reels built from interview footage.
+REEL_DIRECTOR_SYSTEM_PROMPT = """You direct overlays for short-form reels built from interview footage.
 
-The speaker's voice IS the narration — you do NOT write the script. Your job is to add bold caption-style overlays at specific moments.
+The speaker's voice IS the narration — you do NOT write the script. Your job is to layer two kinds of overlays on top of the speaker:
 
-**You MUST produce all three of these overlays, in this order:**
+  A. **TEXT overlays** — bold caption-style copy that reinforces structure (hook / mid-beat / loop) or punctuates a specific phrase.
+  B. **MEDIA overlays** — short b-roll cuts (Pexels stock video or photo) that visualize concrete things the speaker mentions.
+
+**You MUST produce all three of these TEXT overlays, in this order:**
   1. **HOOK** — stops the scroll in the first 2.5 seconds.
   2. **MICRO_HOOK** — re-engages attention near the middle.
   3. **LOOP_BACK** — echoes the hook in the final ~1 second so re-watches feel intentional.
 
-You may also include up to 2 optional **emphasis** overlays tied to specific spoken phrases.
+You may also include up to 2 optional **emphasis** text overlays tied to specific spoken phrases.
 
-You will receive:
-  * The reel's total duration in seconds.
-  * The full reel-time transcript with word-level timestamps.
-  * The clip's working title and a one-line rationale.
+You may include up to 3 **non-text visual** overlays total — across all four kinds combined (broll_video, broll_image, animated_stat, motion_graphic). These are **selective, not constant**. Many reels need ZERO visual overlays (emotional monologue, abstract reflection). Prefer fewer + better-aimed picks over carpet-bombing.
 
-Hard rules — output that breaks any of these will be silently discarded:
-  * Each overlay text is ≤6 words AND ≤60 characters.
+## When to use which visual type
+
+  * **broll_video** — speaker mentions something with implied motion: a place, an activity, a scene, people doing things. ("the team was working", "in San Francisco", "Beatles in concert"). Pexels returns a 5-15s clip we'll loop / cut to fit.
+  * **broll_image** — speaker mentions something iconic + static: logos, products, geographic markers, named entities. ("at Apple", "Mount Everest", "the constitution"). A still photo is cleaner than a video clip with implied motion that doesn't exist.
+  * **animated_stat** — speaker drops a specific number, percentage, or short stat-phrase that lifts when displayed prominently. ("47% of users churn" → value="47%", subtitle="of users churn". "I worked there 14 years" → value="14 YEARS"). Use when the SPECIFIC number is the punchline. Don't use for vague magnitudes ("a lot", "way more").
+  * **motion_graphic** — speaker compares, trends, or partitions data that benefits from a visual chart. Pick `graphic_kind` to match the SHAPE of the claim:
+      * `bar_chart` (2-3 bars, numeric) — direct value comparison. ("Sales grew from 100 to 500" → bars=[{label:"Before",value:100},{label:"After",value:500}]).
+      * `line_chart` (2-5 points, numeric) — trend over a sequence. Use when the SHAPE of the curve (steady growth, hockey stick, dip-and-recover) is the punchline. ("Revenue went 1, 2, 5, 12 million across four years" → bars=[{label:"Y1",value:1},{label:"Y2",value:2},{label:"Y3",value:5},{label:"Y4",value:12}]).
+      * `pie_chart` (2-4 wedges, numeric) — proportions of a whole. Values are auto-normalized to total. ("60% churn in month 1" → bars=[{label:"Churned",value:60},{label:"Retained",value:40}]).
+      * `comparison_icons` (exactly 2, values OPTIONAL) — qualitative side-by-side. Use when the contrast IS the point and exact numbers don't apply. ("Junk food vs whole food" → bars=[{label:"Junk food"},{label:"Whole food"}]).
+    Use motion_graphic when the claim's STRUCTURE (comparison / trend / proportion / contrast) is the lift. For a single big number on its own, use animated_stat instead.
+  * **NO visual** when the speaker:
+      * makes an emotional / personal point — let their face carry it
+      * delivers a contrarian sting or rhetorical pivot — abrupt cut undercuts the moment
+      * pauses or vocalizes a beat (laughter, "uh", "I mean")
+      * the concept is too abstract for stock footage / numbers to capture ("the truth is hard")
+
+## Hard rules — output that breaks any of these will be silently discarded
+
+  ### Text overlays
+  * Each text is ≤6 words AND ≤60 characters.
   * HOOK must start at t_start ≤ 0.3 and end at t_end ≤ 2.6. It must reinforce or sharpen the speaker's opening claim — use a curiosity gap, a contrarian frame, or a concrete number. Avoid restating the speaker word-for-word.
-  * MICRO_HOOK lands between 35% and 65% of the way through. 1-3s long. Should re-engage attention — a question, a stat, a "but here's the twist" beat. This is REQUIRED, not optional.
-  * LOOP_BACK is in the final 1.5 seconds, ≥0.5s long. 2-4 words. Should rhyme visually/thematically with the hook so a re-watch feels intentional. This is REQUIRED, not optional.
-  * EMPHASIS overlays (optional, max 2) are tied to specific spoken phrases — their t_start should align with the start of the phrase they reinforce.
-  * Each overlay has duration ≥0.5s and ≤4.0s.
-  * Overlays may NOT contain verbal-CTA language: no "follow me", "subscribe", "like this video", "drop a comment", "link in bio", "smash that like" or similar. Captions handle direct calls; the overlay track is for content.
+  * MICRO_HOOK lands between 35% and 65% of the way through. 1-3s long. Should re-engage attention — a question, a stat, a "but here's the twist" beat. REQUIRED, not optional.
+  * LOOP_BACK is in the final 1.5 seconds, ≥0.5s long. 2-4 words. Should rhyme visually/thematically with the hook. REQUIRED, not optional.
+  * EMPHASIS (optional, max 2) is tied to a specific spoken phrase — t_start should align with the start of the phrase.
+  * Text-overlay duration ≥0.5s and ≤4.0s.
+  * NO verbal-CTA language: "follow me", "subscribe", "like this video", "drop a comment", "link in bio", "smash that like". Captions handle CTAs.
   * ALL CAPS for hook / micro_hook / loop_back. Mixed case OK for emphasis.
-  * Use "color_intent" to convey tone: "important" (yellow) for key claims/stats, "definition" (green) for definitions or aha moments, "warning" (red) for cautions or stakes, "neutral" (white) by default.
+  * color_intent: "important" (yellow) for key claims/stats, "definition" (green) for definitions / aha moments, "warning" (red) for cautions / stakes, "neutral" (white) default.
 
-If you genuinely cannot produce one of the three required overlays from the transcript, omit it — a deterministic fallback will fill the slot. But always TRY for the trio; the slot you skip gets a generic backup, which is worse than your tailored text.
+  ### Non-text visual overlays (broll_video / broll_image / animated_stat / motion_graphic)
+  Shared rules across all four:
+  * Each visual overlay duration is ≥1.2s and ≤3.5s.
+  * `position`: "full" (replaces speaker for that duration — the conventional cut), "corner" (top-right; speaker stays visible), "lower_third" (bottom strip; speaker stays in top 70%). Default to "full" unless the speaker's expression matters.
+  * Visuals may NOT land in the first 2.6s of the reel (hook window — speaker owns the scroll-stop).
+  * Visuals may NOT land in the final 1.5s of the reel (loop_back window — visual rhyme must read cleanly).
+  * Visuals MAY overlap an emphasis text overlay — they layer (visual behind, text in front).
+  * No more than 3 visuals TOTAL across all four kinds combined.
 
-Output a single JSON object with this exact schema (no prose, no markdown, no commentary):
+  Type-specific:
+  * **broll_video / broll_image** — `concept` is 1-4 words, ≤40 characters — a short Pexels-friendly search query. NOT a sentence. ("team collaboration", "apple logo", "san francisco skyline", "concert crowd").
+  * **animated_stat** — `value` is the headline number/word, ≤12 chars ("47%", "2×", "14 YEARS", "$10M"). `subtitle` is the supporting copy, ≤32 chars ("of users churn", "in revenue last quarter"). Use ALL CAPS for `value` if it includes letters. `color_intent` drives accent color: "important" (yellow) for KPIs and big numbers, "warning" (red) for negative stats, "definition" (green) for breakthroughs/wins, "neutral" (white) default.
+  * **motion_graphic** — `graphic_kind` MUST be one of `bar_chart` | `line_chart` | `pie_chart` | `comparison_icons`. `bars` is a list of `{"label": "<short>", "value": <number>}` items. Counts: bar_chart 2-3 / line_chart 2-5 / pie_chart 2-4 / comparison_icons exactly 2. Values numeric for bar_chart, line_chart, pie_chart (required — drives height / line position / proportion). Values OPTIONAL for comparison_icons (omit when non-numeric). Label cap: 14 chars (8 for line_chart since labels sit tight under the curve; 20 for comparison_icons since each card has more horizontal room).
+
+## If you can't produce a required text overlay
+
+Omit it — a deterministic fallback will fill the slot. Don't pad with weak copy.
+
+## Output
+
+A single JSON object, no prose / markdown / commentary:
 {
   "overlays": [
+    // Text:
     {"type": "hook"|"micro_hook"|"loop_back"|"emphasis",
-     "t_start": <float seconds>,
-     "t_end":   <float seconds>,
-     "text":    <string>,
+     "t_start": <float>, "t_end": <float>,
+     "text": "<string>",
+     "color_intent": "neutral"|"important"|"definition"|"warning"},
+    // Media:
+    {"type": "broll_video"|"broll_image",
+     "t_start": <float>, "t_end": <float>,
+     "concept": "<1-4 word search query>",
+     "position": "full"|"corner"|"lower_third"},
+    // Animated stat:
+    {"type": "animated_stat",
+     "t_start": <float>, "t_end": <float>,
+     "value": "<headline ≤12 chars>",
+     "subtitle": "<supporting copy ≤32 chars, optional>",
+     "position": "full"|"corner"|"lower_third",
+     "color_intent": "neutral"|"important"|"definition"|"warning"},
+    // Motion graphic (pick graphic_kind to match the shape of the claim):
+    {"type": "motion_graphic",
+     "t_start": <float>, "t_end": <float>,
+     "graphic_kind": "bar_chart"|"line_chart"|"pie_chart"|"comparison_icons",
+     "bars": [{"label": "<short>", "value": <number, optional for comparison_icons>}, …],
+     "position": "full"|"corner"|"lower_third",
      "color_intent": "neutral"|"important"|"definition"|"warning"}
   ]
 }
@@ -378,7 +526,17 @@ def _extract_json_object(raw: str) -> dict:
 
 
 def _validate_overlay(entry: Any, reel_duration_s: float) -> Optional[OverlaySpec]:
-    """One overlay → OverlaySpec or None. None means "drop this entry"."""
+    """One overlay → OverlaySpec or None. None means "drop this entry".
+
+    Branches on `type`:
+      * Text types (`hook` / `micro_hook` / `loop_back` / `emphasis`)
+        require non-empty `text`; reject empties and CTA-kill phrases.
+      * Media types (`broll_video` / `broll_image`) require non-empty
+        `concept` (Pexels search query) + valid `position`.
+    Timing rules are mostly shared (overall window + min/max duration)
+    with type-specific windows for the four text variants and media's
+    own [min/max] duration band.
+    """
     if not isinstance(entry, dict):
         return None
     typ = str(entry.get("type") or "").strip().lower()
@@ -389,6 +547,121 @@ def _validate_overlay(entry: Any, reel_duration_s: float) -> Optional[OverlaySpe
         te = float(entry.get("t_end"))
     except (TypeError, ValueError):
         return None
+
+    # Overall timing — every type shares this gate. Clamp loop_back's
+    # occasional 1-frame overshoot to reel_duration.
+    if not (0.0 <= ts < te <= reel_duration_s + 0.5):
+        return None
+    te = min(te, reel_duration_s)
+    duration = te - ts
+
+    is_visual = typ in _NON_TEXT_VISUAL_TYPES
+
+    if is_visual:
+        # Shared timing band for all non-text visual overlays (media +
+        # stat + graphic). Same min/max — they're all "punctuation" beats
+        # that briefly take the frame, not extended content.
+        if duration < MIN_MEDIA_DURATION_S or duration > MAX_MEDIA_DURATION_S:
+            return None
+
+        # Position selection (full | corner | lower_third). Default to
+        # "full" if missing/unknown — that's the conventional b-roll cut
+        # AND the conventional stat-card placement.
+        raw_pos = str(entry.get("position") or "full").strip().lower()
+        position = raw_pos if raw_pos in _MEDIA_POSITIONS else "full"
+
+        # Color intent — used by stat / graphic for accent color. Media
+        # types ignore but accept the field.
+        color = str(entry.get("color_intent") or "neutral").strip().lower()
+        if color not in _COLOR_INTENTS:
+            color = "neutral"
+
+        if typ in _MEDIA_OVERLAY_TYPES:
+            # Media overlays use `concept` — a short Pexels search query.
+            concept = str(entry.get("concept") or "").strip().lower()
+            if not concept:
+                return None
+            concept = concept.strip(".,!?;:\"'()[]")
+            if not concept or len(concept) > MAX_CONCEPT_LEN:
+                return None
+            word_count = len(concept.split())
+            if word_count < MIN_CONCEPT_WORDS or word_count > MAX_CONCEPT_WORDS:
+                return None
+            return OverlaySpec(
+                type=typ, t_start=ts, t_end=te,
+                concept=concept, position=position, color_intent=color,
+            )
+
+        if typ == "animated_stat":
+            # Big bouncing number/word. `value` is required; `subtitle`
+            # is the optional supporting line.
+            value = str(entry.get("value") or "").strip()
+            if not value or len(value) > MAX_STAT_VALUE_LEN:
+                return None
+            subtitle = str(entry.get("subtitle") or "").strip()
+            if len(subtitle) > MAX_STAT_SUBTITLE_LEN:
+                # Don't reject — just truncate. Subtitles run long when
+                # the LLM gets verbose; better to ship a clipped one than
+                # drop the whole stat.
+                subtitle = subtitle[:MAX_STAT_SUBTITLE_LEN].rstrip()
+            return OverlaySpec(
+                type=typ, t_start=ts, t_end=te,
+                value=value, subtitle=subtitle,
+                position=position, color_intent=color,
+            )
+
+        if typ == "motion_graphic":
+            # Per-kind validation: count band + value-shape rule + label
+            # cap all live in `_GRAPHIC_KIND_SPECS`, so adding a new kind
+            # is one dict entry + one renderer branch in the director.
+            kind = str(entry.get("graphic_kind") or "").strip().lower()
+            if kind not in _SUPPORTED_GRAPHIC_KINDS:
+                return None
+            kind_spec = _GRAPHIC_KIND_SPECS[kind]
+            raw_bars = entry.get("bars") or []
+            if not isinstance(raw_bars, list):
+                return None
+            bars: list[dict] = []
+            for b in raw_bars:
+                if not isinstance(b, dict):
+                    continue
+                label = str(b.get("label") or "").strip()
+                if not label or len(label) > kind_spec["max_label_len"]:
+                    continue
+                # Coerce value to float for chart math. LLM occasionally
+                # emits strings ("100", "100k"); strip non-numeric suffix
+                # if present. Missing/non-numeric values are tolerated only
+                # for kinds with values_required=False (comparison_icons —
+                # qualitative contrast where exact numbers don't apply).
+                raw_v = b.get("value")
+                try:
+                    val = float(raw_v)
+                except (TypeError, ValueError):
+                    m = re.match(r"-?\d+(\.\d+)?", str(raw_v or ""))
+                    if m:
+                        val = float(m.group(0))
+                    elif not kind_spec["values_required"]:
+                        val = 0.0
+                    else:
+                        continue
+                if val < 0:
+                    val = 0.0
+                bars.append({"label": label, "value": val})
+            if not (kind_spec["min_bars"] <= len(bars) <= kind_spec["max_bars"]):
+                return None
+            # Numeric kinds need at least one positive value — all-zero
+            # renders as an invisible chart. Kinds with values_required
+            # =False (comparison_icons) can ship label-only and look fine.
+            if kind_spec["values_required"]:
+                if max((b["value"] for b in bars), default=0) <= 0:
+                    return None
+            return OverlaySpec(
+                type=typ, t_start=ts, t_end=te,
+                graphic_kind=kind, bars=bars,
+                position=position, color_intent=color,
+            )
+
+    # ── Text-overlay validation ─────────────────────────────────────────
     text = str(entry.get("text") or "").strip()
     if not text:
         return None
@@ -406,13 +679,7 @@ def _validate_overlay(entry: Any, reel_duration_s: float) -> Optional[OverlaySpe
     if word_count > MAX_OVERLAY_WORDS or len(text) > MAX_OVERLAY_CHARS:
         return None
 
-    # Timing.
-    if not (0.0 <= ts < te <= reel_duration_s + 0.5):
-        return None
-    # Clamp the very end of the loop_back to reel_duration; LLM occasionally
-    # over-shoots by a frame.
-    te = min(te, reel_duration_s)
-    duration = te - ts
+    # Text-overlay duration band (0.5-4.0s, narrower than media).
     if duration < MIN_OVERLAY_DURATION_S or duration > MAX_OVERLAY_DURATION_S:
         return None
 
@@ -451,31 +718,84 @@ def _enforce_structural_rules(
     * At most 2 emphasis overlays.
     * Drop emphasis overlays that overlap the hook or loop_back windows —
       stacking different overlays in the same band looks busy.
+    * At most `MAX_MEDIA_OVERLAYS` (3) media overlays. Drop any that
+      overlap the hook / micro_hook / loop_back windows OR another media
+      overlay — media-on-media is visual chaos.
     * Sort the final list by t_start so downstream HTML generation can
       assume monotonic ordering.
+
+    `reel_duration_s` is consumed when computing implicit structural
+    windows (hook 0..HOOK_MAX_END_S even if the LLM didn't emit one,
+    loop_back at the tail, micro_hook in the 30-70% band).
     """
     seen_unique: dict[str, OverlaySpec] = {}
     emphases: list[OverlaySpec] = []
+    # All four non-text visual types (broll_video / broll_image /
+    # animated_stat / motion_graphic) share one cardinality cap and one
+    # overlap rule — they're mutually exclusive in time regardless of kind.
+    visuals: list[OverlaySpec] = []
     for s in specs:
         if s.type in ("hook", "micro_hook", "loop_back"):
             if s.type not in seen_unique:
                 seen_unique[s.type] = s
         elif s.type == "emphasis":
             emphases.append(s)
+        elif s.type in _NON_TEXT_VISUAL_TYPES:
+            visuals.append(s)
 
-    # Cap emphasis at 2 and drop any that overlap structural windows.
     hook = seen_unique.get("hook")
+    micro = seen_unique.get("micro_hook")
     loop = seen_unique.get("loop_back")
+
     def _overlaps(a: OverlaySpec, b: Optional[OverlaySpec]) -> bool:
         if b is None:
             return False
         return a.t_start < b.t_end and b.t_start < a.t_end
 
+    # Cap emphasis at 2 and drop any that overlap hook / loop_back. We
+    # tolerate emphasis overlapping micro_hook because both can co-exist
+    # on the same beat — they're both small text overlays.
     emphases = [e for e in emphases if not _overlaps(e, hook) and not _overlaps(e, loop)]
     emphases.sort(key=lambda x: x.t_start)
     emphases = emphases[:2]
 
-    out = list(seen_unique.values()) + emphases
+    # Media: implicit hook / loop_back windows even if the LLM didn't
+    # emit a hook/loop_back spec — those windows are STRUCTURALLY
+    # protected (research §12.2 "hook is the 3-second moment"; loop-back
+    # is the visual rhyme). Always reject media that lands there.
+    implicit_hook_end = HOOK_MAX_END_S
+    implicit_loop_start = max(0.0, reel_duration_s - 1.5)
+
+    def _in_implicit_hook(s: OverlaySpec) -> bool:
+        return s.t_start < implicit_hook_end
+
+    def _in_implicit_loop(s: OverlaySpec) -> bool:
+        return s.t_end > implicit_loop_start
+
+    visuals = [
+        v for v in visuals
+        if not _overlaps(v, hook)
+        and not _overlaps(v, micro)
+        and not _overlaps(v, loop)
+        and not _in_implicit_hook(v)
+        and not _in_implicit_loop(v)
+    ]
+    visuals.sort(key=lambda x: x.t_start)
+
+    # Greedy de-dup: keep visuals that don't overlap a previously-kept one.
+    # Keeps the earliest of any colliding pair so the timeline reads
+    # left-to-right cleanly. Same cap applies whether the visual is media,
+    # stat, or graphic — they're all "punctuation" beats fighting for the
+    # same attention budget.
+    deduped_visuals: list[OverlaySpec] = []
+    for v in visuals:
+        if any(_overlaps(v, prev) for prev in deduped_visuals):
+            continue
+        deduped_visuals.append(v)
+        if len(deduped_visuals) >= MAX_MEDIA_OVERLAYS:
+            break
+
+    out = list(seen_unique.values()) + emphases + deduped_visuals
     out.sort(key=lambda x: x.t_start)
     return out
 

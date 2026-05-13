@@ -1,6 +1,6 @@
 # Reels from Long Video — Feature Reference
 
-**Status**: Backend Phase 1 + 2a (karaoke captions) + 2c (LLM-driven Director) shipped. Backend Phase 2 (editor `kind=reel` frame save endpoints, `/render` idempotency) shipped. Frontend Phase A (Slices 1-5) shipped. Source-clip aspect canvas now scales to canonical delivery dims (1080×1920 for 9:16).
+**Status**: Backend Phase 1 + 2a (karaoke captions) + 2c (LLM-driven Director) + 2c.1 (director hardening) + 2c.2 (preview metering) + 2c.3 (stacked + PiP layouts) + 2c.4 (auto b-roll fetch) + 2c.5 Slice 1 (per-phrase b-roll overlays) + 2c.5 Slice 2 (animated stat cards + bar_chart) + 2c.5 Slice 3 (line_chart + pie_chart + comparison_icons) shipped. Backend Phase 2 (editor `kind=reel` frame save endpoints, `/render` idempotency) shipped. Frontend Phase A (Slices 1-5) + scan settings strip (target duration / scan limit / topic keywords) + render config panel (aspect / layout / pace / captions / audio / bgv source) shipped. Source-clip aspect canvas scales to canonical delivery dims (1080×1920 for 9:16). Time-varying crop tracks the speaker via piecewise-linear ffmpeg expressions.
 **Owners**: Vimotion team.
 **Companion docs**: [AI_VIDEO_GENERATION.md](./AI_VIDEO_GENERATION.md), [INPUT_VIDEO_INDEXING.md](./INPUT_VIDEO_INDEXING.md), [VIDEO_EDITOR_REVIEW.md](./VIDEO_EDITOR_REVIEW.md), [VIMOTION_FEATURE.md](../VIMOTION_FEATURE.md). The full design + research appendix lives in the planning doc (Claude session artifact).
 
@@ -126,7 +126,8 @@ All routes mounted at `{AI_SERVICE_BASE_URL}/external/reels/v1/*`. Auth via exis
 - `reels_assemble_service.py` — ASSEMBLE stage (final {meta, entries} JSON + validation)
 - `reels_render_finalize_service.py` — RENDER stage (worker submit + adaptive polling)
 - `reels_frame_service.py` — add/update/delete a single entry in the reel's `time_based_frame.json` on S3 (editor save plumbing)
-- `reels_llm_director_service.py` — Phase 2c LLM-driven storyline overlays (`hook` / `micro_hook` / `loop_back` / `emphasis`); falls back to deterministic hook overlay on any failure
+- `reels_llm_director_service.py` — LLM-driven storyline overlays. Eight spec types: text overlays (`hook` / `micro_hook` / `loop_back` / `emphasis`) + non-text visual overlays (`broll_video` / `broll_image` / `animated_stat` / `motion_graphic`). Deterministic fallback synthesizes missing hook / micro_hook from the working title + word_importance.
+- `reels_broll_service.py` — Pexels search wrapper for the LLM director's media specs. `extract_concept` for the auto-bgv path; `find_b_roll` (videos) + `find_b_roll_image` (photos) for per-phrase media overlays. Per-process LRU cache (256 entries) keyed on `(concept, orientation, min_duration)` with `v|` / `i|` namespaces.
 
 **Models / repo / schemas**
 - `app/models/ai_reel.py` — `AiReel` table
@@ -307,6 +308,18 @@ Stages register themselves at module import via `register_stage_handler`. The or
 
 ✅ **PiP layout — `pip_corner_speaker` (rectangular)** — speaker in a bottom-right 32%-wide rounded-corner window (border-radius + drop-shadow), bgv fills the rest of the frame. Same plumbing as stacked: required `background_video_url`, fallback to full-speaker when missing, layout chip in FE. Captions shift to `bottom:42%` so they clear the PiP's top edge (PiP's bottom-right footprint spans ~y=60-92% in a 1080×1920 frame). True alpha-matte cutout-style PiP is deferred to Phase 2d — it requires re-running `extractor/podcast_visual.py` per reel window (~30s GPU/CPU per render), which warrants its own roll-out + caching strategy.
 
+✅ **B-roll auto-fetch (Phase 2c.4)** — closes the "what URL do I paste" friction on stacked + PiP layouts. New `reels_broll_service.py` exposes `extract_concept(word_importance_reel_time)` (picks highest-importance non-stopword + non-bare-number content word, with `keyword_type` tags getting +5 score boost) and `find_b_roll(concept)` (async wrapper around the existing `PexelsService.search_videos`, runs in `asyncio.to_thread` since PexelsService is sync). Per-process LRU cache (256 entries) keyed on `(concept, orientation, min_duration_s)` so re-renders from the same source word reuse the same clip — visual consistency across reels. DIRECTOR's layout-resolution block now tries auto-fetch BEFORE falling back to full-speaker: `(user URL)` → `(auto Pexels)` → `(downgrade to full_speaker)`. `extra_metadata.bgv_source` records which path fired (`user_url` / `auto_pexels` / `none`) for audit. FE adds a "B-roll source" Auto/URL toggle inside LayoutGroup; Auto is the default. URL-mode validation only fires when `bgv_source === 'url'` — Auto mode passes through. Direct Pexels URL embedded in the timeline (no S3 mirror this round); Playwright fetches at render time. Requires `PEXELS_API_KEYS` env (comma-separated for round-robin). Empty key list → silent fallback to full-speaker.
+
+✅ **Per-phrase b-roll overlays (Phase 2c.5 Slice 1)** — the LLM director now decides **when** and **what kind** of media to overlay, not just whether to add full-frame bg. Two new spec types — `broll_video` (Pexels stock video) and `broll_image` (Pexels stock photo) — joined the existing hook / micro_hook / loop_back / emphasis text overlays in `OverlaySpec`. Prompt teaches the LLM the picking criteria: concrete noun → image (logos, named entities); concept with implied motion → video (places, activities, scenes); emotional / abstract / personal beats → skip entirely. Hard validation: concept is 1-4 words ≤40 chars; duration 1.2-3.5s; position ∈ {full, corner, lower_third}; cardinality cap of 3 total non-text visual overlays per reel; visuals cannot land in the hook window (first 2.6s) or loop_back window (last 1.5s); visuals cannot overlap any structural text overlay (hook / micro_hook / loop_back) or another visual. Director's storyline-build pre-fetches all media concepts in parallel via `asyncio.gather` over `find_b_roll` / `find_b_roll_image` — fan-out per render, one network RTT total. Failed Pexels lookups silently drop the spec; rest of the reel still ships. New `Z_BROLL_MEDIA=200` band: media sits above the base speaker_clip but below text overlays (z=500+) and captions (z=8000+), so text always reads on top regardless of position. `_MEDIA_POSITION_CSS` handles full (cover frame) / corner (top-right PiP-style with rounded corners + shadow) / lower_third (bottom strip).
+
+✅ **Stat cards + motion graphics (Phase 2c.5 Slice 2)** — two new OverlaySpec types. `animated_stat` is a big bouncing number ("47%", "2×", "14 YEARS") with optional subtitle line; CSS-keyframed `stat-pop` entry (scale 0.35 → 1.12 overshoot → 1.0 over 480ms), color-coded by `color_intent` from the caption palette. `motion_graphic` is a chart family — Slice 2 shipped `bar_chart` (see Slice 3 below for the rest). All four non-text-visual types (`broll_video` + `broll_image` + `animated_stat` + `motion_graphic`) share one cardinality cap of 3 total per reel, the same hook + loop_back protection windows, and the same no-overlap-between-visuals rule. Both stat/graphic kinds render entirely from spec fields — **no Pexels, no network** — so they're free to use as often as the LLM thinks they fit. Validator coerces stringy bar values (`"250k"` → 250.0) so the LLM can be lenient with units. Subtitle truncates at 32 chars rather than rejecting — a clipped subtitle is better than no stat. Prompt teaches the picking criteria: `animated_stat` when ONE specific number is the punchline; `motion_graphic` only when the claim's STRUCTURE (comparison / trend / proportion / contrast) is the lift. Deep-review bugfixes from Slice 2: bar-height now capped at 70% (was 100% of column → pushing labels off-screen); `lower_third` stat wrapper moved to `bottom:30%` (was at `bottom:18%` colliding with captions).
+
+✅ **More motion_graphic kinds (Phase 2c.5 Slice 3)** — three new `graphic_kind` variants under the same OverlaySpec wrapper, dispatched through `_build_motion_graphic_html`. `line_chart` (2-5 points, numeric) — SVG polyline with `stroke-dasharray` / `stroke-dashoffset` line-draw animation over 700ms, then point dots + value labels fade in staggered behind the draw cursor; viewBox 0-100 + `preserveAspectRatio="xMidYMid meet"` keeps stroke widths and circle radii undistorted at any wrapper aspect; inner div sets its own `aspect-ratio` (16/10 full / 1/1 corner / 16/9 lower_third) so the SVG renders at `corner` position where the wrapper has no explicit height. `pie_chart` (2-4 wedges, numeric) — CSS `conic-gradient` with cumulative-percentage stops, scale + rotate `pie-pop` entry, percentage legend with color dots fading in 80ms apart; wedge palette cycles through caption-yellow / definition-green / warning-red / complementary-blue for visual distinction regardless of `color_intent`. `comparison_icons` (exactly 2, values OPTIONAL) — two flex cards with slide-in-from-side entry, centered VS pill with pop-in delayed 220ms; values render above labels when > 0, label-only when 0/missing (the qualitative case). Per-kind validation rules live in one `_GRAPHIC_KIND_SPECS` dict in the LLM director (min/max bars, values_required, max_label_len per kind) — adding a 5th kind is one dict entry + one renderer branch. Per-position sizing tables in each renderer (font sizes / disc widths / aspect ratios scale by full vs corner vs lower_third). System prompt updated with use-case guidance per kind: line_chart when the SHAPE of the curve is the punchline; pie_chart when one whole splits into proportions; comparison_icons when the contrast IS the point and exact numbers don't apply. Smoke tests pass on all 12 (kind × position) combos + edge cases (empty bars / unknown kind → empty fragment).
+
+✅ **Scan settings strip** — `features/vimotion/reels/create/ScanSettingsStrip.tsx` sits above the candidate grid. Target duration (15/25/45/60s chips), candidate count (10/20/30/50 chips), and topic keywords (chip-input — Enter/comma commits, X removes, Backspace on empty removes last, soft-cap at 10). Changing any chip triggers a fresh `/scan` (TanStack Query re-keys on the params, busts the 1h server cache via `config_hash`). Selected `previewIds` reset on change so they don't reference stale candidate UUIDs.
+
+✅ **`/render` idempotency** — backend computes a `render_config_hash` from the RenderRequest body (minus input_asset_id) and stashes it inside `AiReel.config["render_config_hash"]`. Before creating a new reel row, `AiReelRepository.find_active_for_candidate(institute, candidate, hash)` looks up any non-terminal reel (PENDING/IN_PROGRESS) with the same key and returns it instead of dispatching a duplicate render. COMPLETED/FAILED reels are NOT matched. FE adds a ref-based guard (`renderingCandidateRef`) so a sub-tick double-click is a no-op before the network call even fires.
+
 ### Validation
 
 - All inline smoke tests pass (synthetic + real `video_context.json` from staging)
@@ -319,41 +332,35 @@ Stages register themselves at module import via `register_stage_handler`. The or
 
 ## 7. What's pending (Phase 2+)
 
-### High-value, medium-effort
+### Visual / pipeline
 
-✅ **LLM-driven DIRECTOR (Phase 2c)** — `reels_llm_director_service.py` introduces `LLMDirector.generate_overlays()` which calls Haiku-class (default `anthropic/claude-3-5-haiku`, overridable via `REELS_DIRECTOR_LLM_MODEL`) with `REEL_DIRECTOR_SYSTEM_PROMPT` and gets back a list of `OverlaySpec{type, t_start, t_end, text, color_intent}`. Hard validation: hook starts ≤0.3s and ends ≤2.6s; micro_hook lands in 30-70% of reel; loop_back is in the last 1.5s; emphasis (max 2) is anywhere inside the reel; all overlays ≤6 words / ≤60 chars / 0.5-4.0s duration; CTA kill-phrases (`follow me`, `subscribe`, `link in bio`, …) reject the overlay. Spec→`_Shot` mapping in `_OVERLAY_STYLE_BY_TYPE` + `_OVERLAY_COLOR_BY_INTENT` gives each type a distinct visual treatment (font weight, top position, color from the caption palette). On LLM failure / disabled / empty response → deterministic single-hook fallback (Phase 1 behavior). Disable via env `REELS_LLM_DIRECTOR_DISABLED=1`. Method (`llm` vs `deterministic_fallback`) is recorded on `AiReel.extra_metadata.director_overlay_method` so we can audit usage.
+🔲 **PiP alpha-matte cutout (Phase 2d)** — rectangular PiP already ships. The alpha-matte cutout variant — speaker silhouette over the bgv, no rectangular border — needs `extractor/podcast_visual.py` + `encode_alpha_webm` to run for the reel's specific window. Cost is ~30s extra CPU/GPU per render; worth caching the alpha webm by `(asset_id, t_start, t_end)` so the second reel from the same window is free.
 
-🔲 **Path B validation against staging** — apply Flyway V245 to staging RDS, fire a real `POST /render` against a live indexed asset, watch a real MP4 land. Catches integration issues (S3 IAM, worker version mismatches, real render times).
+🔲 **Audio ducking sweep + whoosh SFX** — bgm ducking already ships in `keep_speaker_plus_bgm` mode. Pending: short whoosh SFX on hard speech cuts (research §12.2 says these lift retention). Audio-side filter graph extension in AUDIO_EDIT — needs a tiny SFX asset hosted somewhere.
 
-### Medium-value, smaller-effort
+🔲 **STYLE_GUIDE palette extraction (Phase 2b)** — auto-theme keyword colors from speaker_clip dominant colors instead of hard-coded Hormozi yellow. **Risk**: Hormozi yellow is the proven retention winner per §12.4; auto-extraction could underperform without A/B testing. Worth doing as A/B only.
 
-🔲 **Audio ducking + whoosh SFX** — research §12.2 says these lift retention. Audio-side filter graph extension in AUDIO_EDIT.
+🔲 **AI emoji injection** — sentiment-loaded keyword emoji on caption words per OpusClip's pattern. Append a small emoji span next to each tagged keyword in `_build_caption_block_html`.
 
-🔲 **STYLE_GUIDE palette extraction (Phase 2b)** — auto-theme keyword colors from speaker_clip dominant colors instead of hard-coded Hormozi yellow. **Risk**: Hormozi yellow is the proven retention winner per §12.4; auto-extraction could underperform without A/B testing.
+🔲 **B-roll polish — LLM concept extraction + S3 mirror** — current single-word concept extraction works but is heuristic. An LLM pre-pass on the transcript could pick more idiomatic search phrases. S3-mirroring Pexels results would give predictable CDN performance + relief from Pexels rate limits at scale.
 
-🔲 **PiP alpha-matte cutout (Phase 2d)** — rectangular PiP already ships (above). The alpha-matte cutout variant — speaker silhouette over the bgv, no rectangular border — needs `extractor/podcast_visual.py` + `encode_alpha_webm` to run for the reel's specific window. Cost is ~30s extra CPU/GPU per render; worth caching the alpha webm by `(asset_id, t_start, t_end)` so the second reel from the same window is free.
+### Production hardening
 
-🔲 **1:1 aspect** — config schema already supports it; just needs `_compute_crop` validation + FE option.
-
-🔲 **B-roll auto-insertion** — Pexels/Storyblocks search keyed on transcript concepts. Director places stock footage during emphasized phrases.
-
-🔲 **AI emoji injection** — sentiment-loaded keyword emoji per OpusClip's pattern.
-
-🔲 **Stacked layout** (speaker top + gameplay/satisfying b-roll bottom) — research §12.3 says dual-attention anchoring holds 30-45% longer.
-
-### Low-effort polish
-
-🔲 **pytest harness for scorer + preview** — lock current behaviors so future tuning doesn't silently regress (R14 from review carryover).
-
-🔲 **Per-stage retry on transient failures** — currently FAILED is terminal. Worker hiccup forces full re-render.
-
-✅ **`/render` idempotency** — backend computes a `render_config_hash` from the RenderRequest body (minus input_asset_id, which is implied by the candidate FK) and stashes it inside `AiReel.config["render_config_hash"]`. Before creating a new reel row, `AiReelRepository.find_active_for_candidate(institute, candidate, hash)` looks up any non-terminal reel (PENDING/IN_PROGRESS) with the same key and returns it instead of dispatching a duplicate render. COMPLETED/FAILED reels are NOT matched — the user can still re-render after a failure or after a code fix lands. FE adds a ref-based guard (`renderingCandidateRef`) so a sub-tick double-click is a no-op before the network call even fires. Residual race: two requests landing within DB roundtrip time can still produce two rows; closing that requires a partial UNIQUE index (deferred — not user-reachable from a button).
+🔲 **Path B validation against staging** — apply Flyway V245 to staging RDS, fire a real `POST /render` against a live indexed asset, watch a real MP4 land. Catches integration issues (S3 IAM, worker version mismatches, real render times). We've done this manually a few times in development; needs to be promoted to a smoke-test that runs against every deploy.
 
 🔲 **Stuck-render reaper** — periodic job to mark PENDING > 10min as FAILED (catches the "initial flip failed silently" case from G8 review).
 
-🔲 **`/render` config form on PreviewTray** — currently uses defaults (9:16, 25s, hormozi captions, keep_speaker). Slice 4 was supposed to add a config drawer; deferred.
+🔲 **Per-stage retry on transient failures** — currently FAILED is terminal. A worker hiccup forces full re-render even if the failure was at the final RENDER stage.
 
-🔲 **Backend "/preview" rate-limit** — credit metering ships above. A separate per-institute rate-limit (max N previews/min) would prevent runaway abuse on top of the per-call billing.
+🔲 **`/render` partial UNIQUE index** — current idempotency check is in-app. Closes the "two requests inside DB roundtrip time" race that the application-level check can't catch. Needs a Flyway migration adding `UNIQUE (institute_id, parent_candidate_id, (config->>'render_config_hash')) WHERE status IN ('PENDING','IN_PROGRESS')`.
+
+🔲 **Backend `/preview` rate-limit** — credit metering already gates total cost. A separate per-institute rate-limit (max N previews/min) would prevent runaway abuse on top of the per-call billing.
+
+🔲 **`/preview` token-estimate refinement** — pre-flight check currently passes `prompt_tokens=N, completion_tokens=0` because `CreditCheckRequest` only has one token field. Under-estimates on models where output pricing > input pricing (e.g. Haiku $0.80/$4 per 1M). Fix needs `CreditCheckRequest` schema extension to split prompt/completion. Tail-risk: user with borderline balance gets a free preview when deduct's CAS update fails.
+
+🔲 **pytest harness for scorer + preview** — lock current behaviors so future tuning doesn't silently regress (R14 from review carryover).
+
+🔲 **Failed-render retry from FE** — currently the Failed page tells the user to pick another candidate. An explicit "Retry" button would re-fire `/render` with the same config (and a different render_config_hash if needed).
 
 ### Documentation
 
@@ -448,14 +455,14 @@ open reel.mp4
 
 | Limitation | Workaround | Fix |
 |---|---|---|
-| `/render` not idempotent — double-click creates 2 reels | FE button disables during mutation; user discipline | Phase 2 polish: idempotency-key header |
 | Initial DB-write failure during render leaves row PENDING forever | Manual DB cleanup; check ai_service logs | Phase 2: stuck-render reaper job |
-| STYLE_GUIDE / HTML stages are no-op (5pp + 30pp progress bands) | Visual progress jumps in those bands | Phase 2: extract palette; split HTML from DIRECTOR |
-| LLM-Director is template-based (no per-shot variety, no b-roll) | Reels still ship with hook overlay + karaoke captions | Phase 2c: full LLM director |
-| PiP layout not supported | Use full_speaker_with_overlays | Phase 2: on-demand alpha matting |
-| 1:1 aspect not exposed in FE | Use 9:16 or 16:9 | Phase 2: surface in config |
+| STYLE_GUIDE / HTML stages are no-op (5pp + 30pp progress bands) | Visual progress jumps in those bands | Phase 2b: extract palette; split HTML from DIRECTOR |
+| PiP renders as rectangular window, not alpha-matte cutout | Visual is still useful; cutout would be cleaner | Phase 2d: re-run `extractor/podcast_visual.py` per reel window + cache the alpha webm |
 | Failed renders aren't retryable from FE | Pick another candidate from same source (linked from Failed page) | Phase 2: explicit retry endpoint |
 | Backend stuck on demo-mode source asset | `_validate_source_asset` rejects with 400 — clear error message | Phase 2+: demo-mode-tuned scorer |
+| `/render` idempotency check has a sub-RTT race window | Not user-reachable from a button; FE ref-guard catches double-clicks | Partial UNIQUE index migration |
+| `/preview` pre-flight credit estimate undercounts on model-priced rates | Worst case: borderline-balance user gets a free preview when deduct's CAS fails | Schema extension to split prompt/completion in CreditCheckRequest |
+| Pexels b-roll fetched directly from `videos.pexels.com` at render time | Playwright fetches per render; slower + counts against Pexels rate limits | Phase 2c.5 follow-up: S3 mirror with TTL cache |
 
 ---
 
@@ -506,7 +513,8 @@ app/
     ├── reels_assemble_service.py                    ← ASSEMBLE
     ├── reels_render_finalize_service.py             ← RENDER
     ├── reels_frame_service.py                       ← editor /frame/{add,update,delete}
-    └── reels_llm_director_service.py                ← LLMDirector + OverlaySpec (Phase 2c)
+    ├── reels_llm_director_service.py                ← LLMDirector + 8 OverlaySpec types
+    └── reels_broll_service.py                       ← Pexels search + LRU cache (videos + photos)
 ```
 
 ### Flyway (`vacademy_platform/admin_core_service/src/main/resources/db/migration/`)
@@ -525,11 +533,13 @@ features/vimotion/reels/
 │   ├── useRender.ts
 │   └── useReel.ts
 ├── create/
-│   ├── CreatePage.tsx                               ← state machine
+│   ├── CreatePage.tsx                               ← state machine + scan-config state
 │   ├── AssetPickerStep.tsx
 │   ├── ScanResultsGrid.tsx
+│   ├── ScanSettingsStrip.tsx                        ← target dur + scan limit + topic keywords
 │   ├── ReelCandidateCard.tsx
-│   ├── PreviewTray.tsx                              ← Gate 2 drawer
+│   ├── PreviewTray.tsx                              ← Gate 2 drawer + render config state
+│   ├── RenderConfigPanel.tsx                        ← aspect / layout / pace / captions / audio / bgv
 │   └── WordImportanceTimeline.tsx
 ├── detail/
 │   ├── ReelDetailPage.tsx                           ← status + completed views
@@ -566,6 +576,11 @@ When changing:
 - `app/routers/reels.py` endpoint paths → must update `BASE` in `reels-api.ts`
 - The eligibility gate for reels (currently `kind=video && mode=podcast && status=COMPLETED`) lives in BOTH `app/routers/reels.py:_validate_source_asset` AND `features/vimotion/reels/dashboard/CreateReelsCTA.tsx`. Keep these in sync.
 - The editor frame URL switch: the literal `'reel'` flag is set in THREE places — the route's `validateSearch` in `routes/vim/edit/$videoId/index.tsx`, the editor store's `EditorKind` type in `components/ai-video-editor/stores/video-editor-store.ts`, and `buildEditorSearch()` in `features/vimotion/reels/detail/ReelDetailPage.tsx`. Changing the literal means hitting all three.
+- The `OverlaySpec.type` literal set is defined in `reels_llm_director_service.py` (`_TEXT_OVERLAY_TYPES`, `_MEDIA_OVERLAY_TYPES`, `_STAT_OVERLAY_TYPES`) AND mirrored as `_MEDIA_OVERLAY_TYPES_LOCAL` + `_STAT_OVERLAY_TYPES_LOCAL` in `reels_director_service.py`. Adding a new spec type means updating both modules + the prompt's example schema.
+- The bgv "non-text visual" cardinality cap (currently 3) is read from `MAX_MEDIA_OVERLAYS` in `reels_llm_director_service.py` and ALSO referenced in the prompt's "no more than 3 visuals TOTAL" line. Keep the numeric value + prompt phrasing in sync.
+- The `Layout` literal lives in BOTH `app/schemas/reels.py` (backend Pydantic) AND `features/vimotion/reels/services/reels-api.ts` (frontend TS). FE picker (`RenderConfigPanel.SHIPPED_LAYOUTS`) only exposes the shipped subset; the schema can be ahead.
+- Layouts that require a `background_video_url` are listed in BOTH `reels_director_service.py:run()` (the auto-fetch trigger) AND `RenderConfigPanel.tsx:LAYOUTS_REQUIRING_BGV`. Same condition in both places — keep them in lockstep when adding a new layout.
+- The `motion_graphic` `graphic_kind` enum lives in `_GRAPHIC_KIND_SPECS` in `reels_llm_director_service.py` (validation rules — bar counts, value requirements, label cap) AND in the `_build_motion_graphic_html` dispatcher in `reels_director_service.py` (one renderer branch per kind). Adding a 5th kind means a dict entry + a renderer function + a sentence in the LLM prompt's "When to use which visual type" section. The prompt's schema example lists the kinds as a `|`-separated union — keep that list current too.
 
 Add new render stages by:
 1. Creating a `reels_<stage_name>_service.py` that calls `register_stage_handler(STAGE_X, _x_stage)` at module scope

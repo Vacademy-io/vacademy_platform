@@ -3,9 +3,10 @@
 # BBB Post-Publish Hook — Upload Recording to S3
 # =============================================================
 # This script runs on the BBB server AFTER recording processing
-# completes. It uploads TWO recordings when content is available:
+# completes. It uploads up to THREE recordings when content is available:
 #   A) Content recording (screen share OR camera-as-content + audio)
 #   B) Webcams recording (all participants combined + audio)
+#   C) Presenter recording (presenter-only webcam, no students)
 #
 # Content video source priority:
 #   1. Deskshare (screen share) — published deskshare/
@@ -35,8 +36,36 @@ set -uo pipefail
 # NOTE: We intentionally do NOT use 'set -e' because we need to handle
 # ffmpeg failures gracefully with fallback logic.
 
-INTERNAL_MEETING_ID="$1"
+# Support two invocation modes to keep ffmpeg out of the live-meeting CPU window:
+#   $0 <recordId>             — queue mode (called by BBB rap-worker). Appends the
+#                               recordId to the drain queue and exits in <100ms.
+#   $0 --drain <recordId>     — drain mode. Runs the actual ffmpeg + S3 upload.
+# When QUEUE_MODE=0, we always run inline (legacy behaviour, useful for manual runs).
+QUEUE_MODE="${BBB_RECORDING_QUEUE_MODE:-1}"
+QUEUE_FILE="/var/spool/bbb-recording-queue.txt"
 LOG_FILE="/var/log/bigbluebutton/vacademy-recording-upload.log"
+
+if [ "${1:-}" = "--drain" ]; then
+    INTERNAL_MEETING_ID="${2:-}"
+elif [ "$QUEUE_MODE" = "1" ]; then
+    INTERNAL_MEETING_ID="${1:-}"
+    if [ -z "$INTERNAL_MEETING_ID" ]; then
+        echo "Usage: $0 <recordId>" >&2
+        exit 1
+    fi
+    mkdir -p "$(dirname "$QUEUE_FILE")"
+    # flock-protected append so concurrent rap-worker invocations don't garble the file
+    (flock 9; echo "$INTERNAL_MEETING_ID" >> "$QUEUE_FILE") 9>>"$QUEUE_FILE.lock"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Queued $INTERNAL_MEETING_ID for deferred upload" >> "$LOG_FILE"
+    exit 0
+else
+    INTERNAL_MEETING_ID="${1:-}"
+fi
+
+if [ -z "$INTERNAL_MEETING_ID" ]; then
+    echo "Usage: $0 <recordId>  |  $0 --drain <recordId>" >&2
+    exit 1
+fi
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
@@ -145,7 +174,11 @@ build_mp4() {
         return 1
     fi
 
-    # Common encoding settings: 480p, ultrafast for speed, good enough quality
+    # Common encoding settings: 480p, ultrafast for speed, good enough quality.
+    # -threads 2 caps total CPU usage so even an accidental run during a live
+    # meeting can't saturate all cores (the cgroup CPUWeight on the rap-worker
+    # service is the hard guarantee, this is defence in depth).
+    local THREADS="-threads 2 -filter_threads 1"
     local VFILTER="-vf scale=-2:480"
     local VCODEC="-c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p"
     local ACODEC="-c:a aac -b:a 128k"
@@ -158,6 +191,7 @@ build_mp4() {
 
         # shellcheck disable=SC2086
         ffmpeg -y \
+            $THREADS \
             -i "$video_src" \
             -i "$audio_src" \
             $VFILTER $VCODEC $ACODEC \
@@ -170,6 +204,7 @@ build_mp4() {
             log "WARN: ffmpeg merge failed — trying video-only"
             # shellcheck disable=SC2086
             ffmpeg -y \
+                $THREADS \
                 -i "$video_src" \
                 $VFILTER $VCODEC $ACODEC \
                 $FLAGS \
@@ -179,6 +214,7 @@ build_mp4() {
         # No separate audio source — convert video with its own audio track
         # shellcheck disable=SC2086
         ffmpeg -y \
+            $THREADS \
             -i "$video_src" \
             $VFILTER $VCODEC $ACODEC \
             $FLAGS \
@@ -269,6 +305,7 @@ upload_recording() {
         -H "Content-Type: application/json" \
         -d "{
             \"meetingId\": \"${MEETING_ID}\",
+            \"internalMeetingId\": \"${INTERNAL_MEETING_ID}\",
             \"fileId\": \"${file_id}\",
             \"recordingId\": \"${recording_id}\",
             \"type\": \"${rec_type}\",
@@ -283,6 +320,12 @@ upload_recording() {
         log "[$rec_type] WARN: Registration returned HTTP $complete_code: $complete_body"
     else
         log "[$rec_type] Recording registered successfully"
+        # Drop a marker so the health dashboard can show this recording as
+        # "Uploaded" without having to call the backend. One marker per
+        # recordId — once ANY rec_type (content/webcams/presenter) has
+        # registered we consider the recording present in S3.
+        mkdir -p /var/spool/bbb-recording-uploaded 2>/dev/null
+        touch "/var/spool/bbb-recording-uploaded/${INTERNAL_MEETING_ID}" 2>/dev/null
     fi
 
     return 0
@@ -440,9 +483,10 @@ PYEOF
     fi
 fi
 
-# ── Priority 3: Presenter webcam from raw recordings ─────────
-if [ -z "$CONTENT_VIDEO" ] && [ -d "$RAW_DIR" ] && [ -f "$RAW_DIR/events.xml" ]; then
-    log "No deskshare or CAC found — trying presenter webcam extraction from raw"
+# ── Presenter webcam extraction (always runs — feeds both content fallback + presenter-only upload) ──
+PRESENTER_BEST_VIDEO=""
+if [ -d "$RAW_DIR" ] && [ -f "$RAW_DIR/events.xml" ]; then
+    log "Extracting presenter webcam info from raw recordings"
 
     PRESENTER_INFO=$(EVENTS_FILE="$RAW_DIR/events.xml" python3 << 'PYEOF'
 import xml.etree.ElementTree as ET
@@ -548,7 +592,7 @@ PYEOF
         log "Presenter webcam file(s): $PRESENTER_FILES"
 
         IFS=',' read -ra PRESENTER_VIDEO_ARRAY <<< "$PRESENTER_FILES"
-        CONTENT_VIDEO="${PRESENTER_VIDEO_ARRAY[0]}"
+        PRESENTER_BEST_VIDEO="${PRESENTER_VIDEO_ARRAY[0]}"
 
         # Pick longest segment if multiple
         if [ ${#PRESENTER_VIDEO_ARRAY[@]} -gt 1 ] && command -v ffprobe &>/dev/null; then
@@ -569,9 +613,15 @@ PYEOF
                 fi
             done
             if [ -n "$BEST_FILE" ]; then
-                CONTENT_VIDEO="$BEST_FILE"
-                log "Selected longest segment: $CONTENT_VIDEO (${BEST_DUR}s)"
+                PRESENTER_BEST_VIDEO="$BEST_FILE"
+                log "Selected longest presenter segment: $PRESENTER_BEST_VIDEO (${BEST_DUR}s)"
             fi
+        fi
+
+        # Use presenter webcam as content source only if no deskshare/CAC was found
+        if [ -z "$CONTENT_VIDEO" ]; then
+            CONTENT_VIDEO="$PRESENTER_BEST_VIDEO"
+            log "Using presenter webcam as content source (no deskshare/CAC available)"
         fi
     elif [[ "$PRESENTER_INFO" == "NO_PRESENTER" ]]; then
         log "WARN: No presenter assignment found in events.xml"
@@ -670,6 +720,33 @@ if [ -n "$WEBCAMS_SOURCE" ]; then
     fi
 else
     log "WARN: No published webcams video found"
+fi
+
+# ── Recording C: Presenter-only webcam (individual stream, no students) ──
+if [ -n "$PRESENTER_BEST_VIDEO" ]; then
+    MP4_PRESENTER="/tmp/vacademy-recording-${MEETING_ID}-presenter.mp4"
+    log "Building presenter-only recording from: $PRESENTER_BEST_VIDEO"
+
+    # Raw presenter webcam has its own audio track — don't merge with published
+    # audio (different timelines would cause sync issues, see line ~598).
+    if build_mp4 "$PRESENTER_BEST_VIDEO" "" "$MP4_PRESENTER"; then
+        log "Presenter MP4 created: $(du -h "$MP4_PRESENTER" | cut -f1)"
+
+        FILE_NAME_PRESENTER="recording-${MEETING_ID}-presenter.mp4"
+        if upload_recording "$MP4_PRESENTER" "$FILE_NAME_PRESENTER" "presenter"; then
+            UPLOAD_COUNT=$((UPLOAD_COUNT + 1))
+        fi
+
+        # Cleanup
+        if [[ "$MP4_PRESENTER" == /tmp/* ]] && [ -f "$MP4_PRESENTER" ]; then
+            rm -f "$MP4_PRESENTER"
+            log "Cleaned up: $MP4_PRESENTER"
+        fi
+    else
+        log "ERROR: Failed to build presenter MP4"
+    fi
+else
+    log "No presenter webcam found — skipping presenter-only recording"
 fi
 
 # ── Fallback: if nothing was uploaded, try any available video ──

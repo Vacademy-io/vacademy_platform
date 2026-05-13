@@ -110,10 +110,15 @@ export function PreviewTray({
         if (
             (renderConfig.layout === 'stacked_speaker_with_broll'
                 || renderConfig.layout === 'pip_corner_speaker')
+            && renderConfig.bgv_source === 'url'
             && !renderConfig.background_video_url
         ) {
+            // Only enforce URL when the user explicitly picked "Use URL"
+            // mode. Auto mode is fine without one — backend fetches at
+            // DIRECTOR time. If the backend can't find a Pexels match, it
+            // silently downgrades to full_speaker_with_overlays.
             toast.error(
-                'Add a b-roll video URL or switch back to "Full speaker" layout.'
+                'Add a b-roll video URL or switch to "Auto" source.'
             );
             return;
         }

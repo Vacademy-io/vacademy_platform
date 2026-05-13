@@ -1,0 +1,21 @@
+[Unit]
+Description=Drain queued BBB recording uploads off-peak (after class hours)
+
+[Timer]
+# Deliberately TIME-INDEPENDENT. The drainer runs every minute the server
+# is up, regardless of class schedule. The cgroup CPUWeight=10 limit in
+# bbb-recording-drain.service is what makes this safe: when live meetings
+# are saturating CPU, the kernel throttles the drainer to ~0%; when there
+# are gaps (between video frames, after a meeting ends, etc.) it grabs
+# those cycles instantly. This means the design works for any deployment
+# regardless of when classes run — no schedule assumptions are baked in.
+#
+# The serializing flock + empty-queue early-exit in the drain script
+# means firing every minute is essentially free when there's nothing to do.
+OnCalendar=*:0/1
+AccuracySec=15s
+Unit=bbb-recording-drain.service
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -20,6 +20,7 @@ import type { ReelCandidate } from '../services/reels-api';
 import { AssetPickerStep } from './AssetPickerStep';
 import { PreviewTray } from './PreviewTray';
 import { ScanResultsGrid } from './ScanResultsGrid';
+import { ScanSettingsStrip } from './ScanSettingsStrip';
 
 interface CreatePageSearch {
     fromAssetId?: string;
@@ -38,14 +39,46 @@ export function CreatePage() {
         search.fromAssetId ?? null
     );
 
+    // Scan-time config. Every field here participates in the backend's
+    // `config_hash`, so changing any triggers a fresh `/scan` (TanStack
+    // Query re-keys on these). Selected candidate_ids become invalid when
+    // the scan re-runs — we reset `previewIds` below.
+    const [targetDurationSec, setTargetDurationSec] = useState<number>(25);
+    const [scanLimit, setScanLimit] = useState<number>(30);
+    const [topicKeywords, setTopicKeywords] = useState<string[]>([]);
+
     const scan = useScan({
         apiKey: apiKey.data,
         inputAssetId: pickedAssetId ?? undefined,
+        targetDurationSec,
+        scanLimit,
+        topicKeywords,
     });
 
     // Preview drawer state — opens with the user's selection from the grid.
     const [previewIds, setPreviewIds] = useState<string[]>([]);
     const [previewOpen, setPreviewOpen] = useState(false);
+
+    // Single entry point for scan-settings changes. Clearing `previewIds`
+    // here is important: any candidate_ids that were in flight reference
+    // the OLD scan's rows, which won't be in the new scan's response.
+    const onScanSettingsChange = (patch: {
+        targetDurationSec?: number;
+        scanLimit?: number;
+        topicKeywords?: string[];
+    }) => {
+        if (patch.targetDurationSec !== undefined) {
+            setTargetDurationSec(patch.targetDurationSec);
+        }
+        if (patch.scanLimit !== undefined) {
+            setScanLimit(patch.scanLimit);
+        }
+        if (patch.topicKeywords !== undefined) {
+            setTopicKeywords(patch.topicKeywords);
+        }
+        setPreviewIds([]);
+        setPreviewOpen(false);
+    };
 
     const goBackToDashboard = () => {
         navigate({ to: '/vim/dashboard', search: { tab: 'reels' } });
@@ -93,21 +126,42 @@ export function CreatePage() {
                     <CenteredLoader message="Preparing your studio…" />
                 ) : !pickedAssetId ? (
                     <AssetPickerStep apiKey={apiKey.data} onPick={setPickedAssetId} />
-                ) : scan.isLoading ? (
-                    <ScanningPanel onCancel={() => setPickedAssetId(null)} />
-                ) : scan.isError ? (
-                    <ScanErrorPanel
-                        message={scan.error?.message ?? 'Scan failed'}
-                        onRetry={() => scan.refetch()}
-                        onChangeSource={() => setPickedAssetId(null)}
-                    />
-                ) : scan.data ? (
-                    <ScanResultsGrid
-                        candidates={scan.data.candidates}
-                        onPreview={onPreview}
-                        onBack={search.fromAssetId ? undefined : () => setPickedAssetId(null)}
-                    />
-                ) : null}
+                ) : (
+                    <div className="space-y-5">
+                        {/* Scan settings — always visible once an asset is
+                            picked. Lets the user pivot duration / candidate
+                            count without bouncing back to the asset picker.
+                            Disabled while the scan itself is in flight to
+                            prevent racing query keys. */}
+                        <ScanSettingsStrip
+                            targetDurationSec={targetDurationSec}
+                            scanLimit={scanLimit}
+                            topicKeywords={topicKeywords}
+                            onChange={onScanSettingsChange}
+                            busy={scan.isLoading || scan.isFetching}
+                        />
+
+                        {scan.isLoading ? (
+                            <ScanningPanel onCancel={() => setPickedAssetId(null)} />
+                        ) : scan.isError ? (
+                            <ScanErrorPanel
+                                message={scan.error?.message ?? 'Scan failed'}
+                                onRetry={() => scan.refetch()}
+                                onChangeSource={() => setPickedAssetId(null)}
+                            />
+                        ) : scan.data ? (
+                            <ScanResultsGrid
+                                candidates={scan.data.candidates}
+                                onPreview={onPreview}
+                                onBack={
+                                    search.fromAssetId
+                                        ? undefined
+                                        : () => setPickedAssetId(null)
+                                }
+                            />
+                        ) : null}
+                    </div>
+                )}
             </main>
 
             {/* Drawer lives at the page level so it can overlay the grid. */}

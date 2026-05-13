@@ -33,11 +33,17 @@ GSAP/styles/etc. per the existing contract.
 """
 from __future__ import annotations
 
+import asyncio
 import html as html_lib
 import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
+from ..services.reels_broll_service import (
+    extract_concept,
+    find_b_roll,
+    find_b_roll_image,
+)
 from ..services.reels_llm_director_service import LLMDirector, OverlaySpec
 from ..services.reels_render_orchestrator import (
     RenderContext,
@@ -57,8 +63,21 @@ logger = logging.getLogger(__name__)
 #   500-7999 motion graphics / overlays
 #   8000+    captions / UI on top
 Z_BASE = 0
+# Media overlays (Phase 2c.5 broll_video / broll_image) sit above the base
+# speaker_clip but below text overlays so:
+#   * `full` position media REPLACES the speaker visually for its duration
+#   * Text overlays (hook / micro_hook / loop_back / emphasis) at z=500+
+#     still render on top — they can layer over media without conflict.
+Z_BROLL_MEDIA = 200
 Z_HOOK_OVERLAY = 500
 Z_CAPTION = 8000
+
+# Local mirror of the LLM director's non-text-visual type sets — director
+# needs to branch on these without importing the LLM module's internals
+# from a tight loop. Kept in sync with `_MEDIA_OVERLAY_TYPES` +
+# `_STAT_OVERLAY_TYPES` in reels_llm_director_service.
+_MEDIA_OVERLAY_TYPES_LOCAL: frozenset[str] = frozenset({"broll_video", "broll_image"})
+_STAT_OVERLAY_TYPES_LOCAL: frozenset[str] = frozenset({"animated_stat", "motion_graphic"})
 
 # Hook overlay duration. Research §12.2: 2.5s is the hook window.
 HOOK_DURATION_S = 2.5
@@ -158,15 +177,51 @@ class ReelsDirectorService:
         title = (enriched.get("title") or "").strip() or "Watch this"
         rationale = (enriched.get("rationale") or "").strip()
 
-        # Layout resolution. Both `stacked_speaker_with_broll` and
+        # 2. Remap word_importance to reel-time FIRST — used by the LLM
+        # director, the caption builder, AND the b-roll concept extractor
+        # (below). Pulled out of the original 2b slot so layout resolution
+        # can consult the reel's content words for auto-bgv fetching.
+        word_importance = enriched.get("word_importance") or []
+        trim_map = ctx.trim_map or {}
+        word_importance_reel_time = _remap_word_importance(word_importance, trim_map)
+
+        # 3. Layout resolution. Both `stacked_speaker_with_broll` and
         # `pip_corner_speaker` need a bgv URL to render meaningfully —
-        # without it the bottom half / bg fill is a black void. We silently
-        # downgrade to `full_speaker_with_overlays` in that case so the reel
-        # still renders something useful. Effective layout is tracked in
-        # extra_metadata so the FE can show "we used the default instead".
+        # without it the bottom half / bg fill is a black void. Resolution
+        # order:
+        #   a. User-supplied `background_video_url` (the "URL" source mode)
+        #   b. Auto-fetched Pexels b-roll keyed on the reel's top concept
+        #      (the "Auto" source mode; Phase 2c.4)
+        #   c. Silent downgrade to `full_speaker_with_overlays` if neither
+        #      yields a usable URL
+        # The effective layout + the bgv source choice are tracked on
+        # `extra_metadata` so FE / audit can tell which path fired.
         requested_layout = str((ctx.config or {}).get("layout") or "full_speaker_with_overlays")
         bgv_url_raw = (ctx.config or {}).get("background_video_url")
         bgv_url = _resolve_http_url(bgv_url_raw) if bgv_url_raw else None
+        bgv_source = "user_url" if bgv_url else "none"
+
+        if (
+            not bgv_url
+            and requested_layout in ("stacked_speaker_with_broll", "pip_corner_speaker")
+            and word_importance_reel_time
+        ):
+            concept = extract_concept(word_importance_reel_time)
+            if concept:
+                auto_url = await find_b_roll(concept)
+                if auto_url:
+                    bgv_url = auto_url
+                    bgv_source = "auto_pexels"
+                    logger.info(
+                        f"[Director] {ctx.reel_id} auto-fetched bgv for "
+                        f"concept={concept!r} → {auto_url[:60]}…"
+                    )
+                else:
+                    logger.info(
+                        f"[Director] {ctx.reel_id} auto-fetch returned no bgv "
+                        f"for concept={concept!r}"
+                    )
+
         effective_layout = requested_layout
         if requested_layout in ("stacked_speaker_with_broll", "pip_corner_speaker") and not bgv_url:
             logger.info(
@@ -175,10 +230,10 @@ class ReelsDirectorService:
             )
             effective_layout = "full_speaker_with_overlays"
 
-        # 2. Compose shots.
+        # 4. Compose shots.
         shots: list[_Shot] = []
 
-        # 2a. Base shot covering the whole reel — shape depends on layout.
+        # 4a. Base shot covering the whole reel — shape depends on layout.
         shots.append(self._build_base_shot(
             speaker_clip_url,
             total_duration,
@@ -186,13 +241,7 @@ class ReelsDirectorService:
             background_video_url=bgv_url,
         ))
 
-        # 2b. Remap word_importance to reel-time once — used by both the
-        # LLM director (for prompt construction) and the caption builder.
-        word_importance = enriched.get("word_importance") or []
-        trim_map = ctx.trim_map or {}
-        word_importance_reel_time = _remap_word_importance(word_importance, trim_map)
-
-        # 2c. Storyline overlays (LLM director with deterministic fallback).
+        # 4b. Storyline overlays (LLM director with deterministic fallback).
         overlay_shots, overlay_method = await self._build_storyline_overlays(
             reel_duration_s=total_duration,
             title=title,
@@ -201,7 +250,7 @@ class ReelsDirectorService:
         )
         shots.extend(overlay_shots)
 
-        # 2d. Captions — same word list, but grouped into phrase blocks.
+        # 4c. Captions — same word list, but grouped into phrase blocks.
         # Stacked layout pushes captions up so they sit on the speaker half,
         # just above the 50/50 split. Other layouts use the default
         # bottom-third position.
@@ -213,17 +262,18 @@ class ReelsDirectorService:
             )
             shots.extend(caption_shots)
 
-        # 3. Stash for ASSEMBLE.
+        # 5. Stash for ASSEMBLE.
         ctx.extra_metadata["shots"] = [s.to_entry_dict() for s in shots]
         ctx.extra_metadata["canvas_dimensions"] = {"width": canvas_w, "height": canvas_h}
         ctx.extra_metadata["total_duration_s"] = round(total_duration, 3)
         ctx.extra_metadata["director_overlay_method"] = overlay_method
         ctx.extra_metadata["effective_layout"] = effective_layout
+        ctx.extra_metadata["bgv_source"] = bgv_source
         logger.info(
             f"[Director] {ctx.reel_id} composed {len(shots)} shots "
             f"(1 base + {len(overlay_shots)} overlays via {overlay_method} + "
             f"{len(shots) - 1 - len(overlay_shots)} captions) for "
-            f"{total_duration:.2f}s reel"
+            f"{total_duration:.2f}s reel · bgv_source={bgv_source}"
         )
 
     async def _build_storyline_overlays(
@@ -254,7 +304,26 @@ class ReelsDirectorService:
             specs = []
 
         if specs:
-            shots = [self._spec_to_shot(spec, i) for i, spec in enumerate(specs)]
+            # Media specs need a Pexels lookup before we can emit HTML —
+            # resolve them all in parallel so the per-render network cost
+            # is one round-trip-time, not N. Failed lookups drop the spec
+            # silently rather than failing the whole director. Stat /
+            # graphic specs need no network — they render directly from
+            # the spec fields.
+            media_url_by_index = await self._resolve_media_urls(specs)
+            shots: list[_Shot] = []
+            for i, spec in enumerate(specs):
+                if spec.type in _MEDIA_OVERLAY_TYPES_LOCAL:
+                    url = media_url_by_index.get(i)
+                    if not url:
+                        # Pexels miss / no key — skip this media overlay.
+                        # The rest of the reel still ships.
+                        continue
+                    shots.append(self._media_spec_to_shot(spec, i, url))
+                elif spec.type in _STAT_OVERLAY_TYPES_LOCAL:
+                    shots.append(self._stat_spec_to_shot(spec, i))
+                else:
+                    shots.append(self._spec_to_shot(spec, i))
             return shots, "llm"
 
         # Fallback — Phase 1 behavior: one deterministic hook overlay with
@@ -264,10 +333,106 @@ class ReelsDirectorService:
             return [self._build_hook_overlay(title, hook_end)], "deterministic_fallback"
         return [], "deterministic_fallback"
 
+    async def _resolve_media_urls(
+        self,
+        specs: list[OverlaySpec],
+    ) -> dict[int, str]:
+        """Parallel-fetch Pexels URLs for every media spec in `specs`.
+
+        Returns `{spec_index: url}`. Missing entries = lookup failed (no
+        Pexels key, no match, transient error — all silent). Caller drops
+        the corresponding spec entirely. Indices match the input order so
+        spec_to_shot can map back without a per-spec ID.
+
+        We fan out via `asyncio.gather(return_exceptions=True)` so one
+        Pexels hiccup doesn't take down the whole batch.
+        """
+        media_indices: list[int] = []
+        coros = []
+        for i, spec in enumerate(specs):
+            if spec.type == "broll_video":
+                media_indices.append(i)
+                coros.append(find_b_roll(spec.concept))
+            elif spec.type == "broll_image":
+                media_indices.append(i)
+                coros.append(find_b_roll_image(spec.concept))
+        if not coros:
+            return {}
+        results = await asyncio.gather(*coros, return_exceptions=True)
+        out: dict[int, str] = {}
+        for idx, res in zip(media_indices, results):
+            if isinstance(res, BaseException):
+                logger.warning(
+                    f"[Director] media fetch raised for spec {idx}: {res}"
+                )
+                continue
+            if isinstance(res, str) and res:
+                out[idx] = res
+        return out
+
+    def _media_spec_to_shot(
+        self,
+        spec: OverlaySpec,
+        idx: int,
+        media_url: str,
+    ) -> _Shot:
+        """Map a broll_video / broll_image spec + its resolved Pexels URL
+        to a `_Shot`. HTML strategy varies by type + position."""
+        return _Shot(
+            id=f"shot-overlay-{spec.type}-{idx:02d}",
+            in_time=round(spec.t_start, 3),
+            exit_time=round(spec.t_end, 3),
+            # Stable stacking inside the media band — same idx ordering
+            # as text overlays, but in a different band so text always
+            # renders on top.
+            z=Z_BROLL_MEDIA + idx,
+            html=_build_media_overlay_html(spec, media_url),
+            entry_meta={
+                "shot_type": f"overlay_{spec.type}",
+                "concept": spec.concept,
+                "position": spec.position,
+                "media_url": media_url,
+            },
+        )
+
+    def _stat_spec_to_shot(self, spec: OverlaySpec, idx: int) -> _Shot:
+        """Map an animated_stat / motion_graphic spec to a `_Shot`. HTML is
+        entirely self-contained (CSS keyframes + inline SVG/divs for the
+        graphic) so no Pexels lookup is needed and the render worker just
+        captures the rendered frames."""
+        if spec.type == "animated_stat":
+            html = _build_stat_html(spec)
+            meta = {
+                "shot_type": f"overlay_{spec.type}",
+                "value": spec.value,
+                "subtitle": spec.subtitle,
+                "position": spec.position,
+                "color_intent": spec.color_intent,
+            }
+        else:  # motion_graphic
+            html = _build_motion_graphic_html(spec)
+            meta = {
+                "shot_type": f"overlay_{spec.type}",
+                "graphic_kind": spec.graphic_kind,
+                "bars": spec.bars,
+                "position": spec.position,
+                "color_intent": spec.color_intent,
+            }
+        return _Shot(
+            id=f"shot-overlay-{spec.type}-{idx:02d}",
+            in_time=round(spec.t_start, 3),
+            exit_time=round(spec.t_end, 3),
+            # Same band as media — these are all "non-text visual" overlays
+            # sharing the same z space. Text + captions render above.
+            z=Z_BROLL_MEDIA + idx,
+            html=html,
+            entry_meta=meta,
+        )
+
     def _spec_to_shot(self, spec: OverlaySpec, idx: int) -> _Shot:
-        """Map one OverlaySpec to a styled `_Shot`. Visual treatment varies
-        by `type` so hook / micro_hook / loop_back / emphasis don't all look
-        identical."""
+        """Map one TEXT OverlaySpec to a styled `_Shot`. Visual treatment
+        varies by `type` so hook / micro_hook / loop_back / emphasis don't
+        all look identical. Media specs go through `_media_spec_to_shot`."""
         return _Shot(
             id=f"shot-overlay-{spec.type}-{idx:02d}",
             in_time=round(spec.t_start, 3),
@@ -625,6 +790,563 @@ def _build_overlay_html(spec: "OverlaySpec") -> str:
         'pointer-events:none;'
         '">'
         f'{text}'
+        '</div>'
+    )
+
+
+# CSS for media overlays at each supported position. The element itself
+# (img or video) gets `object-fit:cover` so cropping handles whatever
+# aspect Pexels returned vs whatever the reel is rendering at. Captions +
+# text overlays sit at higher z-indexes so they always read on top.
+_MEDIA_POSITION_CSS: dict[str, str] = {
+    "full": (
+        "position:absolute;inset:0;width:100%;height:100%;"
+        "object-fit:cover;display:block;"
+    ),
+    # PiP-style top-right window. ~32% of frame width with a soft shadow +
+    # border-radius so it reads as an inset card, not a glitch.
+    "corner": (
+        "position:absolute;top:6%;right:6%;width:32%;aspect-ratio:16/9;"
+        "object-fit:cover;border-radius:12px;"
+        "box-shadow:0 4px 16px rgba(0,0,0,0.45);display:block;"
+    ),
+    # Strip running across the bottom 30% of the frame. Captions in
+    # full-speaker layout sit at bottom:18% (≈ y=80% from top) so they
+    # land INSIDE this strip — fine for stock-footage backdrops where the
+    # caption naturally reads against the b-roll content. The whoosh-cut
+    # feel is what we want here, not pixel-perfect non-overlap.
+    "lower_third": (
+        "position:absolute;bottom:0;left:0;width:100%;height:30%;"
+        "object-fit:cover;display:block;"
+    ),
+}
+
+
+def _build_media_overlay_html(spec: "OverlaySpec", media_url: str) -> str:
+    """Render a broll_video / broll_image OverlaySpec to HTML.
+
+    Videos autoplay muted on loop — Playwright fetches the URL during the
+    per-frame screenshot pass; muting is required for Chromium's autoplay
+    policy to apply.
+
+    Images use a plain `<img>` since they don't need playback. Same
+    positioning CSS for both — the only difference is the element tag.
+
+    Unknown position values fall back to "full" (the most-common b-roll
+    convention; the validator already gates this but defense in depth).
+    """
+    css = _MEDIA_POSITION_CSS.get(spec.position, _MEDIA_POSITION_CSS["full"])
+    safe_url = html_lib.escape(media_url, quote=True)
+    if spec.type == "broll_video":
+        return (
+            f'<video src="{safe_url}" autoplay muted loop playsinline '
+            f'style="{css}"></video>'
+        )
+    # broll_image
+    safe_alt = html_lib.escape(spec.concept, quote=True)
+    return f'<img src="{safe_url}" alt="{safe_alt}" style="{css}" />'
+
+
+# ---------------------------------------------------------------------------
+# Stat + motion-graphic HTML (Phase 2c.5 Slice 2)
+# ---------------------------------------------------------------------------
+#
+# Both render entirely from spec fields — no Pexels, no S3. The render
+# worker captures whatever Chromium paints during the per-frame screenshot
+# pass, so CSS keyframe animations + inline SVG / div-based charts work
+# unchanged.
+
+# Where on the frame each stat/graphic position lives. Stat cards and bar
+# charts are SMALL — they don't want to fill the frame the way a b-roll
+# video does. `full` means "centered, large"; `corner` and `lower_third`
+# keep the speaker visible.
+#
+# Each entry returns a "wrapper" CSS string that the type-specific builder
+# slots its content into.
+_STAT_WRAPPER_CSS: dict[str, str] = {
+    # Centered card, ~70% of frame width. Top:32% leaves room for a hook
+    # overlay above + captions below.
+    "full": (
+        "position:absolute;top:32%;left:15%;right:15%;height:36%;"
+        "display:flex;flex-direction:column;align-items:center;justify-content:center;"
+        "text-align:center;"
+    ),
+    "corner": (
+        "position:absolute;top:6%;right:6%;width:36%;"
+        "display:flex;flex-direction:column;align-items:center;justify-content:center;"
+        "text-align:center;"
+    ),
+    # bottom:30% (not 18%) so the wrapper clears captions at bottom:18%
+    # in full-speaker layout. The wrapper occupies y=48-70% from top —
+    # still in the "lower half" semantically, just above the caption band.
+    "lower_third": (
+        "position:absolute;bottom:30%;left:6%;right:6%;height:22%;"
+        "display:flex;flex-direction:column;align-items:center;justify-content:center;"
+        "text-align:center;"
+    ),
+}
+
+# Accent color picked from the caption palette per color_intent so stats /
+# graphics stay visually coherent with keyword highlights.
+_STAT_COLOR_BY_INTENT: dict[str, str] = {
+    "neutral": "#FFFFFF",
+    "important": DEFAULT_CAPTION_PALETTE["important"],   # yellow
+    "definition": DEFAULT_CAPTION_PALETTE["definition"], # green
+    "warning": DEFAULT_CAPTION_PALETTE["warning"],       # red
+}
+
+
+def _build_stat_html(spec: "OverlaySpec") -> str:
+    """Render an animated_stat OverlaySpec.
+
+    Big bold `value` with a scale-pop entry animation, optional `subtitle`
+    underneath in smaller weight. Color comes from `color_intent`.
+    Document-scoped @keyframes — each entry becomes its own iframe so
+    keyframe names don't collide across shots.
+    """
+    wrapper = _STAT_WRAPPER_CSS.get(spec.position, _STAT_WRAPPER_CSS["full"])
+    color = _STAT_COLOR_BY_INTENT.get(spec.color_intent, "#FFFFFF")
+    value = html_lib.escape(spec.value)
+    subtitle = html_lib.escape(spec.subtitle) if spec.subtitle else ""
+    # Font size scales by position — full is much larger than corner.
+    value_font_vw = {"full": 14, "corner": 7, "lower_third": 10}.get(spec.position, 14)
+    subtitle_font_vw = {"full": 4, "corner": 2.5, "lower_third": 3}.get(spec.position, 4)
+    subtitle_html = (
+        f'<div style="font:700 {subtitle_font_vw}vw/1.25 Inter,Montserrat,sans-serif;'
+        f'color:#FFFFFF;margin-top:0.6vw;letter-spacing:0.02em;'
+        f'text-shadow:0 2px 8px rgba(0,0,0,0.55);">{subtitle}</div>'
+        if subtitle else ""
+    )
+    return (
+        '<style>'
+        # Big scale-pop with slight overshoot — feels like the number
+        # snaps in. 480ms is the sweet spot; faster looks twitchy.
+        '@keyframes stat-pop{'
+        '0%{opacity:0;transform:scale(0.35) translateY(20px)}'
+        '60%{opacity:1;transform:scale(1.12) translateY(-4px)}'
+        '100%{opacity:1;transform:scale(1) translateY(0)}'
+        '}'
+        '</style>'
+        f'<div style="{wrapper}pointer-events:none;">'
+        f'<div style="font:900 {value_font_vw}vw/1 Inter,Montserrat,sans-serif;'
+        f'color:{color};letter-spacing:-0.02em;'
+        '-webkit-text-stroke:2px #000;'
+        'text-shadow:0 6px 20px rgba(0,0,0,0.6);'
+        'animation:stat-pop 480ms both;">'
+        f'{value}</div>'
+        f'{subtitle_html}'
+        '</div>'
+    )
+
+
+# Pie-chart wedge palette. Picks 4 distinguishable hues from the caption
+# palette plus a complementary blue so 2-4 wedges always look distinct.
+# Cycled positionally — wedge[i] = _PIE_PALETTE[i % len(_PIE_PALETTE)].
+_PIE_PALETTE = [
+    DEFAULT_CAPTION_PALETTE["important"],   # yellow
+    DEFAULT_CAPTION_PALETTE["definition"],  # green
+    DEFAULT_CAPTION_PALETTE["warning"],     # red
+    "#5BC0EB",                              # complementary blue
+]
+
+
+def _format_chart_value(v: float) -> str:
+    """Inline display of a numeric chart value.
+
+    Integer-looking values render as ints ("100"); small floats keep one
+    decimal ("2.5"); larger floats round to int ("104.7" → "105"). Used
+    by every motion_graphic renderer so value formatting stays consistent
+    across bar / line / pie / comparison.
+    """
+    if v == 0:
+        return "0"
+    if v == int(v):
+        return f"{int(v)}"
+    if abs(v) < 10:
+        return f"{v:.1f}"
+    return f"{int(round(v))}"
+
+
+def _build_motion_graphic_html(spec: "OverlaySpec") -> str:
+    """Dispatch a motion_graphic OverlaySpec to its kind-specific renderer.
+
+    Adding a new graphic_kind:
+      1. Append to `_GRAPHIC_KIND_SPECS` in `reels_llm_director_service.py`
+         with its (min_bars, max_bars, values_required, max_label_len).
+      2. Add a `_build_<kind>_html(spec)` function below.
+      3. Wire its branch into this dispatcher.
+    Validator + LLM prompt already cover the data shape.
+    """
+    if not spec.bars:
+        return '<div></div>'
+    if spec.graphic_kind == "bar_chart":
+        return _build_bar_chart_html(spec)
+    if spec.graphic_kind == "line_chart":
+        return _build_line_chart_html(spec)
+    if spec.graphic_kind == "pie_chart":
+        return _build_pie_chart_html(spec)
+    if spec.graphic_kind == "comparison_icons":
+        return _build_comparison_icons_html(spec)
+    # Unknown kind shouldn't reach here (validator blocks) — defensive
+    # empty fragment so a malformed spec never breaks the render.
+    return '<div></div>'
+
+
+def _build_bar_chart_html(spec: "OverlaySpec") -> str:
+    """Vertical bar chart (2-3 bars).
+
+    Bars are flex children of a row-flex container, each grows from
+    height:0 to its computed share-of-max via a `bar-grow` keyframe.
+    Bars stagger 120ms each so the chart fills in left-to-right rather
+    than blocking up at once — matches TikTok motion-graphic conventions.
+
+    Per-bar height capped at 70% (NOT 100%) of the bar column because the
+    bar div is a flex-column sibling of value-text + label-text. Letting
+    the bar consume 100% would push the labels out of view.
+    """
+    wrapper = _STAT_WRAPPER_CSS.get(spec.position, _STAT_WRAPPER_CSS["full"])
+    color = _STAT_COLOR_BY_INTENT.get(spec.color_intent, "#FFFFFF")
+    max_value = max((float(b.get("value") or 0) for b in spec.bars), default=1.0)
+    if max_value <= 0:
+        max_value = 1.0
+    bar_html: list[str] = []
+    for i, b in enumerate(spec.bars):
+        label = html_lib.escape(str(b.get("label") or ""))
+        val = float(b.get("value") or 0)
+        display_v = _format_chart_value(val)
+        # 8% floor keeps tiny bars (relative to a huge max) still visible.
+        height_pct = max(8.0, min(70.0, (val / max_value) * 70.0))
+        delay_s = i * 0.12
+        bar_html.append(
+            '<div style="flex:1;display:flex;flex-direction:column;align-items:center;'
+            'justify-content:flex-end;height:100%;gap:0.4vw;">'
+            f'<div style="font:800 3vw/1 Inter,Montserrat,sans-serif;'
+            f'color:{color};letter-spacing:-0.01em;'
+            '-webkit-text-stroke:1.5px #000;'
+            'text-shadow:0 2px 6px rgba(0,0,0,0.5);">'
+            f'{display_v}</div>'
+            f'<div class="vx-bar" style="width:62%;background:{color};'
+            'border-radius:8px 8px 0 0;'
+            f'animation:bar-grow 520ms {delay_s:.2f}s both;'
+            f'--vx-target-h:{height_pct:.1f}%;'
+            'box-shadow:0 4px 16px rgba(0,0,0,0.45);">'
+            '</div>'
+            f'<div style="font:700 2.2vw/1.2 Inter,Montserrat,sans-serif;'
+            'color:#FFFFFF;letter-spacing:0.02em;'
+            'text-shadow:0 2px 6px rgba(0,0,0,0.55);">'
+            f'{label}</div>'
+            '</div>'
+        )
+    bars_inner = "".join(bar_html)
+    return (
+        '<style>'
+        # CSS custom property `--vx-target-h` carries the per-bar target
+        # height; the keyframe interpolates from 0 to that value.
+        '@keyframes bar-grow{'
+        '0%{height:0%}'
+        '100%{height:var(--vx-target-h)}'
+        '}'
+        '</style>'
+        f'<div style="{wrapper}pointer-events:none;">'
+        '<div style="display:flex;align-items:flex-end;justify-content:center;'
+        'gap:6%;width:100%;height:100%;">'
+        f'{bars_inner}'
+        '</div>'
+        '</div>'
+    )
+
+
+def _build_line_chart_html(spec: "OverlaySpec") -> str:
+    """SVG line chart with animated stroke-dashoffset draw (2-5 points).
+
+    Uses an SVG viewBox of 0-100 in both axes so all sizing is relative.
+    `preserveAspectRatio="xMidYMid meet"` letterboxes the chart inside
+    the wrapper at any aspect, keeping the curve geometry intact (vs
+    `none` which would warp stroke widths and circle radii).
+
+    Animation: the polyline's `stroke-dasharray` is set to the polyline's
+    total length and `stroke-dashoffset` animates from that length to 0
+    so the line "draws" left-to-right over ~700ms. Point dots + value
+    labels fade in staggered behind the draw cursor.
+    """
+    bars = spec.bars
+    n = len(bars)
+    if n < 2:
+        return '<div></div>'
+    wrapper = _STAT_WRAPPER_CSS.get(spec.position, _STAT_WRAPPER_CSS["full"])
+    color = _STAT_COLOR_BY_INTENT.get(spec.color_intent, "#FFFFFF")
+
+    values = [float(b.get("value") or 0) for b in bars]
+    labels = [str(b.get("label") or "") for b in bars]
+    min_v = min(values)
+    max_v = max(values)
+    # When all values are equal the range collapses — render a flat line
+    # at the chart's vertical centre rather than dividing by ~zero.
+    range_v = max_v - min_v
+    if range_v < 1e-6:
+        range_v = 1.0
+
+    # Chart-area bounds inside viewBox 0..100. Top 15 reserved for value
+    # labels above points; bottom 18 reserved for x-axis labels below.
+    x_lo, x_hi = 6.0, 94.0
+    y_lo, y_hi = 18.0, 78.0  # y_lo is the TOP (where max value sits)
+    points: list[tuple[float, float]] = []
+    for i, v in enumerate(values):
+        x = x_lo + (x_hi - x_lo) * (i / (n - 1))
+        # Higher value → lower y (SVG y-axis is top-down)
+        y_norm = (v - min_v) / range_v
+        y = y_hi - (y_hi - y_lo) * y_norm
+        points.append((x, y))
+    polyline_pts = " ".join(f"{x:.2f},{y:.2f}" for x, y in points)
+
+    # Total polyline length for stroke-dashoffset trick. Overestimate by
+    # 5% so the draw animation always completes cleanly even if our
+    # rounding introduces tiny error.
+    perimeter = sum(
+        ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+        for (x1, y1), (x2, y2) in zip(points, points[1:])
+    )
+    perimeter = max(40.0, perimeter * 1.05)
+
+    # Per-point dots + value labels + x-axis labels. Each dot/label fades
+    # in just after the draw cursor reaches it: dot delay = 0.08 + i*draw_pct.
+    draw_ms = 700
+    point_delay_lead_ms = 80
+    circles_html: list[str] = []
+    value_label_html: list[str] = []
+    axis_label_html: list[str] = []
+    for i, (x, y) in enumerate(points):
+        # Fraction of the way through the line, scaled to the draw time
+        delay_s = (point_delay_lead_ms + draw_ms * (i / max(1, n - 1))) / 1000.0
+        circles_html.append(
+            f'<circle cx="{x:.2f}" cy="{y:.2f}" r="1.6" '
+            f'fill="{color}" stroke="#000" stroke-width="0.5" '
+            f'style="opacity:0;animation:line-point 220ms {delay_s:.2f}s forwards;'
+            'filter:drop-shadow(0 1px 2px rgba(0,0,0,0.55));" />'
+        )
+        value_label_html.append(
+            f'<text x="{x:.2f}" y="{max(6.0, y - 4.0):.2f}" '
+            'font-family="Inter,Montserrat,sans-serif" font-weight="800" '
+            f'font-size="4.2" fill="{color}" text-anchor="middle" '
+            f'paint-order="stroke" stroke="#000" stroke-width="1" '
+            f'style="opacity:0;animation:line-point 220ms {delay_s:.2f}s forwards;">'
+            f'{html_lib.escape(_format_chart_value(values[i]))}</text>'
+        )
+        axis_label_html.append(
+            f'<text x="{x:.2f}" y="92" '
+            'font-family="Inter,Montserrat,sans-serif" font-weight="700" '
+            'font-size="4" fill="#FFFFFF" text-anchor="middle" '
+            'paint-order="stroke" stroke="#000" stroke-width="0.8" '
+            f'style="opacity:0;animation:line-point 220ms {delay_s:.2f}s forwards;">'
+            f'{html_lib.escape(labels[i])}</text>'
+        )
+
+    # Inner container sets its own aspect-ratio so the SVG has dimensions
+    # at "corner" position too (the corner wrapper has no explicit height).
+    inner_aspect = {"full": "16/10", "corner": "1/1", "lower_third": "16/9"}.get(
+        spec.position, "16/10"
+    )
+    return (
+        '<style>'
+        '@keyframes line-draw{to{stroke-dashoffset:0}}'
+        '@keyframes line-point{to{opacity:1}}'
+        '</style>'
+        f'<div style="{wrapper}pointer-events:none;">'
+        f'<div style="width:100%;aspect-ratio:{inner_aspect};max-height:100%;">'
+        '<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" '
+        'style="width:100%;height:100%;overflow:visible;">'
+        f'<polyline points="{polyline_pts}" fill="none" stroke="{color}" '
+        'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" '
+        f'style="stroke-dasharray:{perimeter:.1f};stroke-dashoffset:{perimeter:.1f};'
+        f'animation:line-draw {draw_ms}ms {point_delay_lead_ms}ms forwards;'
+        'filter:drop-shadow(0 3px 6px rgba(0,0,0,0.55));" />'
+        f'{"".join(circles_html)}'
+        f'{"".join(value_label_html)}'
+        f'{"".join(axis_label_html)}'
+        '</svg>'
+        '</div>'
+        '</div>'
+    )
+
+
+def _build_pie_chart_html(spec: "OverlaySpec") -> str:
+    """Conic-gradient pie chart with scale-pop entry + percentage legend (2-4 wedges).
+
+    Uses CSS `conic-gradient` rather than SVG arc paths — much simpler
+    and chromium handles it cleanly in our playwright render pipeline.
+    Each wedge gets a color from `_PIE_PALETTE` cycled positionally so
+    2-4 wedges always look distinct (color_intent influences the legend
+    accent only — the pie itself uses the full palette for differentiation).
+
+    Animation: the whole disc scales + rotates in over 600ms; legend
+    items fade in staggered after that.
+    """
+    bars = spec.bars
+    if len(bars) < 2:
+        return '<div></div>'
+    wrapper = _STAT_WRAPPER_CSS.get(spec.position, _STAT_WRAPPER_CSS["full"])
+
+    values = [float(b.get("value") or 0) for b in bars]
+    labels = [str(b.get("label") or "") for b in bars]
+    total = sum(values)
+    if total <= 0:
+        # All-zero would render as a degenerate disc; validator should
+        # have blocked this but be defensive.
+        return '<div></div>'
+
+    wedge_colors = [_PIE_PALETTE[i % len(_PIE_PALETTE)] for i in range(len(values))]
+
+    # Build conic-gradient color stops as cumulative percentages.
+    stops: list[str] = []
+    cumulative_pct = 0.0
+    for v, c in zip(values, wedge_colors):
+        start_pct = cumulative_pct
+        cumulative_pct += (v / total) * 100.0
+        stops.append(f"{c} {start_pct:.2f}% {cumulative_pct:.2f}%")
+    gradient = ", ".join(stops)
+
+    # Per-position sizing for the disc + legend.
+    disc_width = {"full": "55%", "corner": "70%", "lower_third": "30%"}.get(
+        spec.position, "55%"
+    )
+    legend_font_vw = {"full": 2.4, "corner": 1.3, "lower_third": 2.0}.get(
+        spec.position, 2.4
+    )
+    legend_dot_vw = {"full": 1.4, "corner": 0.9, "lower_third": 1.2}.get(
+        spec.position, 1.4
+    )
+    legend_gap_vw = {"full": 2.0, "corner": 1.0, "lower_third": 1.5}.get(
+        spec.position, 2.0
+    )
+
+    legend_items: list[str] = []
+    for i, (label, val) in enumerate(zip(labels, values)):
+        pct = (val / total) * 100.0
+        delay_s = 0.55 + i * 0.08
+        legend_items.append(
+            f'<div style="display:flex;align-items:center;gap:0.5vw;'
+            f'opacity:0;animation:pie-legend 280ms {delay_s:.2f}s forwards;'
+            f'font:800 {legend_font_vw}vw/1.1 Inter,Montserrat,sans-serif;'
+            'color:#FFFFFF;letter-spacing:0.02em;'
+            '-webkit-text-stroke:0.8px #000;'
+            'text-shadow:0 2px 6px rgba(0,0,0,0.55);">'
+            f'<span style="display:inline-block;width:{legend_dot_vw}vw;'
+            f'height:{legend_dot_vw}vw;border-radius:50%;background:{wedge_colors[i]};'
+            'box-shadow:0 0 0 1px rgba(0,0,0,0.55), 0 2px 4px rgba(0,0,0,0.45);">'
+            '</span>'
+            f'<span>{html_lib.escape(label)} {pct:.0f}%</span>'
+            '</div>'
+        )
+    legend_html = "".join(legend_items)
+
+    return (
+        '<style>'
+        '@keyframes pie-pop{'
+        '0%{opacity:0;transform:scale(0.4) rotate(-90deg)}'
+        '70%{opacity:1;transform:scale(1.08) rotate(-12deg)}'
+        '100%{opacity:1;transform:scale(1) rotate(0)}'
+        '}'
+        '@keyframes pie-legend{to{opacity:1}}'
+        '</style>'
+        f'<div style="{wrapper}pointer-events:none;gap:1vw;">'
+        # The pie disc — conic-gradient renders the wedges; pie-pop
+        # animates it in.
+        f'<div style="width:{disc_width};aspect-ratio:1;border-radius:50%;'
+        f'background:conic-gradient({gradient});'
+        'box-shadow:0 8px 28px rgba(0,0,0,0.55),inset 0 0 0 2px rgba(0,0,0,0.25);'
+        'animation:pie-pop 600ms both;"></div>'
+        # Legend row below
+        f'<div style="display:flex;flex-wrap:wrap;justify-content:center;'
+        f'align-items:center;gap:0.6vw {legend_gap_vw}vw;max-width:96%;">'
+        f'{legend_html}'
+        '</div>'
+        '</div>'
+    )
+
+
+def _build_comparison_icons_html(spec: "OverlaySpec") -> str:
+    """Two-card qualitative comparison with VS divider (exactly 2 items).
+
+    Cards slide in from their respective sides (left from left, right from
+    right) with the VS pill popping in between them after a brief delay.
+    Values are optional — when a bar's value <= 0 we render label-only;
+    when > 0 we show the value above the label as a big bold number.
+
+    Layout: row-flex with `flex:1` on each card, centered VS pill between.
+    The wrapper's outer column-flex is overridden by an inner row-flex
+    div that sets `flex-direction:row` explicitly.
+    """
+    bars = spec.bars
+    if len(bars) < 2:
+        return '<div></div>'
+    left, right = bars[0], bars[1]
+    wrapper = _STAT_WRAPPER_CSS.get(spec.position, _STAT_WRAPPER_CSS["full"])
+    color = _STAT_COLOR_BY_INTENT.get(spec.color_intent, "#FFFFFF")
+
+    # Per-position sizing — comparison cards are big at full, compact at
+    # corner (small space), wide at lower_third (horizontal band).
+    value_vw = {"full": 6.0, "corner": 3.0, "lower_third": 4.5}.get(spec.position, 6.0)
+    label_vw = {"full": 3.6, "corner": 2.0, "lower_third": 3.0}.get(spec.position, 3.6)
+    vs_vw = {"full": 4.5, "corner": 2.5, "lower_third": 3.5}.get(spec.position, 4.5)
+
+    def _card_html(item: dict, side: str) -> str:
+        label = html_lib.escape(str(item.get("label") or ""))
+        val = float(item.get("value") or 0)
+        delay_ms = 0 if side == "left" else 120
+        anim = "cmp-slide-left" if side == "left" else "cmp-slide-right"
+        value_block = ""
+        if val > 0:
+            value_block = (
+                f'<div style="font:900 {value_vw}vw/1 Inter,Montserrat,sans-serif;'
+                f'color:{color};letter-spacing:-0.01em;'
+                '-webkit-text-stroke:1.5px #000;'
+                'text-shadow:0 3px 10px rgba(0,0,0,0.55);">'
+                f'{_format_chart_value(val)}</div>'
+            )
+        return (
+            f'<div style="flex:1;display:flex;flex-direction:column;'
+            'align-items:center;justify-content:center;gap:0.7vw;'
+            f'animation:{anim} 480ms {delay_ms}ms both;opacity:0;">'
+            f'{value_block}'
+            f'<div style="font:800 {label_vw}vw/1.15 Inter,Montserrat,sans-serif;'
+            'color:#FFFFFF;letter-spacing:0.02em;text-align:center;'
+            'padding:0 0.4vw;'
+            '-webkit-text-stroke:1.1px #000;'
+            'text-shadow:0 2px 8px rgba(0,0,0,0.55);">'
+            f'{label}</div>'
+            '</div>'
+        )
+
+    return (
+        '<style>'
+        '@keyframes cmp-slide-left{'
+        '0%{opacity:0;transform:translateX(-30%)}'
+        '100%{opacity:1;transform:translateX(0)}'
+        '}'
+        '@keyframes cmp-slide-right{'
+        '0%{opacity:0;transform:translateX(30%)}'
+        '100%{opacity:1;transform:translateX(0)}'
+        '}'
+        '@keyframes cmp-vs-pop{'
+        '0%{opacity:0;transform:scale(0.3)}'
+        '70%{opacity:1;transform:scale(1.2)}'
+        '100%{opacity:1;transform:scale(1)}'
+        '}'
+        '</style>'
+        f'<div style="{wrapper}pointer-events:none;">'
+        # Inner row-flex — overrides the wrapper's column direction.
+        '<div style="display:flex;flex-direction:row;align-items:center;'
+        'justify-content:center;gap:1vw;width:100%;height:100%;">'
+        f'{_card_html(left, "left")}'
+        # VS divider — pops in after both cards have started sliding.
+        f'<div style="font:900 {vs_vw}vw/1 Inter,Montserrat,sans-serif;'
+        f'color:{color};letter-spacing:0.04em;flex:0 0 auto;'
+        '-webkit-text-stroke:2px #000;'
+        'text-shadow:0 4px 12px rgba(0,0,0,0.65);'
+        'animation:cmp-vs-pop 480ms 220ms both;opacity:0;">'
+        'VS</div>'
+        f'{_card_html(right, "right")}'
+        '</div>'
         '</div>'
     )
 

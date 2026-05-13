@@ -2,6 +2,10 @@
 Description=Stop BBB server at 9:00 PM IST Mon-Sat
 
 [Timer]
+# This is a per-deployment cost knob — set to whenever the client's classes
+# end. The recording-drain design itself does NOT depend on this time; the
+# drainer runs continuously while the server is up and a final blocking
+# drain is invoked by bbb-schedule.sh stop right before snapshot.
 OnCalendar=Mon..Sat 21:00 Asia/Kolkata
 Persistent=true
 RandomizedDelaySec=30

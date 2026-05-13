@@ -1,0 +1,25 @@
+[Unit]
+Description=Drain queued BBB recording uploads (deferred post-publish)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Run as the same user the BBB rap-worker uses, so the queue file and lock
+# file can be appended to by both the post-publish hook (rap-worker → bigbluebutton)
+# and this drainer without permission races.
+User=bigbluebutton
+Group=bigbluebutton
+ExecStart=/usr/local/bin/bbb-recording-drain.sh --watch
+# Resource ceilings — ffmpeg invoked by the hook is already capped at 2 threads,
+# but we apply systemd-level limits too so even if the script is invoked
+# manually it can never starve live-meeting services.
+CPUWeight=10
+IOWeight=10
+Nice=19
+IOSchedulingClass=idle
+# Long enough for a 2-hour recording's ffmpeg + S3 upload to finish
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target

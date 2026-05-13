@@ -136,6 +136,15 @@ def get_recording_stats():
 
 
 PUBLISHED_DIR = '/var/bigbluebutton/published/presentation'
+UNPUBLISHED_DIR = '/var/bigbluebutton/unpublished/presentation'
+RAW_DIR = '/var/bigbluebutton/recording/raw'
+STATUS_DIR = '/var/bigbluebutton/recording/status'
+# Furthest-reached stage wins (iterate from latest to earliest).
+# Real BBB pipeline order is: sanity → archived → processed → published.
+# 'recorded' is sometimes seen on older versions but BBB 2.x+ uses 'archived'.
+# Include both for compatibility; on this host we observe 160 archived .done
+# files and 0 recorded .done files.
+PIPELINE_STAGES = ('published', 'processed', 'archived', 'recorded', 'sanity')
 QUEUE_FILE = '/var/spool/bbb-recording-queue.txt'
 UPLOADED_DIR = '/var/spool/bbb-recording-uploaded'
 UPLOADING_MARKER = '/var/spool/bbb-recording-uploading'
@@ -206,45 +215,248 @@ def _parse_metadata_xml(path):
     return {'meetingName': name, 'start_time': start, 'end_time': end}
 
 
-def _recording_status(record_id, queued_set, current_recid):
-    """Decide which status badge applies."""
-    if record_id == current_recid:
-        return 'Uploading'
-    if _is_uploaded(record_id):
-        return 'Uploaded'
-    if record_id in queued_set:
-        return 'Queued'
-    return 'Published'  # rap-worker done but our hook hasn't queued yet (rare)
+# BBB names .done flags either '<recordId>.done' (sanity, archived, recorded)
+# OR '<recordId>-<formatName>.done' (processed, published — format e.g. 'presentation').
+# This regex extracts just the bare recordId so suffixed files map back correctly.
+_DONE_FILE_RE = re.compile(r'^([a-f0-9]{40}-[0-9]{13})(?:-[^.]+)?\.done$')
+# Ordering used to pick the furthest-reached stage when multiple .done files exist.
+_STAGE_ORDER = {'sanity': 0, 'recorded': 1, 'archived': 2, 'processed': 3, 'published': 4}
+
+
+def _stage_done_exists(record_id, stage):
+    """Returns True if either '<id>.done' or '<id>-*.done' is present in the given stage dir."""
+    plain = os.path.join(STATUS_DIR, stage, record_id + '.done')
+    if os.path.exists(plain):
+        return True
+    # Fall back to glob for the suffixed variant.
+    import glob as _glob
+    return bool(_glob.glob(os.path.join(STATUS_DIR, stage, record_id + '-*.done')))
+
+
+def _pipeline_stage(record_id):
+    """Return the furthest BBB recording-pipeline stage reached:
+       'published' > 'processed' > 'recorded'/'archived' > 'sanity' > 'raw_only' > 'unpublished' > None
+
+    Important: a presentation directory in /var/bigbluebutton/published/presentation/<id>
+    means the recording finished the publish step — even if its .done flag was
+    later deleted by the 4-day cleanup cron. Check that FIRST."""
+    if os.path.isdir(os.path.join(PUBLISHED_DIR, record_id)):
+        return 'published'
+    for stage in PIPELINE_STAGES:
+        if _stage_done_exists(record_id, stage):
+            return stage
+    if os.path.isdir(os.path.join(RAW_DIR, record_id)):
+        return 'raw_only'
+    if os.path.isdir(os.path.join(UNPUBLISHED_DIR, record_id)):
+        return 'unpublished'
+    return None
+
+
+def _combined_status(record_id, queued_set, current_recid):
+    """Human-readable status for the UI, derived from pipeline stage + upload state."""
+    stage = _pipeline_stage(record_id)
+    if stage == 'published':
+        if record_id == current_recid:
+            return 'Uploading'
+        if _is_uploaded(record_id):
+            return 'Uploaded'
+        if record_id in queued_set:
+            return 'Queued'
+        return 'Published'      # rap-worker done; awaiting hook to enqueue
+    if stage == 'processed':    return 'Awaiting Publish'   # processed.done, publish not yet
+    if stage == 'archived':     return 'Awaiting Process'   # archive done, processing stalled
+    if stage == 'recorded':     return 'Awaiting Process'   # older BBB synonym for archived
+    if stage == 'sanity':       return 'Awaiting Archive'   # sanity check passed, archive not yet
+    if stage == 'raw_only':     return 'Recording'          # raw files only, no .done yet
+    if stage == 'unpublished':  return 'Unpublished'
+    return 'Unknown'
+
+
+def _events_xml_meeting_info(events_path):
+    """For raw recordings, pull what we can from events.xml header:
+       - meeting name (best-effort across BBB versions)
+       - external meeting ID (only via patterns that we KNOW give the external
+         UUID, not the confusingly-named <meetingId> which is the internal id)
+
+    We do NOT extract a timestamp here. BBB stores event timestamps as
+    relative offsets from recording start; the absolute start time can only
+    come from metadata.xml (published) or from the recordId suffix itself."""
+    try:
+        with open(events_path, 'rb') as f:
+            head = f.read(16384).decode('utf-8', errors='ignore')
+        ext_id = None
+        name = None
+        # External meeting ID — patterns that genuinely point at the external
+        # (admin-facing) UUID rather than BBB's internal id.
+        for pattern in (
+            r'<externalMeetingID>([^<]+)</externalMeetingID>',
+            r'<externalMeetingId>([^<]+)</externalMeetingId>',
+            r'externalMeetingID="([^"]+)"',
+            r'externalMeetingId="([^"]+)"',
+        ):
+            m = re.search(pattern, head)
+            if m:
+                ext_id = m.group(1).strip()
+                break
+        # Meeting name (also a few possible spellings).
+        for pattern in (
+            r'<meetingName>([^<]+)</meetingName>',
+            r'meetingName="([^"]+)"',
+            r'<meta>\s*<name>([^<]+)</name>',
+            r'<name>([^<]+)</name>',
+        ):
+            m = re.search(pattern, head)
+            if m:
+                name = m.group(1).strip()
+                break
+        return {'externalMeetingId': ext_id, 'meetingName': name}
+    except Exception:
+        return {'externalMeetingId': None, 'meetingName': None}
+
+
+def _scan_all_recording_ids():
+    """Union of every recordId visible anywhere on this BBB box across all stages.
+    Critically: strips BBB's '-<format>' suffix on .done file names so each
+    real recordId is added exactly once, no matter how many formats wrote
+    their own .done files for it."""
+    ids = set()
+    # Status .done files — may be named '<id>.done' or '<id>-<format>.done'.
+    for stage in PIPELINE_STAGES:
+        d = os.path.join(STATUS_DIR, stage)
+        try:
+            for entry in os.scandir(d):
+                m = _DONE_FILE_RE.match(entry.name)
+                if m:
+                    ids.add(m.group(1))
+        except FileNotFoundError:
+            pass
+    # Plus directory listings (catches raw-only + unpublished + already-published).
+    for root in (PUBLISHED_DIR, UNPUBLISHED_DIR, RAW_DIR):
+        try:
+            for entry in os.scandir(root):
+                if entry.is_dir() and RECORD_ID_RE.match(entry.name):
+                    ids.add(entry.name)
+        except FileNotFoundError:
+            pass
+    return ids
+
+
+_RECORD_ID_TS_RE = re.compile(r'^[a-f0-9]{40}-([0-9]{13})$')
+
+
+def _fallback_start_ms(record_id):
+    """A recordId is `sha1(externalId+ts).hex + '-' + ts_ms` — the suffix IS the
+    millisecond start timestamp. Always available, even if metadata.xml and
+    events.xml are unreadable. Used as a last-resort sort key so non-published
+    rows don't all sink to the bottom of the table."""
+    m = _RECORD_ID_TS_RE.match(record_id)
+    return int(m.group(1)) if m else None
+
+
+def _resolve_metadata(record_id):
+    """Try metadata.xml first (most reliable), fall back to events.xml for raw,
+    finally fall back to the timestamp embedded in the recordId itself."""
+    fallback_start = _fallback_start_ms(record_id)
+    for candidate in (
+        os.path.join(PUBLISHED_DIR, record_id, 'metadata.xml'),
+        os.path.join(UNPUBLISHED_DIR, record_id, 'metadata.xml'),
+    ):
+        if os.path.isfile(candidate):
+            m = _parse_metadata_xml(candidate)
+            return {
+                'meetingName': m['meetingName'],
+                'startTimeMs': m['start_time'] or fallback_start,
+                'endTimeMs': m['end_time'],
+                'externalMeetingId': _extract_external_id(candidate),
+            }
+    events = os.path.join(RAW_DIR, record_id, 'events.xml')
+    if os.path.isfile(events):
+        info = _events_xml_meeting_info(events)
+        return {
+            'meetingName': info['meetingName'],
+            # Always use the recordId suffix — events.xml timestamps are
+            # relative offsets, not absolute epoch ms.
+            'startTimeMs': fallback_start,
+            'endTimeMs': None,
+            'externalMeetingId': info['externalMeetingId'],
+        }
+    # No metadata at all — at least give it a sensible startTime so the row
+    # surfaces in the UI rather than getting buried at the bottom.
+    return {'meetingName': None, 'startTimeMs': fallback_start,
+            'endTimeMs': None, 'externalMeetingId': None}
+
+
+def _extract_external_id(metadata_path):
+    """Pull the external meeting ID (the UUID admins know) from metadata.xml.
+    BBB stores it under <meta><meetingId>...; the <meeting id="..."> attribute
+    is the INTERNAL sha1-timestamp recordId, which is NOT what we want."""
+    try:
+        root = ET.parse(metadata_path).getroot()
+        # Canonical location in BBB 2.x+
+        el = root.find('.//meta/meetingId')
+        if el is not None and el.text and el.text.strip():
+            return el.text.strip()
+        # Fallback: some recordings have <meeting meetingId="..."> attribute (vs id="")
+        m = root.find('.//meeting')
+        if m is not None:
+            mid = m.get('meetingId') or m.get('externalId')
+            if mid:
+                return mid
+    except Exception:
+        pass
+    return None
 
 
 def list_recordings(page=1, page_size=25):
-    """Scan /var/bigbluebutton/published/presentation/* and return one page,
-    newest-first. Size is NOT computed here — clients fetch it lazily."""
+    """One row per unique recordId across ALL pipeline locations + states. Newest first.
+    Size is NOT computed here — clients fetch it lazily via /api/recordings/<id>/size."""
     queued = _read_queue_set()
     current = _read_current_drainer_recid()
+    # rap-worker introspection — what it's doing AND what's queued.
+    rap_active = {j['recordingId']: j for j in get_rap_worker_active_jobs()}
+    rap_queue_contents = get_rap_worker_queue_contents()
+    rap_queue_positions = _queue_position_map(rap_queue_contents)
+    rap_total_queued = sum(len(v) for v in rap_queue_contents.values())
 
     rows = []
-    try:
-        for entry in os.scandir(PUBLISHED_DIR):
-            if not entry.is_dir():
-                continue
-            meta_path = os.path.join(entry.path, 'metadata.xml')
-            meta = _parse_metadata_xml(meta_path) if os.path.isfile(meta_path) else \
-                   {'meetingName': None, 'start_time': None, 'end_time': None}
-            status = _recording_status(entry.name, queued, current)
-            duration_sec = None
-            if meta['start_time'] and meta['end_time']:
-                duration_sec = max(0, (meta['end_time'] - meta['start_time']) // 1000)
-            rows.append({
-                'recordId': entry.name,
-                'meetingName': meta['meetingName'] or '(unnamed)',
-                'startTimeMs': meta['start_time'],
-                'durationSeconds': duration_sec,
-                'status': status,
-                'canDelete': status == 'Uploaded',
-            })
-    except FileNotFoundError:
-        pass
+    for record_id in _scan_all_recording_ids():
+        meta = _resolve_metadata(record_id)
+        status = _combined_status(record_id, queued, current)
+        active = rap_active.get(record_id)
+        if active and status not in ('Uploaded', 'Queued', 'Uploading'):
+            status = 'Processing'
+        queue_info = rap_queue_positions.get(record_id)
+        already_queued = (active is not None) or (queue_info is not None)
+        # Only `Uploaded` rows are safe to delete (S3 has the copy).
+        # Only `Published`/`Queued` rows can be force-enqueued for upload.
+        # Stuck pipeline stages (Recording / Awaiting Process / Processing /
+        # Publishing) can be rebuilt via the heal service.
+        # Rebuild is conceptually OK for these stuck states — but suppress it if
+        # the recording is ALREADY queued or actively being processed by rap-worker,
+        # to prevent users from piling up duplicate sanity jobs in the queue.
+        can_rebuild = (
+            status in ('Recording', 'Awaiting Archive', 'Awaiting Process', 'Awaiting Publish', 'Unpublished')
+            and not already_queued
+        )
+        can_upload = status in ('Published', 'Queued')
+        duration_sec = None
+        if meta['startTimeMs'] and meta['endTimeMs']:
+            duration_sec = max(0, (meta['endTimeMs'] - meta['startTimeMs']) // 1000)
+        rows.append({
+            'recordId': record_id,
+            'externalMeetingId': meta['externalMeetingId'],
+            'meetingName': meta['meetingName'] or '(unnamed)',
+            'startTimeMs': meta['startTimeMs'],
+            'durationSeconds': duration_sec,
+            'status': status,
+            'activeStage': active['stage'] if active else None,
+            'queuedInStage': queue_info['queue'] if queue_info else None,
+            'queuePosition': queue_info['positionOverall'] if queue_info else None,
+            'alreadyQueued': already_queued,
+            'canDelete': status == 'Uploaded',
+            'canUpload': can_upload,
+            'canRebuild': can_rebuild,
+        })
 
     # Newest first (entries without a startTime sink to the bottom).
     rows.sort(key=lambda r: r['startTimeMs'] or 0, reverse=True)
@@ -260,6 +472,8 @@ def list_recordings(page=1, page_size=25):
         'total_pages': total_pages,
         'current_drainer': current,
         'queued_count': len(queued),
+        'rap_queue': get_rap_worker_queue_stats(),
+        'rap_total_queued': rap_total_queued,
         'recordings': rows[start:start + page_size],
     }
 
@@ -285,6 +499,71 @@ def recording_size_bytes(record_id):
                     pass
     _size_cache[record_id] = (total, now)
     return total
+
+
+def rebuild_recording_pipeline(record_id):
+    """Re-run BBB's recording pipeline for this recordId. Works on any stuck
+    stage (Sanity → Recorded transition stalled, Processing crashed mid-ffmpeg,
+    etc) and accepts the INTERNAL recordId directly — no external-ID lookup
+    needed. `bbb-record --rebuild` is exactly what the heal service runs under
+    the hood; calling it directly here is simpler and works for raw-only
+    recordings that don't yet have metadata.xml."""
+    if not record_id or not RECORD_ID_RE.match(record_id):
+        return False, 'invalid recordId'
+    # Ensure something for this recordId actually exists on disk before we
+    # spawn the BBB CLI — refuse fast otherwise.
+    if not (
+        os.path.isdir(os.path.join(RAW_DIR, record_id))
+        or os.path.isdir(os.path.join(PUBLISHED_DIR, record_id))
+        or os.path.isdir(os.path.join(UNPUBLISHED_DIR, record_id))
+        or any(os.path.exists(os.path.join(STATUS_DIR, s, record_id + '.done'))
+               for s in PIPELINE_STAGES)
+    ):
+        return False, 'recording not found on this BBB host'
+    try:
+        result = subprocess.run(
+            ['bbb-record', '--rebuild', record_id],
+            capture_output=True, text=True, timeout=60,
+        )
+        ok = result.returncode == 0
+        out = (result.stdout or '') + (result.stderr or '')
+        return ok, (out.strip()[-4000:] or ('rebuild triggered' if ok else 'failed'))
+    except subprocess.TimeoutExpired:
+        return False, 'bbb-record --rebuild timed out'
+    except Exception as e:
+        return False, str(e)
+
+
+def enqueue_recording_for_upload(record_id):
+    """Append the recordId to /var/spool/bbb-recording-queue.txt so the drainer
+    picks it up on its next minute-tick. Used by the dashboard's
+    "Upload to S3" action on Published rows.
+
+    Safe to call repeatedly: drainer dedupes via `sort -u` before processing,
+    and the post-publish hook itself is idempotent (`/recording/complete` is
+    a no-op once registered).
+    """
+    if not record_id or not RECORD_ID_RE.match(record_id):
+        return False, 'invalid recordId'
+    presentation_dir = os.path.join(PUBLISHED_DIR, record_id)
+    if not os.path.isdir(presentation_dir):
+        return False, 'recording not found on disk'
+    if _is_uploaded(record_id):
+        return False, 'already uploaded to S3'
+    if _read_current_drainer_recid() == record_id:
+        return False, 'upload already in progress'
+    if record_id in _read_queue_set():
+        return False, 'already queued — drainer will pick it up shortly'
+
+    try:
+        # Append; mode 'a' + a flock-like lockfile would be ideal but we're
+        # the only Python writer and the bash hook uses flock on the same
+        # path, so an append from here is naturally race-tolerant.
+        with open(QUEUE_FILE, 'a') as f:
+            f.write(record_id + '\n')
+        return True, f'queued {record_id}'
+    except Exception as e:
+        return False, str(e)
 
 
 def delete_recording_from_bbb(record_id):
@@ -321,6 +600,142 @@ def delete_recording_from_bbb(record_id):
         return False, 'bbb-record --delete timed out'
     except Exception as e:
         return False, str(e)
+
+
+def get_rap_worker_active_jobs():
+    """Inspect redis for rap-worker(s) currently mid-job. Returns a list:
+       [{ 'recordingId': '...', 'stage': 'sanity'|'archive'|'process'|'publish'|'post_publish',
+          'startedAt': iso-ish-string, 'worker': '...' }, ...]
+
+    Each rap-worker process is tracked in redis under `resque:worker:<id>`.
+    When idle that key is absent; when working it holds a JSON payload that
+    names the queue + the meeting_id being processed. We surface this so the
+    dashboard can flip a row's badge to 'Processing' (orange tint, pulsing)
+    while rap-worker is actually running ffmpeg on it."""
+    active = []
+    try:
+        result = subprocess.run(
+            ['redis-cli', 'SMEMBERS', 'resque:workers'],
+            capture_output=True, text=True, timeout=3,
+        )
+        if result.returncode != 0:
+            return active
+        worker_ids = [w.strip() for w in result.stdout.split('\n') if w.strip()]
+        for wid in worker_ids:
+            r = subprocess.run(
+                ['redis-cli', 'GET', f'resque:worker:{wid}'],
+                capture_output=True, text=True, timeout=2,
+            )
+            body = r.stdout.strip()
+            if not body or body == '(nil)':
+                continue
+            try:
+                payload = json.loads(body)
+            except (ValueError, json.JSONDecodeError):
+                continue
+            queue = payload.get('queue', '')
+            # rap-worker queues are named 'rap:sanity', 'rap:archive', etc.
+            stage = queue.split(':', 1)[1] if ':' in queue else queue
+            run_at = payload.get('run_at', '')
+            # args is usually [{ meeting_id: '...' }]
+            args = (payload.get('payload') or {}).get('args') or []
+            rec_id = None
+            if args and isinstance(args[0], dict):
+                rec_id = args[0].get('meeting_id') or args[0].get('meetingId')
+            elif args and isinstance(args[0], str):
+                rec_id = args[0]
+            if rec_id:
+                active.append({
+                    'recordingId': rec_id,
+                    'stage': stage,
+                    'startedAt': run_at,
+                    'worker': wid,
+                })
+    except Exception:
+        pass
+    return active
+
+
+def get_rap_worker_queue_contents():
+    """For each rap-worker queue, return the ordered list of recordIds in line.
+    Used to (a) tell users their queue position and (b) suppress double-rebuilds
+    when a recording is already pending in any rap-worker queue."""
+    queues = ['sanity', 'archive', 'process', 'publish', 'post_publish']
+    contents = {q: [] for q in queues}
+    for q in queues:
+        try:
+            r = subprocess.run(
+                ['redis-cli', 'LRANGE', f'resque:queue:rap:{q}', '0', '-1'],
+                capture_output=True, text=True, timeout=5,
+            )
+            if r.returncode != 0:
+                continue
+            for raw_line in r.stdout.split('\n'):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                # redis-cli output may double-quote-escape values; strip the outer
+                # quotes if present and unescape.
+                if line.startswith('"') and line.endswith('"'):
+                    line = line[1:-1].encode('utf-8').decode('unicode_escape')
+                try:
+                    data = json.loads(line)
+                except (ValueError, json.JSONDecodeError):
+                    continue
+                args = data.get('args') or []
+                rid = None
+                if args and isinstance(args[0], dict):
+                    rid = args[0].get('meeting_id') or args[0].get('meetingId')
+                if rid:
+                    contents[q].append(rid)
+        except Exception:
+            pass
+    return contents
+
+
+def _queue_position_map(queue_contents):
+    """Given queue contents, return a dict:
+       recordId -> { queue, positionInQueue (1-indexed), positionOverall (1-indexed) }
+    Overall position considers worker priority: archive > publish > process >
+    sanity > post_publish (same order the worker pulls jobs in)."""
+    priority = ('archive', 'publish', 'process', 'sanity', 'post_publish')
+    result = {}
+    cumulative = 0
+    for q in priority:
+        for i, rid in enumerate(queue_contents.get(q, [])):
+            if rid not in result:  # first occurrence wins
+                result[rid] = {
+                    'queue': q,
+                    'positionInQueue': i + 1,
+                    'positionOverall': cumulative + i + 1,
+                }
+        cumulative += len(queue_contents.get(q, []))
+    return result
+
+
+def get_rap_worker_queue_stats():
+    """Read BBB rap-worker resque queue depths from redis. These are the
+    queues that fill when 'bbb-record --rebuild' runs OR when a meeting ends
+    and BBB starts processing the recording. Distinct from our S3 upload
+    queue (which only fills *after* a recording reaches 'published').
+
+    Returns a dict like {'sanity': 3, 'archive': 0, ...} and a total."""
+    queues = ['sanity', 'archive', 'process', 'publish', 'post_publish']
+    stats = {}
+    total = 0
+    for q in queues:
+        try:
+            result = subprocess.run(
+                ['redis-cli', 'LLEN', f'resque:queue:rap:{q}'],
+                capture_output=True, text=True, timeout=3,
+            )
+            if result.returncode == 0:
+                n = int(result.stdout.strip() or '0')
+                stats[q] = n
+                total += n
+        except Exception:
+            stats[q] = 0
+    return {'stages': stats, 'total': total}
 
 
 def get_upload_queue_stats():
@@ -519,16 +934,35 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   table.recordings th, table.recordings td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
   table.recordings th { color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; }
   table.recordings tr:hover { background: rgba(255,255,255,0.02); }
-  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
   .badge-uploaded { background: rgba(34,197,94,0.18); color: var(--green); }
   .badge-queued { background: rgba(234,179,8,0.18); color: var(--yellow); }
   .badge-uploading { background: rgba(249,115,22,0.18); color: var(--orange); }
   .badge-published { background: rgba(148,163,184,0.18); color: var(--muted); }
+  .badge-recording { background: rgba(56,189,248,0.18); color: var(--accent); }
+  .badge-awaitingarchive { background: rgba(56,189,248,0.18); color: var(--accent); }
+  .badge-awaitingprocess { background: rgba(168,85,247,0.22); color: #a855f7; }
+  .badge-awaitingpublish { background: rgba(168,85,247,0.22); color: #a855f7; }
+  .badge-processing { background: rgba(249,115,22,0.25); color: var(--orange); animation: badge-pulse 1.6s ease-in-out infinite; }
+  @keyframes badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+  .badge-unpublished { background: rgba(148,163,184,0.18); color: var(--muted); }
+  .badge-unknown { background: rgba(239,68,68,0.18); color: var(--red); }
+  .stage-tag { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 0.65rem; background: rgba(168,85,247,0.15); color: #a855f7; font-weight: 500; }
   .size-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
   .size-btn:hover { color: var(--text); border-color: var(--accent); }
   .row-delete { background: transparent; border: 1px solid var(--red); color: var(--red); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; }
   .row-delete:hover { background: var(--red); color: #fff; }
   .row-delete:disabled { opacity: 0.3; cursor: not-allowed; }
+  .row-upload { background: transparent; border: 1px solid var(--green); color: var(--green); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; margin-right: 6px; }
+  .row-upload:hover { background: var(--green); color: #fff; }
+  .row-upload:disabled { opacity: 0.3; cursor: not-allowed; }
+  .row-rebuild { background: transparent; border: 1px solid #a855f7; color: #a855f7; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem; margin-right: 6px; }
+  .row-rebuild:hover { background: #a855f7; color: #fff; }
+  .row-rebuild:disabled { opacity: 0.3; cursor: not-allowed; }
+  .live-banner { background: linear-gradient(90deg, rgba(249,115,22,0.18), rgba(249,115,22,0.06)); border: 1px solid var(--orange); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; font-size: 0.85rem; }
+  .live-banner .pulse { width: 8px; height: 8px; background: var(--orange); border-radius: 50%; animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.6); } }
+  .row-active { background: rgba(249,115,22,0.08); }
   .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-size: 0.85rem; color: var(--muted); }
   .pagination button { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 6px 12px; border-radius: 4px; cursor: pointer; margin: 0 4px; }
   .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -753,7 +1187,8 @@ let currentPage = 1;
 let recordingsLoadedOnce = false;
 
 function badgeClass(status) {
-  return 'badge badge-' + status.toLowerCase();
+  // Strip spaces so "Awaiting Process" -> "awaitingprocess" matches CSS.
+  return 'badge badge-' + status.toLowerCase().replace(/\s+/g, '');
 }
 
 function fmtTime(ms) {
@@ -787,17 +1222,53 @@ async function loadRecordings(page) {
     const res = await fetch(apiUrl('/api/recordings') + '&page=' + page);
     const d = await res.json();
 
+    const rap = d.rap_queue || {total: 0, stages: {}};
+    const stagesDetail = Object.entries(rap.stages || {})
+      .filter(([k, v]) => v > 0)
+      .map(([k, v]) => `${k}=${v}`).join(', ');
+
+    // Rough per-stage averages (seconds). The 'process' stage is the ffmpeg-heavy
+    // one and dominates wait time; other stages are negligible by comparison.
+    // Under CPUWeight=10 during class hours, multiply mentally by ~3x.
+    const AVG_SEC = {sanity: 15, archive: 30, process: 600, publish: 30, post_publish: 60};
+    let etaSec = 0;
+    for (const [q, n] of Object.entries(rap.stages || {})) etaSec += (AVG_SEC[q] || 60) * n;
+    const etaLabel = etaSec >= 3600 ? `~${(etaSec/3600).toFixed(1)}h` : `~${Math.ceil(etaSec/60)}m`;
+
     document.getElementById('recordingsMeta').textContent =
-      `${d.total} recording(s) on disk · ${d.queued_count} queued for upload · ` +
-      (d.current_drainer ? `now uploading: ${d.current_drainer.slice(0, 12)}…` : 'no upload in progress');
+      `${d.total} recording(s) on disk · ` +
+      `BBB pipeline: ${rap.total} pending${stagesDetail ? ' (' + stagesDetail + ')' : ''}` +
+      `${rap.total > 0 ? ' · est. clear: ' + etaLabel : ''} · ` +
+      `S3 upload: ${d.queued_count} queued · ` +
+      (d.current_drainer ? `uploading ${d.current_drainer.slice(0, 12)}…` : 'idle');
+
+    // Prominent banner when something is mid-upload — much more obvious than
+    // a one-line counter, and animates so users notice without polling.
+    let bannerHtml = '';
+    if (d.current_drainer) {
+      bannerHtml = `<div class="live-banner">
+        <span class="pulse"></span>
+        <span><strong>Uploading to S3 now:</strong> <span class="recid">${escapeHtml(d.current_drainer)}</span></span>
+      </div>`;
+    } else if (d.queued_count > 0) {
+      bannerHtml = `<div class="live-banner" style="border-color:var(--yellow);background:linear-gradient(90deg,rgba(234,179,8,0.15),rgba(234,179,8,0.04))">
+        <span class="pulse" style="background:var(--yellow)"></span>
+        <span><strong>${d.queued_count}</strong> recording(s) queued — drainer will start within a minute</span>
+      </div>`;
+    } else if (rap.total > 0) {
+      bannerHtml = `<div class="live-banner" style="border-color:#a855f7;background:linear-gradient(90deg,rgba(168,85,247,0.15),rgba(168,85,247,0.04))">
+        <span class="pulse" style="background:#a855f7"></span>
+        <span><strong>BBB pipeline: ${rap.total}</strong> recording(s) processing${stagesDetail ? ' — ' + stagesDetail : ''}. Refresh in a few minutes.</span>
+      </div>`;
+    }
 
     if (d.recordings.length === 0) {
-      wrap.innerHTML = '<div style="padding:20px;text-align:center;color:var(--muted)">No recordings on disk.</div>';
+      wrap.innerHTML = bannerHtml + '<div style="padding:20px;text-align:center;color:var(--muted)">No recordings on disk.</div>';
       return;
     }
 
     let html = `<table class="recordings"><thead><tr>
-      <th>Meeting</th><th>Started</th><th>Duration</th><th>Status</th><th>Size</th><th></th>
+      <th>Meeting</th><th>Started</th><th>Duration</th><th>Status</th><th>Size</th><th>Actions</th>
     </tr></thead><tbody>`;
     for (const r of d.recordings) {
       // The server validates recordIds with a strict regex (sha1-hex-13digit),
@@ -807,20 +1278,52 @@ async function loadRecordings(page) {
       const ridAttr = escapeHtml(r.recordId);
       const ridJs = escapeJs(r.recordId);
       const nameJs = escapeJs(r.meetingName || '');
-      html += `<tr id="rec-${safeId}">
+      const extId = r.externalMeetingId ? escapeHtml(r.externalMeetingId) : '';
+      // Highlight row when rap-worker is actively processing it or our drainer is uploading it.
+      const rowClass = (r.status === 'Uploading' || r.status === 'Processing') ? 'row-active' : '';
+      const stageTag = r.activeStage
+        ? `<span class="stage-tag">${escapeHtml(r.activeStage)}</span>`
+        : (r.queuedInStage
+            ? `<span class="stage-tag" style="background:rgba(56,189,248,0.15);color:var(--accent)">#${r.queuePosition} · ${escapeHtml(r.queuedInStage)}</span>`
+            : '');
+
+      // Action buttons are state-aware; the server is the source of truth and
+      // will reject inappropriate requests regardless of what the UI shows.
+      const actions = [];
+      if (r.canRebuild) {
+        actions.push(`<button class="row-rebuild" onclick="rebuildRecording('${ridJs}', '${nameJs}')">Rebuild pipeline</button>`);
+      } else if (r.alreadyQueued) {
+        // Show a disabled button with explanation so users don't keep clicking.
+        const why = r.activeStage
+          ? `BBB is processing this now (stage: ${r.activeStage})`
+          : (r.queuedInStage
+              ? `Already queued (position #${r.queuePosition} in ${r.queuedInStage})`
+              : 'Already pending');
+        actions.push(`<button class="row-rebuild" disabled title="${escapeHtml(why)}">In queue</button>`);
+      }
+      if (r.canUpload) {
+        actions.push(`<button class="row-upload" onclick="uploadRecording('${ridJs}', '${nameJs}')">Upload to S3</button>`);
+      } else if (r.status === 'Uploading') {
+        actions.push(`<button class="row-upload" disabled>Uploading…</button>`);
+      } else if (r.status === 'Uploaded') {
+        actions.push(`<button class="row-upload" disabled title="Already uploaded">Uploaded ✓</button>`);
+      }
+      actions.push(`<button class="row-delete" ${r.canDelete ? '' : 'disabled title="Only available once uploaded to S3"'} onclick="deleteRecording('${ridJs}', '${nameJs}')">Delete from BBB</button>`);
+
+      html += `<tr id="rec-${safeId}" class="${rowClass}">
         <td>
           <div>${escapeHtml(r.meetingName)}</div>
-          <div class="recid">${ridAttr}</div>
+          <div class="recid" title="${ridAttr}">${ridAttr}${extId ? '<br><span style="opacity:0.7">ext: ' + extId + '</span>' : ''}</div>
         </td>
         <td>${fmtTime(r.startTimeMs)}</td>
         <td>${fmtDuration(r.durationSeconds)}</td>
-        <td><span class="${badgeClass(r.status)}">${r.status}</span></td>
+        <td><span class="${badgeClass(r.status)}">${r.status}</span>${stageTag}</td>
         <td><button class="size-btn" onclick="loadSize('${ridJs}', this)">Show</button></td>
-        <td><button class="row-delete" ${r.canDelete ? '' : 'disabled title="Only available once uploaded to S3"'} onclick="deleteRecording('${ridJs}', '${nameJs}')">Delete from BBB</button></td>
+        <td>${actions.join(' ')}</td>
       </tr>`;
     }
     html += '</tbody></table>';
-    wrap.innerHTML = html;
+    wrap.innerHTML = bannerHtml + html;
 
     const pag = document.getElementById('recordingsPagination');
     pag.style.display = 'flex';
@@ -843,6 +1346,46 @@ async function loadSize(recordId, btn) {
   } catch (e) {
     btn.textContent = 'err';
     btn.disabled = false;
+  }
+}
+
+async function rebuildRecording(recordId, name) {
+  if (!confirm(`Rebuild the BBB recording pipeline for "${name}"?\n\nrecordId: ${recordId}\n\nThis re-runs sanity → process → publish stages. Takes 5–15 minutes (longer if classes are live). Safe to retry on a stuck recording.`)) {
+    return;
+  }
+  try {
+    const res = await fetch(apiUrl('/api/recordings/' + encodeURIComponent(recordId) + '/rebuild'), {
+      method: 'POST'
+    });
+    const d = await res.json();
+    if (d.success) {
+      alert('Rebuild triggered. Heal service replied:\n\n' + d.output);
+      loadRecordings(currentPage);
+    } else {
+      alert('Rebuild could not be triggered: ' + (d.output || d.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Rebuild could not be triggered: ' + e.message);
+  }
+}
+
+async function uploadRecording(recordId, name) {
+  if (!confirm(`Queue "${name}" for upload to S3?\n\nrecordId: ${recordId}\n\nThe drainer runs every minute. You'll see the row flip to "Queued" then "Uploading" then "Uploaded" — click Refresh to update.`)) {
+    return;
+  }
+  try {
+    const res = await fetch(apiUrl('/api/recordings/' + encodeURIComponent(recordId) + '/upload'), {
+      method: 'POST'
+    });
+    const d = await res.json();
+    if (d.success) {
+      // Refresh so the user sees the new "Queued" status immediately.
+      loadRecordings(currentPage);
+    } else {
+      alert('Upload could not be queued: ' + (d.output || d.error || 'unknown'));
+    }
+  } catch (e) {
+    alert('Upload could not be queued: ' + e.message);
   }
 }
 
@@ -873,12 +1416,15 @@ function escapeHtml(s) {
 }
 function escapeJs(s) {
   if (!s) return '';
-  // Escape quote chars and the special JS line terminators (U+2028 / U+2029)
-  // plus < to neutralise </script> in any future template literal context.
+  // Escape quotes, JS line terminators (U+2028/U+2029), and the less-than
+  // sign so an attacker-controlled value cannot smuggle a closing script
+  // tag into a template literal. WARNING: do NOT write the literal closing
+  // script-tag sequence anywhere in this source (even in comments) \u2014 the
+  // HTML parser scans the script body for it before JS ever runs.
   return String(s)
     .replace(/[\\'"]/g, '\\$&')
     .replace(/\n/g, '\\n').replace(/\r/g, '\\r')
-    .replace(/ /g, '\\u2028').replace(/ /g, '\\u2029')
+    .replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029')
     .replace(/</g, '\\u003c');
 }
 
@@ -938,6 +1484,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 'services': get_service_statuses(),
                 'recordings': get_recording_stats(),
                 'upload_queue': get_upload_queue_stats(),
+                'rap_queue': get_rap_worker_queue_stats(),
                 'meetings': get_bbb_meetings(),
                 'timestamp': time.strftime('%Y-%m-%d %H:%M:%S'),
             }
@@ -992,6 +1539,24 @@ class DashboardHandler(BaseHTTPRequestHandler):
             log(f"ACTION: delete-recording recordId={recid}")
             ok, output = delete_recording_from_bbb(recid)
             log(f"ACTION: delete-recording result={'ok' if ok else 'fail'}")
+            code = 200 if ok else 400
+            return self._respond(code, {"success": ok, "output": output})
+
+        # POST /api/recordings/<recordId>/upload  → enqueue for the drainer
+        if path.startswith('/api/recordings/') and path.endswith('/upload'):
+            recid = path[len('/api/recordings/'):-len('/upload')]
+            log(f"ACTION: enqueue-upload recordId={recid}")
+            ok, output = enqueue_recording_for_upload(recid)
+            log(f"ACTION: enqueue-upload result={'ok' if ok else 'fail'} ({output})")
+            code = 200 if ok else 400
+            return self._respond(code, {"success": ok, "output": output})
+
+        # POST /api/recordings/<recordId>/rebuild  → trigger BBB pipeline rebuild via heal service
+        if path.startswith('/api/recordings/') and path.endswith('/rebuild'):
+            recid = path[len('/api/recordings/'):-len('/rebuild')]
+            log(f"ACTION: rebuild-pipeline recordId={recid}")
+            ok, output = rebuild_recording_pipeline(recid)
+            log(f"ACTION: rebuild-pipeline result={'ok' if ok else 'fail'}")
             code = 200 if ok else 400
             return self._respond(code, {"success": ok, "output": output})
 

@@ -598,6 +598,18 @@ export const CartComponent: React.FC<CartComponentProps> = ({
 
   // RENT MODE LAYOUT (Horizontal Scroll)
   if (isRentMode) {
+    const sortedMembershipPlans = [...membershipPlans].sort((a, b) => {
+      const extractDuration = (name: string) => {
+        const match = (name || "").match(/(\d+)\s*months?/i);
+        return match ? parseInt(match[1], 10) : 0;
+      };
+      const stripDuration = (name: string) =>
+        (name || "").replace(/\d+\s*months?/i, "").trim().toLowerCase();
+      const prefixCmp = stripDuration(a.package_name).localeCompare(stripDuration(b.package_name));
+      if (prefixCmp !== 0) return prefixCmp;
+      return extractDuration(a.package_name) - extractDuration(b.package_name);
+    });
+
     return (
       <>
         <div
@@ -659,9 +671,9 @@ export const CartComponent: React.FC<CartComponentProps> = ({
                   <div key={i} className="h-32 bg-gray-200 rounded-lg animate-pulse" />
                 ))}
               </div>
-            ) : membershipPlans.length > 0 ? (
+            ) : sortedMembershipPlans.length > 0 ? (
               <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                {membershipPlans.map((plan) => (
+                {sortedMembershipPlans.map((plan) => (
                   <MembershipPlanCard key={plan.id} plan={plan} />
                 ))}
               </div>

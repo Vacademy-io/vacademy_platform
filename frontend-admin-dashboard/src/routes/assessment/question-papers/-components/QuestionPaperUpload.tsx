@@ -5,7 +5,7 @@ import { FormProvider, useForm, UseFormReturn } from 'react-hook-form';
 import SelectField from '@/components/design-system/select-field';
 import { UploadFileBg } from '@/svgs';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
-import { File, X } from '@phosphor-icons/react';
+import { File, X, CircleNotch } from '@phosphor-icons/react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { QuestionPaperTemplate } from './QuestionPaperTemplate';
@@ -24,12 +24,6 @@ import {
     transformResponseDataToMyQuestionsSchema,
 } from '../-utils/helper';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import {
-    ANSWER_LABELS,
-    EXPLANATION_LABELS,
-    OPTIONS_LABELS,
-    QUESTION_LABELS,
-} from '@/constants/dummy-data';
 import { useFilterDataForAssesment } from '../../assessment-list/-utils.ts/useFiltersData';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import useDialogStore from '../-global-states/question-paper-dialogue-close';
@@ -39,6 +33,12 @@ import ConvertToHTML from '../-images/convertToHTML.png';
 import { AssignmentFormType } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-form-schemas/assignmentFormSchema';
 import { convertCapitalToTitleCase } from '@/lib/utils';
 import { useNamingSettings } from '@/hooks/useNamingSettings';
+import {
+    validateUploadedQuestions,
+    filterQuestionsBySkipSet,
+    QuestionIssue,
+} from '../-utils/validate-uploaded-questions';
+import { UploadDiagnosticsDialog } from './UploadDiagnosticsDialog';
 
 export type SectionFormType = z.infer<typeof sectionDetailsSchema>;
 export type UploadQuestionPaperFormType = z.infer<ReturnType<typeof uploadQuestionPaperFormSchema>>;
@@ -66,10 +66,11 @@ const useQuestionPaperForm = (examType: string) => {
             createdOn: new Date(),
             yearClass: '',
             subject: '',
-            questionsType: '',
-            optionsType: '',
-            answersType: '',
-            explanationsType: '',
+            // BE hardcodes these markers; values kept here only to satisfy the form schema.
+            questionsType: '(1.)',
+            optionsType: '(a.)',
+            answersType: 'Ans:',
+            explanationsType: 'Exp:',
             fileUpload: undefined,
             questions: [],
         },
@@ -98,7 +99,8 @@ const FileUploadSection = ({
     onFileSubmit,
     onFileSelect,
     onRemoveFile,
-    uploadProgress
+    uploadProgress,
+    isProgress,
 }: {
     form: any;
     fileInputRef: React.RefObject<HTMLInputElement>;
@@ -106,57 +108,55 @@ const FileUploadSection = ({
     onFileSelect: () => void;
     onRemoveFile: () => void;
     uploadProgress: number;
+    isProgress: boolean;
 }) => {
     const fileUpload = form.getValues('fileUpload');
+    const isProcessingOnServer = isProgress && uploadProgress >= 99;
 
     return (
-                                <>
-                                    <div className="ml-4 flex flex-col gap-4">
-                                        <SelectField
-                                            label="Questions"
-                                            name="questionsType"
-                                            options={QUESTION_LABELS.map((option, index) => ({
-                                                value: option,
-                                                label: option,
-                                                _id: index,
-                                            }))}
-                                            control={form.control}
-                                            required
-                                        />
-                                        <SelectField
-                                            label="Options"
-                                            name="optionsType"
-                                            options={OPTIONS_LABELS.map((option, index) => ({
-                                                value: option,
-                                                label: option,
-                                                _id: index,
-                                            }))}
-                                            control={form.control}
-                                            required
-                                        />
-                                        <SelectField
-                                            label="Answers"
-                                            name="answersType"
-                                            options={ANSWER_LABELS.map((option, index) => ({
-                                                value: option,
-                                                label: option,
-                                                _id: index,
-                                            }))}
-                                            control={form.control}
-                                            required
-                                        />
-                                        <SelectField
-                                            label="Explanations"
-                                            name="explanationsType"
-                                            options={EXPLANATION_LABELS.map((option, index) => ({
-                                                value: option,
-                                                label: option,
-                                                _id: index,
-                                            }))}
-                                            control={form.control}
-                                            required
-                                        />
-                                    </div>
+        <>
+            <div className="ml-4 rounded-lg border border-primary-100 bg-primary-50/40 p-4">
+                <p className="mb-2 text-sm font-semibold text-primary-500">
+                    Expected document formatting
+                </p>
+                <p className="mb-3 text-xs text-neutral-600">
+                    Your document is parsed using these fixed markers. Make sure each line in
+                    the source file follows this pattern:
+                </p>
+                <ul className="space-y-1.5 text-xs text-neutral-700">
+                    <li className="flex gap-2">
+                        <span className="min-w-[90px] font-medium">Question:</span>
+                        <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">
+                            (1.) Your question text…
+                        </code>
+                    </li>
+                    <li className="flex gap-2">
+                        <span className="min-w-[90px] font-medium">Options:</span>
+                        <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">
+                            (a.) … &nbsp;(b.) … &nbsp;(c.) … &nbsp;(d.) …
+                        </code>
+                    </li>
+                    <li className="flex gap-2">
+                        <span className="min-w-[90px] font-medium">Answer:</span>
+                        <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">
+                            Ans: (A)
+                        </code>
+                        <span className="text-neutral-500">
+                            — a single letter wrapped in parentheses
+                        </span>
+                    </li>
+                    <li className="flex gap-2">
+                        <span className="min-w-[90px] font-medium">Explanation:</span>
+                        <code className="rounded bg-white px-1.5 py-0.5 font-mono text-[11px]">
+                            Exp: Your explanation…
+                        </code>
+                    </li>
+                </ul>
+                <p className="mt-3 text-[11px] text-neutral-500">
+                    Lines that don&apos;t match these markers will be flagged after upload so you can
+                    fix or skip them.
+                </p>
+            </div>
 
                                     <div className="flex flex-col gap-6">
                                         <div
@@ -210,8 +210,10 @@ const FileUploadSection = ({
                                                     </p>
                                                     <X
                                                         size={16}
-                                                        className="mt-[2px] cursor-pointer"
-                                onClick={onRemoveFile}
+                                                        className={`mt-[2px] ${isProgress ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+                                                        onClick={() => {
+                                                            if (!isProgress) onRemoveFile();
+                                                        }}
                                                     />
                                                 </div>
 
@@ -230,8 +232,26 @@ const FileUploadSection = ({
                                                         value={uploadProgress}
                                                         className="w-full bg-primary-500"
                                                     />
-                            <span className="text-xs">{uploadProgress}%</span>
+                                                    {isProcessingOnServer ? (
+                                                        <span className="flex items-center gap-1 whitespace-nowrap text-xs text-primary-500">
+                                                            <CircleNotch
+                                                                size={14}
+                                                                className="animate-spin"
+                                                            />
+                                                            Processing…
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-xs">
+                                                            {uploadProgress}%
+                                                        </span>
+                                                    )}
                                                 </div>
+                                                {isProcessingOnServer && (
+                                                    <p className="mt-1 text-[11px] text-neutral-500">
+                                                        Server is parsing your document. Larger
+                                                        files may take up to a minute.
+                                                    </p>
+                                                )}
                                             </div>
                                         </div>
                                     )}
@@ -440,6 +460,9 @@ export const QuestionPaperUpload = ({
     const [uploadProgress, setUploadProgress] = useState(0);
     const [isProgress, setIsProgress] = useState(false);
     const [isFormSubmitting, setIsFormSubmitting] = useState(false);
+    const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
+    const [pendingQuestions, setPendingQuestions] = useState<MyQuestion[]>([]);
+    const [pendingIssues, setPendingIssues] = useState<QuestionIssue[]>([]);
     const {
         setIsMainQuestionPaperAddDialogOpen,
         setIsManualQuestionPaperDialogOpen,
@@ -555,31 +578,16 @@ export const QuestionPaperUpload = ({
         onSettled: () => setIsProgress(false),
         onSuccess: async (data) => {
             const transformQuestionsData = transformResponseDataToMyQuestionsSchema(data);
-            setValue('questions', transformQuestionsData);
-            console.log('question ', getValues('questions'));
+            const issues = validateUploadedQuestions(transformQuestionsData, examType);
 
-            if (index !== undefined) {
-                sectionsForm?.setValue(`section.${index}`, {
-                    ...sectionsForm?.getValues(`section.${index}`),
-                    adaptive_marking_for_each_question: transformQuestionsData.map((question) => ({
-                        questionId: question.questionId,
-                        questionName: question.questionName,
-                        questionType: question.questionType,
-                        questionMark: question.questionMark,
-                        questionPenalty: question.questionPenalty,
-                        questionDuration: {
-                            hrs: question.questionDuration.hrs,
-                            min: question.questionDuration.min,
-                        },
-                        decimals: question.decimals,
-                        numericType: question.numericType,
-                        validAnswers: question.validAnswers,
-                        parentRichText: question.parentRichTextContent,
-                        subjectiveAnswerText: question.subjectiveAnswerText,
-                    })),
-                });
+            if (issues.length === 0) {
+                commitQuestions(transformQuestionsData);
+                return;
             }
-            form.trigger('questions');
+
+            setPendingQuestions(transformQuestionsData);
+            setPendingIssues(issues);
+            setDiagnosticsOpen(true);
         },
         onError: (error: unknown) => {
             toast.error(error as string);
@@ -664,6 +672,68 @@ export const QuestionPaperUpload = ({
         }
     };
 
+    const commitQuestions = (questionsToCommit: MyQuestion[]) => {
+        setValue('questions', questionsToCommit);
+
+        if (index !== undefined) {
+            sectionsForm?.setValue(`section.${index}`, {
+                ...sectionsForm?.getValues(`section.${index}`),
+                adaptive_marking_for_each_question: questionsToCommit.map((question) => ({
+                    questionId: question.questionId,
+                    questionName: question.questionName,
+                    questionType: question.questionType,
+                    questionMark: question.questionMark,
+                    questionPenalty: question.questionPenalty,
+                    questionDuration: {
+                        hrs: question.questionDuration.hrs,
+                        min: question.questionDuration.min,
+                    },
+                    decimals: question.decimals,
+                    numericType: question.numericType,
+                    validAnswers: question.validAnswers,
+                    parentRichText: question.parentRichTextContent,
+                    subjectiveAnswerText: question.subjectiveAnswerText,
+                })),
+            });
+        }
+        form.trigger('questions');
+    };
+
+    const handleDiagnosticsSkipAndProceed = (skipIndices: Set<number>) => {
+        const kept = filterQuestionsBySkipSet(pendingQuestions, skipIndices);
+        const skipped = pendingQuestions.length - kept.length;
+        commitQuestions(kept);
+        setDiagnosticsOpen(false);
+        setPendingQuestions([]);
+        setPendingIssues([]);
+        if (skipped > 0) {
+            toast.success(
+                `Added ${kept.length} question${kept.length === 1 ? '' : 's'}; skipped ${skipped} with issues.`,
+                { duration: 3500 }
+            );
+        }
+    };
+
+    const handleDiagnosticsKeepAll = () => {
+        commitQuestions(pendingQuestions);
+        setDiagnosticsOpen(false);
+        const total = pendingQuestions.length;
+        const flagged = new Set(pendingIssues.map((i) => i.questionIndex)).size;
+        setPendingQuestions([]);
+        setPendingIssues([]);
+        toast.info(
+            `Loaded all ${total} questions. ${flagged} need editing before you can save.`,
+            { duration: 4000 }
+        );
+    };
+
+    const handleDiagnosticsCancel = () => {
+        setDiagnosticsOpen(false);
+        setPendingQuestions([]);
+        setPendingIssues([]);
+        handleRemoveQuestionPaper();
+    };
+
     return (
         <>
             <FormProvider {...form}>
@@ -681,6 +751,7 @@ export const QuestionPaperUpload = ({
                                     onFileSelect={handleFileSelect}
                                     onRemoveFile={handleRemoveQuestionPaper}
                                     uploadProgress={uploadProgress}
+                                    isProgress={isProgress}
                                 />
                             )}
 
@@ -708,6 +779,17 @@ export const QuestionPaperUpload = ({
                     )}
                 </form>
             </FormProvider>
+            <UploadDiagnosticsDialog
+                open={diagnosticsOpen}
+                onOpenChange={(open) => {
+                    if (!open) handleDiagnosticsCancel();
+                }}
+                issues={pendingIssues}
+                totalQuestions={pendingQuestions.length}
+                onSkipAndProceed={handleDiagnosticsSkipAndProceed}
+                onKeepAllAndEdit={handleDiagnosticsKeepAll}
+                onCancel={handleDiagnosticsCancel}
+            />
         </>
     );
 };

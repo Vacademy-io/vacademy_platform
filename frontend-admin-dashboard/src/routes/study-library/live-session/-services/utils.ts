@@ -164,6 +164,9 @@ export interface MeetingRecording {
     providerMeetingId?: string;
     fileId?: string;
     type?: string;
+    /** Set by the YouTube upload worker once the recording has been published. */
+    youtubeVideoId?: string;
+    youtubeVideoUrl?: string;
 }
 
 export interface NotificationAction {

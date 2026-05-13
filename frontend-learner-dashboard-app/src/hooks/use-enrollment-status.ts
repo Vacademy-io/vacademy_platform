@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { Preferences } from "@capacitor/preferences";
-import { hasUserDonated } from "@/services/user-enrollment-status";
+import {
+  hasUserDonated,
+  fetchEnrolledCoursePackages,
+  type EnrolledCourseSummary,
+} from "@/services/user-enrollment-status";
 import { useInstituteDetailsStore } from "@/stores/study-library/useInstituteDetails";
 
 export interface EnrolledSession {
@@ -38,96 +42,142 @@ export const useEnrollmentStatus = (instituteId: string | null) => {
     (state) => state.instituteDetails,
   );
 
-  // Fetch enrolled sessions from "students" in Preferences + institute store
+  // Fetch enrolled sessions by merging two sources:
+  //   1) Capacitor "students" Preferences + instituteDetails.batches_for_sessions
+  //      — original source of truth; captures every batch the user is assigned to
+  //      at login time (including assignments with no learner-operation row yet).
+  //   2) learner-packages/v1/search (type=PROGRESS + COMPLETED, unioned)
+  //      — picks up enrollments added after login (e.g. paid course purchases)
+  //      that the Preferences snapshot doesn't yet know about.
+  // Dedup by package_session_id, preferring the (1) entry when both exist because
+  // it carries fully-resolved session/level UUIDs from batches_for_sessions.
   const fetchEnrolledSessions = useCallback(async () => {
     try {
-      // Get student records from Preferences (contains package_session_id per enrollment)
+      const batchesForSessions = instituteDetails?.batches_for_sessions ?? [];
+      const batchById = new Map(batchesForSessions.map((b) => [b.id, b]));
+
+      // --- Source 1: Preferences "students" (original logic) ---
+      const localSessions: EnrolledSession[] = [];
       const studentsResult = await Preferences.get({ key: "students" });
-      if (!studentsResult.value) {
-        setEnrolledSessions([]);
-        setIsLoading(false);
-        return;
+      if (studentsResult.value) {
+        const students = JSON.parse(studentsResult.value);
+        const studentList = Array.isArray(students) ? students : [students];
+        const packageSessionIds = studentList
+          .map((s: any) => s.package_session_id)
+          .filter(Boolean);
+
+        if (packageSessionIds.length > 0) {
+          if (batchesForSessions.length > 0) {
+            for (const batch of batchesForSessions) {
+              if (!packageSessionIds.includes(batch.id)) continue;
+              localSessions.push({
+                id: batch.id,
+                session: {
+                  id: batch.session.id,
+                  session_name: batch.session.session_name,
+                  status: batch.session.status,
+                  start_date: batch.session.start_date,
+                },
+                level: {
+                  id: batch.level.id,
+                  level_name: batch.level.level_name,
+                  duration_in_days: batch.level.duration_in_days,
+                  thumbnail_id: batch.level.thumbnail_id,
+                },
+                start_time: batch.start_time,
+                status: batch.status,
+                package_dto: {
+                  id: batch.package_dto.id,
+                  package_name: batch.package_dto.package_name,
+                  thumbnail_id: batch.package_dto.thumbnail_id ?? null,
+                },
+              });
+            }
+          } else {
+            // Fallback: institute store empty — build skeletal entries from
+            // student records (package_dto.id stays "" because the student
+            // record doesn't carry a package id).
+            for (const s of studentList) {
+              if (!s.package_session_id) continue;
+              localSessions.push({
+                id: s.package_session_id,
+                session: {
+                  id: "",
+                  session_name: s.session_name || "",
+                  status: "ACTIVE",
+                  start_date: "",
+                },
+                level: {
+                  id: "",
+                  level_name: s.level_name || "",
+                  duration_in_days: null,
+                  thumbnail_id: null,
+                },
+                start_time: null,
+                status: s.status || "ACTIVE",
+                package_dto: {
+                  id: "",
+                  package_name: s.package_name || "",
+                  thumbnail_id: null,
+                },
+              });
+            }
+          }
+        }
       }
 
-      const students = JSON.parse(studentsResult.value);
-      const studentList = Array.isArray(students) ? students : [students];
-      const packageSessionIds = studentList
-        .map((s: any) => s.package_session_id)
-        .filter(Boolean);
-
-      if (packageSessionIds.length === 0) {
-        setEnrolledSessions([]);
-        setIsLoading(false);
-        return;
+      // --- Source 2: backend PROGRESS search (best-effort) ---
+      let backendSessions: EnrolledSession[] = [];
+      if (instituteId) {
+        try {
+          const enrolledCourses = await fetchEnrolledCoursePackages(instituteId);
+          backendSessions = enrolledCourses.map(
+            (course: EnrolledCourseSummary) => {
+              const batch = batchById.get(course.package_session_id);
+              return {
+                id: course.package_session_id,
+                session: {
+                  id: batch?.session?.id ?? course.session_id ?? "",
+                  session_name:
+                    batch?.session?.session_name ?? course.session_name ?? "",
+                  status: batch?.session?.status ?? "ACTIVE",
+                  start_date: batch?.session?.start_date ?? "",
+                },
+                level: {
+                  id: batch?.level?.id ?? course.level_id ?? "",
+                  level_name:
+                    batch?.level?.level_name ?? course.level_name ?? "",
+                  duration_in_days: batch?.level?.duration_in_days ?? null,
+                  thumbnail_id: batch?.level?.thumbnail_id ?? null,
+                },
+                start_time: batch?.start_time ?? null,
+                status: batch?.status ?? "ACTIVE",
+                package_dto: {
+                  id: course.id,
+                  package_name: course.package_name,
+                  thumbnail_id: batch?.package_dto?.thumbnail_id ?? null,
+                },
+              };
+            },
+          );
+        } catch {
+          // If the backend call fails, fall back to local-only data — never worse
+          // than the original behavior.
+        }
       }
 
-      // Get batches_for_sessions from institute store
-      const batchesForSessions =
-        instituteDetails?.batches_for_sessions ?? [];
+      // Merge, preferring local entries (richer session/level data) on conflict.
+      const merged = new Map<string, EnrolledSession>();
+      for (const s of backendSessions) merged.set(s.id, s);
+      for (const s of localSessions) merged.set(s.id, s);
 
-      if (batchesForSessions.length > 0) {
-        // Match student's package_session_ids against institute's batches
-        const matchedSessions = batchesForSessions
-          .filter((batch) => packageSessionIds.includes(batch.id))
-          .map((batch) => ({
-            id: batch.id,
-            session: {
-              id: batch.session.id,
-              session_name: batch.session.session_name,
-              status: batch.session.status,
-              start_date: batch.session.start_date,
-            },
-            level: {
-              id: batch.level.id,
-              level_name: batch.level.level_name,
-              duration_in_days: batch.level.duration_in_days,
-              thumbnail_id: batch.level.thumbnail_id,
-            },
-            start_time: batch.start_time,
-            status: batch.status,
-            package_dto: {
-              id: batch.package_dto.id,
-              package_name: batch.package_dto.package_name,
-              thumbnail_id: batch.package_dto.thumbnail_id ?? null,
-            },
-          }));
-
-        setEnrolledSessions(matchedSessions);
-      } else {
-        // Fallback: construct session objects from student records
-        // when institute store isn't populated yet
-        const fallbackSessions: EnrolledSession[] = studentList
-          .filter((s: any) => s.package_session_id)
-          .map((s: any) => ({
-            id: s.package_session_id,
-            session: {
-              id: "",
-              session_name: s.session_name || "",
-              status: "ACTIVE",
-              start_date: "",
-            },
-            level: {
-              id: "",
-              level_name: s.level_name || "",
-              duration_in_days: null,
-              thumbnail_id: null,
-            },
-            start_time: null,
-            status: s.status || "ACTIVE",
-            package_dto: {
-              id: "",
-              package_name: s.package_name || "",
-              thumbnail_id: null,
-            },
-          }));
-        setEnrolledSessions(fallbackSessions);
-      }
+      setEnrolledSessions(Array.from(merged.values()));
     } catch (error) {
       setEnrolledSessions([]);
     } finally {
       setIsLoading(false);
     }
-  }, [instituteDetails]);
+  }, [instituteId, instituteDetails]);
 
   // Check donation status only when instituteId is available
   const checkDonationStatus = useCallback(async () => {

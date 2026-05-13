@@ -2138,6 +2138,7 @@ export const CourseDetailsPage = () => {
                 hasRightSidebar={hasRightSidebar}
                 paymentType={paymentType}
                 certificateUrl={certificateUrl}
+                packageSessionIdForCurrentLevel={packageSessionIdForCurrentLevel}
                 onBatchChange={handleBatchChange}
                 onEnrollmentClick={async () => {
                   // Check user status for free payment types before opening enrollment dialog

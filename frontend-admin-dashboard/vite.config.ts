@@ -1,7 +1,7 @@
 /// <reference types="vitest" />
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import tsconfigPaths from 'vite-tsconfig-paths';
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite';
 import svgr from 'vite-plugin-svgr';
@@ -10,7 +10,12 @@ import flowbiteReact from "flowbite-react/plugin/vite";
 import { visualizer } from 'rollup-plugin-visualizer';
 
 // https://vitejs.dev/config https://vitest.dev/config
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+    // Load ALL env vars (including non-VITE_ ones like SLACK_BOT_TOKEN) for use
+    // inside this config file only. Non-VITE_ vars are NEVER exposed to client code.
+    const env = loadEnv(mode, process.cwd(), '');
+
+    return {
     plugins: [
         react(),
         tsconfigPaths(),
@@ -427,6 +432,31 @@ export default defineConfig({
                     'Access-Control-Allow-Origin': '*',
                 },
             },
+            // Slack Web API proxy. Token injected server-side from SLACK_BOT_TOKEN
+            // in .env.local — never reaches the browser. Mirror of
+            // functions/slack-api/[[path]].js used in production on Cloudflare Pages.
+            '/slack-api': {
+                target: 'https://slack.com/api',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/slack-api/, ''),
+                secure: true,
+                configure: (proxy) => {
+                    proxy.on('proxyReq', (proxyReq) => {
+                        const token = env.SLACK_BOT_TOKEN;
+                        if (token) {
+                            proxyReq.setHeader('Authorization', `Bearer ${token}`);
+                        }
+                    });
+                },
+            },
+            // Slack file upload host — pre-signed URL carries its own auth.
+            // We proxy only to bypass browser CORS. No token injection.
+            '/slack-files': {
+                target: 'https://files.slack.com',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/slack-files/, ''),
+                secure: true,
+            },
         },
         cors: true,
         hmr: {
@@ -463,4 +493,5 @@ export default defineConfig({
         },
         force: true, // Force re-optimization to fix dependency issues
     },
+    };
 });

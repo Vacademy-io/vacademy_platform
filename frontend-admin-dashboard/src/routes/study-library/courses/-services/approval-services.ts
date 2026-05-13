@@ -29,12 +29,15 @@ const getInstituteId = () => {
 };
 
 // Teacher APIs
-export const getMyCourses = async (page: number = 0, size: number = 20) => {
+export const getMyCourses = async (page: number = 0, size: number = 20, bustCache = false) => {
     const params: Record<string, string | number> = {
         page,
         size,
     };
-    
+    if (bustCache) {
+        params._ = Date.now();
+    }
+
     const response = await authenticatedAxiosInstance.get(TEACHER_MY_COURSES, {
         params,
         headers: {

@@ -1,4 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
+import * as Sentry from '@sentry/react';
+import { toast } from 'sonner';
 import { GenericErrorPage } from '@/components/core/GenericErrorPage';
 import { RuntimeErrorPage } from '@/components/core/RuntimeErrorPage';
 import { NetworkErrorPage } from '@/components/core/NetworkErrorPage';
@@ -30,6 +32,16 @@ function ErrorPagePreview() {
         'Preview error: this is a synthetic error rendered from /error-page for testing.'
     );
 
+    // Verifies the Sentry → webhook → send-alert.js → crash-channel pipeline
+    // without actually crashing the UI. Use this after deploys to confirm the
+    // alert route still works.
+    const triggerSentryCrash = () => {
+        const eventId = Sentry.captureException(
+            new Error(`[/error-page test] Sentry crash trigger @ ${new Date().toISOString()}`)
+        );
+        toast.success(`Sentry event sent${eventId ? `: ${eventId.slice(0, 8)}` : ''}`);
+    };
+
     return (
         <div className="relative size-full">
             <div className="fixed left-1/2 top-4 z-50 -translate-x-1/2 rounded-full border border-gray-200 bg-white/95 p-1 shadow-lg backdrop-blur">
@@ -55,6 +67,14 @@ function ErrorPagePreview() {
                             {v.label}
                         </button>
                     ))}
+                    <div className="mx-1 h-5 w-px bg-gray-200" />
+                    <button
+                        onClick={triggerSentryCrash}
+                        className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700"
+                        title="Sends a synthetic exception to Sentry to verify the crash → Slack alert pipeline"
+                    >
+                        Trigger Sentry crash
+                    </button>
                 </div>
             </div>
 

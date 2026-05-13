@@ -1,6 +1,4 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
-import { getInstituteId } from '@/constants/helper';
-import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { useLocation, useNavigate, useRouter } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
@@ -16,15 +14,13 @@ import {
     Lightning,
     BookOpen,
     Eye,
+    X,
 } from '@phosphor-icons/react';
 import { CompletionStatusComponent } from './-components/CompletionStatusComponent';
 import { IntroKey } from '@/constants/storage/introKey';
 import { useSuspenseQuery, useQuery } from '@tanstack/react-query';
 import { useInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
-import {
-    getAssessmentsCountsData,
-    getInstituteDashboardData,
-} from './-services/dashboard-services';
+import { getInstituteDashboardData } from './-services/dashboard-services';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { HOLISTIC_INSTITUTE_ID, SSDC_INSTITUTE_ID } from '@/constants/urls';
 import { amplitudeEvents, trackPageView, trackEvent } from '@/lib/amplitude';
@@ -37,11 +33,8 @@ import { motion } from 'framer-motion';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { UnresolvedDoubtsWidget } from './-components/UnresolvedDoubtsWidget';
 import LiveClassesWidget from './-components/LiveClassesWidget';
-import {
-    getTerminology,
-    getTerminologyPlural,
-} from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, RoleTerms, SystemTerms } from '../settings/-components/NamingSettings';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { RoleTerms, SystemTerms } from '../settings/-components/NamingSettings';
 
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -60,7 +53,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
+    TEACHER_DISPLAY_SETTINGS_KEY,
+    CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
     type DisplaySettingsData,
     type DashboardWidgetId,
 } from '@/types/display-settings';
@@ -70,12 +64,17 @@ import { getCustomFieldSettings } from '@/services/custom-field-settings';
 // Analytics Widgets
 // import RealTimeActiveUsersWidget from './-components/analytics-widgets/RealTimeActiveUsersWidget';
 // import CurrentlyActiveUsersWidget from './-components/analytics-widgets/CurrentlyActiveUsersWidget';
-import UserActivitySummaryWidget from './-components/analytics-widgets/UserActivitySummaryWidget';
+import DailyActivityTrendWidget from './-components/analytics-widgets/DailyActivityTrendWidget';
 
 // Dashboard Widgets
-import EnrollLearnersWidget from './-components/EnrollLearnersWidget';
-import LearningCenterWidget from './-components/LearningCenterWidget';
-import AssessmentCenterWidget from './-components/AssessmentCenterWidget';
+import MyPendingActionsWidget from './-components/MyPendingActionsWidget';
+import QuickActionsStrip from './-components/QuickActionsStrip';
+import KpiBand from './-components/KpiBand';
+import FinanceSummaryWidget from './-components/FinanceSummaryWidget';
+import RecentTransactionsWidget from './-components/RecentTransactionsWidget';
+import FreshInstituteEmptyState from './-components/FreshInstituteEmptyState';
+import TrackedWidget from './-components/TrackedWidget';
+import { bundleForRoles } from './-config/dashboard-role-bundles';
 import RoleTypeComponent from './-components/RoleTypeComponent';
 import { LearnerTab } from './-components/LearnerTab';
 import { SettingsTabs } from '../settings/-constants/terms';
@@ -375,6 +374,9 @@ function MyCoursesWidget() {
 export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () => void }) {
     const location = useLocation();
     const { getValue, setValue } = useLocalStorage<boolean>(IntroKey.dashboardWelcomeVideo, true);
+    const profileCardDismissed = useLocalStorage<boolean>('dashboardProfileCardDismissed', false);
+    const namingCardDismissed = useLocalStorage<boolean>('dashboardNamingCardDismissed', false);
+    const aiCardDismissed = useLocalStorage<boolean>('dashboardAiCardDismissed', false);
     const { data: instituteDetails, isLoading: isInstituteLoading } =
         useSuspenseQuery(useInstituteQuery());
     const { data: adminDetails } = useSuspenseQuery(handleGetAdminDetails());
@@ -387,21 +389,23 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
     const userRoles = getUserRoles(accessToken);
     const isAdmin = userRoles.includes('ADMIN');
 
-    const { data, isLoading: isDashboardLoading } = useSuspenseQuery(
-        getInstituteDashboardData(instituteDetails?.id)
-    );
-
-    // Use regular useQuery instead of useSuspenseQuery for assessment count
-    // This allows the dashboard to gracefully handle when assessment service is down
-    const {
-        data: assessmentCount,
-        isLoading: isAssessmentCountLoading,
-        isError: isAssessmentCountError,
-    } = useQuery({
-        ...getAssessmentsCountsData(instituteDetails?.id),
-        retry: 1, // Only retry once for faster failure
-        retryDelay: 1000,
+    // Non-blocking: each widget that depends on `data` handles its own
+    // loading/empty state. Previously this was `useSuspenseQuery`, which
+    // blocked the whole page on this single network call.
+    const { data } = useQuery({
+        ...getInstituteDashboardData(instituteDetails?.id),
+        enabled: !!instituteDetails?.id,
+        retry: 1,
     });
+
+    const roleBundle = useMemo(() => bundleForRoles(userRoles), [userRoles]);
+    const isFreshTenant =
+        isAdmin &&
+        (data?.student_count || 0) === 0 &&
+        (data?.batch_count || 0) === 0 &&
+        (data?.course_count || 0) === 0 &&
+        (data?.level_count || 0) === 0;
+
     const [roleTypeCount, setRoleTypeCount] = useState({
         ADMIN: 0,
         'COURSE CREATOR': 0,
@@ -414,11 +418,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
 
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
-        const accessToken = getTokenFromCookie(TokenKey.accessToken);
-        const roles = getUserRoles(accessToken);
-        const isAdminRole = roles.includes('ADMIN');
-        const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
-    const roleKey = getActiveRoleDisplaySettingsKey();
+        const roleKey = getActiveRoleDisplaySettingsKey();
         const cached = getDisplaySettingsFromCache(roleKey);
         if (cached) {
             setRoleDisplay(cached);
@@ -471,25 +471,19 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
         }
     }, [location.pathname, setValue]);
 
-    // Cache custom field settings on dashboard mount
+    // Warm custom-field-settings cache on dashboard mount (cache-respecting).
+    // The service handles TTL internally; passing forceRefresh=true on every
+    // dashboard load defeats the cache and silently fails for any user without
+    // permission to read institute settings.
     useEffect(() => {
-        const cacheCustomFieldSettings = async () => {
-            try {
-                // Force refresh to get latest custom field settings from API and cache them
-                await getCustomFieldSettings(true);
-                console.log('✅ Custom field settings cached successfully on dashboard load');
-            } catch (error) {
-                console.error('❌ Failed to cache custom field settings:', error);
-                // Silently fail - don't block dashboard rendering
-            }
-        };
+        getCustomFieldSettings().catch(() => {
+            // Silently fail - don't block dashboard rendering
+        });
+    }, []);
 
-        cacheCustomFieldSettings();
-    }, []); // Run only once on mount
-
-    // Don't include isAssessmentCountLoading in the loading check
-    // This allows the dashboard to render even if the assessment service is down
-    if (isInstituteLoading || isDashboardLoading) return <DashboardLoader />;
+    // Only block on the auth-identity query. Per-widget loading is handled
+    // inside each widget so the page shell renders immediately.
+    if (isInstituteLoading) return <DashboardLoader />;
 
     return (
         <>
@@ -500,9 +494,49 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                     content="This page shows the dashboard of the institute."
                 />
             </Helmet>
-            <h1 className="text-sm sm:text-base">
-                Hello <span className="text-primary-500">{adminDetails?.full_name}!</span>
-            </h1>
+            <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+                <div className="flex flex-col gap-0.5">
+                    <h1 className="text-xl font-semibold sm:text-2xl">
+                        {(() => {
+                            const hour = new Date().getHours();
+                            const part =
+                                hour < 12
+                                    ? 'Good morning'
+                                    : hour < 17
+                                      ? 'Good afternoon'
+                                      : 'Good evening';
+                            const firstName =
+                                adminDetails?.full_name?.split(' ')?.[0] || adminDetails?.full_name;
+                            return (
+                                <>
+                                    {part}, <span className="text-primary-500">{firstName}!</span>
+                                </>
+                            );
+                        })()}
+                    </h1>
+                    <p className="text-xs text-neutral-600 sm:text-sm">
+                        {isAdmin
+                            ? `Here's how ${instituteDetails?.institute_name || 'your institute'} is doing today.`
+                            : 'Track your courses and learners at a glance.'}
+                    </p>
+                </div>
+                <span className="hidden text-[11px] text-neutral-400 sm:inline-block sm:text-xs">
+                    {userRoles?.[0] || 'Admin'} ·{' '}
+                    {new Date().toLocaleDateString(undefined, {
+                        weekday: 'long',
+                        month: 'short',
+                        day: 'numeric',
+                    })}
+                </span>
+            </div>
+            {/* Role-shaped quick actions strip - shortcuts above the fold */}
+            {roleBundle.showQuickActions && isWidgetVisible('quickActions') && (
+                <TrackedWidget widgetId="quickActions">
+                    <div className="mt-3">
+                        <QuickActionsStrip roles={userRoles} />
+                    </div>
+                </TrackedWidget>
+            )}
             {getValue() && (
                 <>
                     <p className="mt-0.5 text-[11px] text-neutral-600 sm:text-xs">
@@ -522,6 +556,40 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
             )}
             {/* Main content */}
             <div className="mt-5 flex w-full flex-col gap-4">
+                {/* Role-shaped KPI band - operational metrics above the fold */}
+                {roleBundle.showKpiBand && isWidgetVisible('kpiBand') && !isFreshTenant && (
+                    <TrackedWidget widgetId="kpiBand">
+                        <KpiBand instituteId={instituteDetails?.id || ''} roles={userRoles} />
+                    </TrackedWidget>
+                )}
+                {/* Pending Actions - role-shaped inbox of work-to-do */}
+                {isWidgetVisible('pendingActions') && (
+                    <TrackedWidget widgetId="pendingActions">
+                        <MyPendingActionsWidget
+                            instituteId={instituteDetails?.id || ''}
+                            userId={getUserId() || ''}
+                            onOpenAllAlerts={onOpenAllAlerts}
+                        />
+                    </TrackedWidget>
+                )}
+                {/* Finance row - snapshot + recent transactions side-by-side for admin */}
+                {isAdmin && !isFreshTenant && (
+                    <div className="grid gap-4 lg:grid-cols-2">
+                        {roleBundle.showFinanceSummary &&
+                            isWidgetVisible('financeSummary') && (
+                                <TrackedWidget widgetId="financeSummary">
+                                    <FinanceSummaryWidget />
+                                </TrackedWidget>
+                            )}
+                        {isWidgetVisible('recentTransactions') && (
+                            <TrackedWidget widgetId="recentTransactions">
+                                <RecentTransactionsWidget
+                                    instituteId={instituteDetails?.id || ''}
+                                />
+                            </TrackedWidget>
+                        )}
+                    </div>
+                )}
                 {/* My Courses Widget - Only for Non-Admin Users */}
                 {!isAdmin && isWidgetVisible('myCourses') && <MyCoursesWidget />}
                 {/* Unresolved Doubts Widget */}
@@ -533,59 +601,111 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                 {/* Admin Only Widgets */}
                 {isAdmin && (
                     <>
-                        <Card className="grow bg-neutral-50 shadow-none">
-                            <CardHeader className="p-4">
-                                <div className="flex items-center justify-between">
-                                    <CardTitle className="text-sm font-semibold">
-                                        Complete your institute profile
-                                    </CardTitle>
+                        {isFreshTenant ? (
+                            <TrackedWidget widgetId="freshInstituteEmptyState">
+                                <FreshInstituteEmptyState
+                                    studentCount={data?.student_count || 0}
+                                    batchCount={data?.batch_count || 0}
+                                    courseCount={data?.course_count || 0}
+                                    levelCount={data?.level_count || 0}
+                                    profileCompletionPercentage={
+                                        data?.profile_completion_percentage || 0
+                                    }
+                                />
+                            </TrackedWidget>
+                        ) : (
+                            (() => {
+                                const profileCompletion = data?.profile_completion_percentage || 0;
+                                const showProfileSection =
+                                    !profileCardDismissed.getValue() && profileCompletion < 100;
+                                const showNamingSection =
+                                    !namingCardDismissed.getValue() &&
+                                    !showForInstitutes([HOLISTIC_INSTITUTE_ID]);
+                                if (!showProfileSection && !showNamingSection) return null;
+                                return (
+                                    <Card className="grow bg-neutral-50 shadow-none">
+                                        {showProfileSection && (
+                                            <CardHeader className="p-4">
+                                                <div className="flex items-center justify-between">
+                                                    <CardTitle className="text-sm font-semibold">
+                                                        Complete your institute profile
+                                                    </CardTitle>
+                                                    <div className="flex items-center gap-1">
+                                                        <EditDashboardProfileComponent
+                                                            isEdit={false}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            aria-label="Dismiss profile completion card"
+                                                            onClick={() =>
+                                                                profileCardDismissed.setValue(true)
+                                                            }
+                                                            className="rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <CardDescription className="mt-1 flex items-center gap-1.5 text-xs">
+                                                    <CompletionStatusComponent
+                                                        profileCompletionPercentage={
+                                                            profileCompletion
+                                                        }
+                                                    />
+                                                    <span>{profileCompletion}% complete</span>
+                                                </CardDescription>
+                                            </CardHeader>
+                                        )}
 
-                                    <EditDashboardProfileComponent isEdit={false} />
-                                </div>
-
-                                <CardDescription className="mt-1 flex items-center gap-1.5 text-xs">
-                                    <CompletionStatusComponent
-                                        profileCompletionPercentage={
-                                            data?.profile_completion_percentage || 0
-                                        }
-                                    />
-                                    <span>
-                                        {data?.profile_completion_percentage || 0}% complete
-                                    </span>
-                                </CardDescription>
-                            </CardHeader>
-
-                            {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
-                                <CardHeader className="p-4">
-                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                        <div className="flex flex-col">
-                                            <CardTitle className="text-sm font-semibold">
-                                                Naming Settings
-                                            </CardTitle>
-                                            <CardDescription className="text-xs">
-                                                Customize the naming conventions used throughout
-                                                your institute
-                                            </CardDescription>
-                                        </div>
-                                        <MyButton
-                                            type="button"
-                                            scale="medium"
-                                            buttonType="secondary"
-                                            layoutVariant="default"
-                                            className="mt-2 w-full text-sm sm:mt-0 sm:w-auto"
-                                            onClick={() =>
-                                                navigate({
-                                                    to: '/settings',
-                                                    search: { selectedTab: SettingsTabs.Naming },
-                                                })
-                                            }
-                                        >
-                                            Naming Settings
-                                        </MyButton>
-                                    </div>
-                                </CardHeader>
-                            )}
-                        </Card>
+                                        {showNamingSection && (
+                                            <CardHeader className="p-4">
+                                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div className="flex flex-col">
+                                                        <CardTitle className="text-sm font-semibold">
+                                                            Naming Settings
+                                                        </CardTitle>
+                                                        <CardDescription className="text-xs">
+                                                            Customize the naming conventions used
+                                                            throughout your institute
+                                                        </CardDescription>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 sm:self-start">
+                                                        <MyButton
+                                                            type="button"
+                                                            scale="medium"
+                                                            buttonType="secondary"
+                                                            layoutVariant="default"
+                                                            className="mt-2 w-full text-sm sm:mt-0 sm:w-auto"
+                                                            onClick={() =>
+                                                                navigate({
+                                                                    to: '/settings',
+                                                                    search: {
+                                                                        selectedTab:
+                                                                            SettingsTabs.Naming,
+                                                                    },
+                                                                })
+                                                            }
+                                                        >
+                                                            Naming Settings
+                                                        </MyButton>
+                                                        <button
+                                                            type="button"
+                                                            aria-label="Dismiss naming settings card"
+                                                            onClick={() =>
+                                                                namingCardDismissed.setValue(true)
+                                                            }
+                                                            className="rounded p-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700"
+                                                        >
+                                                            <X size={14} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </CardHeader>
+                                        )}
+                                    </Card>
+                                );
+                            })()
+                        )}
 
                         {/* Analytics Widgets - Admin Only */}
                         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
@@ -614,9 +734,9 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                                     //     ),
                                     // },
                                     {
-                                        id: 'userActivitySummary' as const,
+                                        id: 'dailyActivityTrend' as const,
                                         node: (
-                                            <UserActivitySummaryWidget
+                                            <DailyActivityTrendWidget
                                                 instituteId={instituteDetails?.id || ''}
                                             />
                                         ),
@@ -629,198 +749,8 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                                     ))}
                             </div>
                         )}
-
-                        {/* Institute Overview Widget - Admin Only */}
-
-                        {subModules.lms &&
-                            !showForInstitutes([HOLISTIC_INSTITUTE_ID]) &&
-                            isWidgetVisible('instituteOverview') && (
-                                <Card className="grow bg-neutral-50 shadow-none">
-                                    <CardHeader className="p-4">
-                                        <CardTitle className="text-sm font-semibold">
-                                            Institute Overview
-                                        </CardTitle>
-                                        <CardDescription className="mt-1 text-xs text-neutral-600">
-                                            Key metrics and statistics for your institute
-                                        </CardDescription>
-                                    </CardHeader>
-                                    <div className="px-4 pb-4">
-                                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                                            <div className="rounded-lg bg-white p-3 shadow-sm">
-                                                <div className="text-lg font-semibold text-primary-500">
-                                                    {data?.student_count || 0}
-                                                </div>
-                                                <div className="text-xs text-neutral-600">
-                                                    Students
-                                                </div>
-                                            </div>
-                                            <div className="rounded-lg bg-white p-3 shadow-sm">
-                                                <div className="text-lg font-semibold text-primary-500">
-                                                    {data?.batch_count || 0}
-                                                </div>
-                                                <div className="text-xs text-neutral-600">
-                                                    {getTerminologyPlural(
-                                                        ContentTerms.Batch,
-                                                        SystemTerms.Batch
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="rounded-lg bg-white p-3 shadow-sm">
-                                                <div className="text-lg font-semibold text-primary-500">
-                                                    {data?.course_count || 0}
-                                                </div>
-                                                <div className="text-xs text-neutral-600">
-                                                    Courses
-                                                </div>
-                                            </div>
-                                            <div className="rounded-lg bg-white p-3 shadow-sm">
-                                                <div className="text-lg font-semibold text-primary-500">
-                                                    {data?.subject_count || 0}
-                                                </div>
-                                                <div className="text-xs text-neutral-600">
-                                                    Subjects
-                                                </div>
-                                            </div>
-                                            <div className="rounded-lg bg-white p-3 shadow-sm">
-                                                <div className="text-lg font-semibold text-primary-500">
-                                                    {data?.level_count || 0}
-                                                </div>
-                                                <div className="text-xs text-neutral-600">
-                                                    Levels
-                                                </div>
-                                            </div>
-                                            <div className="rounded-lg bg-white p-3 shadow-sm">
-                                                <div className="text-lg font-semibold text-primary-500">
-                                                    {data?.profile_completion_percentage || 0}%
-                                                </div>
-                                                <div className="text-xs text-neutral-600">
-                                                    Profile Complete
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </Card>
-                            )}
                     </>
                 )}
-                {/* Dashboard Action Widgets */}
-                {(() => {
-                    const visibleWidgets = [
-                        {
-                            id: 'enrollLearners' as const,
-                            show:
-                                (subModules.lms || subModules.assess) &&
-                                isWidgetVisible('enrollLearners'),
-                            node: (
-                                <EnrollLearnersWidget
-                                    batchCount={data?.batch_count || 0}
-                                    learnerCount={data?.student_count || 0}
-                                />
-                            ),
-                        },
-                        {
-                            id: 'learningCenter' as const,
-                            show: subModules.lms && isWidgetVisible('learningCenter'),
-                            node: (
-                                <LearningCenterWidget
-                                    courseCount={data?.course_count || 0}
-                                    levelCount={data?.level_count || 0}
-                                    subjectCount={data?.subject_count || 0}
-                                />
-                            ),
-                        },
-                        {
-                            id: 'assessmentCenter' as const,
-                            // Hide widget if assessment service is down (error state)
-                            show:
-                                subModules.assess &&
-                                isWidgetVisible('assessmentCenter') &&
-                                !isAssessmentCountError,
-                            node: (
-                                <AssessmentCenterWidget
-                                    assessmentCount={assessmentCount?.assessment_count || 0}
-                                    questionPaperCount={assessmentCount?.question_paper_count || 0}
-                                    isLoading={isAssessmentCountLoading}
-                                />
-                            ),
-                        },
-                    ].filter((w) => w.show && isWidgetVisible(w.id));
-
-                    const widgetCount = visibleWidgets.length;
-                    const gridClass =
-                        widgetCount === 1
-                            ? 'grid-cols-1'
-                            : widgetCount === 2
-                              ? 'grid-cols-1 lg:grid-cols-2'
-                              : 'grid-cols-1 lg:grid-cols-3';
-
-                    return (
-                        <div className={`grid gap-6 ${gridClass} items-stretch`}>
-                            {visibleWidgets
-                                .sort((a, b) => orderOf(a.id) - orderOf(b.id))
-                                .map((w, i) => (
-                                    <div key={i} className="flex w-full">
-                                        <div className="w-full">{w.node}</div>
-                                    </div>
-                                ))}
-                        </div>
-                    );
-                })()}
-                {/* AI Features Card - Moved to Bottom for All Users */}
-                {isWidgetVisible('aiFeaturesCard') && (
-                    <Card
-                        className="grow cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg transition-all hover:scale-[1.01] hover:shadow-md"
-                        onClick={handleAICenterNavigation}
-                    >
-                        <CardHeader className="p-4 sm:p-5">
-                            <div className="flex items-center justify-between">
-                                <CardTitle className="mb-0.5 flex items-center gap-1.5 text-base font-semibold">
-                                    <Sparkle size={22} weight="fill" />
-                                    Try New AI Features!
-                                </CardTitle>
-                                <ArrowSquareOut size={18} className="text-purple-200" />
-                            </div>
-                            <CardDescription className="text-xs text-purple-100">
-                                Explore cutting-edge AI tools to enhance your teaching
-                            </CardDescription>
-                            <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:justify-start sm:gap-2.5 sm:overflow-visible sm:px-0">
-                                {[
-                                    { icon: FilePdf, text: 'Questions from PDF' },
-                                    {
-                                        icon: LightbulbFilament,
-                                        text: 'Questions From Lecture Audio',
-                                    },
-                                    {
-                                        icon: LightbulbFilament,
-                                        text: 'Sort Questions Topic wise',
-                                    },
-                                    { icon: LightbulbFilament, text: 'Questions From Image' },
-                                    {
-                                        icon: LightbulbFilament,
-                                        text: 'Get Feedback of Lecture',
-                                    },
-                                    { icon: LightbulbFilament, text: 'Plan Your Lecture' },
-                                ].map((item, index) => (
-                                    <div
-                                        key={index}
-                                        className="flex h-auto min-h-10 w-32 flex-col items-center justify-center rounded-md border border-purple-300/70 bg-white/10 p-1.5 text-center shadow-sm backdrop-blur-sm transition-colors hover:bg-white/20 sm:w-32"
-                                    >
-                                        <item.icon size={18} className="mb-0.5 text-purple-200" />
-                                        <span className="text-[11px] font-normal leading-tight text-white">
-                                            {item.text}
-                                        </span>
-                                    </div>
-                                ))}
-                                <div className="flex h-auto min-h-10 w-32 flex-col items-center justify-center rounded-md border border-purple-300/70 bg-white/10 p-1.5 text-center shadow-sm backdrop-blur-sm transition-colors hover:bg-white/20 sm:w-32">
-                                    <span className="text-[11px] font-normal leading-tight text-white">
-                                        Many More
-                                    </span>
-                                </div>
-                            </div>
-                        </CardHeader>
-                    </Card>
-                )}
-                {/* End of AI Features Card */}
                 <div
                     className={`flex flex-col ${subModules.assess ? 'lg:flex-col' : 'lg:flex-row'} gap-4`} // Reduced gap
                 >
@@ -880,7 +810,10 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                                                     borderCol: 'border-red-200',
                                                 },
                                             ].map((role) => (
-                                                <>
+                                                <div
+                                                    key={role.label}
+                                                    className="flex items-center gap-1"
+                                                >
                                                     <Badge
                                                         className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] font-normal shadow-none ${role.bg} ${role.textCol} ${role.borderCol}`}
                                                     >
@@ -889,7 +822,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                                                     <span className="text-xs font-medium text-primary-500">
                                                         {role.count}
                                                     </span>
-                                                </>
+                                                </div>
                                             ))}
                                         </div>
                                         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -917,7 +850,10 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                                                     borderCol: 'border-purple-200',
                                                 },
                                             ].map((role) => (
-                                                <>
+                                                <div
+                                                    key={role.label}
+                                                    className="flex items-center gap-1"
+                                                >
                                                     <Badge
                                                         className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] font-normal shadow-none ${role.bg} ${role.textCol} ${role.borderCol}`}
                                                     >
@@ -926,7 +862,7 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                                                     <span className="text-xs font-medium text-primary-500">
                                                         {role.count}
                                                     </span>
-                                                </>
+                                                </div>
                                             ))}
                                         </div>
                                     </div>
@@ -940,6 +876,71 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                         )}
                     </div>
                 </div>
+                {/* AI Features Card - Demoted to bottom, dismissible */}
+                {isWidgetVisible('aiFeaturesCard') && !aiCardDismissed.getValue() && (
+                    <Card
+                        className="group relative grow cursor-pointer bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg transition-all hover:scale-[1.01] hover:shadow-md"
+                        onClick={handleAICenterNavigation}
+                    >
+                        <button
+                            type="button"
+                            aria-label="Dismiss AI features card"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                aiCardDismissed.setValue(true);
+                            }}
+                            className="absolute right-2 top-2 z-10 rounded p-1 text-purple-100 hover:bg-white/20"
+                        >
+                            <X size={14} />
+                        </button>
+                        <CardHeader className="p-4 sm:p-5">
+                            <div className="flex items-center justify-between pr-6">
+                                <CardTitle className="mb-0.5 flex items-center gap-1.5 text-base font-semibold">
+                                    <Sparkle size={22} weight="fill" />
+                                    Try New AI Features!
+                                </CardTitle>
+                                <ArrowSquareOut size={18} className="text-purple-200" />
+                            </div>
+                            <CardDescription className="text-xs text-purple-100">
+                                Explore cutting-edge AI tools to enhance your teaching
+                            </CardDescription>
+                            <div className="no-scrollbar -mx-4 mt-3 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:justify-start sm:gap-2.5 sm:overflow-visible sm:px-0">
+                                {[
+                                    { icon: FilePdf, text: 'Questions from PDF' },
+                                    {
+                                        icon: LightbulbFilament,
+                                        text: 'Questions From Lecture Audio',
+                                    },
+                                    {
+                                        icon: LightbulbFilament,
+                                        text: 'Sort Questions Topic wise',
+                                    },
+                                    { icon: LightbulbFilament, text: 'Questions From Image' },
+                                    {
+                                        icon: LightbulbFilament,
+                                        text: 'Get Feedback of Lecture',
+                                    },
+                                    { icon: LightbulbFilament, text: 'Plan Your Lecture' },
+                                ].map((item, index) => (
+                                    <div
+                                        key={index}
+                                        className="flex h-auto min-h-10 w-32 flex-col items-center justify-center rounded-md border border-purple-300/70 bg-white/10 p-1.5 text-center shadow-sm backdrop-blur-sm transition-colors hover:bg-white/20 sm:w-32"
+                                    >
+                                        <item.icon size={18} className="mb-0.5 text-purple-200" />
+                                        <span className="text-[11px] font-normal leading-tight text-white">
+                                            {item.text}
+                                        </span>
+                                    </div>
+                                ))}
+                                <div className="flex h-auto min-h-10 w-32 flex-col items-center justify-center rounded-md border border-purple-300/70 bg-white/10 p-1.5 text-center shadow-sm backdrop-blur-sm transition-colors hover:bg-white/20 sm:w-32">
+                                    <span className="text-[11px] font-normal leading-tight text-white">
+                                        Many More
+                                    </span>
+                                </div>
+                            </div>
+                        </CardHeader>
+                    </Card>
+                )}
             </div>
         </>
     );

@@ -30,10 +30,16 @@ export interface SidebarTabConfig {
 // Dashboard widget identifiers. These are string literal ids that we can enforce in UI.
 // The list is derived from widgets present in `src/routes/dashboard/index.tsx`.
 export type DashboardWidgetId =
+    | 'quickActions'
+    | 'pendingActions'
+    | 'kpiBand'
+    | 'financeSummary'
+    | 'recentTransactions'
     | 'recentNotifications'
     | 'realTimeActiveUsers'
     | 'currentlyActiveUsers'
     | 'userActivitySummary'
+    | 'dailyActivityTrend'
     | 'enrollLearners'
     | 'learningCenter'
     | 'assessmentCenter'

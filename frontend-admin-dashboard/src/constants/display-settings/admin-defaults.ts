@@ -25,19 +25,49 @@ function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
 }
 
 function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
+    // Every DashboardWidgetId must be listed here so it shows up as a row in
+    // Settings → Display Settings → Dashboard Widgets. The list is ordered
+    // top-to-bottom by operational priority so a brand-new institute lands on
+    // a sensible dashboard, and so newly-added widgets (for existing users)
+    // slot into the right priority bucket.
+    //
+    // Priority buckets (high → low):
+    //   1. Navigation shortcuts          — always at top
+    //   2. KPIs                          — at-a-glance metrics
+    //   3. Tasks                         — work requiring action
+    //   4. Operational health (finance)  — money flow + collections
+    //   5. Engagement signals            — activity, doubts, notifications
+    //   6. LMS operations                — classes, courses, assessments
+    //   7. Reference data                — team makeup, institute summary
+    //   8. Promotional                   — discovery cards, last slot
     const ids: DashboardWidgetConfig['id'][] = [
+        // 1. Navigation shortcuts
+        'quickActions',
+        // 2. KPIs
+        'kpiBand',
+        // 3. Tasks
+        'pendingActions',
+        // 4. Operational health (finance)
+        'financeSummary',
+        'recentTransactions',
+        // 5. Engagement signals
+        'unresolvedDoubts',
         'recentNotifications',
+        'dailyActivityTrend',
+        'userActivitySummary',
         'realTimeActiveUsers',
         'currentlyActiveUsers',
-        'userActivitySummary',
+        // 6. LMS operations
+        'liveClasses',
         'enrollLearners',
         'learningCenter',
         'assessmentCenter',
+        'myCourses',
+        // 7. Reference data
         'roleTypeUsers',
-        'unresolvedDoubts',
         'instituteOverview',
+        // 8. Promotional
         'aiFeaturesCard',
-        'liveClasses',
     ];
     return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
 }

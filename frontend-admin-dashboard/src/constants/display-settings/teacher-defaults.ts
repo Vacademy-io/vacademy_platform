@@ -43,16 +43,57 @@ function mapSidebarToTeacherConfig(menu: SidebarItemsType[]): SidebarTabConfig[]
 }
 
 function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
-    // Teacher defaults: no institute overview/admin analytics widgets by default
-    const ids: DashboardWidgetConfig['id'][] = [
-        'myCourses',
+    // Same priority ordering as admin defaults (kept in sync deliberately) so
+    // the Settings UI looks consistent across roles. ON by default = the
+    // teacher's operational set. OFF by default = admin/finance widgets that
+    // make no sense for a teacher (admins can still toggle them on).
+    const teacherOn = new Set<DashboardWidgetConfig['id']>([
+        'quickActions',
+        'kpiBand',
+        'pendingActions',
         'unresolvedDoubts',
+        'recentNotifications',
+        'liveClasses',
         'learningCenter',
         'assessmentCenter',
+        'myCourses',
         'aiFeaturesCard',
+    ]);
+
+    const orderedIds: DashboardWidgetConfig['id'][] = [
+        // 1. Navigation shortcuts
+        'quickActions',
+        // 2. KPIs
+        'kpiBand',
+        // 3. Tasks
+        'pendingActions',
+        // 4. Operational health (finance)
+        'financeSummary',
+        'recentTransactions',
+        // 5. Engagement signals
+        'unresolvedDoubts',
+        'recentNotifications',
+        'dailyActivityTrend',
+        'userActivitySummary',
+        'realTimeActiveUsers',
+        'currentlyActiveUsers',
+        // 6. LMS operations
         'liveClasses',
+        'enrollLearners',
+        'learningCenter',
+        'assessmentCenter',
+        'myCourses',
+        // 7. Reference data
+        'roleTypeUsers',
+        'instituteOverview',
+        // 8. Promotional
+        'aiFeaturesCard',
     ];
-    return ids.map((id, idx) => ({ id, order: idx + 1, visible: true }));
+    return orderedIds.map((id, idx) => ({
+        id,
+        order: idx + 1,
+        visible: teacherOn.has(id),
+    }));
 }
 
 export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {

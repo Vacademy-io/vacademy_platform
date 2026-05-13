@@ -19,6 +19,7 @@ import { TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
+import { widgetLabel } from '@/constants/display-settings/widget-labels';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
 import type {
@@ -1866,7 +1867,12 @@ export default function TeacherDisplaySettings() {
                                         <ArrowDown className="h-3 w-3" />
                                     </Button>
                                 </div>
-                                <div className="flex-1 text-sm font-medium">{w.id}</div>
+                                <div className="flex flex-1 flex-col">
+                                    <span className="text-sm font-medium">
+                                        {widgetLabel(w.id)}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">{w.id}</span>
+                                </div>
                                 <div className="flex items-center gap-2">
                                     <Switch
                                         checked={w.visible}

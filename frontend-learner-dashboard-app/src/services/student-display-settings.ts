@@ -101,6 +101,7 @@ function mergeWithDefaults(
       })),
     },
     signup: {
+      enabled: incoming?.signup?.enabled ?? d.signup.enabled,
       providers: {
         google:
           incoming?.signup?.providers?.google ?? d.signup.providers.google,
@@ -121,6 +122,8 @@ function mergeWithDefaults(
         incoming?.signup?.passwordStrategy ?? d.signup.passwordStrategy,
       passwordDelivery:
         incoming?.signup?.passwordDelivery ?? d.signup.passwordDelivery,
+      presentation:
+        incoming?.signup?.presentation ?? d.signup.presentation,
     },
     permissions: {
       canViewProfile:

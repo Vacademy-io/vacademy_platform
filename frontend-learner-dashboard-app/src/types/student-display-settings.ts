@@ -59,7 +59,15 @@ export type UsernameStrategy = "email" | "random" | "manual";
 export type PasswordStrategy = "manual" | "autoRandom";
 export type PasswordDelivery = "showOnScreen" | "sendEmail" | "none";
 
+// How catalogue header login/signup buttons surface auth.
+// - "page" (default): navigate to /login or /signup
+// - "modal": open the AuthModal in-place
+export type StudentAuthPresentation = "page" | "modal";
+
 export interface StudentSignupSettings {
+  // Master toggle: when false, "Sign Up" links are hidden in the catalogue UI.
+  // Default: true.
+  enabled?: boolean;
   providers: {
     google: boolean;
     github: boolean;
@@ -70,6 +78,7 @@ export interface StudentSignupSettings {
   usernameStrategy: UsernameStrategy;
   passwordStrategy: PasswordStrategy;
   passwordDelivery: PasswordDelivery;
+  presentation?: StudentAuthPresentation;
 }
 
 // Course details

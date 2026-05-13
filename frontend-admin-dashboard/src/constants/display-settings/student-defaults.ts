@@ -81,6 +81,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         type: 'default',
     },
     signup: {
+        enabled: true,
         providers: {
             google: true,
             github: false,
@@ -91,6 +92,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         usernameStrategy: 'email',
         passwordStrategy: 'manual',
         passwordDelivery: 'none',
+        presentation: 'page',
     },
     permissions: {
         canViewProfile: true,

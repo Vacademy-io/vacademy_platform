@@ -101,6 +101,12 @@ export interface WordImportance {
     t_end: number;
     importance: 0 | 1 | 2 | 3;
     keyword_type?: 'important' | 'definition' | 'warning' | null;
+    /**
+     * Phase 2c.7: optional emoji the LLM picked to punctuate this word in
+     * the rendered captions. Surface it in the preview tray so the user
+     * can see which words will get emoji at render time.
+     */
+    emoji?: string | null;
 }
 
 export interface EnrichedCandidate {

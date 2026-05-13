@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -77,6 +78,67 @@ SIDECHAIN_THRESHOLD = 0.05
 SIDECHAIN_RATIO = 8
 SIDECHAIN_ATTACK_MS = 5
 SIDECHAIN_RELEASE_MS = 200
+
+# Whoosh SFX — short pink-noise burst with bandpass envelope, dropped on
+# every hard cut in the speaker audio. Research §12.2: short transition
+# sounds mask abrupt audio edits and lift retention by re-engaging
+# attention at the seam. Default-on; ops can disable via env without a
+# redeploy if production audio reveals an issue.
+WHOOSH_DURATION_S = 0.20
+WHOOSH_VOLUME_DB = -10
+# Minimum spacing between adjacent whooshes. If cuts cluster tighter than
+# this (e.g. the planner removed several short filler-word slivers), only
+# the first whoosh fires — overlapping noise bursts buzz.
+WHOOSH_MIN_SPACING_S = 0.30
+# Bandpass shaping. Below 200 Hz noise sounds muddy; above 2.4 kHz it
+# sounds crackly. The 200-2400 Hz window is the "transition swoosh" band
+# common in TikTok template SFX.
+WHOOSH_HIGHPASS_HZ = 200
+WHOOSH_LOWPASS_HZ = 2400
+# Env kill-switch — set to "1"/"true"/"yes" to skip the SFX branch
+# entirely. Useful for A/B testing or if a production batch needs SFX
+# disabled without a code deploy.
+_DISABLE_SFX_ENV = "REELS_WHOOSH_SFX_DISABLED"
+
+
+def _whoosh_enabled() -> bool:
+    """Read the env kill-switch. Default-on (True) unless env is set to
+    a truthy value. Read at the start of each render so an ops flip
+    takes effect on the next reel without a service restart."""
+    return os.getenv(_DISABLE_SFX_ENV, "").strip().lower() not in ("1", "true", "yes")
+
+
+def _compute_cut_points(
+    trim_map: list,
+    reel_duration_s: float,
+) -> list[float]:
+    """Pick reel-time positions for whoosh SFX. Returns sorted ascending,
+    spaced by at least WHOOSH_MIN_SPACING_S, and trimmed to leave room
+    for the whoosh's tail before reel end (otherwise `amix duration=first`
+    clips the tail and produces a click).
+
+    The cut points are the boundaries between adjacent kept spans on the
+    reel timeline (`trim_map[i].new_t_start` for i ≥ 1). The first span
+    starts at t=0 by definition; that's not a cut, it's the reel start.
+    """
+    if len(trim_map) < 2:
+        return []
+    # Tail guard — skip whooshes that would be truncated by amix.
+    max_t = reel_duration_s - WHOOSH_DURATION_S
+    if max_t <= 0:
+        return []
+    points: list[float] = []
+    prev: Optional[float] = None
+    for entry in trim_map[1:]:
+        t = float(entry.new_t_start)
+        if t > max_t:
+            continue
+        if prev is not None and t - prev < WHOOSH_MIN_SPACING_S:
+            continue
+        points.append(round(t, 3))
+        prev = t
+    return points
+
 
 def _resolve_bgm_url(raw: Optional[str]) -> Optional[str]:
     """Apply the same scheme + whitespace gate to user-supplied bgm URLs
@@ -235,7 +297,14 @@ class ReelsAudioEditService:
                     "falling back to speaker-only"
                 )
 
-        # 6. Run ffmpeg to produce the final audio.
+        # 6. Pick reel-time positions for whoosh SFX. Empty list if the
+        # env kill-switch is on, the reel has no cuts (only 1 kept span),
+        # or after dedup / tail-trim nothing remains.
+        cut_points = (
+            _compute_cut_points(trim_map, reel_duration) if _whoosh_enabled() else []
+        )
+
+        # 7. Run ffmpeg to produce the final audio.
         with tempfile.TemporaryDirectory(prefix="reels-audio-") as tmpdir:
             out_path = Path(tmpdir) / f"{ctx.reel_id}.mp3"
             self._run_ffmpeg(
@@ -250,6 +319,7 @@ class ReelsAudioEditService:
                 bgm_url=bgm_url,
                 ducking=ducking,
                 reel_duration_s=reel_duration,
+                whoosh_points=cut_points,
                 out_path=out_path,
             )
 
@@ -273,15 +343,18 @@ class ReelsAudioEditService:
             ),
         }
         # Track audio-mix mode for audit + so the FE can show "music + ducking"
-        # on the reel detail page once we wire that.
+        # on the reel detail page once we wire that. SFX is independent of
+        # the bgm/ducking branch — recorded as a separate count.
         ctx.extra_metadata["audio_mode"] = (
             "speaker_plus_bgm_ducked" if (bgm_url and ducking)
             else "speaker_plus_bgm" if bgm_url
             else "speaker_only"
         )
+        ctx.extra_metadata["whoosh_sfx_count"] = len(cut_points)
         logger.info(
             f"[AudioEdit] {ctx.reel_id} kept {len(kept_spans)} spans, "
             f"speed={speed}x, mode={ctx.extra_metadata['audio_mode']}, "
+            f"whoosh_sfx={len(cut_points)}, "
             f"final duration={ctx.trim_map['total_new_duration_s']}s"
         )
 
@@ -397,32 +470,50 @@ class ReelsAudioEditService:
         bgm_url: Optional[str],
         ducking: bool,
         reel_duration_s: float,
+        whoosh_points: list[float],
         out_path: Path,
     ) -> None:
         """Single ffmpeg invocation that produces the final audio.
 
-        Two filter-graph variants share most of the pipeline:
+        Three independent optional layers fan in to the final mix:
+          1. Speaker (always present): atrim+concat each kept span, then atempo.
+          2. BGM (when `bgm_url` is set): aresample+atrim+volume+sidechain.
+          3. SFX whooshes (when `whoosh_points` non-empty): per-cut pink-noise
+             burst with bandpass envelope, positioned via adelay.
 
-        Speaker-only (no bgm):
+        Each present layer produces a single labeled output; we then run
+        ONE amix of N≥2 inputs (or pass through if only speaker is
+        present). Mixed-rate inputs are handled by ffmpeg's auto-aresample.
+
+        Speaker-only (no bgm, no SFX):
           [0:a]atrim=…,asetpts=PTS-STARTPTS[a0]…
           [a0][a1]…concat=n=N:v=0:a=1[ac]      (skipped if N==1)
-          [ac]atempo=K[aout]                    (skipped if speed==1.0)
+          [ac]atempo=K[speaker]                  (skipped if speed==1.0)
           → encoded mono 22050Hz
 
         Speaker + bgm (+ optional ducking):
           Same speaker chain (with aresample=44100 inserted so sidechain
           matches), then:
-          [1:a]aresample=44100,atrim=duration=<reel_dur>,volume=-8dB[bgm]
-          ducking ?
-            [bgm][speaker]sidechaincompress=…[bgm_ducked]
-            [speaker][bgm_ducked]amix=inputs=2:duration=first:normalize=0[mix]
-          :
-            [speaker][bgm]amix=inputs=2:duration=first:normalize=0[mix]
-          → encoded stereo 44100Hz so music doesn't sound crunchy
+            [1:a]aresample=44100,atrim=duration=<reel_dur>,volume=-8dB[bgm_quiet]
+            (ducking) [bgm_quiet][speaker]sidechaincompress=…[bgm_ducked]
+          → encoded stereo 44100Hz so music doesn't sound crunchy.
+
+        Speaker + SFX (each cut → one whoosh):
+          anoisesrc=color=pink:duration=0.2:sample_rate=…,bandpass,fade,
+            volume=-10dB,adelay=<cut_ms>:all=1[w0]
+          (multiple) [w0][w1]…amix=inputs=N:duration=longest[sfx]
+
+        Final mix layers in order [speaker]+[bgm]+[sfx]. amix with
+        duration=first keeps the result bounded to the speaker — SFX
+        bursts past the end (we already trim those upstream in
+        `_compute_cut_points`) and bgm loops are atrimmed.
         """
         has_bgm = bgm_url is not None
+        has_sfx = bool(whoosh_points)
         # Bump the speaker chain to 44.1kHz when bgm is in play so the
         # sidechain compressor doesn't have to deal with mismatched rates.
+        # SFX alone doesn't require this — amix auto-aresamples mono SFX
+        # against mono speaker at 22050.
         aresample_prefix = "aresample=44100," if has_bgm else ""
 
         filter_lines: list[str] = []
@@ -454,6 +545,11 @@ class ReelsAudioEditService:
             filter_lines.append(f"{concat_out}atempo={speed:.4f}[speaker]")
             speaker_label = "[speaker]"
 
+        # The final mix is composed of [speaker] + optional [bgm_final] +
+        # optional [sfx_final]. We build each layer's label, then run a
+        # single N-input amix at the end.
+        mix_inputs: list[str] = [speaker_label]
+
         # BGM branch — only when we have a validated URL AND a positive
         # reel duration (otherwise atrim would be a no-op and amix returns
         # empty).
@@ -473,19 +569,56 @@ class ReelsAudioEditService:
                     f"release={SIDECHAIN_RELEASE_MS}:"
                     f"level_sc=1[bgm_ducked]"
                 )
-                bgm_final = "[bgm_ducked]"
+                mix_inputs.append("[bgm_ducked]")
             else:
-                bgm_final = "[bgm_quiet]"
-            # duration=first keeps the mix as long as the speaker. normalize=0
-            # preserves loudness levels (default is normalize=1 which would
-            # halve the speaker once bgm is added — wrong for our case).
+                mix_inputs.append("[bgm_quiet]")
+
+        # SFX branch — one whoosh per cut, all mixed into a single track.
+        # Sample rate matches the speaker's so amix doesn't have to
+        # resample (mostly cosmetic; ffmpeg auto-aresamples either way).
+        if has_sfx:
+            sfx_rate = 44100 if has_bgm else OUTPUT_SAMPLE_RATE
+            whoosh_labels: list[str] = []
+            for i, t in enumerate(whoosh_points):
+                delay_ms = int(round(t * 1000))
+                label = f"w{i}"
+                whoosh_labels.append(f"[{label}]")
+                # afade out starts at duration - tail so the burst tapers
+                # cleanly into silence before the next sample begins.
+                fade_out_start = max(0.01, WHOOSH_DURATION_S - 0.12)
+                filter_lines.append(
+                    f"anoisesrc=color=pink:duration={WHOOSH_DURATION_S:.3f}"
+                    f":sample_rate={sfx_rate}:amplitude=0.95"
+                    f",aformat=channel_layouts=mono"
+                    f",highpass=f={WHOOSH_HIGHPASS_HZ}"
+                    f",lowpass=f={WHOOSH_LOWPASS_HZ}"
+                    f",afade=t=in:d=0.025:curve=qsin"
+                    f",afade=t=out:st={fade_out_start:.3f}:d=0.12:curve=qsin"
+                    f",volume={WHOOSH_VOLUME_DB:+d}dB"
+                    f",adelay={delay_ms}:all=1"
+                    f"[{label}]"
+                )
+            if len(whoosh_labels) == 1:
+                sfx_final = whoosh_labels[0]
+            else:
+                filter_lines.append(
+                    f"{''.join(whoosh_labels)}amix=inputs={len(whoosh_labels)}"
+                    f":duration=longest:dropout_transition=0:normalize=0[sfx]"
+                )
+                sfx_final = "[sfx]"
+            mix_inputs.append(sfx_final)
+
+        # Single final mix. duration=first keeps the result bounded to
+        # the speaker's length. normalize=0 preserves loudness levels —
+        # the default normalize=1 would halve every layer's volume.
+        if len(mix_inputs) == 1:
+            final_label = mix_inputs[0]
+        else:
             filter_lines.append(
-                f"{speaker_label}{bgm_final}amix=inputs=2:duration=first:"
-                f"dropout_transition=0:normalize=0[mix]"
+                f"{''.join(mix_inputs)}amix=inputs={len(mix_inputs)}"
+                f":duration=first:dropout_transition=0:normalize=0[mix]"
             )
             final_label = "[mix]"
-        else:
-            final_label = speaker_label
 
         filter_complex = ";".join(filter_lines)
 

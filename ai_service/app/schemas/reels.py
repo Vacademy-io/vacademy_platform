@@ -168,6 +168,9 @@ class WordImportance(BaseModel):
     t_end: float
     importance: int = Field(..., ge=0, le=3, description="0 filler, 1 routine, 2 important, 3 keyword")
     keyword_type: Optional[Literal["important", "definition", "warning"]] = None
+    # Phase 2c.7: optional single-emoji decoration the LLM picks for 0-3
+    # high-impact words per reel. Always None for heuristic-fallback.
+    emoji: Optional[str] = None
 
 
 class EnrichedCandidate(BaseModel):
@@ -244,6 +247,17 @@ class RenderRequest(BaseModel):
     captions: CaptionConfig = Field(default_factory=CaptionConfig)
     branding: BrandingConfig = Field(default_factory=BrandingConfig)
     visual_preferences: VisualPreferences = Field(default_factory=VisualPreferences)
+    # Phase 2b — palette mode.
+    #   "default" (default): hardcoded Hormozi yellow / definition green /
+    #              warning red palette. Research §12.4 proven retention winner.
+    #   "source_derived": STYLE_GUIDE samples 3 frames of the speaker_clip
+    #              and derives an `important`-slot accent from dominant
+    #              high-saturation hue. `definition`/`warning` stay
+    #              semantic (red = warnings, green = breakthroughs). Body
+    #              stays white. **Risk-flagged**: source-derived palette
+    #              may underperform Hormozi yellow on retention; ship as
+    #              A/B opt-in only.
+    palette: Literal["default", "source_derived"] = "default"
 
 
 # ---------------------------------------------------------------------------

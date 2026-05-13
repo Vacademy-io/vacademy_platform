@@ -109,10 +109,31 @@ class _Word:
     t_end: float
     importance: int = 2  # default routine
     keyword_type: Optional[str] = None  # important | definition | warning
+    # Optional emoji to display next to this word in captions (Phase 2c.7).
+    # Populated only when the LLM emits an emoji for this slot; heuristic
+    # fallback leaves it None.
+    emoji: Optional[str] = None
 
     @property
     def duration(self) -> float:
         return max(0.0, self.t_end - self.t_start)
+
+
+# Maximum emojis to surface across all captions in a single reel. Research
+# §12.4: 0-3 emoji per reel is the engagement sweet spot; more becomes
+# visual clutter that competes with the keyword-color highlight pattern.
+MAX_EMOJIS_PER_REEL = 3
+# Per-entry codepoint cap. Most caption emojis are 1-2 chars (single emoji
+# or emoji + skin-tone modifier). ZWJ family sequences (5-7 chars) are
+# extremely rare in caption context and indistinguishable at small font
+# sizes anyway. Cap of 4 rejects "emoji walls" (8+ unrelated emojis in one
+# slot, sometimes emitted when the LLM misinterprets the schema) while
+# still allowing emoji+modifier pairs.
+MAX_EMOJI_LEN = 4
+# Reject any emoji-slot that contains an ASCII letter or digit. LLMs
+# occasionally emit text labels ("money" instead of "💰") when they don't
+# know an emoji — we drop those rather than render mid-sentence text.
+_EMOJI_REJECT_RE = re.compile(r"[A-Za-z0-9]")
 
 
 @dataclass
@@ -194,11 +215,16 @@ class ReelsPreviewService:
                 method="heuristic_fallback",
             )
 
-        # 2. LLM importance (or heuristic fallback).
+        # 2. LLM importance (or heuristic fallback). The LLM path also
+        # returns an emoji-per-word parallel array; heuristic path has no
+        # emojis (a static-keyword → emoji mapping looks robotic and was
+        # rejected during Phase 2c.7 design — LLM context-awareness is
+        # what makes the emoji feel intentional).
+        emojis_arr: list[str] = []
         if self.has_llm:
             llm_out = await self._call_llm(words, candidate_row, topic_keywords)
             if llm_out is not None:
-                title, rationale, importance_arr = llm_out
+                title, rationale, importance_arr, emojis_arr = llm_out
                 method = "llm"
             else:
                 title, rationale, importance_arr = _heuristic_importance(
@@ -211,9 +237,12 @@ class ReelsPreviewService:
             )
             method = "heuristic_fallback"
 
-        # 3. Apply LLM-or-heuristic importance to the word list, then enforce
-        #    deterministic floors from emphasis marks + topic keyword matches.
+        # 3. Apply LLM-or-heuristic importance + emojis to the word list,
+        #    then enforce deterministic floors from emphasis marks +
+        #    topic keyword matches.
         _apply_importance(words, importance_arr)
+        if emojis_arr:
+            _apply_emojis(words, emojis_arr)
         _enforce_deterministic_floors(
             words,
             emphasis_marks=context.get("emphasis") or [],
@@ -243,6 +272,7 @@ class ReelsPreviewService:
                     "t_end": round(w.t_end, 3),
                     "importance": w.importance,
                     "keyword_type": w.keyword_type,
+                    "emoji": w.emoji,
                 }
                 for w in words
             ],
@@ -261,8 +291,13 @@ class ReelsPreviewService:
         words: list[_Word],
         candidate_row: Any,
         topic_keywords: Sequence[str],
-    ) -> Optional[tuple[str, str, list[int]]]:
-        """One LLM call returning (title, rationale, importance_array).
+    ) -> Optional[tuple[str, str, list[int], list[str]]]:
+        """One LLM call returning (title, rationale, importance_array, emojis_array).
+
+        `emojis_array` is parallel to `importance_array` — same length,
+        with "" entries for words that don't get an emoji. Defaults to
+        `[]` when the LLM omits the optional `emojis` key OR when the
+        validator rejects malformed emoji entries.
 
         Returns None on transport error, schema validation failure, or
         importance-array length mismatch — caller falls back to heuristic.
@@ -651,10 +686,14 @@ def _get_predicted_after_silence(candidate_row: Any, words: list[_Word]) -> floa
     return max(0.0, words[-1].t_end - words[0].t_start)
 
 
-def _parse_llm_response(raw: str, expected_len: int) -> Optional[tuple[str, str, list[int]]]:
+def _parse_llm_response(
+    raw: str, expected_len: int
+) -> Optional[tuple[str, str, list[int], list[str]]]:
     """Parse the LLM's JSON output. Returns None on any validation failure
-    — caller falls back to heuristic."""
-    # Strip code fences if the model wrapped its JSON.
+    of the REQUIRED fields (title / rationale / importance) — caller falls
+    back to heuristic in that case. The OPTIONAL emojis array is degraded
+    silently to `[]` if absent or malformed, so a typo in the emoji slot
+    doesn't lose us the whole enrichment."""
     cleaned = raw.strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
@@ -676,12 +715,63 @@ def _parse_llm_response(raw: str, expected_len: int) -> Optional[tuple[str, str,
             f"got {len(imp) if isinstance(imp, list) else type(imp)}, expected {expected_len}"
         )
         return None
-    # Enforce length caps so we don't surface absurd output.
     if len(title) > 80:
         title = title[:77] + "…"
     if len(rationale) > 200:
         rationale = rationale[:197] + "…"
-    return title, rationale, imp
+    emojis = _validate_emojis(parsed.get("emojis"), expected_len)
+    return title, rationale, imp, emojis
+
+
+def _validate_emojis(raw_emojis: Any, expected_len: int) -> list[str]:
+    """Filter the LLM's `emojis` array into a clean parallel list.
+
+    Rules:
+      - Wrong shape (not a list, length mismatch) → `[]` (no emojis).
+        We don't reject the whole response — the optional field is
+        graceful-degradation.
+      - Each entry MUST be a string; non-strings → "" in that slot.
+      - Strip whitespace; cap at MAX_EMOJI_LEN bytes.
+      - Reject entries containing any ASCII letter / digit (LLM tried to
+        emit a text label).
+      - Cap total non-empty entries at MAX_EMOJIS_PER_REEL; extras beyond
+        the cap become "" so the renderer doesn't carpet-bomb.
+    """
+    if not isinstance(raw_emojis, list) or len(raw_emojis) != expected_len:
+        return []
+    out: list[str] = []
+    kept = 0
+    for e in raw_emojis:
+        if not isinstance(e, str):
+            out.append("")
+            continue
+        s = e.strip()
+        if not s:
+            out.append("")
+            continue
+        if len(s) > MAX_EMOJI_LEN:
+            out.append("")
+            continue
+        if _EMOJI_REJECT_RE.search(s):
+            out.append("")
+            continue
+        if kept >= MAX_EMOJIS_PER_REEL:
+            out.append("")
+            continue
+        out.append(s)
+        kept += 1
+    return out
+
+
+def _apply_emojis(words: list[_Word], emojis: list[str]) -> None:
+    """Set `_Word.emoji` from a parallel-index emojis array. Silently
+    no-ops when lengths disagree — the caller's path should already have
+    rejected mismatches via `_validate_emojis`, but we double-check."""
+    if not emojis or len(emojis) != len(words):
+        return
+    for w, e in zip(words, emojis):
+        if e:
+            w.emoji = e
 
 
 # ---------------------------------------------------------------------------
@@ -707,13 +797,22 @@ Also produce:
 - title:     a working title ≤8 words, ≤60 chars, no quotes around it.
 - rationale: ≤20 words explaining why this clip is worth rendering. Mention the hook, the payoff, and one concrete content beat.
 
+Optionally enhance engagement with emoji punctuation:
+- Add an "emojis" array the same length as "importance".
+- MOST entries should be "" (no emoji). Tag emoji ONLY on words where a single icon meaningfully sharpens the message — typically a stat, named entity, action verb, or vivid noun.
+- 0-3 emoji per reel is the sweet spot; more becomes clutter. Pick the highest-impact words.
+- Examples that work: "million" → 💰, "growth" → 📈, "fast" → ⚡, "team" → 👥, "secret" → 🔒, "warning" → ⚠️, "amazing" → 🤯, "data" → 📊, "love" → ❤️.
+- Skip emoji for: stopwords, filler, abstract terms ("thing", "way", "idea"), and words that already carry their meaning clearly enough through tone and context.
+
 Return ONLY valid JSON with this exact shape (no markdown, no commentary):
 {
   "title": "...",
   "rationale": "...",
-  "importance": [0, 1, 2, 3, ...]
+  "importance": [0, 1, 2, 3, ...],
+  "emojis":     ["", "", "💰", "", "📈", "", ...]
 }
-The `importance` array MUST have exactly the same length as the words list given."""
+The `importance` array MUST have exactly the same length as the words list given.
+The `emojis` array is optional; when present it MUST have the same length as `importance`."""
 
 
 _TOPIC_KEYWORD_MAX_CHARS = 64

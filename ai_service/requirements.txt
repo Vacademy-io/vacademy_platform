@@ -18,6 +18,14 @@ python-jose[cryptography]==3.3.0
 nltk
 mutagen
 rembg
+# Phase 2d (PiP alpha-matte cutout) — mediapipe SelfieSegmentation produces
+# per-frame alpha mattes for reel speaker silhouettes; opencv reads source
+# video frames + writes RGBA streams to ffmpeg. Pinned to match the versions
+# already validated in render_worker/requirements.txt so we don't fork
+# matting behavior across services.
+mediapipe==0.10.14
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
 pgvector>=0.3.0
 websockets>=12.0
 pdfplumber>=0.10.0

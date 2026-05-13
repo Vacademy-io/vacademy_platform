@@ -118,9 +118,17 @@ export function WordImportanceTimeline({
                                             ? 'text-neutral-400 line-through decoration-red-400 decoration-2'
                                             : keywordTone
                                     )}
-                                    title={`importance ${w.importance}${w.keyword_type ? ` · ${w.keyword_type}` : ''}${cut ? ' · cut' : ''}`}
+                                    title={`importance ${w.importance}${w.keyword_type ? ` · ${w.keyword_type}` : ''}${w.emoji ? ` · emoji ${w.emoji}` : ''}${cut ? ' · cut' : ''}`}
                                 >
                                     {w.word}
+                                    {w.emoji && !cut && (
+                                        <span
+                                            className="ml-0.5 inline-block align-baseline"
+                                            aria-hidden="true"
+                                        >
+                                            {w.emoji}
+                                        </span>
+                                    )}
                                 </span>
                             );
                         })}

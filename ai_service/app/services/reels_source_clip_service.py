@@ -33,6 +33,10 @@ from uuid import uuid4
 import httpx
 
 from ..repositories.ai_input_asset_repository import AiInputAssetRepository
+from ..services.reels_alpha_matte_service import (
+    alpha_matte_enabled,
+    produce_alpha_webm,
+)
 from ..services.reels_audio_edit_service import _resolve_source_url
 from ..services.reels_render_orchestrator import (
     RenderContext,
@@ -531,6 +535,43 @@ class ReelsSourceClipService:
             s3 = self._ensure_s3()
             s3_key = f"ai-reels/{ctx.reel_id}/speaker_clip-{uuid4().hex[:8]}.mp4"
             url = s3.upload_file(out_path, s3_key=s3_key, content_type="video/mp4")
+
+            # 5b. Alpha-matte cutout for PiP layouts (Phase 2d). Runs ONLY
+            # when the user picked `pip_corner_speaker` — matting adds
+            # ~20s to the stage, so we don't pay the cost for layouts
+            # that don't render an alpha cutout. The matter consumes the
+            # local speaker_clip.mp4 (still in the tempdir at this point)
+            # and produces speaker_fg.webm; we upload that too. If
+            # matting fails (deps missing, model load fail, env disabled),
+            # the result is None and the director silently falls back to
+            # the existing rectangular PiP HTML.
+            requested_layout = str(
+                (ctx.config or {}).get("layout") or "full_speaker_with_overlays"
+            )
+            if requested_layout == "pip_corner_speaker" and alpha_matte_enabled():
+                fg_path = out_path.parent / f"{ctx.reel_id}_fg.webm"
+                fg_result = produce_alpha_webm(out_path, fg_path)
+                if fg_result is not None:
+                    fg_key = (
+                        f"ai-reels/{ctx.reel_id}/speaker_fg-{uuid4().hex[:8]}.webm"
+                    )
+                    fg_url = s3.upload_file(
+                        fg_result, s3_key=fg_key, content_type="video/webm"
+                    )
+                    ctx.s3_urls["speaker_fg"] = fg_url
+                    ctx.extra_metadata["alpha_matte"] = "selfie_seg"
+                    logger.info(
+                        f"[SourceClip] {ctx.reel_id} alpha matte uploaded "
+                        f"→ {fg_url[:80]}…"
+                    )
+                else:
+                    # Matter returned None — log the fallback path so audit
+                    # can tell whether we shipped alpha or rectangular PiP.
+                    ctx.extra_metadata["alpha_matte"] = "skipped"
+                    logger.info(
+                        f"[SourceClip] {ctx.reel_id} alpha matte produced "
+                        "no output — PiP layout will render rectangular"
+                    )
 
         # 6. Write back.
         ctx.s3_urls["speaker_clip"] = url

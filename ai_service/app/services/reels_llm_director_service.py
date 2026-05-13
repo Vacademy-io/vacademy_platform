@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 from dataclasses import dataclass, field
@@ -100,6 +101,17 @@ MAX_MEDIA_DURATION_S = 3.5
 MAX_CONCEPT_LEN = 40
 MIN_CONCEPT_WORDS = 1
 MAX_CONCEPT_WORDS = 4
+
+# Background-concept caps (Phase 2c.8). This is the WHOLE-REEL b-roll
+# query — used by layouts like `stacked_speaker_with_broll` /
+# `pip_corner_speaker` when the user didn't supply a `background_video_url`.
+# A 2-5 word phrase ("podcast studio interview", "data analytics dashboard")
+# returns far more relevant Pexels footage than the heuristic's
+# single-word pick. Wider word band than per-phrase concepts because the
+# background needs to capture the REEL's overall mood, not a moment.
+MIN_BG_CONCEPT_WORDS = 2
+MAX_BG_CONCEPT_WORDS = 5
+MAX_BG_CONCEPT_LEN = 50
 
 # animated_stat caps. `value` is the BIG number/word — short enough to
 # render at ~14vw without wrapping. `subtitle` is one supporting line.
@@ -255,6 +267,14 @@ You may include up to 3 **non-text visual** overlays total — across all four k
   * **animated_stat** — `value` is the headline number/word, ≤12 chars ("47%", "2×", "14 YEARS", "$10M"). `subtitle` is the supporting copy, ≤32 chars ("of users churn", "in revenue last quarter"). Use ALL CAPS for `value` if it includes letters. `color_intent` drives accent color: "important" (yellow) for KPIs and big numbers, "warning" (red) for negative stats, "definition" (green) for breakthroughs/wins, "neutral" (white) default.
   * **motion_graphic** — `graphic_kind` MUST be one of `bar_chart` | `line_chart` | `pie_chart` | `comparison_icons`. `bars` is a list of `{"label": "<short>", "value": <number>}` items. Counts: bar_chart 2-3 / line_chart 2-5 / pie_chart 2-4 / comparison_icons exactly 2. Values numeric for bar_chart, line_chart, pie_chart (required — drives height / line position / proportion). Values OPTIONAL for comparison_icons (omit when non-numeric). Label cap: 14 chars (8 for line_chart since labels sit tight under the curve; 20 for comparison_icons since each card has more horizontal room).
 
+## Background concept (used only by stacked / pip layouts)
+
+If this reel's overall mood / scene can be captured in a short search query, ALSO emit a top-level `background_concept` field. It becomes the Pexels search for the "ambient glue" b-roll that fills the bottom half of `stacked_speaker_with_broll` or the background of `pip_corner_speaker`. Other layouts ignore it.
+
+  * 2-5 words, ≤50 characters. Think Pexels search bar.
+  * Capture the SCENE / MOOD, not a specific phrase: "podcast studio interview", "data analytics dashboard", "san francisco skyline", "team meeting whiteboard", "tech startup office".
+  * Skip (omit the field) if the speaker is abstract / introspective / philosophical — no usable scene to depict. The renderer's heuristic fallback will pick a single word, or the layout downgrades to full-speaker.
+
 ## If you can't produce a required text overlay
 
 Omit it — a deterministic fallback will fill the slot. Don't pad with weak copy.
@@ -263,6 +283,7 @@ Omit it — a deterministic fallback will fill the slot. Don't pad with weak cop
 
 A single JSON object, no prose / markdown / commentary:
 {
+  "background_concept": "<2-5 word Pexels search, optional>",
   "overlays": [
     // Text:
     {"type": "hook"|"micro_hook"|"loop_back"|"emphasis",
@@ -334,16 +355,24 @@ class LLMDirector:
         title: str,
         rationale: str,
         word_importance_reel_time: list[dict],
-    ) -> list[OverlaySpec]:
-        """Returns validated OverlaySpec list, or empty on any failure.
+    ) -> tuple[list[OverlaySpec], Optional[str]]:
+        """Returns (validated OverlaySpec list, optional bg_concept).
 
-        `word_importance_reel_time` should already be remapped through the
-        trim_map — the LLM operates in reel-timeline coordinates only.
+        Both are derived from the SAME LLM call so we don't pay an extra
+        round-trip. The `bg_concept` is a 2-5 word Pexels search query
+        the LLM emits when the reel's overall mood maps to a depictable
+        scene; the director service uses it for layouts that need an
+        ambient bgv (stacked / pip_corner_speaker) and falls back to the
+        heuristic concept extractor if absent. Returns `(empty list,
+        None)` on any failure — caller's path handles both fallbacks.
+
+        `word_importance_reel_time` should already be remapped through
+        the trim_map — the LLM operates in reel-timeline coordinates.
         """
         if not self.enabled:
-            return []
+            return [], None
         if reel_duration_s <= 1.0 or not word_importance_reel_time:
-            return []
+            return [], None
 
         transcript_block = _format_transcript_for_prompt(word_importance_reel_time)
         user = _build_user_prompt(
@@ -355,18 +384,18 @@ class LLMDirector:
 
         raw = await self._call_llm(user)
         if not raw:
-            return []
+            return [], None
 
         try:
             payload = _extract_json_object(raw)
         except ValueError as e:
             logger.warning(f"[LLMDirector] JSON parse failed: {e}; raw={raw[:300]!r}")
-            return []
+            return [], None
 
         candidates = payload.get("overlays")
         if not isinstance(candidates, list):
             logger.warning(f"[LLMDirector] no 'overlays' array in response: {raw[:300]!r}")
-            return []
+            return [], None
 
         valid: list[OverlaySpec] = []
         for entry in candidates:
@@ -388,7 +417,9 @@ class LLMDirector:
                 title=title,
                 word_importance_reel_time=word_importance_reel_time,
             )
-        return valid
+
+        bg_concept = _validate_background_concept(payload.get("background_concept"))
+        return valid, bg_concept
 
     async def _call_llm(self, user_prompt: str) -> Optional[str]:
         """Reuses the same multi-attempt pattern as ReelsPreviewService:
@@ -525,6 +556,37 @@ def _extract_json_object(raw: str) -> dict:
     raise ValueError("no balanced JSON object found")
 
 
+def _validate_background_concept(raw: Any) -> Optional[str]:
+    """Clean + validate the LLM's top-level `background_concept` field.
+
+    Returns the normalized concept string (lowercase, trimmed, single-
+    spaced) or None if missing / unusable. Same character classes as
+    per-overlay media `concept` so Pexels search results stay reliable:
+      * 2-5 words (wider than per-overlay because the bg query should
+        describe a scene, not a beat).
+      * ≤50 characters.
+      * No stray punctuation beyond hyphens / apostrophes.
+      * Lowercase normalized for cache stability — `find_b_roll` uses
+        the concept as its cache key.
+
+    Returns None on any rejection — caller falls back to the heuristic
+    `extract_concept` over `word_importance` and ultimately to the
+    layout's downgrade path if neither produces a usable URL.
+    """
+    if not isinstance(raw, str):
+        return None
+    cleaned = raw.strip().strip(".,!?;:\"'()[]").lower()
+    # Collapse runs of whitespace so "team   meeting" → "team meeting"
+    # without depending on re (already imported at module-top).
+    cleaned = " ".join(cleaned.split())
+    if not cleaned or len(cleaned) > MAX_BG_CONCEPT_LEN:
+        return None
+    words = cleaned.split()
+    if len(words) < MIN_BG_CONCEPT_WORDS or len(words) > MAX_BG_CONCEPT_WORDS:
+        return None
+    return cleaned
+
+
 def _validate_overlay(entry: Any, reel_duration_s: float) -> Optional[OverlaySpec]:
     """One overlay → OverlaySpec or None. None means "drop this entry".
 
@@ -646,6 +708,13 @@ def _validate_overlay(entry: Any, reel_duration_s: float) -> Optional[OverlaySpe
                         continue
                 if val < 0:
                     val = 0.0
+                # Reject inf / nan — chart renderers (height-pct math,
+                # SVG y-coord interpolation, conic-gradient stops) would
+                # emit literal "inf"/"nan" text and broken geometry. The
+                # LLM only emits these via numeric-string corruption, so
+                # silently dropping the bar is the right call.
+                if not math.isfinite(val):
+                    continue
                 bars.append({"label": label, "value": val})
             if not (kind_spec["min_bars"] <= len(bars) <= kind_spec["max_bars"]):
                 return None

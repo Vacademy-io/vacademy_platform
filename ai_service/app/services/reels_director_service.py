@@ -91,7 +91,11 @@ CAPTION_MAX_BLOCK_DURATION_S = 2.0
 # Below this, the block is too short to read — merge with neighbor.
 CAPTION_MIN_BLOCK_DURATION_S = 0.3
 
-# Hormozi-style default palette. Future STYLE_GUIDE stage can override.
+# Hormozi-style default palette. STYLE_GUIDE stage (Phase 2b) can override
+# individual tokens by writing into `ctx.extra_metadata["style_palette"]`.
+# Use `_effective_caption_palette(ctx)` rather than reading DEFAULT directly
+# so source_derived overrides flow through every consumer (caption builder,
+# stat HTML, motion-graphic renderers).
 DEFAULT_CAPTION_PALETTE = {
     "body": "#FFFFFF",
     "important": "#F7C204",   # yellow
@@ -99,6 +103,30 @@ DEFAULT_CAPTION_PALETTE = {
     "warning": "#FF3B30",     # red
     "stroke": "#000000",
 }
+
+
+def _effective_caption_palette(style_override: Optional[dict]) -> dict:
+    """Merge a STYLE_GUIDE-derived override (or `None`) onto the default
+    Hormozi palette. Tokens not present in the override fall through to
+    the default — STYLE_GUIDE only writes `important` for now since the
+    semantic colors (definition green, warning red) stay fixed across
+    reels regardless of source palette.
+
+    Defensive: ignores invalid hex values, non-dict overrides, and any
+    tokens that aren't in the known palette set. Always returns a full
+    palette dict so consumers don't have to handle missing keys.
+    """
+    if not isinstance(style_override, dict) or not style_override:
+        return dict(DEFAULT_CAPTION_PALETTE)
+    out = dict(DEFAULT_CAPTION_PALETTE)
+    import re as _re
+    hex_re = _re.compile(r"^#[0-9A-Fa-f]{6}$")
+    for token, value in style_override.items():
+        if token not in DEFAULT_CAPTION_PALETTE:
+            continue
+        if isinstance(value, str) and hex_re.fullmatch(value.strip()):
+            out[token] = value.strip()
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +186,11 @@ class ReelsDirectorService:
             raise RuntimeError(
                 "speaker_clip URL not set — SOURCE_CLIP must run before DIRECTOR"
             )
+        # Phase 2d: alpha-matted speaker silhouette, produced by SOURCE_CLIP
+        # only when layout=pip_corner_speaker AND matting succeeded. May be
+        # None if matting was disabled/failed — base-shot builder falls back
+        # to the rectangular PiP HTML.
+        speaker_fg_url = (ctx.s3_urls or {}).get("speaker_fg")
 
         total_duration = float(
             (ctx.trim_map or {}).get("total_new_duration_s") or 0.0
@@ -185,42 +218,67 @@ class ReelsDirectorService:
         trim_map = ctx.trim_map or {}
         word_importance_reel_time = _remap_word_importance(word_importance, trim_map)
 
-        # 3. Layout resolution. Both `stacked_speaker_with_broll` and
+        # 3. Storyline overlays run FIRST so we get the LLM's optional
+        # `background_concept` along with the overlay specs — both come
+        # from the same call (Phase 2c.8). Moving this above bgv-resolution
+        # lets the bgv chain prefer the LLM's scene-level concept over
+        # the heuristic single-word pick from `extract_concept`.
+        overlay_shots, overlay_method, llm_bg_concept = await self._build_storyline_overlays(
+            reel_duration_s=total_duration,
+            title=title,
+            rationale=rationale,
+            word_importance_reel_time=word_importance_reel_time,
+        )
+
+        # 4. Layout resolution. Both `stacked_speaker_with_broll` and
         # `pip_corner_speaker` need a bgv URL to render meaningfully —
         # without it the bottom half / bg fill is a black void. Resolution
         # order:
         #   a. User-supplied `background_video_url` (the "URL" source mode)
-        #   b. Auto-fetched Pexels b-roll keyed on the reel's top concept
-        #      (the "Auto" source mode; Phase 2c.4)
+        #   b. Auto-fetched Pexels b-roll, concept picked by EITHER the
+        #      LLM director's `background_concept` (preferred, 2-5 word
+        #      scene query — Phase 2c.8) OR the heuristic single-word
+        #      `extract_concept` (Phase 2c.4 fallback).
         #   c. Silent downgrade to `full_speaker_with_overlays` if neither
-        #      yields a usable URL
+        #      yields a usable URL.
         # The effective layout + the bgv source choice are tracked on
         # `extra_metadata` so FE / audit can tell which path fired.
         requested_layout = str((ctx.config or {}).get("layout") or "full_speaker_with_overlays")
         bgv_url_raw = (ctx.config or {}).get("background_video_url")
         bgv_url = _resolve_http_url(bgv_url_raw) if bgv_url_raw else None
         bgv_source = "user_url" if bgv_url else "none"
+        bgv_concept_used: Optional[str] = None
 
         if (
             not bgv_url
             and requested_layout in ("stacked_speaker_with_broll", "pip_corner_speaker")
             and word_importance_reel_time
         ):
-            concept = extract_concept(word_importance_reel_time)
-            if concept:
+            # Try the LLM's scene-concept first; fall back to the
+            # heuristic single-word pick. Both go through the same
+            # Pexels finder + per-process LRU cache, so a hot concept
+            # short-circuits to the cached URL.
+            concept_candidates: list[tuple[str, str]] = []
+            if llm_bg_concept:
+                concept_candidates.append(("llm", llm_bg_concept))
+            heuristic_concept = extract_concept(word_importance_reel_time)
+            if heuristic_concept and heuristic_concept != llm_bg_concept:
+                concept_candidates.append(("heuristic", heuristic_concept))
+            for source, concept in concept_candidates:
                 auto_url = await find_b_roll(concept)
                 if auto_url:
                     bgv_url = auto_url
-                    bgv_source = "auto_pexels"
+                    bgv_source = f"auto_pexels_{source}"
+                    bgv_concept_used = concept
                     logger.info(
-                        f"[Director] {ctx.reel_id} auto-fetched bgv for "
-                        f"concept={concept!r} → {auto_url[:60]}…"
+                        f"[Director] {ctx.reel_id} auto-fetched bgv via "
+                        f"{source} concept={concept!r} → {auto_url[:60]}…"
                     )
-                else:
-                    logger.info(
-                        f"[Director] {ctx.reel_id} auto-fetch returned no bgv "
-                        f"for concept={concept!r}"
-                    )
+                    break
+                logger.info(
+                    f"[Director] {ctx.reel_id} {source} concept={concept!r} "
+                    f"yielded no Pexels hit"
+                )
 
         effective_layout = requested_layout
         if requested_layout in ("stacked_speaker_with_broll", "pip_corner_speaker") and not bgv_url:
@@ -230,45 +288,51 @@ class ReelsDirectorService:
             )
             effective_layout = "full_speaker_with_overlays"
 
-        # 4. Compose shots.
+        # 5. Compose shots.
         shots: list[_Shot] = []
 
-        # 4a. Base shot covering the whole reel — shape depends on layout.
+        # 5a. Base shot covering the whole reel — shape depends on layout.
         shots.append(self._build_base_shot(
             speaker_clip_url,
             total_duration,
             layout=effective_layout,
             background_video_url=bgv_url,
+            speaker_fg_url=speaker_fg_url,
         ))
 
-        # 4b. Storyline overlays (LLM director with deterministic fallback).
-        overlay_shots, overlay_method = await self._build_storyline_overlays(
-            reel_duration_s=total_duration,
-            title=title,
-            rationale=rationale,
-            word_importance_reel_time=word_importance_reel_time,
-        )
+        # 5b. Storyline overlays (already built in step 3).
         shots.extend(overlay_shots)
 
-        # 4c. Captions — same word list, but grouped into phrase blocks.
+        # 5c. Captions — same word list, but grouped into phrase blocks.
         # Stacked layout pushes captions up so they sit on the speaker half,
         # just above the 50/50 split. Other layouts use the default
-        # bottom-third position.
+        # bottom-third position. Palette merges any STYLE_GUIDE override
+        # (Phase 2b) onto DEFAULT_CAPTION_PALETTE so source_derived reels
+        # pick up their per-clip accent.
+        palette = _effective_caption_palette(
+            (ctx.extra_metadata or {}).get("style_palette")
+        )
         if word_importance_reel_time:
             caption_shots = self._build_caption_blocks_from_reel_time(
                 word_importance_reel_time,
                 total_duration=total_duration,
                 layout=effective_layout,
+                palette=palette,
             )
             shots.extend(caption_shots)
 
-        # 5. Stash for ASSEMBLE.
+        # 6. Stash for ASSEMBLE.
         ctx.extra_metadata["shots"] = [s.to_entry_dict() for s in shots]
         ctx.extra_metadata["canvas_dimensions"] = {"width": canvas_w, "height": canvas_h}
         ctx.extra_metadata["total_duration_s"] = round(total_duration, 3)
         ctx.extra_metadata["director_overlay_method"] = overlay_method
         ctx.extra_metadata["effective_layout"] = effective_layout
         ctx.extra_metadata["bgv_source"] = bgv_source
+        # Surface the concept that actually fed Pexels (if any). Useful
+        # for debugging "why did this reel pick THIS b-roll?" and for the
+        # FE detail page to show "ambient b-roll: 'data analytics' (auto)".
+        if bgv_concept_used:
+            ctx.extra_metadata["bgv_concept"] = bgv_concept_used
         logger.info(
             f"[Director] {ctx.reel_id} composed {len(shots)} shots "
             f"(1 base + {len(overlay_shots)} overlays via {overlay_method} + "
@@ -283,15 +347,21 @@ class ReelsDirectorService:
         title: str,
         rationale: str,
         word_importance_reel_time: list[dict],
-    ) -> tuple[list[_Shot], str]:
+    ) -> tuple[list[_Shot], str, Optional[str]]:
         """LLM-direct overlay specs → `_Shot` list, with deterministic fallback.
 
-        Returns (shots, method) where method ∈ {"llm", "deterministic_fallback"}.
-        Tracked in extra_metadata so we can A/B compare quality after deploy.
+        Returns (shots, method, bg_concept) where:
+          * `method` ∈ {"llm", "deterministic_fallback"} — tracked in
+            extra_metadata for A/B comparison.
+          * `bg_concept` is the LLM-emitted 2-5 word Pexels search query
+            for layouts that need ambient bgv (stacked / pip_corner_speaker);
+            None if the LLM didn't emit one OR fell back to deterministic.
+            Caller's bgv-resolution chain prefers this over the heuristic.
         """
+        bg_concept: Optional[str] = None
         try:
             director = LLMDirector()
-            specs = await director.generate_overlays(
+            specs, bg_concept = await director.generate_overlays(
                 reel_duration_s=reel_duration_s,
                 title=title,
                 rationale=rationale,
@@ -299,7 +369,7 @@ class ReelsDirectorService:
             )
         except Exception as e:
             # Defensive — the LLMDirector already catches its own transport
-            # errors and returns []; this is for any unexpected breakage.
+            # errors and returns ([], None); this is for any unexpected breakage.
             logger.warning(f"[Director] LLMDirector raised: {e}; falling back")
             specs = []
 
@@ -324,14 +394,15 @@ class ReelsDirectorService:
                     shots.append(self._stat_spec_to_shot(spec, i))
                 else:
                     shots.append(self._spec_to_shot(spec, i))
-            return shots, "llm"
+            return shots, "llm", bg_concept
 
         # Fallback — Phase 1 behavior: one deterministic hook overlay with
-        # the candidate's enriched title.
+        # the candidate's enriched title. No bg_concept on this path —
+        # the heuristic extractor will pick a single-word fallback.
         hook_end = min(HOOK_DURATION_S, reel_duration_s)
         if hook_end > 0.3:
-            return [self._build_hook_overlay(title, hook_end)], "deterministic_fallback"
-        return [], "deterministic_fallback"
+            return [self._build_hook_overlay(title, hook_end)], "deterministic_fallback", None
+        return [], "deterministic_fallback", None
 
     async def _resolve_media_urls(
         self,
@@ -455,6 +526,7 @@ class ReelsDirectorService:
         *,
         layout: str = "full_speaker_with_overlays",
         background_video_url: Optional[str] = None,
+        speaker_fg_url: Optional[str] = None,
     ) -> _Shot:
         """Base shot HTML — shape depends on `layout`.
 
@@ -469,6 +541,13 @@ class ReelsDirectorService:
         ambient engagement glue (research §12.3 — dual-attention
         anchoring holds attention 30-45% longer). Required URL is
         validated upstream in `run()`; this builder trusts it.
+
+        `pip_corner_speaker`: when `speaker_fg_url` is set (Phase 2d
+        alpha-matte cutout) we render the speaker as a transparent
+        silhouette overlay above the bgv — no rectangular border, no
+        rounded-corner box. When `speaker_fg_url` is None (matting
+        disabled / failed / older reels), we fall back to the original
+        rectangular PiP window.
         """
         # data-source-start=0 — speaker_clip is ALREADY trimmed; play from
         # its own beginning, not a source-video offset.
@@ -501,39 +580,70 @@ class ReelsDirectorService:
                 "background_video_url": background_video_url,
             }
         elif layout == "pip_corner_speaker" and background_video_url:
-            # Phase-2c.3: rectangular PiP. Speaker sits in a rounded
-            # bottom-right window, bgv fills the rest. Sized by HEIGHT
-            # (`height:35%; aspect-ratio:9/16`) rather than width — that's
-            # the only way to keep the box vertically bounded across all
-            # three aspect ratios. With width-driven sizing the PiP would
-            # be ~614×1092px in a 1920×1080 (16:9) frame and overflow the
-            # bottom edge; height-driven sizing keeps it at ~378px tall
-            # everywhere.
-            #
-            # True alpha-matte cutout PiP is a Phase-2d follow-up — it
-            # requires re-running `extractor/podcast_visual.py` for the
-            # reel's specific window, which costs ~30s of CPU/GPU per
-            # render and warrants its own roll-out + caching strategy.
+            # Two variants share this branch:
+            #   * Phase-2c.3 rectangular PiP — rounded bottom-right window
+            #     showing the cropped speaker clip on top of the bgv.
+            #   * Phase-2d alpha-matte cutout — when SOURCE_CLIP produced
+            #     a transparent speaker_fg.webm, we render the silhouette
+            #     full-frame over the bgv (no rectangular border, no
+            #     rounded-corner box).
+            # The variant is decided ENTIRELY by whether `speaker_fg_url`
+            # is set; the upstream pipeline owns the policy (env flag +
+            # matting success). Renderer just picks the right HTML.
             safe_bgv = html_lib.escape(background_video_url, quote=True)
-            fragment = (
-                '<div style="position:absolute;inset:0;background:#000;">'
-                # Background — fills the whole frame.
-                f'<video src="{safe_bgv}" autoplay muted loop playsinline '
-                'style="position:absolute;inset:0;width:100%;height:100%;'
-                'object-fit:cover;display:block"></video>'
-                # Speaker PiP — bottom-right corner. Height drives sizing
-                # so the box doesn't overflow in 16:9 / 1:1 aspects.
-                f'<video data-source-clip src="{safe_speaker}" '
-                f'data-source-start="0" autoplay muted playsinline '
-                'style="position:absolute;bottom:8%;right:6%;height:35%;'
-                'aspect-ratio:9/16;object-fit:cover;border-radius:16px;'
-                'box-shadow:0 8px 32px rgba(0,0,0,0.5);display:block"></video>'
-                '</div>'
-            )
-            entry_meta = {
-                "shot_type": "pip_corner_base",
-                "background_video_url": background_video_url,
-            }
+            if speaker_fg_url:
+                # Alpha-matte cutout (Phase 2d). The webm is RGBA so the
+                # browser composites it directly over the bgv — no extra
+                # blend-mode needed. We keep the `data-source-clip` data
+                # attribute on the FG layer so the render worker scrubs
+                # this video's currentTime in lockstep with the audio
+                # track (same mechanism as the rectangular PiP).
+                safe_fg = html_lib.escape(speaker_fg_url, quote=True)
+                fragment = (
+                    '<div style="position:absolute;inset:0;background:#000;">'
+                    # Background fills the whole frame.
+                    f'<video src="{safe_bgv}" autoplay muted loop playsinline '
+                    'style="position:absolute;inset:0;width:100%;height:100%;'
+                    'object-fit:cover;display:block"></video>'
+                    # Speaker silhouette — full-frame alpha-matted webm.
+                    # object-fit:cover matches the bgv crop strategy so
+                    # the speaker stays centered + filling at any aspect.
+                    f'<video data-source-clip src="{safe_fg}" '
+                    f'data-source-start="0" autoplay muted playsinline '
+                    'style="position:absolute;inset:0;width:100%;height:100%;'
+                    'object-fit:cover;display:block;pointer-events:none"></video>'
+                    '</div>'
+                )
+                entry_meta = {
+                    "shot_type": "pip_alpha_cutout_base",
+                    "background_video_url": background_video_url,
+                    "speaker_fg_url": speaker_fg_url,
+                }
+            else:
+                # Phase-2c.3 fallback: rectangular PiP. Speaker sits in a
+                # rounded bottom-right window, bgv fills the rest. Sized
+                # by HEIGHT (`height:35%; aspect-ratio:9/16`) rather than
+                # width — that's the only way to keep the box vertically
+                # bounded across all three aspect ratios. With width-driven
+                # sizing the PiP would be ~614×1092px in a 1920×1080
+                # (16:9) frame and overflow the bottom edge; height-driven
+                # sizing keeps it at ~378px tall everywhere.
+                fragment = (
+                    '<div style="position:absolute;inset:0;background:#000;">'
+                    f'<video src="{safe_bgv}" autoplay muted loop playsinline '
+                    'style="position:absolute;inset:0;width:100%;height:100%;'
+                    'object-fit:cover;display:block"></video>'
+                    f'<video data-source-clip src="{safe_speaker}" '
+                    f'data-source-start="0" autoplay muted playsinline '
+                    'style="position:absolute;bottom:8%;right:6%;height:35%;'
+                    'aspect-ratio:9/16;object-fit:cover;border-radius:16px;'
+                    'box-shadow:0 8px 32px rgba(0,0,0,0.5);display:block"></video>'
+                    '</div>'
+                )
+                entry_meta = {
+                    "shot_type": "pip_corner_base",
+                    "background_video_url": background_video_url,
+                }
         else:
             fragment = (
                 f'<video data-source-clip src="{safe_speaker}" '
@@ -595,6 +705,7 @@ class ReelsDirectorService:
         total_duration: float,
         *,
         layout: str = "full_speaker_with_overlays",
+        palette: Optional[dict] = None,
     ) -> list[_Shot]:
         """Group already-reel-time word_importance into caption phrase blocks.
 
@@ -606,6 +717,11 @@ class ReelsDirectorService:
         consume the bottom half of the frame for b-roll), captions shift
         upward so they sit on the speaker portion. Other layouts keep the
         default Y position.
+
+        `palette` is the effective caption palette (already merged from
+        STYLE_GUIDE's `style_palette` override onto DEFAULT_CAPTION_PALETTE
+        by the caller). When None, falls back to DEFAULT inside the block
+        builder for backwards-compatibility with older call paths.
         """
         remapped = [
             {
@@ -614,6 +730,7 @@ class ReelsDirectorService:
                 "exit_time": w["t_end"],
                 "importance": w["importance"],
                 "keyword_type": w.get("keyword_type"),
+                "emoji": w.get("emoji"),
             }
             for w in remapped
         ]
@@ -658,7 +775,7 @@ class ReelsDirectorService:
             out_t = min(block[-1]["exit_time"], total_duration)
             if out_t <= in_t:
                 continue
-            html = _build_caption_block_html(block, layout=layout)
+            html = _build_caption_block_html(block, layout=layout, palette=palette)
             shots.append(_Shot(
                 id=f"shot-cap-{i:03d}",
                 in_time=in_t,
@@ -726,6 +843,7 @@ def _remap_word_importance(
             "t_end": new_e,
             "importance": int(w.get("importance") or 2),
             "keyword_type": w.get("keyword_type"),
+            "emoji": w.get("emoji"),
         })
     return out
 
@@ -1048,8 +1166,17 @@ def _build_bar_chart_html(spec: "OverlaySpec") -> str:
         '}'
         '</style>'
         f'<div style="{wrapper}pointer-events:none;">'
+        # `min-height:22vh` is load-bearing for the corner position: that
+        # wrapper has no explicit height, so `height:100%` here would
+        # resolve to auto → the bar's `height:var(--vx-target-h)` (a %)
+        # would have no resolved parent height to compute against and
+        # render at 0px. `vh` (not `vw`) is critical: `22vh` exactly
+        # equals the `lower_third` wrapper's `height:22%` regardless of
+        # aspect, so it never overflows there; in 16:9 the `full`
+        # wrapper's 36% × 1080 = 388px also exceeds 22vh = 237px. Using
+        # `22vw` would have overflowed in 16:9 (22% × 1920 = 422px).
         '<div style="display:flex;align-items:flex-end;justify-content:center;'
-        'gap:6%;width:100%;height:100%;">'
+        'gap:6%;width:100%;height:100%;min-height:22vh;">'
         f'{bars_inner}'
         '</div>'
         '</div>'
@@ -1080,10 +1207,13 @@ def _build_line_chart_html(spec: "OverlaySpec") -> str:
     labels = [str(b.get("label") or "") for b in bars]
     min_v = min(values)
     max_v = max(values)
-    # When all values are equal the range collapses — render a flat line
-    # at the chart's vertical centre rather than dividing by ~zero.
+    # When all values are equal the range collapses. Detect this and
+    # force y_norm=0.5 so the flat line sits at the chart's vertical
+    # midline. The naive divide-by-zero fallback (range_v=1.0) would
+    # produce y_norm=0 — pinning the line to the BOTTOM of the chart.
     range_v = max_v - min_v
-    if range_v < 1e-6:
+    all_equal = range_v < 1e-6
+    if all_equal:
         range_v = 1.0
 
     # Chart-area bounds inside viewBox 0..100. Top 15 reserved for value
@@ -1093,8 +1223,9 @@ def _build_line_chart_html(spec: "OverlaySpec") -> str:
     points: list[tuple[float, float]] = []
     for i, v in enumerate(values):
         x = x_lo + (x_hi - x_lo) * (i / (n - 1))
-        # Higher value → lower y (SVG y-axis is top-down)
-        y_norm = (v - min_v) / range_v
+        # SVG y-axis is top-down: higher value → lower y. All-equal case
+        # is forced to midline (see all_equal comment above).
+        y_norm = 0.5 if all_equal else (v - min_v) / range_v
         y = y_hi - (y_hi - y_lo) * y_norm
         points.append((x, y))
     polyline_pts = " ".join(f"{x:.2f},{y:.2f}" for x, y in points)
@@ -1412,6 +1543,7 @@ def _build_caption_block_html(
     block: list[dict],
     *,
     layout: str = "full_speaker_with_overlays",
+    palette: Optional[dict] = None,
 ) -> str:
     """Build a single caption block fragment with **per-word karaoke
     reveal** animation (Phase 2a).
@@ -1431,15 +1563,20 @@ def _build_caption_block_html(
         `inTime` on the reel timeline. So animation-delay maps 1:1 to
         per-word reveal moments.
       - Color encoding: keyword_type words stay in their assigned color
-        (yellow/green/red); normal words are white. Both pop on reveal.
+        from `palette` (default Hormozi yellow / definition green /
+        warning red, or a STYLE_GUIDE override for `important`); normal
+        words are white. Both pop on reveal.
       - Y position varies by `layout` — see `_CAPTION_BOTTOM_PCT_BY_LAYOUT`.
 
     NB: scrubbing the editor backward then forward will re-mount the
     iframe — animations replay from the start. Live playback (the render
     worker's case) plays linearly so animations sync correctly.
     """
-    body_color = DEFAULT_CAPTION_PALETTE["body"]
-    stroke_color = DEFAULT_CAPTION_PALETTE["stroke"]
+    # Fall back to DEFAULT_CAPTION_PALETTE when caller didn't pass one
+    # (e.g. test fixtures, future call sites that haven't been migrated).
+    pal = palette if isinstance(palette, dict) and palette else DEFAULT_CAPTION_PALETTE
+    body_color = pal.get("body", DEFAULT_CAPTION_PALETTE["body"])
+    stroke_color = pal.get("stroke", DEFAULT_CAPTION_PALETTE["stroke"])
     block_in = float(block[0]["in_time"])
     bottom_pct = _CAPTION_BOTTOM_PCT_BY_LAYOUT.get(layout, _CAPTION_BOTTOM_PCT_DEFAULT)
 
@@ -1449,7 +1586,7 @@ def _build_caption_block_html(
         if not text:
             continue
         kt = w.get("keyword_type")
-        color = DEFAULT_CAPTION_PALETTE.get(kt) if kt else body_color
+        color = pal.get(kt) if kt else body_color
         # Negative or sub-millisecond offsets get clamped to 0 — protects
         # against rounding/precision edge cases at block boundaries.
         offset = max(0.0, float(w["in_time"]) - block_in)
@@ -1463,6 +1600,29 @@ def _build_caption_block_html(
             f'{text}'
             '</span>'
         )
+        # Emoji punctuation (Phase 2c.7) — appended AFTER the word's
+        # main span when the LLM tagged this slot. The emoji pops in
+        # 150ms after the word reveals so it punches rather than competes
+        # with the word's own scale-pop. -webkit-text-stroke and
+        # text-shadow inherited from the block wrapper would harm emoji
+        # rendering, so we reset them on the emoji span. Emoji escaping
+        # via html_lib is harmless — emoji characters pass through.
+        emoji = w.get("emoji")
+        if emoji:
+            emoji_offset = offset + 0.15
+            safe_emoji = html_lib.escape(str(emoji))
+            spans.append(
+                '<span style="'
+                'display:inline-block;'
+                'opacity:0;'
+                'margin-left:0.18em;'
+                '-webkit-text-stroke:0;'
+                'text-shadow:0 2px 4px rgba(0,0,0,0.45);'
+                f'animation:emoji-pop 360ms {emoji_offset:.3f}s both;'
+                '">'
+                f'{safe_emoji}'
+                '</span>'
+            )
     inner = " ".join(spans)
     return (
         # Document-scoped @keyframes. Defining inside the entry iframe
@@ -1472,6 +1632,15 @@ def _build_caption_block_html(
         '0%{opacity:0;transform:scale(0.6) translateY(8px)}'
         '55%{opacity:1;transform:scale(1.12) translateY(-2px)}'
         '100%{opacity:1;transform:scale(1) translateY(0)}'
+        '}'
+        # Emoji-pop is a wider scale + slight rotation so it visually
+        # contrasts with the karaoke-reveal of adjacent words. Larger
+        # overshoot than karaoke-reveal (1.4× vs 1.12×) makes the emoji
+        # feel like a punchline rather than continuation.
+        '@keyframes emoji-pop{'
+        '0%{opacity:0;transform:scale(0.3) rotate(-15deg)}'
+        '60%{opacity:1;transform:scale(1.4) rotate(8deg)}'
+        '100%{opacity:1;transform:scale(1) rotate(0)}'
         '}'
         '</style>'
         '<div style="'

@@ -281,7 +281,8 @@ def register_all_stages() -> None:
     # circular-import surprises at orchestrator load time.
     from . import reels_audio_edit_service       # noqa: F401  # registers AUDIO_EDIT
     from . import reels_source_clip_service      # noqa: F401  # registers SOURCE_CLIP
+    from . import reels_style_guide_service      # noqa: F401  # registers STYLE_GUIDE
     from . import reels_director_service         # noqa: F401  # registers DIRECTOR
     from . import reels_assemble_service         # noqa: F401  # registers ASSEMBLE
     from . import reels_render_finalize_service  # noqa: F401  # registers RENDER
-    # Future: STYLE_GUIDE + HTML when promoted from no-op (Phase 2 polish).
+    # Future: HTML when promoted from no-op (Phase 2 polish).

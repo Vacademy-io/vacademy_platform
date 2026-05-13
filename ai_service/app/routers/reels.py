@@ -429,6 +429,7 @@ def _enriched_dict_to_response(candidate_id: str, enriched: dict) -> EnrichedCan
             t_end=float(w.get("t_end", 0.0)),
             importance=int(w.get("importance", 2)),
             keyword_type=w.get("keyword_type"),
+            emoji=w.get("emoji"),
         )
         for w in (enriched.get("word_importance") or [])
         if isinstance(w, dict)

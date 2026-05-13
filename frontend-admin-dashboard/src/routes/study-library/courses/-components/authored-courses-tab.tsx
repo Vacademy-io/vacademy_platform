@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { MyButton } from '@/components/design-system/button';
@@ -168,6 +168,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
     setSearchValue,
 }) => {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [filteredCourses, setFilteredCourses] = useState<DisplayCourse[]>([]);
     const [copyingCourseId, setCopyingCourseId] = useState<string | null>(null);
     const [deletingCourseId, setDeletingCourseId] = useState<string | null>(null);
@@ -222,7 +223,10 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
         error,
     } = useQuery<PaginatedCoursesResponse>({
         queryKey: ['my-courses-authored', currentPage, pageSize],
-        queryFn: () => getMyCourses(currentPage, pageSize),
+        // Server sends Cache-Control: max-age=120 on this list, so a plain refetch
+        // after a mutation (copy/delete/submit) is served from the browser HTTP cache
+        // and misses the change. Bust the URL to force a roundtrip.
+        queryFn: () => getMyCourses(currentPage, pageSize, true),
         staleTime: 30000, // Consider data fresh for 30 seconds
         refetchOnWindowFocus: false, // Don't refetch on window focus
     });
@@ -238,13 +242,70 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
         }
     }, [coursesResponse]);
 
-    // Create editable copy mutation
-    const createCopyMutation = useMutation({
-        mutationFn: createEditableCopy,
-        onSuccess: () => {
+    // Create editable copy mutation. We prepend a synthesized DRAFT entry to page 0's
+    // cache as soon as the POST returns, so the new card shows up instantly without
+    // waiting for the list refetch roundtrip. The refetch still runs in the background
+    // and replaces the synthetic entry with the authoritative one.
+    const createCopyMutation = useMutation<
+        { sourceCourse: DisplayCourse; newCourseId: string | null },
+        Error,
+        DisplayCourse
+    >({
+        mutationFn: async (sourceCourse) => {
+            const data = await createEditableCopy(sourceCourse.courseId);
+            // Backend response is plain text: "Editable copy created with ID: <uuid>"
+            const newCourseId = String(data ?? '').match(/ID:\s*(\S+)/)?.[1]?.trim() ?? null;
+            return { sourceCourse, newCourseId };
+        },
+        onSuccess: ({ sourceCourse, newCourseId }) => {
             toast.success('Editable copy created successfully');
-            refetch();
             setCopyingCourseId(null);
+
+            const targetPage = 0;
+            const queryKey = ['my-courses-authored', targetPage, pageSize];
+            const sourceResponse = courses.find((c) => c.courseId === sourceCourse.courseId);
+
+            if (newCourseId && sourceResponse) {
+                const now = new Date().toISOString();
+                const synthetic: DetailedCourseResponse = {
+                    ...sourceResponse,
+                    courseId: newCourseId,
+                    courseStatus: 'DRAFT',
+                    createdAt: now,
+                    updatedAt: now,
+                    relationshipType: 'CREATOR',
+                    creator: true,
+                    facultyAssigned: false,
+                    facultyAssignmentCount: 0,
+                    enrolledStudentCount: 0,
+                    packageEntity: {
+                        ...sourceResponse.packageEntity,
+                        id: newCourseId,
+                        status: 'DRAFT',
+                        originalCourseId: sourceCourse.courseId,
+                        createdAt: now,
+                        updatedAt: now,
+                    },
+                };
+                queryClient.setQueryData<PaginatedCoursesResponse>(queryKey, (prev) => {
+                    if (!prev) return prev;
+                    const deduped = prev.content.filter((c) => c.courseId !== newCourseId);
+                    return {
+                        ...prev,
+                        content: [synthetic, ...deduped],
+                        totalElements: prev.totalElements + 1,
+                    };
+                });
+            }
+
+            // Page 0 is where the new copy sorts (created_at DESC). If we're already
+            // there, refetch in the background to validate the synthetic entry;
+            // otherwise switching pages changes the queryKey and React Query fetches.
+            if (currentPage === targetPage) {
+                refetch();
+            } else {
+                setCurrentPage(targetPage);
+            }
             navigate({ to: '/study-library/courses' });
         },
         onError: (error: Error) => {
@@ -378,7 +439,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
 
     const handleCopyToEdit = (course: DisplayCourse) => {
         setCopyingCourseId(course.courseId);
-        createCopyMutation.mutate(course.courseId);
+        createCopyMutation.mutate(course);
     };
 
     const handleSubmitForReview = (courseId: string) => {

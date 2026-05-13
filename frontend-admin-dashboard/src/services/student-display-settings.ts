@@ -114,6 +114,7 @@ function mergeWithDefaults(
             type: incoming?.ui?.type ?? d.ui.type,
         },
         signup: {
+            enabled: incoming?.signup?.enabled ?? d.signup.enabled,
             providers: {
                 google: incoming?.signup?.providers?.google ?? d.signup.providers.google,
                 github: incoming?.signup?.providers?.github ?? d.signup.providers.github,
@@ -128,6 +129,7 @@ function mergeWithDefaults(
             usernameStrategy: incoming?.signup?.usernameStrategy ?? d.signup.usernameStrategy,
             passwordStrategy: incoming?.signup?.passwordStrategy ?? d.signup.passwordStrategy,
             passwordDelivery: incoming?.signup?.passwordDelivery ?? d.signup.passwordDelivery,
+            presentation: incoming?.signup?.presentation ?? d.signup.presentation,
         },
         permissions: {
             canViewProfile: incoming?.permissions?.canViewProfile ?? d.permissions.canViewProfile,

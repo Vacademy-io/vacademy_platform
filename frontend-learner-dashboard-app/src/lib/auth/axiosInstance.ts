@@ -2,7 +2,11 @@ import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
 import axios from "axios";
 import * as Sentry from "@sentry/react";
-import { isTokenExpired, removeTokensAndLogout, getTokenFromStorage } from "./sessionUtility";
+import {
+  isTokenExpired,
+  removeTokensAndLogout,
+  getTokenFromStorage,
+} from "./sessionUtility";
 import { REFRESH_TOKEN_URL, VALIDATE_SESSION } from "@/constants/urls";
 import { maybeServeFromCache, maybeStoreInCache } from "@/lib/http/clientCache";
 import { toast } from "sonner";
@@ -35,10 +39,30 @@ async function sessionHeartbeat(accessToken: string, instituteId: string) {
 }
 
 const removeTokensAndInstituteId = async () => {
-  await Preferences.remove({ key: TokenKey.accessToken });
-  await Preferences.remove({ key: TokenKey.refreshToken });
-  await Preferences.remove({ key: "instituteId" });
-  await Preferences.remove({ key: "InstituteId" });
+  const keysToRemove = [
+    TokenKey.accessToken,
+    TokenKey.refreshToken,
+    "instituteId",
+    "InstituteId",
+  ];
+  for (const key of keysToRemove) {
+    await Preferences.remove({ key });
+    // Also remove from localStorage — tokens are written there by setTokenInStorage
+    // as a synchronous fallback, and getTokenFromStorage reads localStorage if
+    // Preferences returns empty, which kept a stale token alive for 18+ days.
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+    try {
+      const Cookies = (await import("js-cookie")).default;
+      Cookies.remove(key);
+      Cookies.remove(key, { domain: ".vacademy.io" });
+    } catch {
+      /* ignore */
+    }
+  }
 };
 
 const refreshTokens = async (refreshToken: string): Promise<void> => {
@@ -80,7 +104,7 @@ authenticatedAxiosInstance.interceptors.request.use(
   async (request) => {
     const requestUrl = String(request.url || "");
     const isPublicDomainRouting = requestUrl.includes(
-      "/public/domain-routing/"
+      "/public/domain-routing/",
     );
     const isOpenEndpoint = requestUrl.includes("/open/");
 
@@ -157,7 +181,6 @@ authenticatedAxiosInstance.interceptors.request.use(
         request = maybeServeFromCache(request);
         return request;
       } catch {
-
         // If token refresh fails, remove tokens and institute ID
         await removeTokensAndInstituteId();
 
@@ -168,7 +191,7 @@ authenticatedAxiosInstance.interceptors.request.use(
   },
   async (error) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 // Response interceptor to handle global error responses
@@ -181,7 +204,7 @@ authenticatedAxiosInstance.interceptors.response.use(
     // Allow public domain routing errors to pass through without auth side-effects
     const requestUrl = String(error?.config?.url || "");
     const isPublicDomainRouting = requestUrl.includes(
-      "/public/domain-routing/"
+      "/public/domain-routing/",
     );
 
     const status = error?.response?.status;
@@ -194,7 +217,10 @@ authenticatedAxiosInstance.interceptors.response.use(
     ) {
       Sentry.withScope((scope) => {
         scope.setTag("http.status_code", String(status));
-        scope.setTag("http.method", error?.config?.method?.toUpperCase() || "UNKNOWN");
+        scope.setTag(
+          "http.method",
+          error?.config?.method?.toUpperCase() || "UNKNOWN",
+        );
         scope.setTag("api.url", requestUrl);
         scope.setLevel("error");
         scope.setContext("API Response", {
@@ -214,7 +240,9 @@ authenticatedAxiosInstance.interceptors.response.use(
           params: error?.config?.params,
         });
         Sentry.captureException(
-          new Error(`API ${status}: ${error?.config?.method?.toUpperCase()} ${requestUrl}`)
+          new Error(
+            `API ${status}: ${error?.config?.method?.toUpperCase()} ${requestUrl}`,
+          ),
         );
       });
     }
@@ -233,25 +261,19 @@ authenticatedAxiosInstance.interceptors.response.use(
     }
 
     // Handle unauthorized errors (401)
-    if (
-      !isPublicDomainRouting &&
-      error.response &&
-      status === 401
-    ) {
-      console.warn("[Axios] Received 401 Unauthorized. Not performing auto-logout to avoid session recovery race conditions. Route guards will handle redirection if needed.");
+    if (!isPublicDomainRouting && error.response && status === 401) {
+      console.warn(
+        "[Axios] Received 401 Unauthorized. Not performing auto-logout to avoid session recovery race conditions. Route guards will handle redirection if needed.",
+      );
     }
 
     // Handle forbidden errors (403) - might be token issues
-    if (
-      !isPublicDomainRouting &&
-      error.response &&
-      status === 403
-    ) {
+    if (!isPublicDomainRouting && error.response && status === 403) {
       // Handle 403 errors silently
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 export const guestAxiosInstance = axios.create();

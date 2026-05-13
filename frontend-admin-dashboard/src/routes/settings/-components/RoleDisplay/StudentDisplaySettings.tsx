@@ -21,6 +21,7 @@ import type {
     UsernameStrategy,
     PasswordStrategy,
     PasswordDelivery,
+    StudentAuthPresentation,
     StudentUiType,
     SlidesSidebarNavigation,
 } from '@/types/student-display-settings';
@@ -477,6 +478,18 @@ export default function StudentDisplaySettings(): JSX.Element {
                     <CardDescription>Providers and defaults for student signup</CardDescription>
                 </CardHeader>
                 <div className="space-y-2 p-4 pt-0">
+                    <div className="flex items-center gap-2 pb-2 border-b">
+                        <Switch
+                            checked={settings.signup.enabled ?? true}
+                            onCheckedChange={(v) =>
+                                update('signup', { ...settings.signup, enabled: v })
+                            }
+                        />
+                        <Label className="text-xs font-semibold">Signup enabled</Label>
+                        <span className="text-[10px] text-muted-foreground">
+                            Master toggle: when off, "Sign Up" links are hidden in the catalogue header.
+                        </span>
+                    </div>
                     <div className="flex flex-wrap items-center gap-3">
                         {(['google', 'github', 'usernamePassword', 'emailOtp'] as const).map(
                             (p) => (
@@ -580,6 +593,26 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 <SelectItem value="showOnScreen">showOnScreen</SelectItem>
                                 <SelectItem value="sendEmail">sendEmail</SelectItem>
                                 <SelectItem value="none">none</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <Label className="text-xs">Catalogue Header Auth</Label>
+                        <Select
+                            value={settings.signup.presentation ?? 'page'}
+                            onValueChange={(v) =>
+                                update('signup', {
+                                    ...settings.signup,
+                                    presentation: v as StudentAuthPresentation,
+                                })
+                            }
+                        >
+                            <SelectTrigger className="h-8 w-48 text-xs">
+                                <SelectValue placeholder="Select presentation" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="page">page (navigate to /login)</SelectItem>
+                                <SelectItem value="modal">modal (open in-place)</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

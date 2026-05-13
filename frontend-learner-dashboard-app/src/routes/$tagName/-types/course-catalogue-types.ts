@@ -61,6 +61,9 @@ export interface GlobalSettings {
       props: {
         logo?: string;
         title?: string;
+        // When true, header login/signup buttons open the AuthModal in-place
+        // instead of navigating to /login or /signup. Default: false (navigate).
+        useAuthModal?: boolean;
         navigation?: Array<{
           label: string;
           route: string;

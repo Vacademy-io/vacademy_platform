@@ -16,23 +16,25 @@ interface AuthModalProps {
     onModalOpen?: () => void;
     onLoginSuccess?: () => void;
     onSignupSuccess?: () => void;
+    initialMode?: 'login' | 'signup' | 'forgot-password';
 }
 
 export interface AuthModalRef {
     setIsOpen: (open: boolean) => void;
 }
 
-export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({ 
-    type, 
-    courseId, 
-    trigger, 
-    onModalOpen, 
-    onLoginSuccess, 
-    onSignupSuccess
+export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
+    type,
+    courseId,
+    trigger,
+    onModalOpen,
+    onLoginSuccess,
+    onSignupSuccess,
+    initialMode = 'login'
 }, ref) => {
     const [internalIsOpen, setInternalIsOpen] = useState(false);
     const isOpen = internalIsOpen;
-    const [currentMode, setCurrentMode] = useState<'login' | 'signup' | 'forgot-password'>('login');
+    const [currentMode, setCurrentMode] = useState<'login' | 'signup' | 'forgot-password'>(initialMode);
     const [isVisible, setIsVisible] = useState(false);
     const dialogRef = useRef<HTMLDivElement>(null);
     const [instituteIdFromStorage, setInstituteIdFromStorage] = useState<string | null>(null);
@@ -369,8 +371,8 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
         setIsVisible(false);
         setTimeout(() => {
             setInternalIsOpen(false);
-            // Reset to login mode and clear prefilled data when closing
-            setCurrentMode('login');
+            // Reset to caller's initial mode (defaults to login) and clear prefilled data
+            setCurrentMode(initialMode);
             setPrefilledEmail("");
             setAutoSendOtp(false);
         }, 200);

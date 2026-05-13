@@ -1203,9 +1203,22 @@ interface BatchDropdownProps {
 
 function BatchDropdown({ label, value, options, onSelect }: BatchDropdownProps) {
     const [batchSearch, setBatchSearch] = useState('');
-    const filteredOptions = options.filter((opt) =>
-        opt.label.toLowerCase().includes(batchSearch.toLowerCase())
-    );
+
+    const uniqueOptions = useMemo(() => {
+        const seen = new Set<string>();
+        return options.filter((opt) => {
+            const key = `${opt.value ?? 'all'}::${opt.label}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }, [options]);
+
+    const filteredOptions = useMemo(() => {
+        const query = batchSearch.trim().toLowerCase();
+        if (!query) return uniqueOptions;
+        return uniqueOptions.filter((opt) => opt.label.toLowerCase().includes(query));
+    }, [uniqueOptions, batchSearch]);
 
     return (
         <div className="w-full">
@@ -1229,6 +1242,11 @@ function BatchDropdown({ label, value, options, onSelect }: BatchDropdownProps) 
                                 placeholder="Search..."
                                 value={batchSearch}
                                 onChange={(e) => setBatchSearch(e.target.value)}
+                                autoComplete="off"
+                                autoCorrect="off"
+                                autoCapitalize="off"
+                                spellCheck={false}
+                                name="batch-dropdown-search"
                                 className="h-8 w-full rounded-md border border-neutral-200 bg-white pl-8 pr-3 text-xs text-neutral-900 placeholder:text-neutral-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
                             />
                         </div>
@@ -1236,12 +1254,13 @@ function BatchDropdown({ label, value, options, onSelect }: BatchDropdownProps) 
                             {filteredOptions.length > 0 ? (
                                 filteredOptions.map((opt) => (
                                     <button
-                                        key={opt.value || 'all'}
+                                        key={`${opt.value ?? 'all'}::${opt.label}`}
                                         onClick={() => onSelect(opt.value)}
-                                        className={`w-full rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-left text-xs hover:border-neutral-300 hover:bg-neutral-50 ${value === opt.label ? 'bg-primary-50 text-primary-600' : ''
+                                        title={opt.label}
+                                        className={`flex w-full items-center rounded-md border border-neutral-200 bg-white px-3 py-2 text-left text-xs leading-5 hover:border-neutral-300 hover:bg-neutral-50 ${value === opt.label ? 'bg-primary-50 text-primary-600' : ''
                                             }`}
                                     >
-                                        {opt.label}
+                                        <span className="block w-full truncate">{opt.label}</span>
                                     </button>
                                 ))
                             ) : (

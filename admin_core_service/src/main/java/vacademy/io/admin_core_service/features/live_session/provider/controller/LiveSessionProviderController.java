@@ -51,6 +51,7 @@ public class LiveSessionProviderController {
     private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
     private final vacademy.io.common.media.service.FileService fileService;
     private final vacademy.io.common.auth.repository.UserRepository userRepository;
+    private final vacademy.io.admin_core_service.features.youtube.service.YoutubeUploadJobService youtubeUploadJobService;
 
     // -----------------------------------------------------------------------
     // OAuth connect / status
@@ -623,6 +624,18 @@ public class LiveSessionProviderController {
                 schedule.setLastRecordingSyncAt(new java.util.Date());
                 scheduleRepository.save(schedule);
                 log.info("[BBB Recording] Saved recording (type={}) for scheduleId={}", recordingType, schedule.getId());
+
+                // Kick off YouTube auto-upload if the institute has connected
+                // their channel and not disabled auto-upload. Silent skip
+                // otherwise — we don't want post-publish to fail because
+                // YouTube isn't set up.
+                try {
+                    youtubeUploadJobService.autoEnqueueIfEnabled(
+                            schedule.getId(), recordingId, fileId);
+                } catch (Exception ytEx) {
+                    log.warn("[YouTube] Auto-enqueue failed for scheduleId={}: {}",
+                            schedule.getId(), ytEx.getMessage());
+                }
             } catch (Exception e) {
                 log.error("[BBB Recording] Failed to save for scheduleId={}: {}",
                         schedule.getId(), e.getMessage());

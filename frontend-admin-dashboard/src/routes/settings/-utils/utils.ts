@@ -21,6 +21,7 @@ import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
 import DoubtManagementSettings from '../-components/DoubtManagementSettings';
 import LiveSessionSettings from '../-components/LiveSessionSettings';
+import YoutubeIntegrationSettings from '../-components/YoutubeIntegrationSettings';
 
 export const getAvailableSettingsTabs = () => {
     return [
@@ -133,6 +134,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.LiveSession,
             value: 'Live Session Settings',
             component: LiveSessionSettings,
+        },
+        {
+            tab: SettingsTabs.Youtube,
+            value: 'YouTube Integration',
+            component: YoutubeIntegrationSettings,
         },
     ];
 };

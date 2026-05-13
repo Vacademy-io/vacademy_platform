@@ -45,10 +45,16 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
        @Query("UPDATE UserSession u SET u.isActive = false, u.logoutTime = :logoutTime WHERE u.sessionToken = :sessionToken")
        void endSession(@Param("sessionToken") String sessionToken, @Param("logoutTime") LocalDateTime logoutTime);
 
-       // End inactive sessions
+       // End inactive sessions — uses SKIP LOCKED so the bulk cleanup never deadlocks
+       // with a concurrent endSession/endAllSessions call that holds a row lock.
        @Modifying
        @Transactional
-       @Query("UPDATE UserSession u SET u.isActive = false, u.logoutTime = :logoutTime WHERE u.isActive = true AND u.lastActivityTime < :cutoffTime")
+       @Query(value = "UPDATE user_session SET is_active = false, logout_time = :logoutTime " +
+                     "WHERE id IN (" +
+                     "  SELECT id FROM user_session " +
+                     "  WHERE is_active = true AND last_activity_time < :cutoffTime " +
+                     "  FOR UPDATE SKIP LOCKED" +
+                     ")", nativeQuery = true)
        void endInactiveSessions(@Param("cutoffTime") LocalDateTime cutoffTime,
                      @Param("logoutTime") LocalDateTime logoutTime);
 
@@ -189,7 +195,8 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
                      "AND institute_id IS NOT NULL", nativeQuery = true)
        long countActiveSession(@Param("sessionToken") String sessionToken);
 
-       // Legacy boolean versions (used by AssessmentJwtAuthFilter — will silently fail and cache false)
+       // Legacy boolean versions (used by AssessmentJwtAuthFilter — will silently fail
+       // and cache false)
        default boolean hasSessionLimitConfigured(String instituteId) {
               return countSessionLimitConfigured(instituteId) > 0;
        }

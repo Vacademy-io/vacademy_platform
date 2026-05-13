@@ -1,9 +1,11 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useMutation } from '@tanstack/react-query';
 import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
 import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb } from '../-services/utils';
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording } from '../-services/utils';
+import { enqueueYoutubeUpload } from '@/routes/settings/-services/youtube-integration-service';
 import { AttendanceMarkingTable } from '../-components/AttendanceMarkingTable';
 import { FeedbackStats } from './-components/FeedbackStats';
 import {
@@ -1006,6 +1008,7 @@ function ViewLiveSession() {
                                                         </>
                                                     );
                                                 })()}
+                                                <RecordingYoutubeAction rec={rec} />
                                             </div>
                                         </div>
                                     ))}
@@ -1550,5 +1553,69 @@ function SettingItem({ label, value }: { label: string; value: string }) {
             <span className="text-sm text-muted-foreground">{label}</span>
             <span className="text-sm font-medium text-foreground">{value}</span>
         </div>
+    );
+}
+
+/**
+ * Per-recording YouTube action. Three states:
+ *   - youtubeVideoUrl present → "Open on YouTube"
+ *   - Recording has a fileId, no upload yet → "Upload to YouTube"
+ *   - Recording still processing (no fileId yet) → render nothing
+ *
+ * Triggering an upload here is enough — the worker picks it up and the
+ * Settings → YouTube page tracks the job. Once the worker finishes the
+ * youtubeVideoUrl stamps onto the recording entry and the link replaces
+ * the button on the next refresh.
+ */
+function RecordingYoutubeAction({
+    rec,
+}: {
+    rec: MeetingRecording & { scheduleId: string };
+}) {
+    const [queued, setQueued] = useState(false);
+    const { mutate, isPending } = useMutation({
+        mutationFn: () =>
+            enqueueYoutubeUpload({
+                scheduleId: rec.scheduleId,
+                recordingId: rec.recordingId,
+                fileId: rec.fileId,
+            }),
+        onSuccess: () => {
+            setQueued(true);
+            toast.success('Queued for YouTube upload');
+        },
+        onError: (err: unknown) => {
+            const msg =
+                (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+                'Could not queue YouTube upload';
+            toast.error(msg);
+        },
+    });
+
+    if (rec.youtubeVideoUrl) {
+        return (
+            <a
+                href={rec.youtubeVideoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-100"
+                title="Open on YouTube"
+            >
+                <Video className="size-3" />
+                YouTube
+            </a>
+        );
+    }
+    if (!rec.fileId) return null;
+    return (
+        <button
+            onClick={() => mutate()}
+            disabled={isPending || queued}
+            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
+            title="Upload this recording to your connected YouTube channel"
+        >
+            <CloudDownload className={cn('size-3', isPending && 'animate-pulse')} />
+            {queued ? 'Queued' : isPending ? 'Queueing…' : 'Upload to YouTube'}
+        </button>
     );
 }

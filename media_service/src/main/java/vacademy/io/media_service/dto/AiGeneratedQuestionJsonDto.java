@@ -4,11 +4,18 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSetter;
 import com.fasterxml.jackson.annotation.Nulls;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.JsonDeserializer;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.io.IOException;
 import java.util.List;
 
 @Getter
@@ -155,10 +162,50 @@ public class AiGeneratedQuestionJsonDto {
 
     @Getter
     @Setter
+    @JsonDeserialize(using = OptionDeserializer.class)
     public static class Option {
         private ContentType type;
         private String content;
         private String preview_id;
 
+    }
+
+    public static class OptionDeserializer extends JsonDeserializer<Option> {
+        @Override
+        public Option deserialize(JsonParser p, DeserializationContext ctxt) throws IOException {
+            JsonToken token = p.currentToken();
+            if (token == JsonToken.VALUE_NULL) {
+                return null;
+            }
+            Option opt = new Option();
+            if (token == JsonToken.VALUE_STRING) {
+                opt.setType(ContentType.HTML);
+                opt.setContent(p.getValueAsString());
+                return opt;
+            }
+            JsonNode node = p.readValueAsTree();
+            if (node == null || node.isNull()) {
+                return null;
+            }
+            if (node.isTextual()) {
+                opt.setType(ContentType.HTML);
+                opt.setContent(node.asText());
+                return opt;
+            }
+            if (node.hasNonNull("type")) {
+                try {
+                    opt.setType(ContentType.valueOf(node.get("type").asText()));
+                } catch (IllegalArgumentException ignored) {
+                    opt.setType(ContentType.HTML);
+                }
+            }
+            if (node.hasNonNull("content")) {
+                opt.setContent(node.get("content").asText());
+            }
+            if (node.hasNonNull("preview_id")) {
+                opt.setPreview_id(node.get("preview_id").asText());
+            }
+            return opt;
+        }
     }
 }

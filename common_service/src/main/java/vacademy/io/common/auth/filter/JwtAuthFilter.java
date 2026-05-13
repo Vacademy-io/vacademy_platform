@@ -1,5 +1,6 @@
 package vacademy.io.common.auth.filter;
 
+import io.jsonwebtoken.ExpiredJwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -30,10 +31,13 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     // ── Session-limit enforcement caches (no external dependency) ──
     private record CacheEntry(boolean value, long expiresAt) {
-        boolean isExpired() { return System.currentTimeMillis() > expiresAt; }
+        boolean isExpired() {
+            return System.currentTimeMillis() > expiresAt;
+        }
     }
+
     private static final long INSTITUTE_LIMIT_TTL_MS = 60 * 60 * 1000L; // 1 hour
-    private static final long SESSION_ACTIVE_TTL_MS  = 10 * 60 * 1000L; // 10 minutes
+    private static final long SESSION_ACTIVE_TTL_MS = 10 * 60 * 1000L; // 10 minutes
     private static final ConcurrentHashMap<String, CacheEntry> instituteHasLimitCache = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, CacheEntry> sessionActiveCache = new ConcurrentHashMap<>();
 
@@ -173,16 +177,20 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                     }
                 }
             }
+        } catch (ExpiredJwtException exception) {
+            throw new VacademyException("Expired Token");
         } catch (ExpiredTokenException exception) {
-            // Expired Vacademy token — reject immediately
+            // Expired Vacademy token detected by the explicit isTokenExpired check.
             throw new VacademyException(exception.getMessage());
         } catch (Exception exception) {
             // Unrecognised / external JWT (e.g. BBB HS512 token) — skip auth silently.
-            // SecurityContext stays empty; Spring Security rules (permitAll vs authenticated) decide access.
+            // SecurityContext stays empty; Spring Security rules (permitAll vs
+            // authenticated) decide access.
             log.debug("JWT processing skipped (unrecognised token): {}", exception.getMessage());
         }
 
-        // Always proceed with the filter chain — authorization is enforced by Spring Security, not here
+        // Always proceed with the filter chain — authorization is enforced by Spring
+        // Security, not here
         filterChain.doFilter(request, response);
     }
 
@@ -199,7 +207,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private boolean isInstituteLimited(String instituteId) {
         CacheEntry entry = instituteHasLimitCache.get(instituteId);
-        if (entry != null && !entry.isExpired()) return entry.value();
+        if (entry != null && !entry.isExpired())
+            return entry.value();
         try {
             boolean hasLimit = userSessionRepository.countSessionLimitConfigured(instituteId) > 0;
             log.info("Institute {} session limit configured: {}", instituteId, hasLimit);
@@ -216,7 +225,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     private boolean isSessionStillActive(String sessionToken) {
         CacheEntry entry = sessionActiveCache.get(sessionToken);
-        if (entry != null && !entry.isExpired()) return entry.value();
+        if (entry != null && !entry.isExpired())
+            return entry.value();
         boolean active = userSessionRepository.countActiveSession(sessionToken) > 0;
         log.info("Session {} active: {}", sessionToken, active);
         sessionActiveCache.put(sessionToken,

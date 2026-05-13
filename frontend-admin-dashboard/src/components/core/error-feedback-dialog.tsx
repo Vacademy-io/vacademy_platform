@@ -211,38 +211,13 @@ export function ErrorFeedbackDialog({
                 error,
             });
 
+            // Record feedback in Sentry's User Feedback UI for retention.
+            // We intentionally do NOT call Sentry.captureMessage here — that would
+            // create an issue, which the Sentry → webhook → send-alert.js rule
+            // routes to the crash channel, duplicating the Slack post above.
             if (import.meta.env.VITE_ENABLE_SENTRY === 'true') {
-                let eventId = initialEventId;
-
-                if (!eventId) {
-                    eventId = Sentry.captureMessage('User Feedback Reported', {
-                        level: 'info',
-                        extra: {
-                            route: location.pathname,
-                            description,
-                            errorDetails: error ? String(error) : 'No error object provided',
-                        },
-                    });
-                }
-
-                if (files && files.length > 0) {
-                    Sentry.withScope((scope) => {
-                        Array.from(files).forEach((file) => {
-                            scope.addAttachment({
-                                filename: file.name,
-                                data: file as unknown as Uint8Array,
-                                contentType: file.type,
-                            });
-                        });
-                        Sentry.captureMessage('User Feedback Attachment', {
-                            level: 'info',
-                            tags: { feedbackParams: 'true' },
-                        });
-                    });
-                }
-
                 await Sentry.captureFeedback({
-                    associatedEventId: eventId,
+                    associatedEventId: initialEventId,
                     name: name || 'Anonymous',
                     email: email || 'anonymous@example.com',
                     message: description,

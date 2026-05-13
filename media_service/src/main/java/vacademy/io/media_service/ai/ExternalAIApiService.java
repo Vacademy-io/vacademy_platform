@@ -759,9 +759,18 @@ public class ExternalAIApiService {
         requestEvaluation.setData(mcqData);
 
         // Process Options
-        for (AiGeneratedQuestionJsonDto.Option optionDTO : questionRequest.getOptions()) {
-            question.getOptions().add(new OptionDTO(optionDTO.getPreview_id(),
-                    new AssessmentRichTextDataDTO(null, "HTML", unescapeString(optionDTO.getContent()))));
+        List<AiGeneratedQuestionJsonDto.Option> mcqsOptions = questionRequest.getOptions();
+        if (mcqsOptions != null) {
+            for (int i = 0; i < mcqsOptions.size(); i++) {
+                AiGeneratedQuestionJsonDto.Option optionDTO = mcqsOptions.get(i);
+                if (optionDTO == null) continue;
+                String previewId = optionDTO.getPreview_id();
+                if (previewId == null || previewId.isEmpty()) {
+                    previewId = String.valueOf(i + 1);
+                }
+                question.getOptions().add(new OptionDTO(previewId,
+                        new AssessmentRichTextDataDTO(null, "HTML", unescapeString(optionDTO.getContent()))));
+            }
         }
 
         try {
@@ -803,9 +812,18 @@ public class ExternalAIApiService {
                                 .collect(Collectors.toList()));
 
         // Process Options
-        for (AiGeneratedQuestionJsonDto.Option optionDTO : questionRequest.getOptions()) {
-            question.getOptions().add(new OptionDTO(optionDTO.getPreview_id(),
-                    new AssessmentRichTextDataDTO(null, "HTML", unescapeString(optionDTO.getContent()))));
+        List<AiGeneratedQuestionJsonDto.Option> mcqmOptions = questionRequest.getOptions();
+        if (mcqmOptions != null) {
+            for (int i = 0; i < mcqmOptions.size(); i++) {
+                AiGeneratedQuestionJsonDto.Option optionDTO = mcqmOptions.get(i);
+                if (optionDTO == null) continue;
+                String previewId = optionDTO.getPreview_id();
+                if (previewId == null || previewId.isEmpty()) {
+                    previewId = String.valueOf(i + 1);
+                }
+                question.getOptions().add(new OptionDTO(previewId,
+                        new AssessmentRichTextDataDTO(null, "HTML", unescapeString(optionDTO.getContent()))));
+            }
         }
 
         try {

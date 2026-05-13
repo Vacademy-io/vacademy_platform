@@ -167,11 +167,11 @@ export const EnrollmentPaymentDialog: React.FC<
         hasErrors = true;
       }
 
-      // Validate phone
-      if (!phone.trim()) {
-        setPhoneError("Phone number is required");
-        hasErrors = true;
-      } else if (!validatePhone(phone)) {
+      // Validate phone (optional - only validate format if user typed a number).
+      // PhoneInput pre-fills the country dial code, so we only consider phone
+      // "entered" when it has enough digits to be a real number (7+).
+      const phoneDigits = phone.replace(/\D/g, "");
+      if (phoneDigits.length >= 7 && !validatePhone(phone)) {
         setPhoneError("Please enter a valid phone number with country code");
         hasErrors = true;
       }
@@ -571,7 +571,7 @@ export const EnrollmentPaymentDialog: React.FC<
 
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Phone Number *
+                      Phone Number
                     </label>
                     <PhoneInput
                       country={defaultPhoneCountry}

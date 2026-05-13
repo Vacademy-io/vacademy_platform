@@ -41,11 +41,16 @@ public class LearnerAttendanceReportController {
             @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam(value = "instituteId", required = false) String instituteId,
             @RequestParam(value = "batchId", required = false) String batchId,
-            @RequestParam(value = "daysBack", defaultValue = "7") Integer daysBack) {
+            @RequestParam(value = "daysBack", defaultValue = "7") Integer daysBack,
+            // from/to (ISO yyyy-MM-dd) take precedence over daysBack when both are present.
+            // Used by the "View Full Report" deep link in attendance emails so the portal
+            // shows the same window the email summarised.
+            @RequestParam(value = "from", required = false) String from,
+            @RequestParam(value = "to", required = false) String to) {
 
         String userId = userDetails.getUserId();
-        log.info("Learner attendance report request: userId={}, instituteId={}, batchId={}, daysBack={}",
-                userId, instituteId, batchId, daysBack);
+        log.info("Learner attendance report request: userId={}, instituteId={}, batchId={}, daysBack={}, from={}, to={}",
+                userId, instituteId, batchId, daysBack, from, to);
 
         // Determine which batches this user is enrolled in
         List<String> userBatches;
@@ -77,6 +82,9 @@ public class LearnerAttendanceReportController {
         if (resolvedInstituteId != null && !resolvedInstituteId.isBlank()) {
             params.put("instituteId", resolvedInstituteId);
         }
+        // Forward explicit window when present — the query honors from/to over daysBack.
+        if (from != null && !from.isBlank()) params.put("from", from);
+        if (to != null && !to.isBlank()) params.put("to", to);
 
         Map<String, Object> result = queryService.execute("fetch_batch_attendance_report", params);
 

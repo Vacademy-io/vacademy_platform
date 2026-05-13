@@ -1750,8 +1750,35 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             Object daysParam = params.get("daysBack");
             if (daysParam != null) daysBack = Integer.parseInt(String.valueOf(daysParam));
 
-            java.time.LocalDate end = java.time.LocalDate.now();
-            java.time.LocalDate start = end.minusDays(daysBack);
+            // Date window: prefer explicit from/to if provided (e.g. deep links from
+            // the email "View Full Report" button pass the exact window the email used,
+            // so the on-portal report matches the email line-for-line). Falls back to
+            // "today and the last N days" for callers that only pass daysBack — the
+            // scheduled email workflow path.
+            String fromParam = (String) params.get("from");
+            String toParam = (String) params.get("to");
+            java.time.LocalDate start;
+            java.time.LocalDate end;
+            if (fromParam != null && !fromParam.isBlank() && toParam != null && !toParam.isBlank()) {
+                try {
+                    start = java.time.LocalDate.parse(fromParam);
+                    end = java.time.LocalDate.parse(toParam);
+                    if (end.isBefore(start)) {
+                        // Defensive: swap if the caller got them backwards.
+                        java.time.LocalDate tmp = start;
+                        start = end;
+                        end = tmp;
+                    }
+                } catch (java.time.format.DateTimeParseException pe) {
+                    log.warn("Invalid from/to date params (from={}, to={}); falling back to daysBack={}",
+                            fromParam, toParam, daysBack);
+                    end = java.time.LocalDate.now();
+                    start = end.minusDays(daysBack);
+                }
+            } else {
+                end = java.time.LocalDate.now();
+                start = end.minusDays(daysBack);
+            }
 
             // Three cases:
             //   1. batchId has 1 or more comma-separated IDs → fetch for exactly those

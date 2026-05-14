@@ -395,13 +395,33 @@ export const SAMPLE_TEMPLATES: Record<string, SampleEmailTemplate> = {
   live_session_recap_present: {
     name: 'Live Class Recap (Attended)',
     subject: 'Thanks for attending {{sessionTitle}}',
-    variables: ['fullName', 'sessionTitle', 'date', 'time', 'instituteName'],
+    // The {{attendanceBlockHtml}} placeholder is a pre-rendered HTML snippet from
+    // the backend — full styled attendance box when join-time data is available,
+    // EMPTY STRING when the provider hasn't synced yet (no misleading "0%" line).
+    // The raw fields (joinTime, attendedMinutes, attendancePercentage,
+    // sessionDurationMinutes) are still emitted on every row for users who want to
+    // build their own custom layout instead of the default block.
+    variables: [
+      'fullName',
+      'sessionTitle',
+      'date',
+      'time',
+      'attendanceBlockHtml',
+      'joinTime',
+      'attendedMinutes',
+      'attendancePercentage',
+      'sessionDurationMinutes',
+      'instituteName',
+    ],
     html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#ffffff">
   <div style="text-align:center;padding:16px 0">
     <h1 style="color:#16a34a;margin:0;font-size:22px">Great to see you!</h1>
   </div>
   <h2 style="color:#1a1a1a">Hi {{fullName}},</h2>
   <p style="color:#444;line-height:1.6">Thanks for attending <strong>{{sessionTitle}}</strong> on {{date}} at {{time}}. We hope it was useful.</p>
+
+  {{attendanceBlockHtml}}
+
   <p style="color:#444;line-height:1.6">Keep up the consistency — see you in the next class!</p>
   <p style="color:#888;font-size:13px;margin-top:32px">Best regards,<br/>{{instituteName}}</p>
 </div>`,

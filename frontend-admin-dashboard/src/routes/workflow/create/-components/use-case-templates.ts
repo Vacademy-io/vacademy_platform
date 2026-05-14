@@ -1180,6 +1180,11 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
     // available in the chosen email template:
     //   {{fullName}}  {{name}}  {{sessionTitle}}  {{instituteName}}
     //   {{date}}  {{time}}  {{attendanceStatus}}  {{mobileNumber}}
+    //   Present-only attendance metrics (zeros/blank for absent students):
+    //   {{joinTime}}  {{attendedMinutes}}  {{attendancePercentage}}  {{sessionDurationMinutes}}
+    //   Pre-rendered HTML snippet — empty string when provider hasn't synced
+    //   join-time data, so the email cleanly omits the attendance section:
+    //   {{attendanceBlockHtml}}
     {
         id: 'live_session_end_recap',
         name: 'Post-class email to present & absent students',

@@ -73,6 +73,26 @@ export interface ResearchArtifact {
 export interface ScreenplayArtifact {
     scriptUrl?: string;
 }
+/**
+ * BeatPlanner output — populated when the v2 pipeline runs the explicit
+ * beat-planning stage before Script Generator. Each beat carries a duration
+ * estimate (in seconds) and an intent role so the Director can plan shots
+ * from the beat outline rather than from word timings alone.
+ */
+export interface BeatsArtifact {
+    /** Number of beats the planner emitted. */
+    count: number;
+    /** Optional preview list; capped to 12 (the planner's max_beats). */
+    beats?: Array<{
+        label?: string;
+        intentRole?: string;
+        visualTypeHint?: string;
+        durationEstimateS?: number;
+        intendedNarration?: string;
+    }>;
+    /** WPM used for duration estimates (currently 150 wpm; calibrated per voice). */
+    wpm?: number;
+}
 export interface NarrationArtifact {
     audioUrl?: string;
     wordsUrl?: string;
@@ -163,6 +183,13 @@ export interface PipelineState {
     orientation: VideoOrientation;
     pitch: NodeSlot<PitchArtifact>;
     research?: NodeSlot<ResearchArtifact>;
+    /**
+     * BeatPlanner stage — present only when the run fires `beats_planning` /
+     * `beats_done` sub-stage events (the v2 pipeline path, enabled when the
+     * tier has `beat_planner_enabled` set). When absent the diagram skips
+     * the Beats node entirely.
+     */
+    beats?: NodeSlot<BeatsArtifact>;
     screenplay: NodeSlot<ScreenplayArtifact>;
     narration: NodeSlot<NarrationArtifact>;
     storyboard: NodeSlot<StoryboardArtifact>;
@@ -364,6 +391,40 @@ function derivedResearchLive(args: {
 function extractPromptUrls(prompt: string): string[] {
     URL_REGEX.lastIndex = 0;
     return prompt.match(URL_REGEX) ?? [];
+}
+
+/**
+ * Live-only Beats slot. Visible only when the BE actually fired BeatPlanner
+ * sub-stage events — we infer that from `activeSubStage` matching
+ * `beats_planning` / `beats_done` OR (heuristic) when the pipeline has
+ * advanced past PENDING AND we know the run uses v2 from its tier config.
+ *
+ * Phase A: pure detection from sub_stage. History replay (status path) will
+ * mirror this once the BE surfaces a beats_v2.json URL in `s3_urls` — until
+ * then completed runs won't show the Beats node even if BeatPlanner ran.
+ */
+function derivedBeatsLive(args: {
+    activeSubStage: string | null;
+    scriptDone: boolean;
+    runWrapped: boolean;
+    halted: boolean;
+    /** Hint: if the script step appears in_production OR the run is mid-SCRIPT
+     *  and we've ALREADY seen a beats_* event during this session. */
+    sawBeatsEver: boolean;
+}): NodeSlot<BeatsArtifact> | undefined {
+    const beatsActive = args.activeSubStage === 'beats_planning';
+    if (!beatsActive && !args.sawBeatsEver) return undefined;
+
+    if (args.runWrapped || args.scriptDone) {
+        return { state: 'wrapped', data: { count: 0 } };
+    }
+    if (args.halted) {
+        return { state: 'cut', error: 'Beat planning cut from production' };
+    }
+    if (beatsActive) {
+        return { state: 'in_production' };
+    }
+    return { state: 'scheduled' };
 }
 
 // ── Phase 3 helpers: Talent / Score slot derivation ──────────────────────
@@ -628,6 +689,20 @@ export function derivePipelineFromLive(
         pipelineStage,
     });
 
+    // ── Beats (v2 pipeline) ──────────────────────────────────────────────
+    // Visible while BeatPlanner is running (activeSub === 'beats_planning').
+    // Stays as `wrapped` once the script step is done (BeatPlanner runs
+    // before _draft_script, so script_done implies beats are done too).
+    // Hidden entirely on legacy v1 runs that never emitted beats_*.
+    const beats = derivedBeatsLive({
+        activeSubStage: activeSub,
+        scriptDone: !!cg.scriptUrl,
+        runWrapped,
+        halted,
+        // Active OR script_done implies we definitely saw beats fire on v2.
+        sawBeatsEver: activeSub === 'beats_planning' || activeSub === 'beats_done',
+    });
+
     // ── Talent / Score (Phase 3) ─────────────────────────────────────────
     // Show the Talent branch when the user requested a host avatar OR the BE
     // has emitted any avatar_* sub_stage event (covers the resume-from-history
@@ -682,6 +757,7 @@ export function derivePipelineFromLive(
         scenes,
         filming,
         ...(research ? { research } : {}),
+        ...(beats ? { beats } : {}),
         ...(talent ? { talent } : {}),
         ...(score ? { score } : {}),
         finalCut,

@@ -33,6 +33,7 @@ import { processHtmlContent } from '@/components/ai-video-player/html-processor'
 import { NodeDetailSheet, type DetailTarget } from './NodeDetailSheet';
 import { PitchNode } from './nodes/PitchNode';
 import { ResearchNode } from './nodes/ResearchNode';
+import { BeatsNode } from './nodes/BeatsNode';
 import { ScreenplayNode } from './nodes/ScreenplayNode';
 import { NarrationNode } from './nodes/NarrationNode';
 import { StoryboardNode } from './nodes/StoryboardNode';
@@ -51,6 +52,7 @@ import { BrollLaneNode } from './nodes/BrollLaneNode';
 const NODE_TYPES: NodeTypes = {
     pitch: PitchNode,
     research: ResearchNode,
+    beats: BeatsNode,
     screenplay: ScreenplayNode,
     narration: NarrationNode,
     storyboard: StoryboardNode,

@@ -43,6 +43,63 @@ export const TRANSITION_OPTIONS: Array<{ value: TransitionType; label: string }>
     { value: 'zoom-out', label: 'Zoom out' },
 ];
 
+/**
+ * Curated easing presets surfaced as the primary picker in the Motion tab.
+ * Non-coders see a friendly label; the underlying value is a standard CSS
+ * timing function (or `cubic-bezier(...)`). The `id` is what we match
+ * against existing `transition.easing` strings to highlight the current
+ * preset; anything not in the list is "Custom" and falls into the
+ * Advanced text input.
+ */
+export interface EasingPreset {
+    id: string;
+    label: string;
+    /** The exact CSS value written to `transition.easing`. */
+    css: string;
+    /** Short hint for tooltips — describes the visual feel. */
+    description: string;
+}
+
+export const EASING_PRESETS: EasingPreset[] = [
+    {
+        id: 'smooth',
+        label: 'Smooth',
+        css: 'ease',
+        description: 'Default — eases in and out gently.',
+    },
+    {
+        id: 'fast',
+        label: 'Fast',
+        css: 'ease-out',
+        description: 'Starts fast, slows to a stop.',
+    },
+    {
+        id: 'slow',
+        label: 'Slow',
+        css: 'ease-in',
+        description: 'Starts slow, ends fast.',
+    },
+    {
+        id: 'linear',
+        label: 'Linear',
+        css: 'linear',
+        description: 'Constant speed throughout.',
+    },
+    {
+        id: 'bouncy',
+        label: 'Bouncy',
+        css: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+        description: 'Overshoots slightly, settles back. Adds energy.',
+    },
+];
+
+/** Match a CSS easing string to one of our presets, falling back to
+ *  null when the value is a custom timing function. */
+export function easingPresetFor(css: string | undefined): EasingPreset | null {
+    if (!css) return EASING_PRESETS[0]!; // default 'Smooth' when nothing set
+    return EASING_PRESETS.find((p) => p.css === css) ?? null;
+}
+
 const DEFAULT_EASING = 'ease';
 
 // ── Preview interpolation (JS, for the editor canvas) ──────────────────────
@@ -84,11 +141,7 @@ export function computePreviewStyle(
  * For `in` transitions the shot starts invisible/offscreen and resolves to
  * identity at p=1. For `out` it's the reverse.
  */
-function frameStyle(
-    type: TransitionType,
-    direction: 'in' | 'out',
-    p: number
-): React.CSSProperties {
+function frameStyle(type: TransitionType, direction: 'in' | 'out', p: number): React.CSSProperties {
     // For outgoing animations, the progress runs 0→1 but visually we need
     // identity→hidden. Invert by using (1-p) for any interpolation below.
     const e = direction === 'in' ? p : 1 - p;

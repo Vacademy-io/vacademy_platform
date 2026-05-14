@@ -11,6 +11,7 @@
 export type PipelineNodeId =
     | 'pitch'
     | 'research'
+    | 'beats'
     | 'screenplay'
     | 'narration'
     | 'storyboard'
@@ -26,6 +27,7 @@ export type PipelineNodeId =
 export const NODE_LABELS: Record<PipelineNodeId, string> = {
     pitch: 'Pitch',
     research: 'Research',
+    beats: 'Beats',
     screenplay: 'Screenplay',
     narration: 'Narration',
     storyboard: 'Storyboard',
@@ -43,6 +45,7 @@ export const NODE_LABELS: Record<PipelineNodeId, string> = {
 export const ACTIVE_SUB_STATUS: Record<PipelineNodeId, string> = {
     pitch: 'Brief in hand',
     research: 'Investigating sources…',
+    beats: 'Outlining story beats…',
     screenplay: 'Writer at work…',
     narration: 'Recording the voiceover…',
     storyboard: 'Director planning shots…',
@@ -61,6 +64,8 @@ export const ACTIVE_SUB_STATUS: Record<PipelineNodeId, string> = {
  * refs).
  */
 export const SUB_STAGE_BY_NODE: Record<string, PipelineNodeId> = {
+    beats_planning: 'beats',
+    beats_done: 'beats',
     script_writing: 'screenplay',
     script_done: 'screenplay',
     tts_generating: 'narration',
@@ -97,12 +102,18 @@ export type PipelineStage = (typeof STAGE_ORDER)[number];
 /**
  * Which broad stage owns a given linear node. Storyboard and Filming both
  * live inside the HTML stage but are split apart by sub_stage signals.
+ *
+ * `beats` lives inside the SCRIPT stage (BeatPlanner runs before _draft_script
+ * inside the script-writing block). It rides the same stage marker as
+ * screenplay but uses `beats_planning` / `beats_done` sub-stages to flip
+ * earlier than screenplay's `script_writing`.
  */
 export const NODE_STAGE: Record<
     Exclude<PipelineNodeId, 'research' | 'talent' | 'score' | 'finalCut'>,
     PipelineStage
 > = {
     pitch: 'PENDING',
+    beats: 'SCRIPT',
     screenplay: 'SCRIPT',
     narration: 'TTS', // WORDS is folded into Narration
     storyboard: 'HTML',

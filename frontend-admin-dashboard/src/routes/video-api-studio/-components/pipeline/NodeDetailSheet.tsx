@@ -14,6 +14,7 @@ import {
     Film,
     FileText,
     Layers,
+    ListOrdered,
     Loader2,
     Mic,
     Music,
@@ -62,6 +63,7 @@ interface NodeDetailSheetProps {
 const NODE_ICON: Record<PipelineNodeId, React.ReactNode> = {
     pitch: <Sparkles className="size-4" />,
     research: <ExternalLink className="size-4" />,
+    beats: <ListOrdered className="size-4" />,
     screenplay: <FileText className="size-4" />,
     narration: <Mic className="size-4" />,
     storyboard: <Layers className="size-4" />,
@@ -346,6 +348,8 @@ function NodeDetailBody({ kind, state }: { kind: PipelineNodeId; state: Pipeline
             return <PitchDetail state={state} />;
         case 'research':
             return <ResearchDetail state={state} />;
+        case 'beats':
+            return <BeatsDetail state={state} />;
         case 'screenplay':
             return <ScreenplayDetail state={state} />;
         case 'narration':
@@ -361,6 +365,85 @@ function NodeDetailBody({ kind, state }: { kind: PipelineNodeId; state: Pipeline
         case 'finalCut':
             return <FinalCutDetail state={state} />;
     }
+}
+
+function BeatsDetail({ state }: { state: PipelineState }) {
+    const slot = state.beats;
+    if (!slot) {
+        return (
+            <div className="text-sm text-muted-foreground">
+                BeatPlanner didn&apos;t run for this video.
+            </div>
+        );
+    }
+    if (slot.state === 'scheduled') {
+        return (
+            <div className="text-sm text-muted-foreground">
+                The beat plan hasn&apos;t started yet.
+            </div>
+        );
+    }
+    if (slot.state === 'in_production') {
+        return (
+            <div className="text-sm text-muted-foreground">
+                BeatPlanner is outlining the story beats. The Director will use these as the
+                planning frame for shot boundaries — duration estimates are calibrated at
+                ~150&nbsp;words/minute.
+            </div>
+        );
+    }
+    if (slot.state === 'cut' || slot.state === 'reshoot') {
+        return <p className="text-sm text-red-700">{slot.error}</p>;
+    }
+    if (slot.state !== 'wrapped') return null;
+    const beats = slot.data.beats ?? [];
+    const count = slot.data.count ?? beats.length;
+    return (
+        <div className="space-y-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Beat plan
+            </div>
+            <p className="text-xs text-muted-foreground">
+                {count > 0
+                    ? `${count} beat${count === 1 ? '' : 's'} feeding the Director's shot plan.`
+                    : 'Beat plan locked. The Director used these beats to scope shots before TTS.'}
+                {slot.data.wpm
+                    ? ` Duration estimates at ${slot.data.wpm.toFixed(0)} wpm.`
+                    : ''}
+            </p>
+            {beats.length > 0 && (
+                <ol className="space-y-2 text-xs">
+                    {beats.slice(0, 12).map((b: NonNullable<typeof beats>[number], i: number) => (
+                        <li
+                            key={i}
+                            className="rounded-md border bg-muted/20 px-3 py-2"
+                        >
+                            <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium">
+                                    {b.label || `Beat ${i + 1}`}
+                                </span>
+                                {typeof b.durationEstimateS === 'number' && (
+                                    <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                                        ~{b.durationEstimateS.toFixed(1)}s
+                                    </span>
+                                )}
+                            </div>
+                            {(b.intentRole || b.visualTypeHint) && (
+                                <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                    {[b.intentRole, b.visualTypeHint].filter(Boolean).join(' · ')}
+                                </div>
+                            )}
+                            {b.intendedNarration && (
+                                <p className="mt-1 line-clamp-2 italic text-foreground/70">
+                                    &ldquo;{b.intendedNarration}&rdquo;
+                                </p>
+                            )}
+                        </li>
+                    ))}
+                </ol>
+            )}
+        </div>
+    );
 }
 
 // ── Per-node detail bodies ────────────────────────────────────────────────

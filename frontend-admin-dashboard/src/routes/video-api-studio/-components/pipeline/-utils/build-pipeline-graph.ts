@@ -21,6 +21,7 @@ import type { PipelineState } from './derive-pipeline-state';
 export type PipelineNodeKind =
     | 'pitch'
     | 'research'
+    | 'beats'
     | 'screenplay'
     | 'narration'
     | 'storyboard'
@@ -64,6 +65,8 @@ export const NODE_SIZES: Record<PipelineNodeKind, { width: number; height: numbe
     // Slightly taller than the other linear nodes so the source list +
     // optional search query fit without clipping.
     research: { width: 260, height: 160 },
+    // Beats node — slightly taller to fit the beat-count summary line.
+    beats: { width: 260, height: 150 },
     screenplay: { width: 260, height: 140 },
     narration: { width: 260, height: 130 },
     storyboard: { width: 280, height: 180 },
@@ -111,11 +114,16 @@ export function buildPipelineGraph(state: PipelineState): BuildGraphResult {
         };
     };
 
-    // ── Linear chain: Pitch → [Research?] → Screenplay → Narration → Storyboard ──
-    // Research is optional and only inserted when state.research is set —
-    // when it's there, the Pitch→Screenplay edge gets routed through it.
+    // ── Linear chain: Pitch → [Research?] → [Beats?] → Screenplay → Narration → Storyboard ──
+    // Research is optional and only inserted when state.research is set.
+    // Beats is optional and only inserted when state.beats is set (BeatPlanner
+    // emitted beats_planning / beats_done events for this run — the v2
+    // pipeline path enabled by `beat_planner_enabled`). When present, Beats
+    // sits between Research/Pitch and Screenplay since BeatPlanner runs
+    // BEFORE the Script Generator.
     nodes.push(makeStageNode('pitch'));
     if (state.research) nodes.push(makeStageNode('research'));
+    if (state.beats) nodes.push(makeStageNode('beats'));
     nodes.push(makeStageNode('screenplay'));
     nodes.push(makeStageNode('narration'));
     nodes.push(makeStageNode('storyboard'));
@@ -123,12 +131,18 @@ export function buildPipelineGraph(state: PipelineState): BuildGraphResult {
     const slot = (k: keyof PipelineState) =>
         (state as unknown as Record<string, { state: string }>)[k]?.state;
 
+    // First hop: pitch → research/beats/screenplay depending on which optional
+    // nodes are present. Order of preference: research → beats → screenplay.
+    let prevLinear = 'pitch';
     if (state.research) {
-        pushEdge(edges, 'pitch', 'research', slot('research') === 'in_production');
-        pushEdge(edges, 'research', 'screenplay', slot('screenplay') === 'in_production');
-    } else {
-        pushEdge(edges, 'pitch', 'screenplay', slot('screenplay') === 'in_production');
+        pushEdge(edges, prevLinear, 'research', slot('research') === 'in_production');
+        prevLinear = 'research';
     }
+    if (state.beats) {
+        pushEdge(edges, prevLinear, 'beats', slot('beats') === 'in_production');
+        prevLinear = 'beats';
+    }
+    pushEdge(edges, prevLinear, 'screenplay', slot('screenplay') === 'in_production');
     pushEdge(edges, 'screenplay', 'narration', slot('narration') === 'in_production');
     pushEdge(edges, 'narration', 'storyboard', slot('storyboard') === 'in_production');
 

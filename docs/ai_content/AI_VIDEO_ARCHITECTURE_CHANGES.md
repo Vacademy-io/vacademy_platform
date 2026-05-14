@@ -23,13 +23,16 @@ A user with `quality_tier ∈ {ultra, super_ultra}` can toggle "Enable AI video"
 - Audio policy: implicit; master narration always plays, nothing else does (except SOURCE_CLIP via a special flag)
 
 ### After
-- Pipeline order unchanged (Phase 2b run() reorder was obsoleted by Phase 5's post-hoc mute approach)
+- **Pipeline order REORDERED on v2 (2026-05 Phase B)**: when `tts_per_shot_enabled` AND `use_director` AND the run reaches the html stage, the TTS stage becomes a no-op and per-shot TTS runs AFTER the Director plans shots. Flow on v2: `script (incl. BeatPlanner) → tts deferred → words deferred → html (Director → AudioPolicyPlanner → per-shot TTS → concat narration.mp3 → reconcile shot timings → HTML gen → render)`. The TTS chars / words / audio_path artifacts land at the same on-disk paths as the legacy monolithic flow (`narration.mp3`, `narration_raw.json`), so downstream consumers (S3 upload, editor preview, render server) need no changes. Legacy v1 path is preserved on three fallback conditions: (a) free/standard tier (no Director), (b) target_stage < HTML (no html stage to run TTS in), (c) Director returns None/empty (caught and falls back to monolithic TTS).
 - New visual path: **fal.ai Veo 3.1 Lite** — full-canvas (`AI_VIDEO_HERO`) AND inline (`<aivideo>` tags)
 - New first-class field: **`shot["audio_policy"]`** — `narration_only` (default) or `intrinsic_only` (for shots whose own audio plays alone)
 - New stage between Director and HTML: **AudioPolicyPlanner** assigns `audio_policy` per shot
 - New post-HTML / pre-render step: **master-narration silence** — ffmpeg-zeros narration in `intrinsic_only` windows, atomic-swaps the muted file into `narration.mp3` so all downstream consumers (S3 upload, editor preview, render server) see the correct mix
 - New per-run state: **`AiVideoCostTracker`** (thread-safe budget guard with try_charge/refund/summary semantics)
 - Per-shot TTS infrastructure (Phase 0) is present but not wired into the main flow yet — exists for future per-shot editing UX
+- **BeatPlanner → Director bridge (Phase 1.5, 2026-05)**: `beat_planner_enabled` flipped to True on all 5 tiers. `to_script_plan_beat_outline()` converts BeatPlanner output into the legacy `beat_outline` shape, then overrides `script_plan["plan"]["beat_outline"]` before the Director runs. The Director still consumes word timings on v1 (TTS-first ordering); v2 reorder is the next step.
+- **Audio-policy unification (Phase B+1, 2026-05)**: `SOURCE_CLIP` joined `AI_VIDEO_HERO` in `_INTRINSIC_AUDIO_CAPABLE_SHOT_TYPES`. The run-level `mute_tts_on_source_clips` flag is now plumbed into `plan_audio_policy()` (both new-run and resume call sites). When set, SOURCE_CLIP shots get `audio_policy=intrinsic_only` — per-shot TTS skips them, master narration has silent gaps in those windows, source audio plays alone via the existing render-compose path. Replaces the parallel `_mix_audio_with_source_clips` muting (which still runs on v1 fallback). One audio path now covers Veo audio + source-clip audio + future music-driven moments — same primitive, same decision point.
+- **Pipeline UI taxonomy (Phase 1.5)**: new `beats` node in `PipelineNodeId` union; appears between Pitch/[Research?] and Screenplay when `beats_planning` / `beats_done` SSE events fire. Stage row in `PipelinePanel`, detail body in `NodeDetailSheet`.
 
 ---
 
@@ -286,8 +289,9 @@ Documented for the next engineer:
 
 | Item | Status | Workaround |
 |---|---|---|
-| Per-shot TTS migration | Phase 0 modules exist, not wired into main flow | Use monolithic TTS for now; Phase 0e/f/g land per-shot TTS for editor regen UX |
-| BeatPlanner main-pipeline wiring | Phase 1 modules exist, off-by-default flag in QUALITY_TIERS | Not blocking AI video; BeatPlanner refactor is a separate roadmap item |
+| Per-shot TTS migration | **Phase B shipped 2026-05**: `tts_per_shot_enabled` True on all 5 tiers; main flow on premium+ now defers TTS to html stage and runs `_synthesize_voice_per_shot` + `_concat_master_narration` after Director plans shots. Reconciliation step (`_reconcile_shot_timings_after_tts`) rewrites shot timings from actual MP3 durations. Per-shot mp3s + word timings + script texts are persisted to S3 at `ai-videos/{video_id}/per_shot_tts/shot_NNN.*` (added to html-stage upload list). Each shot in `director_plan.json` carries pre-computed `audio_url` / `audio_words_url` / `audio_script_url` / `audio_duration_s` so the editor reads per-shot audio without an extra S3-listing round-trip. Shots with `audio_policy=intrinsic_only` (Veo+audio) get `audio_skipped: True` instead. | Legacy monolithic TTS remains the fallback when (a) tier lacks `use_director`, (b) target_stage < HTML, (c) Director fails — the run still ships with audio in every case. |
+| Director-before-TTS reorder (Phase 2b / Phase B) | **Phase B shipped 2026-05**: Director runs BEFORE per-shot TTS on v2. `_run_director` accepts `words: Optional[]` and the Director prompt surfaces a fallback ("plan from beat narration word-counts using ~150 wpm") when words are absent. Audio duration pre-Director is estimated from BeatPlanner beats' `duration_estimate_s` sum (falls back to `_target_seconds`). | Audio-overrun safety net (script regen at TTS+1.25× target) is bypassed on v2 — risk is much lower since BeatPlanner now sees the correct target_duration (Bug 8 fix). Phase B+1 may add per-shot overrun handling. |
+| BeatPlanner main-pipeline wiring | Phase 1 modules wired (2026-05): `beat_planner_enabled` True on all 5 tiers; `to_script_plan_beat_outline()` bridges BeatPlanner output into `script_plan["plan"]["beat_outline"]` before Director runs. FE pipeline UI shows Beats node when `beats_planning` / `beats_done` events fire. | Telemetry-only on history view — `beats_v2.json` URL is not yet in `s3_urls`, so completed runs don't show the Beats node in the diagram. Persisting the URL is a follow-up |
 | Editor "Remake with AI" for AI_VIDEO_HERO shots | Frame-regen path uses LLM for HTML; doesn't re-call Veo | The user can edit the timeline.json directly; full UI loop is Phase 8 polish |
 | Circuit breaker tally not checkpointed | Resume after pipeline crash restarts the tally at $0 | A mid-crash budget over-spend is bounded by cap × 2 in the worst case; acceptable for now |
 | Per-shot Veo MP4s live on fal CDN | Single-shot path uses fal URLs directly (chain path uses S3 for concat output) | fal CDN URLs are stable for hours; resume-after-CDN-expiry is a known limitation |
@@ -304,7 +308,7 @@ Documented for the next engineer:
 - [app/ai-video-gen-main/ai_video_orchestrator.py](../../ai_service/app/ai-video-gen-main/ai_video_orchestrator.py)
 - [app/ai-video-gen-main/ai_video_composer.py](../../ai_service/app/ai-video-gen-main/ai_video_composer.py)
 - [app/ai-video-gen-main/audio_policy_planner.py](../../ai_service/app/ai-video-gen-main/audio_policy_planner.py)
-- [app/ai-video-gen-main/beat_planner.py](../../ai_service/app/ai-video-gen-main/beat_planner.py) (not yet wired)
+- [app/ai-video-gen-main/beat_planner.py](../../ai_service/app/ai-video-gen-main/beat_planner.py) — wired into main flow via `to_script_plan_beat_outline()` (2026-05); Director consumes beats as `beat_outline`
 - [app/ai-video-gen-main/default_shot_mapper.py](../../ai_service/app/ai-video-gen-main/default_shot_mapper.py) (not yet wired)
 
 ### Files this feature modified

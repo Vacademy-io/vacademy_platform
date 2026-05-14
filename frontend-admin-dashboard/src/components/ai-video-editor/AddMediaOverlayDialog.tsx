@@ -13,6 +13,8 @@ import { useVideoEditorStore } from './stores/video-editor-store';
 import { buildMediaOverlayHtml } from './utils/html-media-editor';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId } from '@/utils/userDetails';
+import { LayerOrderControl, FIT_LABELS } from './controls';
+import { AdvancedSection } from './AdvancedSection';
 
 interface AddMediaOverlayDialogProps {
     open: boolean;
@@ -280,11 +282,39 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
                         </div>
                     )}
 
-                    {/* Z-index + Fit */}
+                    {/* Layer order + Fit */}
                     <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">
                             <label className="text-[11px] font-medium text-gray-500">
-                                Layer (z-index)
+                                Layer order
+                            </label>
+                            <LayerOrderControl value={zIndex} onCommit={setZIndex} />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-medium text-gray-500">Fit</label>
+                            <select
+                                value={objectFit}
+                                onChange={(e) => setObjectFit(e.target.value as ObjectFit)}
+                                title={FIT_LABELS[objectFit].description}
+                                className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none"
+                            >
+                                <option value="contain">Fit inside</option>
+                                <option value="cover">Fill</option>
+                                <option value="fill">Stretch</option>
+                            </select>
+                            <p className="text-[10px] text-gray-400">
+                                {FIT_LABELS[objectFit].description}
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Power-users can pick a precise z-index when the three
+                        buckets aren't enough. Default state in simple mode is
+                        collapsed; pre-expanded in developer mode. */}
+                    <AdvancedSection>
+                        <div className="space-y-1">
+                            <label className="text-[11px] font-medium text-gray-500">
+                                Layer (numeric z-index)
                             </label>
                             <input
                                 type="number"
@@ -295,21 +325,11 @@ export function AddMediaOverlayDialog({ open, onClose }: AddMediaOverlayDialogPr
                                 onChange={(e) => setZIndex(parseInt(e.target.value) || 500)}
                                 className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none"
                             />
-                            <p className="text-[10px] text-gray-400">≥500 = overlay, ≥9000 = UI</p>
+                            <p className="text-[10px] text-gray-400">
+                                0 = behind, 500 = on top, 9000 = watermark.
+                            </p>
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-[11px] font-medium text-gray-500">Fit</label>
-                            <select
-                                value={objectFit}
-                                onChange={(e) => setObjectFit(e.target.value as ObjectFit)}
-                                className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:border-indigo-400 focus:outline-none"
-                            >
-                                <option value="contain">Contain (letterbox)</option>
-                                <option value="cover">Cover (crop)</option>
-                                <option value="fill">Fill (stretch)</option>
-                            </select>
-                        </div>
-                    </div>
+                    </AdvancedSection>
                 </div>
 
                 <DialogFooter className="gap-2">

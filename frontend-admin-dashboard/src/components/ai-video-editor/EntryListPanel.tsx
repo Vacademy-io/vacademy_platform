@@ -1,8 +1,8 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useVideoEditorStore } from './stores/video-editor-store';
 import { getEntryColor } from './utils/track-layout';
-import { Eye, SkipForward, GripVertical, Lock } from 'lucide-react';
+import { Eye, SkipForward, GripVertical, Lock, Pencil } from 'lucide-react';
 import type { Entry, NavigationType } from '@/components/ai-video-player/types';
 import {
     DndContext,
@@ -14,32 +14,43 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { friendlyEntryName } from './registry/friendly-labels';
 
 /**
  * Left panel: lists all entries in the timeline.
  * Single-click selects without moving the playhead — so the canvas keeps showing
- * what's actually on screen at currentTime. Double-click (or the jump button)
- * seeks to the entry's start. The grip icon at the left of each row drags the
- * entry to a new position; releasing fires `reorderEntries` which queues a
- * `/frame/reorder` op committed on save. Branding entries are locked at their
- * positions (intro/outro must stay at the ends).
+ * what's actually on screen at currentTime. Double-click (or the pencil icon)
+ * opens an inline rename. The grip icon drags the entry to a new position;
+ * releasing fires `reorderEntries` which queues a `/frame/reorder` op
+ * committed on save. Branding entries are locked at their positions
+ * (intro/outro must stay at the ends) but can still be renamed.
  *
  * Each row subscribes to its own `isActive` boolean — Zustand bails out of a
  * re-render when the selected slice's reference is unchanged, so playhead
  * ticks only re-render the (typically one) row whose active state flipped.
  */
 export function EntryListPanel() {
-    const { entries, meta, selectedEntryId, selectEntry, seek, reorderEntries } =
-        useVideoEditorStore(
-            useShallow((s) => ({
-                entries: s.entries,
-                meta: s.meta,
-                selectedEntryId: s.selectedEntryId,
-                selectEntry: s.selectEntry,
-                seek: s.seek,
-                reorderEntries: s.reorderEntries,
-            }))
-        );
+    const {
+        entries,
+        meta,
+        selectedEntryId,
+        selectEntry,
+        seek,
+        reorderEntries,
+        displayNames,
+        setEntryDisplayName,
+    } = useVideoEditorStore(
+        useShallow((s) => ({
+            entries: s.entries,
+            meta: s.meta,
+            selectedEntryId: s.selectedEntryId,
+            selectEntry: s.selectEntry,
+            seek: s.seek,
+            reorderEntries: s.reorderEntries,
+            displayNames: s.displayNames,
+            setEntryDisplayName: s.setEntryDisplayName,
+        }))
+    );
 
     const navigationMode = meta.navigation;
 
@@ -100,11 +111,14 @@ export function EntryListPanel() {
                                     index={i}
                                     isSelected={selectedEntryId === entry.id}
                                     navigationMode={navigationMode}
+                                    displayName={friendlyEntryName(entry, i, entries, displayNames)}
+                                    hasOverride={!!displayNames[entry.id]}
                                     onSelect={() => selectEntry(entry.id)}
                                     onJump={() => {
                                         seekToEntry(entry, i);
                                         selectEntry(entry.id);
                                     }}
+                                    onRename={(name) => setEntryDisplayName(entry.id, name)}
                                 />
                             ))}
                         </SortableContext>
@@ -120,8 +134,11 @@ interface EntryRowProps {
     index: number;
     isSelected: boolean;
     navigationMode: NavigationType | undefined;
+    displayName: string;
+    hasOverride: boolean;
     onSelect: () => void;
     onJump: () => void;
+    onRename: (name: string) => void;
 }
 
 const EntryRow = memo(function EntryRow({
@@ -129,8 +146,11 @@ const EntryRow = memo(function EntryRow({
     index,
     isSelected,
     navigationMode,
+    displayName,
+    hasOverride,
     onSelect,
     onJump,
+    onRename,
 }: EntryRowProps) {
     // Per-row subscription: select a boolean, so re-renders only fire when
     // *this* row's active state changes — not on every currentTime tick.
@@ -147,7 +167,9 @@ const EntryRow = memo(function EntryRow({
     const isLocked = entry.id.startsWith('branding-');
 
     // Sortable hooks — disabled on branding entries so they can't drift from
-    // their fixed positions (intro at top, outro at bottom).
+    // their fixed positions (intro at top, outro at bottom). Rename still
+    // works for branding so the user can call "Intro" → "Welcome" if they
+    // want.
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
         id: entry.id,
         disabled: isLocked,
@@ -159,6 +181,39 @@ const EntryRow = memo(function EntryRow({
         zIndex: isDragging ? 10 : undefined,
         opacity: isDragging ? 0.85 : 1,
     };
+
+    // ── Inline rename state ────────────────────────────────────────────────
+    const [renaming, setRenaming] = useState(false);
+    const [draft, setDraft] = useState(displayName);
+    const inputRef = useRef<HTMLInputElement | null>(null);
+
+    const startRename = () => {
+        setDraft(displayName);
+        setRenaming(true);
+    };
+    const commitRename = useCallback(() => {
+        const trimmed = draft.trim();
+        // Don't write the override if the user typed exactly the auto-derived
+        // name — keep the override slot empty so future auto-renumbering
+        // (after reorders) still works.
+        if (trimmed === displayName || trimmed === '') {
+            if (!hasOverride && trimmed === '') {
+                // already in the "auto" state — no-op
+            } else if (hasOverride && trimmed === '') {
+                onRename(''); // clear override
+            }
+        } else {
+            onRename(trimmed);
+        }
+        setRenaming(false);
+    }, [draft, displayName, hasOverride, onRename]);
+
+    useEffect(() => {
+        if (renaming) {
+            inputRef.current?.focus();
+            inputRef.current?.select();
+        }
+    }, [renaming]);
 
     return (
         <div
@@ -176,9 +231,17 @@ const EntryRow = memo(function EntryRow({
                       : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700',
                 isDragging ? 'shadow ring-1 ring-indigo-200' : '',
             ].join(' ')}
-            onClick={onSelect}
-            onDoubleClick={onJump}
+            onClick={() => {
+                if (renaming) return;
+                onSelect();
+            }}
+            onDoubleClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                startRename();
+            }}
             onKeyDown={(e) => {
+                if (renaming) return;
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     onSelect();
@@ -207,34 +270,81 @@ const EntryRow = memo(function EntryRow({
 
             <span className="size-2 shrink-0 rounded-full" style={{ background: color }} />
 
-            <span className="flex-1 truncate font-mono text-xs">{shortLabel(entry.id)}</span>
-
-            {isActive && <Eye className="size-3 shrink-0 text-indigo-500" />}
-
-            <button
-                type="button"
-                title="Jump playhead to this entry's start"
-                aria-label="Jump playhead to this entry's start"
-                className={[
-                    'flex size-4 shrink-0 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-700',
-                    isSelected
-                        ? 'opacity-100'
-                        : 'opacity-0 focus:opacity-100 group-hover:opacity-100',
-                ].join(' ')}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onJump();
-                }}
-            >
-                <SkipForward className="size-3" />
-            </button>
-
-            {navigationMode === 'time_driven' ? (
-                <span className="shrink-0 text-[10px] tabular-nums text-gray-400">
-                    {formatTime(entry.inTime ?? entry.start)}
-                </span>
+            {renaming ? (
+                <input
+                    ref={inputRef}
+                    type="text"
+                    value={draft}
+                    onChange={(e) => setDraft(e.currentTarget.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            commitRename();
+                        } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setRenaming(false);
+                        }
+                    }}
+                    onBlur={commitRename}
+                    maxLength={48}
+                    className="flex-1 rounded border border-indigo-300 bg-white px-1.5 py-0.5 text-xs text-gray-800 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
             ) : (
-                <span className="shrink-0 text-[10px] text-gray-400">#{index + 1}</span>
+                <span className="flex-1 truncate text-xs" title={displayName}>
+                    {displayName}
+                </span>
+            )}
+
+            {!renaming && (
+                <>
+                    <button
+                        type="button"
+                        title="Rename (double-click the label)"
+                        aria-label="Rename entry"
+                        className={[
+                            'flex size-4 shrink-0 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-700',
+                            isSelected
+                                ? 'opacity-100'
+                                : 'opacity-0 focus:opacity-100 group-hover:opacity-100',
+                        ].join(' ')}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            startRename();
+                        }}
+                    >
+                        <Pencil className="size-3" />
+                    </button>
+
+                    {isActive && <Eye className="size-3 shrink-0 text-indigo-500" />}
+
+                    <button
+                        type="button"
+                        title="Jump playhead to this entry's start"
+                        aria-label="Jump playhead to this entry's start"
+                        className={[
+                            'flex size-4 shrink-0 items-center justify-center rounded text-gray-400 transition hover:bg-gray-200 hover:text-gray-700',
+                            isSelected
+                                ? 'opacity-100'
+                                : 'opacity-0 focus:opacity-100 group-hover:opacity-100',
+                        ].join(' ')}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onJump();
+                        }}
+                    >
+                        <SkipForward className="size-3" />
+                    </button>
+
+                    {navigationMode === 'time_driven' ? (
+                        <span className="shrink-0 text-[10px] tabular-nums text-gray-400">
+                            {formatTime(entry.inTime ?? entry.start)}
+                        </span>
+                    ) : (
+                        <span className="shrink-0 text-[10px] text-gray-400">#{index + 1}</span>
+                    )}
+                </>
             )}
         </div>
     );
@@ -245,11 +355,4 @@ function formatTime(s?: number) {
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${String(sec).padStart(2, '0')}`;
-}
-
-function shortLabel(id: string) {
-    if (id.startsWith('branding-')) return id.replace('branding-', '');
-    if (id.startsWith('segment-')) return `seg ${id.replace('segment-', '')}`;
-    if (id.startsWith('user-overlay-')) return `overlay`;
-    return id.length > 14 ? id.slice(0, 12) + '…' : id;
 }

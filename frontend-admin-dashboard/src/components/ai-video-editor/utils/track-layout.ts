@@ -18,10 +18,14 @@ export interface Channel {
     bgColor: string;
 }
 
+// Channel labels are intentionally non-technical: "Main / On top /
+// Watermarks" instead of "Base / Overlay / UI". The friendly-labels
+// registry mirrors these so any panel that maps channel ids back to
+// display strings stays in sync.
 export const CHANNELS: readonly Channel[] = [
-    { id: 'base', label: 'Base', color: '#1d4ed8', bgColor: '#eff6ff' },
-    { id: 'overlay', label: 'Overlay', color: '#6d28d9', bgColor: '#f5f3ff' },
-    { id: 'ui', label: 'UI', color: '#52525b', bgColor: '#f4f4f5' },
+    { id: 'base', label: 'Main', color: '#1d4ed8', bgColor: '#eff6ff' },
+    { id: 'overlay', label: 'On top', color: '#6d28d9', bgColor: '#f5f3ff' },
+    { id: 'ui', label: 'Watermarks', color: '#52525b', bgColor: '#f4f4f5' },
 ] as const;
 
 /** Map an entry to its channel based on z-index and id convention. */

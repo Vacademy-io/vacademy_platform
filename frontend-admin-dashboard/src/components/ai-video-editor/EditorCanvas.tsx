@@ -49,11 +49,19 @@ function getProcessedHtml(
     const cached = htmlProcessCache.get(key);
     if (cached !== undefined) return cached;
 
-    // Append the editor-side iframe agent (gsap/anime seek bridge) so that
-    // currentTime drives the iframe's animation clock instead of "iframe
-    // load + N seconds". Mirrors the Playwright render server's behavior.
-    const processed =
-        processHtmlContent(html, contentType, isOverlay, palette) + getEditorIframeAgentScript();
+    // Inject the editor-side iframe agent (gsap/anime seek bridge) at the
+    // START of <body>, BEFORE the shot's own inline <script> tags. Critical:
+    // the shot's gsap.fromTo(...) runs synchronously during HTML parsing, so
+    // if our agent isn't already there to pause gsap.globalTimeline, the
+    // tween auto-plays for ~50-200ms before we manage to pause it — which
+    // produces the visible flicker on every iframe re-mount. Injecting the
+    // agent right after `<body>` (when gsap is already loaded in <head> via
+    // <script src>) lets us pause the timeline before any tween registers.
+    const baseHtml = processHtmlContent(html, contentType, isOverlay, palette);
+    const agent = getEditorIframeAgentScript();
+    const processed = baseHtml.includes('<body>')
+        ? baseHtml.replace('<body>', '<body>' + agent)
+        : agent + baseHtml;
 
     if (htmlProcessCache.size >= MAX_CACHE_ENTRIES) {
         // Drop oldest (Map preserves insertion order)
@@ -478,6 +486,18 @@ interface EntryLayerProps {
  * inline style — the iframe is untouched as long as srcDoc is referentially
  * equal, which the `htmlProcessCache` guarantees for unchanged HTML.
  */
+/**
+ * Strip every inline `style="..."` attribute from `html`. The resulting string
+ * is used as a "structural fingerprint": when entry.html changes only in
+ * inline styles (e.g. a drag-move commit updates left/top), the fingerprint
+ * stays the same and we skip the iframe re-mount. Without this every
+ * style-edit reloads the entire iframe — which causes the flicker the user
+ * sees between consecutive drags.
+ */
+function structuralFingerprint(html: string): string {
+    return html.replace(/\s+style="[^"]*"/gi, '');
+}
+
 const EntryLayer = memo(function EntryLayer({
     entry,
     contentType,
@@ -492,9 +512,50 @@ const EntryLayer = memo(function EntryLayer({
     zFallback,
     baseBackground,
 }: EntryLayerProps) {
-    const processedHtml = entry.id?.startsWith('branding-')
-        ? entry.html
-        : getProcessedHtml(entry.html, contentType, isOverlay, palette);
+    const isBranding = entry.id?.startsWith('branding-');
+    // Branding entries never run gsap/anime — they're static — so the
+    // re-mount-on-every-edit story does not apply to them. For everyone else
+    // we want srcDoc to stay referentially stable across style-only edits so
+    // the iframe does not reload on every drag commit.
+    const buildSrcDoc = useCallback(
+        (html: string): string =>
+            isBranding ? html : getProcessedHtml(html, contentType, isOverlay, palette),
+        [isBranding, contentType, isOverlay, palette]
+    );
+    const [srcDoc, setSrcDoc] = useState<string>(() => buildSrcDoc(entry.html));
+    const lastStructuralRef = useRef<string>(structuralFingerprint(entry.html));
+    const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+    useEffect(() => {
+        const nextStructural = structuralFingerprint(entry.html);
+        if (nextStructural !== lastStructuralRef.current) {
+            // Structural change (text, add/delete, attribute other than
+            // style): rebuild srcDoc — the iframe will reload with the new
+            // HTML.
+            lastStructuralRef.current = nextStructural;
+            setSrcDoc(buildSrcDoc(entry.html));
+            return;
+        }
+        // Style-only change: keep srcDoc stable, broadcast the new HTML so
+        // the iframe can apply the inline-style diff to its already-mounted
+        // DOM. This covers both inspector edits and any post-drag commit that
+        // the agent didn't already imperatively receive via vx-set-style.
+        iframeRef.current?.contentWindow?.postMessage(
+            { type: 'vx-sync-styles', html: entry.html },
+            '*'
+        );
+    }, [entry.html, buildSrcDoc]);
+
+    // If contentType / isOverlay / palette change while the entry html stays
+    // the same, the processed wrapper still has to be rebuilt because
+    // getProcessedHtml bakes those into the output.
+    useEffect(() => {
+        setSrcDoc(buildSrcDoc(entry.html));
+        // Intentionally not including entry.html — that path is handled by
+        // the structural-fingerprint effect above. We only want this effect
+        // to fire when the *wrapping* changes (palette, content type, …).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [buildSrcDoc]);
 
     const cssTransform = transform
         ? `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale}) rotate(${transform.rotation}deg)`
@@ -517,7 +578,6 @@ const EntryLayer = memo(function EntryLayer({
     // iframe's gsap.globalTimeline + anime.js instances reflect the playhead
     // position, not "time since iframe load". The iframe agent (injected via
     // getEditorIframeAgentScript) listens for these messages.
-    const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const isReadyRef = useRef(false);
 
     useEffect(() => {
@@ -545,12 +605,12 @@ const EntryLayer = memo(function EntryLayer({
         iframeRef.current?.contentWindow?.postMessage({ type: 'vx-seek', tSec: localT }, '*');
     }, [localT]);
 
-    // When the HTML content changes, the iframe re-mounts (new srcDoc) and the
-    // agent will re-handshake. Reset the ready flag so we don't post into a
-    // stale window.
+    // When the iframe re-mounts (srcDoc changes — i.e. on structural HTML
+    // changes only, see the effect above), the agent will re-handshake.
+    // Reset the ready flag so we don't post into a stale window.
     useEffect(() => {
         isReadyRef.current = false;
-    }, [processedHtml]);
+    }, [srcDoc]);
 
     return (
         <div
@@ -567,7 +627,7 @@ const EntryLayer = memo(function EntryLayer({
             <iframe
                 ref={iframeRef}
                 data-vx-entry-id={entry.id}
-                srcDoc={processedHtml}
+                srcDoc={srcDoc}
                 style={{
                     position: 'absolute',
                     top: 0,

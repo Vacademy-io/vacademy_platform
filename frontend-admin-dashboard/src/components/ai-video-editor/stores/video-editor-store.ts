@@ -46,6 +46,92 @@ export function snapTime(t: number): number {
     return Math.round(t / SNAP_S) * SNAP_S;
 }
 
+// ── viewMode (simple vs developer) ──────────────────────────────────────────
+//
+// Global UI mode toggle. 'simple' (default) shows friendly labels and tucks
+// raw-CSS / class / id inputs and the Code tab behind `Advanced ▾`
+// disclosures. 'developer' pre-expands the same disclosures and reveals
+// tag-name badges in the Layers tree. Both modes have access to every
+// underlying control — the difference is presentation, not capability.
+//
+// Persisted to localStorage so the choice survives reloads but stays
+// per-device.
+
+export type ViewMode = 'simple' | 'developer';
+
+const VIEW_MODE_LS_KEY = 'vx-view-mode';
+
+function loadViewMode(): ViewMode {
+    if (typeof window === 'undefined') return 'simple';
+    try {
+        const raw = window.localStorage.getItem(VIEW_MODE_LS_KEY);
+        return raw === 'developer' ? 'developer' : 'simple';
+    } catch {
+        return 'simple';
+    }
+}
+
+function persistViewMode(m: ViewMode): void {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(VIEW_MODE_LS_KEY, m);
+    } catch {
+        /* private mode — fine, just won't persist */
+    }
+}
+
+// ── Display-name overrides (per-shot rename) ────────────────────────────────
+//
+// Friendly per-entry names a user has set via inline rename in the
+// EntryListPanel. The server is the source of truth: each saved name lives
+// in the entry's `entry_meta.display_name` and is hydrated back into
+// `displayNames` on the next loadTimeline.
+//
+// localStorage is the *offline* buffer keyed by videoId — it lets a pending
+// rename survive a reload before the user clicks Save. It's cleared on save
+// success and only contains non-empty values (see persistDisplayNames for
+// why empty-string sentinels are in-memory only).
+
+const DISPLAY_NAMES_LS_PREFIX = 'vx-display-names-';
+
+function loadDisplayNames(videoId: string): Record<string, string> {
+    if (typeof window === 'undefined' || !videoId) return {};
+    try {
+        const raw = window.localStorage.getItem(DISPLAY_NAMES_LS_PREFIX + videoId);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw) as Record<string, string>;
+        return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+        return {};
+    }
+}
+
+function persistDisplayNames(videoId: string, names: Record<string, string>): void {
+    if (typeof window === 'undefined' || !videoId) return;
+    try {
+        // Strip empty-string sentinels before writing to disk. They're an
+        // in-session signal to saveChanges ("this entry's override has been
+        // cleared, send entry_meta with display_name='' to the server").
+        // Persisting them would let a pending clear survive a reload — but
+        // the dirty bit is reset on reload, so the save loop would never
+        // actually push the clear, leaving the timeline silently desynced.
+        // Treat clears like every other unsaved edit: they're in-memory until
+        // save, lost on reload otherwise. Saved overrides (non-empty values)
+        // get hydrated back from the server's entry_meta on the next load.
+        const onDisk: Record<string, string> = {};
+        for (const [k, v] of Object.entries(names)) {
+            if (v) onDisk[k] = v;
+        }
+        if (Object.keys(onDisk).length === 0) {
+            window.localStorage.removeItem(DISPLAY_NAMES_LS_PREFIX + videoId);
+        } else {
+            window.localStorage.setItem(DISPLAY_NAMES_LS_PREFIX + videoId, JSON.stringify(onDisk));
+        }
+    } catch {
+        /* private mode — fine */
+    }
+}
+
 /** A span on the timeline where audio plays but no base-channel visual exists.
  *  These are the user-actionable gaps the "+ Add shot here" affordance fills. */
 export interface TimelineGap {
@@ -264,6 +350,16 @@ export interface VideoEditorState {
     // Mode
     isPreviewMode: boolean;
 
+    /** UI presentation mode. 'simple' (default) hides raw-CSS / tag-name /
+     *  class inputs behind `Advanced ▾` disclosures. 'developer' pre-expands
+     *  them. Both modes expose every underlying control. */
+    viewMode: ViewMode;
+
+    /** Per-entry user-set display names ({entryId: name}). Persisted to
+     *  localStorage keyed by videoId; not yet sent to the backend. Empty
+     *  string / missing key falls back to the derived friendly name. */
+    displayNames: Record<string, string>;
+
     // Dirty tracking (HTML edits)
     dirtyEntryIds: string[];
     /** IDs of entries that are brand-new and have never been saved to the backend. */
@@ -324,6 +420,16 @@ export interface VideoEditorState {
     selectEntry: (id: string | null) => void;
     selectLayer: (path: number[] | null) => void;
     togglePreviewMode: () => void;
+
+    /** Switch between simple (friendly labels, advanced hidden) and developer
+     *  (advanced pre-expanded, tag-name badges visible) presentation. */
+    setViewMode: (m: ViewMode) => void;
+    toggleViewMode: () => void;
+
+    /** Set a user-chosen display name for an entry. Empty string clears the
+     *  override and falls back to the auto-derived friendly name. Persists to
+     *  localStorage per video — no backend round-trip required. */
+    setEntryDisplayName: (entryId: string, name: string) => void;
     updateEntryHtml: (entryId: string, newHtml: string) => void;
     /** Remove one scheduled sound effect from an entry. The entry is
      *  marked dirty so the deletion is persisted on the next saveChanges. */
@@ -500,6 +606,8 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     selectedEntryId: null,
     selectedLayerPath: null,
     isPreviewMode: false,
+    viewMode: loadViewMode(),
+    displayNames: {},
     dirtyEntryIds: [],
     newEntryIds: [],
     deletedEntryIds: [],
@@ -533,6 +641,9 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             selectedEntryId: null,
             selectedLayerPath: null,
             isPreviewMode: false,
+            // Don't overwrite viewMode on re-init — it's a global preference.
+            // Display names are per-video though, so reload them now.
+            displayNames: loadDisplayNames(params.videoId),
             dirtyEntryIds: [],
             newEntryIds: [],
             deletedEntryIds: [],
@@ -593,12 +704,31 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     naturalDurations[e.id] = dur;
                 }
             }
+            // Hydrate display-name overrides. Server values (stored in
+            // entry_meta.display_name) form the base. localStorage overlays on
+            // top so an unsaved rename made on this device survives a
+            // reload. After a successful save the localStorage buffer is
+            // cleared, so the only entries it contains are pending overrides.
+            const serverNames: Record<string, string> = {};
+            for (const e of entries) {
+                const m = e.entry_meta;
+                if (m && typeof m === 'object') {
+                    const dn = (m as { display_name?: unknown }).display_name;
+                    if (typeof dn === 'string' && dn.trim()) {
+                        serverNames[e.id] = dn.trim();
+                    }
+                }
+            }
+            const localNames = loadDisplayNames(get().videoId);
+            const mergedNames = { ...serverNames, ...localNames };
+
             set({
                 entries,
                 meta,
                 audioTracks: meta.audio_tracks ?? [],
                 isLoading: false,
                 naturalDurations,
+                displayNames: mergedNames,
             });
         } catch (err) {
             set({
@@ -626,6 +756,48 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             selectedEntryId: null,
             selectedLayerPath: null,
         })),
+
+    setViewMode: (m) => {
+        persistViewMode(m);
+        set({ viewMode: m });
+    },
+    toggleViewMode: () => {
+        const next: ViewMode = get().viewMode === 'simple' ? 'developer' : 'simple';
+        persistViewMode(next);
+        set({ viewMode: next });
+    },
+
+    setEntryDisplayName: (entryId, name) => {
+        set((s) => {
+            const trimmed = name.trim();
+            // We always store the value, even when empty. The empty string
+            // is the "explicit clear" sentinel — saveChanges uses it to send
+            // entry_meta: { display_name: '' } so the server drops the
+            // override on its side too. Deleting the key here would leak the
+            // clear: saveChanges would see undefined and skip entry_meta,
+            // leaving the stale name on the server (and on other devices).
+            //
+            // friendlyEntryName treats empty strings as "no override" (falsy)
+            // and falls back to the auto-derived name, so the UI stays
+            // friendly regardless of whether the key is absent or "".
+            const next = { ...s.displayNames, [entryId]: trimmed };
+
+            // localStorage is the offline buffer: it stores pending renames
+            // so they survive a reload even before the user clicks Save.
+            // After a successful save the entry's localStorage key is cleared
+            // (the value lives on the server now via entry_meta.display_name).
+            persistDisplayNames(s.videoId, next);
+
+            // Mark the entry dirty so saveChanges picks it up. Renames go
+            // through the existing /frame/update flow with the new
+            // entry_meta field — no new endpoint needed.
+            const dirtyEntryIds = s.dirtyEntryIds.includes(entryId)
+                ? s.dirtyEntryIds
+                : [...s.dirtyEntryIds, entryId];
+
+            return { displayNames: next, dirtyEntryIds };
+        });
+    },
 
     updateEntryHtml: (entryId, newHtml) => {
         set((s) => ({
@@ -1184,6 +1356,15 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 const isNew = newEntryIds.includes(entry.id);
 
                 if (isNew) {
+                    // Same entry_meta logic as the /frame/update branch: send
+                    // the display name (including empty string for "clear")
+                    // when the user has touched it. Skipped entirely when
+                    // there's no rename so we don't bloat the timeline JSON
+                    // with empty entry_meta objects for plain new shots.
+                    const pendingNameAdd = useVideoEditorStore.getState().displayNames[entry.id];
+                    const addEntryMetaPayload: Record<string, unknown> | undefined =
+                        pendingNameAdd !== undefined ? { display_name: pendingNameAdd } : undefined;
+
                     const res = await fetch(`${frameBase}/add`, {
                         method: 'POST',
                         headers: {
@@ -1197,6 +1378,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                             exit_time: entry.exitTime ?? entry.end ?? null,
                             z: entry.z ?? 0,
                             entry_id: entry.id,
+                            ...(addEntryMetaPayload ? { entry_meta: addEntryMetaPayload } : {}),
                         }),
                     });
                     if (!res.ok) {
@@ -1205,6 +1387,16 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     }
                 } else {
                     const frameIndex = entries.indexOf(entry);
+                    // Build entry_meta payload for the server. Includes any
+                    // pending display-name override; empty string explicitly
+                    // clears the override (server treats empty as "drop the
+                    // key"). When there's nothing rename-related to send, omit
+                    // the field entirely so we don't trigger an unnecessary
+                    // entry_meta merge round-trip on every HTML edit.
+                    const pendingName = useVideoEditorStore.getState().displayNames[entry.id];
+                    const entryMetaPayload: Record<string, unknown> | undefined =
+                        pendingName !== undefined ? { display_name: pendingName ?? '' } : undefined;
+
                     const res = await fetch(`${frameBase}/update`, {
                         method: 'POST',
                         headers: {
@@ -1219,6 +1411,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                             exit_time: entry.exitTime ?? entry.end ?? null,
                             z: entry.z ?? 0,
                             entry_id: entry.id,
+                            ...(entryMetaPayload ? { entry_meta: entryMetaPayload } : {}),
                         }),
                     });
                     if (!res.ok) {
@@ -1251,6 +1444,16 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 future: [],
                 isSaving: false,
             }));
+            // Display-name overrides are now reflected server-side in
+            // entry_meta. Clear the localStorage offline buffer so the next
+            // reload pulls names from the server. The in-memory
+            // `displayNames` map stays intact — it matches the server and
+            // continues to drive the UI without a reload.
+            try {
+                window.localStorage.removeItem(DISPLAY_NAMES_LS_PREFIX + videoId);
+            } catch {
+                /* private mode — fine */
+            }
         } catch (err) {
             set({ isSaving: false });
             throw err;

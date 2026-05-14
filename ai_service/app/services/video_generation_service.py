@@ -1510,6 +1510,15 @@ class VideoGenerationService:
             "html": [
                 (None, "generated_images", "generated_images"),  # Directory - process FIRST to build image mapping
                 (None, "branding_meta", "branding_meta.json"),  # Branding metadata for audio delay
+                # Per-shot TTS artifacts (Phase B / v2): the `tts/` directory
+                # under run_dir contains shot_NNN.mp3, shot_NNN_raw.json, and
+                # shot_NNN_script.txt for each shot. Uploaded as a directory
+                # at `ai-videos/{video_id}/per_shot_tts/`. The editor uses
+                # these for shot-level audio regeneration; the render server
+                # continues to read the master narration.mp3 (re-uploaded
+                # below). Skipped on legacy v1 runs because tts/ directory
+                # doesn't exist there — upload loop tolerates missing dir.
+                (None, "per_shot_tts", "tts"),
                 ("timeline_json", "timeline", "time_based_frame.json"),  # Process AFTER images to update URLs
                 ("audio_path", "audio", "narration.mp3"),  # Re-upload if audio was mixed with source clips
                 ("words_json", "words", "narration.words.json"),  # Re-upload if words were filtered
@@ -3278,6 +3287,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         exit_time: float | None = None,
         z: int | None = None,
         entry_id: str | None = None,
+        entry_meta: Dict[str, Any] | None = None,
     ) -> Dict[str, Any]:
         """
         Update a specific frame's HTML in the timeline and save back to S3.
@@ -3332,6 +3342,19 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 entry["exitTime"] = exit_time
             if z is not None:
                 entry["z"] = z
+            # Merge entry_meta (free-form per-entry metadata) — preserve any
+            # keys the caller didn't include so we don't clobber unrelated
+            # state set by other tools writing into the same entry.
+            if entry_meta is not None and isinstance(entry_meta, dict):
+                existing_meta = entry.get("entry_meta")
+                if not isinstance(existing_meta, dict):
+                    existing_meta = {}
+                merged = {**existing_meta, **entry_meta}
+                # Empty string display_name → drop the key entirely so the
+                # entry reverts to its auto-derived friendly name.
+                if "display_name" in merged and merged["display_name"] in (None, ""):
+                    merged.pop("display_name", None)
+                entry["entry_meta"] = merged
 
             # Write (data already points to the modified entries when wrapped)
             file_path.write_text(json.dumps(data, indent=2), encoding='utf-8')
@@ -3561,6 +3584,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         html_start_y: Optional[int] = None,
         html_end_x: Optional[int] = None,
         html_end_y: Optional[int] = None,
+        entry_meta: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Insert a new frame/entry into the video timeline and save back to S3.
@@ -3623,6 +3647,16 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 new_entry["inTime"] = in_time
             if exit_time is not None:
                 new_entry["exitTime"] = exit_time
+
+            # Attach entry_meta when the client provided one. Treat the
+            # empty-string display_name sentinel as "no override" and skip
+            # storing it — same semantic as update_video_frame's merge path.
+            if entry_meta is not None and isinstance(entry_meta, dict) and entry_meta:
+                clean_meta = dict(entry_meta)
+                if "display_name" in clean_meta and clean_meta["display_name"] in (None, ""):
+                    clean_meta.pop("display_name", None)
+                if clean_meta:
+                    new_entry["entry_meta"] = clean_meta
 
             # Insert sorted by inTime so the timeline stays ordered (time_driven).
             # For user_driven (no inTime), simply append.

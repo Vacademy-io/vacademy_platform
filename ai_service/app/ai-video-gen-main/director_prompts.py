@@ -1181,7 +1181,7 @@ IMPORTANT:
 def build_director_user_prompt(
     script_text: str,
     beat_outline: List[Dict[str, Any]],
-    words: List[Dict[str, Any]],
+    words: Optional[List[Dict[str, Any]]],
     subject_domain: str,
     style_guide: Dict[str, Any],
     width: int = 1920,
@@ -1230,25 +1230,34 @@ def build_director_user_prompt(
 
     # Richer word timings — give the Director a denser sample so it can place
     # sync points precisely. Cap at 200 entries which is ~2-3x the old limit
-    # but still well under the token budget.
-    word_lines = ["Time(s)  | Word", "---------|--------"]
-    selected = set()
-    for i, w in enumerate(words):
-        word_text = str(w.get("word", "")).strip()
-        if not word_text:
-            continue
-        include = (
-            i < 5 or                    # first 5
-            i % 3 == 0 or               # every 3rd (was every 5th)
-            len(word_text) > 4 or       # likely key terms
-            i == len(words) - 1         # last word
+    # but still well under the token budget. On v2 (Director runs BEFORE TTS)
+    # `words` is None / empty — surface that explicitly so the LLM plans
+    # from word-count estimates instead of pretending an empty table is real.
+    if words:
+        word_lines = ["Time(s)  | Word", "---------|--------"]
+        selected = set()
+        for i, w in enumerate(words):
+            word_text = str(w.get("word", "")).strip()
+            if not word_text:
+                continue
+            include = (
+                i < 5 or                    # first 5
+                i % 3 == 0 or               # every 3rd (was every 5th)
+                len(word_text) > 4 or       # likely key terms
+                i == len(words) - 1         # last word
+            )
+            if include and i not in selected:
+                selected.add(i)
+                word_lines.append(f"{float(w['start']):>7.2f}  | {word_text}")
+            if len(selected) >= 200:
+                break
+        word_timings = "\n".join(word_lines)
+    else:
+        word_timings = (
+            "(none — Director runs before TTS on this pipeline. Plan shot "
+            "boundaries from beat narration word-counts using ~150 wpm. "
+            "Actual durations are reconciled after per-shot TTS completes.)"
         )
-        if include and i not in selected:
-            selected.add(i)
-            word_lines.append(f"{float(w['start']):>7.2f}  | {word_text}")
-        if len(selected) >= 200:
-            break
-    word_timings = "\n".join(word_lines)
 
     background_type = style_guide.get("background_type", "black")
 

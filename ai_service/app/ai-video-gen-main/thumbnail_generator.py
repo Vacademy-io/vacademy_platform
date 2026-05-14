@@ -24,7 +24,17 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import boto3
 
-from . import thumbnail_prompts as tp
+# Sibling import — `ai-video-gen-main` is not a Python package (the dirname
+# contains hyphens and there's no __init__.py). The caller adds the directory
+# to sys.path and loads this module flat via `from thumbnail_generator import …`,
+# so a plain `from . import thumbnail_prompts` raises
+# "attempted relative import with no known parent package". The try/except is
+# deliberate so an autoformatter can't silently convert one form into the
+# other and break runtime imports.
+try:
+    import thumbnail_prompts as tp  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover — only if loaded inside a real package
+    from . import thumbnail_prompts as tp  # type: ignore[no-redef]
 
 
 _S3_BUCKET = "vacademy-media-storage-public"

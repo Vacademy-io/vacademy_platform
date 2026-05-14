@@ -69,12 +69,9 @@ import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtili
 import { TokenKey, Authority } from '@/constants/auth/tokens';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
-import {
-    ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY,
-    type DisplaySettingsData,
-} from '@/types/display-settings';
-import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { type DisplaySettingsData } from '@/types/display-settings';
+import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { extractTextFromHTML } from '@/constants/helper';
 import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
 import { fetchCourseBatches } from '@/routes/admin-package-management/-services/package-service';
@@ -1132,9 +1129,24 @@ export const CourseDetailsPage = () => {
     const courseCreatedBy = form.getValues('courseData')?.created_by_user_id;
     const isOwnCourse = courseCreatedBy === currentUserId;
 
-    // Role display settings (course page toggles)
-    const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
-    const roleDisplay: DisplaySettingsData | null = getDisplaySettingsFromCache(roleKey);
+    // Role display settings (course page toggles). Use the same async-fetch
+    // pattern as authored-courses-tab / NonAdminSlidesView so the component
+    // re-renders when the cache populates after first render (e.g. fresh
+    // incognito session landing directly on this URL).
+    const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(() =>
+        getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey())
+    );
+    useEffect(() => {
+        const roleKeyInner = getActiveRoleDisplaySettingsKey();
+        const cached = getDisplaySettingsFromCache(roleKeyInner);
+        if (cached) {
+            setRoleDisplay(cached);
+            return;
+        }
+        getDisplaySettings(roleKeyInner)
+            .then(setRoleDisplay)
+            .catch(() => setRoleDisplay(null));
+    }, []);
     const coursePage = roleDisplay?.coursePage;
     const allowDirectEditPublished = coursePage?.directEditPublishedCourse === true;
 

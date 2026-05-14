@@ -296,10 +296,6 @@ export const CourseStructureDetails = ({
     // 1. User is admin, OR
     // 2. User is the course creator and course is in DRAFT status, OR
     // 3. If createdByUserId is not available, allow editing for DRAFT status (fallback for authored courses)
-    // The role display settings (canEditCourseStructure / canDeleteCourseStructure) extend
-    // these defaults — they let a non-admin edit and/or delete on ACTIVE / IN_REVIEW courses.
-    // `canEditStructure` retains its historical name and gates Edit actions + drag-reorder.
-    // `canDeleteStructure` is a new value that gates the Delete action separately.
     const canEditStructureBase =
         isAdmin ||
         (isOwnCourse && courseStatus === 'DRAFT') ||
@@ -317,10 +313,11 @@ export const CourseStructureDetails = ({
     const allowReadOnlyNavigation =
         roleDisplay?.coursePage?.allowViewSlidesInReadOnly !== false;
     const blockReadOnlyClick = readOnly && !allowReadOnlyNavigation;
-    // `canEditStructure` gates the Edit / Delete / Add / drag-reorder buttons on
+    // `canEditStructure` gates Edit / Delete / Add / drag-reorder buttons on
     // Subject / Module / Chapter rows in both the Outline and Content Structure
-    // tabs. It now also honours the role display settings — either flag enables
-    // the whole structure action area for the current role.
+    // tabs. Either of the new role display flags (canEditCourseStructure /
+    // canDeleteCourseStructure) is enough to enable the action area for
+    // non-admin roles on ACTIVE / IN_REVIEW courses.
     const canEditStructure =
         canEditStructureBase ||
         roleDisplay?.coursePage?.canEditCourseStructure === true ||

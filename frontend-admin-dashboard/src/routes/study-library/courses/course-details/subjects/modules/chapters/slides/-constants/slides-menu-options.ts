@@ -30,6 +30,7 @@ export function getSlidesMenuOptions(): DropdownItem[] {
         return baseList.filter((item) => {
             if (item.value === 'copy' && slideView?.showCopyTo === false) return false;
             if (item.value === 'move' && slideView?.showMoveTo === false) return false;
+            if (item.value === 'delete' && slideView?.showDelete === false) return false;
             return true;
         });
     } catch {

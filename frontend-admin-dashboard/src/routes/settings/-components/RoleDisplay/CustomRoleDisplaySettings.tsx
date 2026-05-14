@@ -499,10 +499,20 @@ export default function CustomRoleDisplaySettings({
                             />
                         </div>
                     ))}
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Course Permission</CardTitle>
+                    <CardDescription>
+                        Control what this role can do on a course and its slides.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
                     <div className="flex items-center justify-between rounded border p-3">
                         <div className="text-sm">
-                            Allow direct edit of published courses (skip Copy-to-Edit / approval
-                            flow)
+                            Can directly edit (without Copy-to-Edit / approval)
                         </div>
                         <Switch
                             checked={settings.coursePage?.directEditPublishedCourse === true}
@@ -531,17 +541,6 @@ export default function CustomRoleDisplaySettings({
                             }
                         />
                     </div>
-                </CardContent>
-            </Card>
-
-            <Card>
-                <CardHeader>
-                    <CardTitle>Course Permission</CardTitle>
-                    <CardDescription>
-                        Control what this role can do on a course and its slides.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
                     {(
                         [
                             ['showCopyTo', 'Can copy slide'],

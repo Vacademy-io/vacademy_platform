@@ -73,14 +73,16 @@ type Announcement = {
 };
 
 type AnnouncementStats = {
+    // Recipient-level rollup (all mediums)
     totalRecipients: number;
     deliveredCount: number;
     readCount: number;
     failedCount: number;
     deliveryRate: number;
     readRate: number;
+    // Email-specific (driven by SES events)
     emailsSent: number;
-    emailsSend: number;
+    emailsSend: number; // count of SES `send` events — backend keeps it for parity, UI hides it
     emailsDelivered: number;
     emailsOpened: number;
     emailsClicked: number;
@@ -530,83 +532,117 @@ function AnnouncementHistoryPage() {
                     <div className="flex-1 overflow-y-auto pr-2">
                         {stats ? (
                             <div className="space-y-4 pb-4">
-                                {/* Email Stats */}
+                                {/* Delivery overview — the recipient-level rollup that applies to
+                                    every medium (email + in-app + WhatsApp + push). */}
                                 <div className="rounded-xl border border-neutral-200 bg-gradient-to-br from-white to-neutral-50/30 p-4 sm:p-6 shadow-sm">
                                     <div className="mb-3 sm:mb-4 flex items-center gap-2">
-                                        <div className="h-1 w-6 sm:w-8 rounded-full bg-gradient-to-r from-purple-500 to-purple-400"></div>
-                                        <h4 className="text-base sm:text-lg font-semibold text-neutral-800">Email Statistics</h4>
+                                        <div className="h-1 w-6 sm:w-8 rounded-full bg-gradient-to-r from-blue-500 to-blue-400"></div>
+                                        <h4 className="text-base sm:text-lg font-semibold text-neutral-800">
+                                            Delivery overview
+                                        </h4>
                                     </div>
-                                    <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                        <div className="group rounded-lg border border-neutral-100 bg-white p-3 sm:p-4 transition-all duration-200 hover:shadow-md">
-                                            <div>
-                                                <p className="text-xs sm:text-sm font-medium text-neutral-600">Emails Sent</p>
-                                                <p className="text-xl sm:text-2xl font-bold text-neutral-900">{stats.emailsSent}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="group rounded-lg border border-neutral-100 bg-white p-3 sm:p-4 transition-all duration-200 hover:shadow-md">
-                                            <div>
-                                                <p className="text-xs sm:text-sm font-medium text-neutral-600">Emails Delivered</p>
-                                                <p className="text-xl sm:text-2xl font-bold text-green-600">{stats.emailsDelivered}</p>
-                                                <p className="text-xs text-green-500 font-medium">{percent(stats.emailDeliveryRate)}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="group rounded-lg border border-neutral-100 bg-white p-3 sm:p-4 transition-all duration-200 hover:shadow-md">
-                                            <div>
-                                                <p className="text-xs sm:text-sm font-medium text-neutral-600">Emails Opened</p>
-                                                <p className="text-xl sm:text-2xl font-bold text-blue-600">{stats.emailsOpened}</p>
-                                                <p className="text-xs text-blue-500 font-medium">{percent(stats.emailOpenRate)}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="group rounded-lg border border-neutral-100 bg-white p-3 sm:p-4 transition-all duration-200 hover:shadow-md">
-                                            <div>
-                                                <p className="text-xs sm:text-sm font-medium text-neutral-600">Emails Clicked</p>
-                                                <p className="text-xl sm:text-2xl font-bold text-purple-600">{stats.emailsClicked}</p>
-                                                <p className="text-xs text-purple-500 font-medium">{percent(stats.emailClickRate)}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="group rounded-lg border border-neutral-100 bg-white p-3 sm:p-4 transition-all duration-200 hover:shadow-md">
-                                            <div>
-                                                <p className="text-xs sm:text-sm font-medium text-neutral-600">Emails Bounced</p>
-                                                <p className="text-xl sm:text-2xl font-bold text-orange-600">{stats.emailsBounced}</p>
-                                                <p className="text-xs text-orange-500 font-medium">{percent(stats.emailBounceRate)}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="group rounded-lg border border-neutral-100 bg-white p-3 sm:p-4 transition-all duration-200 hover:shadow-md">
-                                            <div>
-                                                <p className="text-xs sm:text-sm font-medium text-neutral-600">Emails Rejected</p>
-                                                <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.emailsRejected}</p>
-                                                <p className="text-xs text-red-500 font-medium">{percent(stats.emailRejectRate)}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="group rounded-lg border border-neutral-100 bg-white p-3 sm:p-4 transition-all duration-200 hover:shadow-md">
-                                            <div>
-                                                <p className="text-xs sm:text-sm font-medium text-neutral-600">Emails Complained</p>
-                                                <p className="text-xl sm:text-2xl font-bold text-red-600">{stats.emailsComplained}</p>
-                                                <p className="text-xs text-red-500 font-medium">{percent(stats.emailComplaintRate)}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="group rounded-lg border border-neutral-100 bg-white p-3 sm:p-4 transition-all duration-200 hover:shadow-md">
-                                            <div>
-                                                <p className="text-xs sm:text-sm font-medium text-neutral-600">Emails Pending</p>
-                                                <p className="text-xl sm:text-2xl font-bold text-yellow-600">{stats.emailsPending}</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="group rounded-lg border border-neutral-100 bg-white p-3 sm:p-4 transition-all duration-200 hover:shadow-md">
-                                            <div>
-                                                <p className="text-xs sm:text-sm font-medium text-neutral-600">Emails Send</p>
-                                                <p className="text-xl sm:text-2xl font-bold text-neutral-900">{stats.emailsSend}</p>
-                                            </div>
-                                        </div>
+                                    <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
+                                        <StatTile
+                                            label="Recipients"
+                                            value={stats.totalRecipients}
+                                        />
+                                        <StatTile
+                                            label="Delivered"
+                                            value={stats.deliveredCount}
+                                            sub={percent(stats.deliveryRate)}
+                                            tone="success"
+                                        />
+                                        <StatTile
+                                            label="Read"
+                                            value={stats.readCount}
+                                            sub={percent(stats.readRate)}
+                                            tone="info"
+                                        />
+                                        <StatTile
+                                            label="Failed"
+                                            value={stats.failedCount}
+                                            tone="danger"
+                                        />
                                     </div>
                                 </div>
+
+                                {/* Email-specific SES event stats. Hidden when no email was
+                                    actually sent for this announcement (non-email campaigns). */}
+                                {stats.emailsSent > 0 ? (
+                                    <div className="rounded-xl border border-neutral-200 bg-gradient-to-br from-white to-neutral-50/30 p-4 sm:p-6 shadow-sm">
+                                        <div className="mb-3 sm:mb-4 flex items-center gap-2">
+                                            <div className="h-1 w-6 sm:w-8 rounded-full bg-gradient-to-r from-purple-500 to-purple-400"></div>
+                                            <h4 className="text-base sm:text-lg font-semibold text-neutral-800">
+                                                Email events
+                                            </h4>
+                                            <span className="text-xs text-neutral-500">
+                                                via SES
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-3 sm:gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                            <StatTile
+                                                label="Emails sent"
+                                                value={stats.emailsSent}
+                                            />
+                                            <StatTile
+                                                label="Delivered"
+                                                value={stats.emailsDelivered}
+                                                sub={percent(stats.emailDeliveryRate)}
+                                                tone="success"
+                                            />
+                                            <StatTile
+                                                label="Opened"
+                                                value={stats.emailsOpened}
+                                                sub={percent(stats.emailOpenRate)}
+                                                tone="info"
+                                            />
+                                            <StatTile
+                                                label="Clicked"
+                                                value={stats.emailsClicked}
+                                                sub={percent(stats.emailClickRate)}
+                                                tone="info"
+                                            />
+                                            <StatTile
+                                                label="Bounced"
+                                                value={stats.emailsBounced}
+                                                sub={percent(stats.emailBounceRate)}
+                                                tone="warning"
+                                            />
+                                            <StatTile
+                                                label="Rejected"
+                                                value={stats.emailsRejected}
+                                                sub={percent(stats.emailRejectRate)}
+                                                tone="danger"
+                                            />
+                                            <StatTile
+                                                label="Complained"
+                                                value={stats.emailsComplained}
+                                                sub={percent(stats.emailComplaintRate)}
+                                                tone="danger"
+                                            />
+                                            <StatTile
+                                                label="Awaiting events"
+                                                value={stats.emailsPending}
+                                                tone="muted"
+                                            />
+                                        </div>
+                                        {stats.emailsDelivered === 0 &&
+                                            stats.emailsBounced === 0 &&
+                                            stats.emailsRejected === 0 &&
+                                            stats.emailsPending > 0 && (
+                                                <p className="mt-3 text-xs text-neutral-500">
+                                                    Emails were dispatched but no SES events have
+                                                    come back yet. If you're running locally,
+                                                    ensure the SES → SNS → notification_service
+                                                    webhook is configured.
+                                                </p>
+                                            )}
+                                    </div>
+                                ) : (
+                                    <div className="rounded-xl border border-dashed border-neutral-200 p-6 text-center text-sm text-neutral-500">
+                                        No emails were sent for this announcement.
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <div className="flex items-center justify-center py-8">
@@ -745,4 +781,43 @@ function formatDateTime(v?: string) {
 function percent(n?: number) {
     if (typeof n !== 'number') return '-';
     return `${n.toFixed(2)}%`;
+}
+
+type StatTone = 'success' | 'info' | 'warning' | 'danger' | 'muted' | 'neutral';
+
+function StatTile({
+    label,
+    value,
+    sub,
+    tone = 'neutral',
+}: {
+    label: string;
+    value: number | string | undefined;
+    sub?: string;
+    tone?: StatTone;
+}) {
+    const valueTone: Record<StatTone, string> = {
+        success: 'text-green-600',
+        info: 'text-blue-600',
+        warning: 'text-orange-600',
+        danger: 'text-red-600',
+        muted: 'text-neutral-500',
+        neutral: 'text-neutral-900',
+    };
+    const subTone: Record<StatTone, string> = {
+        success: 'text-green-500',
+        info: 'text-blue-500',
+        warning: 'text-orange-500',
+        danger: 'text-red-500',
+        muted: 'text-neutral-400',
+        neutral: 'text-neutral-500',
+    };
+    const display = value === undefined || value === null ? '-' : value;
+    return (
+        <div className="group rounded-lg border border-neutral-100 bg-white p-3 sm:p-4 transition-all duration-200 hover:shadow-md">
+            <p className="text-xs sm:text-sm font-medium text-neutral-600">{label}</p>
+            <p className={`text-xl sm:text-2xl font-bold ${valueTone[tone]}`}>{display}</p>
+            {sub && <p className={`text-xs font-medium ${subTone[tone]}`}>{sub}</p>}
+        </div>
+    );
 }

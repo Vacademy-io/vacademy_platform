@@ -153,6 +153,23 @@ public class AnnouncementController {
     }
 
     /**
+     * Update an existing announcement before it has been delivered.
+     * Blocked for ACTIVE/INACTIVE/EXPIRED/REJECTED, or SCHEDULED whose nextRunTime has passed.
+     */
+    @PutMapping("/{announcementId}")
+    public ResponseEntity<AnnouncementResponse> updateAnnouncement(
+            @PathVariable @NotBlank(message = "Announcement ID is required") String announcementId,
+            @Valid @RequestBody CreateAnnouncementRequest request) {
+        try {
+            AnnouncementResponse response = announcementService.updateAnnouncement(announcementId, request);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("Error updating announcement: {}", announcementId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
      * Update announcement status
      */
     @PutMapping("/{announcementId}/status")

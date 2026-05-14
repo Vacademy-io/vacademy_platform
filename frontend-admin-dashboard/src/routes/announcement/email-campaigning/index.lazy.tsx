@@ -1,7 +1,7 @@
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
-import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
+import { createLazyFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     AnnouncementService,
     type CreateAnnouncementRequest,
@@ -74,6 +74,12 @@ function EmailCampaigningPage() {
     const { toast } = useToast();
     const navigate = useNavigate();
 
+    // When `?id=<announcementId>` is present, we are editing an existing scheduled campaign
+    const search = useSearch({ strict: false }) as { id?: string };
+    const editingId = search.id;
+    const isEditing = !!editingId;
+    const prefilledRef = useRef(false);
+
     // Institute details for package sessions
     const { instituteDetails } = useInstituteDetailsStore();
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -81,6 +87,9 @@ function EmailCampaigningPage() {
 
     // Basic state
     const [title, setTitle] = useState('');
+    // Email subject header — separate from `title` (which is the campaign's internal name).
+    // Auto-filled from the selected template's subject, but always user-editable.
+    const [subject, setSubject] = useState('');
     const [htmlContent, setHtmlContent] = useState('');
     const [previewText, setPreviewText] = useState('');
     const [contentView, setContentView] = useState<'editor' | 'source'>('editor');
@@ -196,8 +205,181 @@ function EmailCampaigningPage() {
     >({});
 
     useEffect(() => {
-        setNavHeading('Email Campaigning');
-    }, [setNavHeading]);
+        setNavHeading(isEditing ? 'Edit Scheduled Campaign' : 'Email Campaigning');
+    }, [setNavHeading, isEditing]);
+
+    // Prefill when editing: fetch the announcement once and hydrate form state
+    useEffect(() => {
+        if (!editingId || prefilledRef.current) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const a = await AnnouncementService.getById(editingId);
+                if (cancelled || !a) return;
+
+                setTitle(a.title || '');
+                setHtmlContent(a.content?.content || '');
+
+                const sysAlert = (a.modes || []).find(
+                    (m: { modeType: string }) => m.modeType === 'SYSTEM_ALERT'
+                );
+                if (sysAlert?.settings) {
+                    setModeSettings((prev) => ({
+                        ...prev,
+                        SYSTEM_ALERT: {
+                            priority: (sysAlert.settings.priority as string) ?? 'MEDIUM',
+                            expiresAt: (sysAlert.settings.expiresAt as string) ?? '',
+                        },
+                    }));
+                }
+
+                const emailMedium = (a.mediums || []).find(
+                    (m: { mediumType: string }) => m.mediumType === 'EMAIL'
+                );
+                if (emailMedium?.config) {
+                    const cfg = emailMedium.config as Record<string, unknown>;
+                    if (typeof cfg.previewText === 'string') setPreviewText(cfg.previewText);
+                    if (typeof cfg.fromEmail === 'string' && typeof cfg.fromName === 'string') {
+                        setSelectedFromEmail(`${cfg.fromEmail}-${cfg.fromName}`);
+                    }
+                    // Subject was added later. Fall back to title for legacy records that don't
+                    // have an explicit subject stored in the EMAIL medium config.
+                    if (typeof cfg.subject === 'string' && cfg.subject.trim() !== '') {
+                        setSubject(cfg.subject);
+                    } else if (a.title) {
+                        setSubject(a.title);
+                    }
+                } else if (a.title) {
+                    setSubject(a.title);
+                }
+
+                if (a.scheduling) {
+                    const s = a.scheduling as {
+                        scheduleType?: 'IMMEDIATE' | 'ONE_TIME' | 'RECURRING';
+                        timezone?: string;
+                        startDate?: string;
+                        cronExpression?: string;
+                    };
+                    if (s.scheduleType) setScheduleType(s.scheduleType);
+                    if (s.timezone) setTimezone(s.timezone);
+                    if (s.startDate) {
+                        // Backend returns "YYYY-MM-DDTHH:mm:ss" wall-clock; datetime-local needs "YYYY-MM-DDTHH:mm"
+                        setOneTimeStart(s.startDate.slice(0, 16));
+                    }
+                    if (s.cronExpression) setCronExpression(s.cronExpression);
+                }
+
+                // Recipients: re-hydrate basic types, tag selections, and custom-field filters.
+                // Note: when a recipient was saved with exclusions, the backend stores the
+                // exclusions JSON in recipientName, so we parse it back here.
+                const prefilledRecipients: CreateAnnouncementRequest['recipients'] = [];
+                const newTagSelections: Record<number, string[]> = {};
+                const newCustomFieldFilters: Record<
+                    number,
+                    Array<{
+                        fieldId: string;
+                        fieldName: string;
+                        fieldType: string;
+                        filterValue?: string | string[];
+                        operator?: 'equals' | 'contains' | 'starts_with' | 'ends_with';
+                    }>
+                > = {};
+                const newExclusions: typeof recipientExclusions = {};
+
+                const tryParseJson = (s: string): unknown => {
+                    if (!s || typeof s !== 'string') return null;
+                    const trimmed = s.trim();
+                    if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) return null;
+                    try {
+                        return JSON.parse(trimmed);
+                    } catch {
+                        return null;
+                    }
+                };
+
+                (a.recipients || []).forEach(
+                    (
+                        r: {
+                            recipientType: string;
+                            recipientId?: string;
+                            recipientName?: string;
+                        },
+                        idx: number
+                    ) => {
+                        const rt = r.recipientType as CreateAnnouncementRequest['recipients'][number]['recipientType'];
+                        if (rt === 'CUSTOM_FIELD_FILTER') {
+                            const filters = tryParseJson(r.recipientName || '');
+                            if (Array.isArray(filters)) {
+                                newCustomFieldFilters[idx] = filters as Array<{
+                                    fieldId: string;
+                                    fieldName: string;
+                                    fieldType: string;
+                                    filterValue?: string | string[];
+                                    operator?: 'equals' | 'contains' | 'starts_with' | 'ends_with';
+                                }>;
+                            }
+                            prefilledRecipients.push({
+                                recipientType: 'CUSTOM_FIELD_FILTER',
+                                recipientId: r.recipientId,
+                                recipientName: undefined,
+                            });
+                            return;
+                        }
+
+                        if (rt === 'TAG' && r.recipientId) {
+                            newTagSelections[idx] = [r.recipientId];
+                        }
+
+                        const parsed = tryParseJson(r.recipientName || '');
+                        if (Array.isArray(parsed)) {
+                            // Looks like stored exclusions; hydrate the per-row exclusions map
+                            newExclusions[idx] = (parsed as Array<{
+                                exclusionType: string;
+                                exclusionId: string;
+                            }>).map((e, ei) => ({
+                                id: `${idx}-${ei}`,
+                                recipientType: e.exclusionType as
+                                    | 'ROLE'
+                                    | 'USER'
+                                    | 'PACKAGE_SESSION'
+                                    | 'TAG',
+                                recipientId: e.exclusionId,
+                                recipientName: e.exclusionId,
+                            }));
+                            prefilledRecipients.push({
+                                recipientType: rt,
+                                recipientId: r.recipientId,
+                                recipientName: undefined,
+                            });
+                        } else {
+                            prefilledRecipients.push({
+                                recipientType: rt,
+                                recipientId: r.recipientId,
+                                recipientName: r.recipientName,
+                            });
+                        }
+                    }
+                );
+
+                setRecipients(prefilledRecipients);
+                setTagSelections(newTagSelections);
+                setCustomFieldFilters(newCustomFieldFilters);
+                setRecipientExclusions(newExclusions);
+
+                prefilledRef.current = true;
+            } catch (e) {
+                console.error('Failed to prefill announcement', e);
+                toast({
+                    title: 'Could not load campaign for editing',
+                    description: e instanceof Error ? e.message : 'Try again',
+                    variant: 'destructive',
+                });
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [editingId, toast]);
 
     // Load institute tags for TAG recipients
     useEffect(() => {
@@ -444,7 +626,7 @@ function EmailCampaigningPage() {
             setSelectedTemplateId(templateId);
             setSelectedTemplateData(fullTemplate);
             if (fullTemplate.subject) {
-                setTitle(fullTemplate.subject);
+                setSubject(fullTemplate.subject);
             }
             if (fullTemplate.content) {
                 setHtmlContent(fullTemplate.content);
@@ -463,7 +645,7 @@ function EmailCampaigningPage() {
                 setSelectedTemplateId(templateId);
                 setSelectedTemplateData(template);
                 if (template.subject) {
-                    setTitle(template.subject);
+                    setSubject(template.subject);
                 }
                 if (template.content) {
                     setHtmlContent(template.content);
@@ -653,7 +835,7 @@ function EmailCampaigningPage() {
         const day = String(d.getDate()).padStart(2, '0');
         const hours = String(d.getHours()).padStart(2, '0');
         const minutes = String(d.getMinutes()).padStart(2, '0');
-        return `${year} -${month} -${day}T${hours}:${minutes} `;
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
     };
 
     const applyScheduleQuickPick = (pick: 'NOW' | 'IN_1H' | 'TOMORROW_9AM' | 'NEXT_MON_9AM') => {
@@ -728,11 +910,16 @@ function EmailCampaigningPage() {
             const validationErrors: string[] = [];
             const fieldErrors: Record<string, string> = {};
             const trimmedTitle = title.trim();
+            const trimmedSubject = subject.trim();
             const trimmedContent = htmlContent.trim();
 
             if (!trimmedTitle) {
-                validationErrors.push('Title is required');
-                fieldErrors.title = 'Title is required';
+                validationErrors.push('Campaign name is required');
+                fieldErrors.title = 'Campaign name is required';
+            }
+            if (!trimmedSubject) {
+                validationErrors.push('Email subject is required');
+                fieldErrors.subject = 'Email subject is required';
             }
             if (!trimmedContent) {
                 validationErrors.push('Content is required');
@@ -966,7 +1153,7 @@ function EmailCampaigningPage() {
                     {
                         mediumType: 'EMAIL',
                         config: {
-                            subject: title,
+                            subject: subject,
                             emailType: emailType,
                             fromEmail: selectedConfig?.email,
                             fromName: selectedConfig?.name,
@@ -982,8 +1169,14 @@ function EmailCampaigningPage() {
                           ? {
                                 scheduleType,
                                 timezone,
+                                // Send the picked wall-clock literal (YYYY-MM-DDTHH:mm:ss) so the
+                                // backend interprets it in the selected timezone. Converting
+                                // through new Date(...).toISOString() would shift by the browser's
+                                // local offset, which is almost never what the user picked.
                                 startDate: oneTimeStart
-                                    ? new Date(oneTimeStart).toISOString()
+                                    ? (oneTimeStart.length === 16
+                                          ? `${oneTimeStart}:00`
+                                          : oneTimeStart)
                                     : undefined,
                             }
                           : {
@@ -993,27 +1186,40 @@ function EmailCampaigningPage() {
                             },
             };
 
-            await AnnouncementService.create(payload);
+            if (isEditing && editingId) {
+                await AnnouncementService.update(editingId, payload);
+                try {
+                    const { toast: sonnerToast } = await import('sonner');
+                    sonnerToast.success('Email campaign updated successfully');
+                } catch {
+                    toast({ title: 'Email campaign updated successfully' });
+                }
+                // Return the user to the schedule view after a successful update
+                navigate({ to: '/announcement/schedule' });
+            } else {
+                await AnnouncementService.create(payload);
 
-            try {
-                const { toast: sonnerToast } = await import('sonner');
-                sonnerToast.success('Email campaign created successfully');
-            } catch {
-                toast({ title: 'Email campaign created successfully' });
+                try {
+                    const { toast: sonnerToast } = await import('sonner');
+                    sonnerToast.success('Email campaign created successfully');
+                } catch {
+                    toast({ title: 'Email campaign created successfully' });
+                }
+
+                // Reset fields only on create — keep edited values visible after update
+                setTitle('');
+                setSubject('');
+                setHtmlContent('');
+                setModeSettings({
+                    SYSTEM_ALERT: { priority: 'MEDIUM', expiresAt: '' },
+                    DASHBOARD_PIN: {},
+                    DM: {},
+                    STREAM: {},
+                    RESOURCES: {},
+                    COMMUNITY: {},
+                    TASKS: {},
+                });
             }
-
-            // Reset fields
-            setTitle('');
-            setHtmlContent('');
-            setModeSettings({
-                SYSTEM_ALERT: { priority: 'MEDIUM', expiresAt: '' },
-                DASHBOARD_PIN: {},
-                DM: {},
-                STREAM: {},
-                RESOURCES: {},
-                COMMUNITY: {},
-                TASKS: {},
-            });
         } catch (err: unknown) {
             const anyErr = err as {
                 response?: {
@@ -1064,7 +1270,25 @@ function EmailCampaigningPage() {
 
     return (
         <div className="p-4">
-            <h2 className="text-xl font-semibold">Email Campaigning</h2>
+            <div className="flex items-center justify-between gap-3">
+                <h2 className="text-xl font-semibold">
+                    {isEditing ? 'Edit Scheduled Email Campaign' : 'Email Campaigning'}
+                </h2>
+                {isEditing && (
+                    <div className="flex items-center gap-2">
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+                            Editing scheduled campaign
+                        </span>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate({ to: '/announcement/schedule' })}
+                        >
+                            Cancel
+                        </Button>
+                    </div>
+                )}
+            </div>
             <div className="mt-6 grid max-w-3xl gap-8">
                 {/* Review Dialog */}
                 <Dialog open={isReviewOpen} onOpenChange={setIsReviewOpen}>
@@ -1075,8 +1299,12 @@ function EmailCampaigningPage() {
                         </DialogHeader>
                         <div className="grid gap-4">
                             <div>
-                                <div className="text-sm font-medium">Title</div>
+                                <div className="text-sm font-medium">Campaign Name</div>
                                 <div className="text-sm text-neutral-700">{title || '—'}</div>
+                            </div>
+                            <div>
+                                <div className="text-sm font-medium">Email Subject</div>
+                                <div className="text-sm text-neutral-700">{subject || '—'}</div>
                             </div>
                             <div>
                                 <div className="text-sm font-medium">Mode</div>
@@ -1123,7 +1351,7 @@ function EmailCampaigningPage() {
                                 }}
                                 disabled={isSubmitting}
                             >
-                                Confirm & Create
+                                {isEditing ? 'Confirm & Update' : 'Confirm & Create'}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
@@ -1180,7 +1408,7 @@ function EmailCampaigningPage() {
                                         <span>To: recipient@email.com</span>
                                     </div>
                                     <div className="mt-1 text-sm font-semibold text-gray-900">
-                                        {title || '(No Subject)'}
+                                        {subject || '(No Subject)'}
                                     </div>
                                     {previewText && (
                                         <div className="mt-0.5 text-xs text-gray-500">{previewText}</div>
@@ -1200,14 +1428,33 @@ function EmailCampaigningPage() {
 
                 {/* Basic */}
                 <section className="grid gap-3">
-                    <Label>Title / Email Subject</Label>
+                    <Label>
+                        Campaign Name{' '}
+                        <span className="text-xs font-normal text-gray-400">
+                            (internal — used to identify this campaign in your dashboard)
+                        </span>
+                    </Label>
                     <Input
-                        placeholder="Email Subject"
+                        placeholder="e.g. Spring 2026 onboarding — batch A"
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
                         className={errors.title ? 'border-red-500' : ''}
                     />
                     {errors.title && <p className="text-xs text-red-600">{errors.title}</p>}
+
+                    <Label>
+                        Email Subject{' '}
+                        <span className="text-xs font-normal text-gray-400">
+                            (what recipients see in their inbox)
+                        </span>
+                    </Label>
+                    <Input
+                        placeholder="Email subject line"
+                        value={subject}
+                        onChange={(e) => setSubject(e.target.value)}
+                        className={errors.subject ? 'border-red-500' : ''}
+                    />
+                    {errors.subject && <p className="text-xs text-red-600">{errors.subject}</p>}
 
                     <Label>Preview Text <span className="text-xs font-normal text-gray-400">(shown in inbox before opening)</span></Label>
                     <Input
@@ -2877,14 +3124,20 @@ function EmailCampaigningPage() {
                 {/* Submit */}
                 <div className="flex gap-2">
                     <Button onClick={handleSubmit} disabled={isSubmitting}>
-                        {isSubmitting ? 'Sending…' : 'Send Email Campaign'}
+                        {isSubmitting
+                            ? isEditing
+                                ? 'Updating…'
+                                : 'Sending…'
+                            : isEditing
+                              ? 'Update Scheduled Campaign'
+                              : 'Send Email Campaign'}
                     </Button>
                     <Button
                         variant="outline"
                         onClick={() => setIsReviewOpen(true)}
                         disabled={isSubmitting}
                     >
-                        Review and Send
+                        {isEditing ? 'Review and Update' : 'Review and Send'}
                     </Button>
                 </div>
             </div>

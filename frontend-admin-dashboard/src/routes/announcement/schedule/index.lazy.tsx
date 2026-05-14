@@ -29,6 +29,7 @@ type Announcement = {
     createdBy?: string;
     createdByRole?: string;
     modes?: Array<{ modeType: ModeType; settings?: Record<string, unknown> }>;
+    mediumTypes?: string[];
     scheduling?: {
         scheduleType?: 'IMMEDIATE' | 'ONE_TIME' | 'RECURRING';
         timezone?: string;
@@ -83,7 +84,38 @@ function AnnouncementSchedulePage() {
                 from: range.from.toISOString(),
                 to: range.to.toISOString(),
             });
-            const list: Announcement[] = Array.isArray(res) ? res : res?.content ?? [];
+            // Backend returns AnnouncementCalendarItem (flat shape) — map to the local nested
+            // Announcement shape that the rest of this page expects.
+            type RawCalendarItem = {
+                announcementId: string;
+                title: string;
+                status?: string;
+                createdByRole?: string;
+                modeTypes?: string[];
+                mediumTypes?: string[];
+                scheduleType?: 'IMMEDIATE' | 'ONE_TIME' | 'RECURRING';
+                timezone?: string;
+                startDate?: string;
+                endDate?: string;
+                nextRunTime?: string;
+            };
+            const raw: RawCalendarItem[] = Array.isArray(res) ? res : res?.content ?? [];
+            const list: Announcement[] = raw.map((r) => ({
+                id: r.announcementId,
+                title: r.title,
+                status: r.status,
+                createdByRole: r.createdByRole,
+                modes: (r.modeTypes || []).map((m) => ({ modeType: m as ModeType })),
+                mediumTypes: r.mediumTypes || [],
+                scheduling: r.scheduleType
+                    ? {
+                          scheduleType: r.scheduleType,
+                          timezone: r.timezone,
+                          startDate: r.startDate,
+                          endDate: r.endDate,
+                      }
+                    : undefined,
+            }));
             if (modeFilter === 'ALL') return list;
             return list.filter((a) => a.modes?.some((m) => m.modeType === modeFilter));
         },
@@ -93,6 +125,29 @@ function AnnouncementSchedulePage() {
     // Approvals
     const [rejectFor, setRejectFor] = useState<Announcement | null>(null);
     const [rejectReason, setRejectReason] = useState('');
+
+    // Destructive: confirm before delete so an accidental click doesn't cancel a scheduled send.
+    const [deleteFor, setDeleteFor] = useState<Announcement | null>(null);
+    const [deleting, setDeleting] = useState(false);
+
+    const onDelete = async () => {
+        if (!deleteFor) return;
+        setDeleting(true);
+        try {
+            await AnnouncementService.remove(deleteFor.id);
+            toast({ title: 'Scheduled announcement deleted' });
+            setDeleteFor(null);
+            refetch();
+        } catch (e) {
+            toast({
+                title: 'Delete failed',
+                description: e instanceof Error ? e.message : 'Try again',
+                variant: 'destructive',
+            });
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     const onApprove = async (a: Announcement) => {
         try {
@@ -126,6 +181,30 @@ function AnnouncementSchedulePage() {
                 startDate: iso,
             },
         });
+    };
+
+    // Navigate to edit an existing scheduled campaign in the email-campaigning form
+    const goToEdit = (a: Announcement) => {
+        navigate({
+            to: '/announcement/email-campaigning',
+            search: { id: a.id },
+        });
+    };
+
+    // An announcement is editable as long as it has not already been delivered or cancelled
+    const isEditable = (a: Announcement) => {
+        const s = a.status;
+        if (!s) return true;
+        if (s === 'ACTIVE' || s === 'INACTIVE' || s === 'EXPIRED' || s === 'REJECTED') {
+            return false;
+        }
+        // If a schedule exists and its start has passed, treat as no longer editable
+        const start = a.scheduling?.startDate;
+        if (start) {
+            const startMs = Date.parse(start);
+            if (!Number.isNaN(startMs) && startMs <= Date.now()) return false;
+        }
+        return true;
     };
 
     // View switch and navigation
@@ -214,6 +293,9 @@ function AnnouncementSchedulePage() {
                     onCreate={(d) => goToCreateAt(d)}
                     onApprove={onApprove}
                     onReject={(a) => setRejectFor(a)}
+                    onEdit={goToEdit}
+                    onDelete={(a) => setDeleteFor(a)}
+                    canEdit={isEditable}
                     admin={admin}
                     loading={isLoading}
                 />
@@ -241,6 +323,33 @@ function AnnouncementSchedulePage() {
                     </div>
                 </DialogContent>
             </Dialog>
+
+            <Dialog open={!!deleteFor} onOpenChange={(open) => !open && setDeleteFor(null)}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Delete scheduled announcement?</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-3">
+                        <p className="text-sm text-neutral-700">
+                            This will permanently cancel and delete{' '}
+                            <span className="font-medium">{deleteFor?.title || 'this announcement'}</span>.
+                            It will not be delivered and cannot be restored.
+                        </p>
+                        <div className="flex justify-end gap-2">
+                            <Button
+                                variant="secondary"
+                                onClick={() => setDeleteFor(null)}
+                                disabled={deleting}
+                            >
+                                Cancel
+                            </Button>
+                            <Button variant="destructive" onClick={onDelete} disabled={deleting}>
+                                {deleting ? 'Deleting…' : 'Delete'}
+                            </Button>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
@@ -252,17 +361,47 @@ function Agenda(props: {
     onCreate: (d: Date) => void;
     onApprove: (a: Announcement) => void;
     onReject: (a: Announcement) => void;
+    onEdit: (a: Announcement) => void;
+    onDelete: (a: Announcement) => void;
+    canEdit: (a: Announcement) => boolean;
     admin: boolean;
     loading: boolean;
 }) {
-    const { start, end, grouped, onCreate, onApprove, onReject, admin, loading } = props;
+    const {
+        start,
+        end,
+        grouped,
+        onCreate,
+        onApprove,
+        onReject,
+        onEdit,
+        onDelete,
+        canEdit,
+        admin,
+        loading,
+    } = props;
     return (
         <div className="grid gap-4">
             <div className="text-sm text-neutral-600">Showing {formatRange(start, end)}</div>
             {loading ? (
                 <div className="text-sm">Loading…</div>
             ) : grouped.length === 0 ? (
-                <div className="text-sm">No scheduled announcements</div>
+                <div className="flex flex-col items-center justify-center gap-2 rounded border border-dashed py-12 text-center">
+                    <div className="text-sm font-medium text-neutral-700">
+                        No scheduled announcements in this range
+                    </div>
+                    <div className="text-xs text-neutral-500">
+                        Pick a different range, or schedule a new campaign.
+                    </div>
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        className="mt-2"
+                        onClick={() => onCreate(atMidday(start))}
+                    >
+                        Schedule new
+                    </Button>
+                </div>
             ) : (
                 grouped.map(({ date, items }, idx) => (
                     <div key={idx} className="rounded border">
@@ -283,6 +422,9 @@ function Agenda(props: {
                                     a={a}
                                     onApprove={onApprove}
                                     onReject={onReject}
+                                    onEdit={onEdit}
+                                    onDelete={onDelete}
+                                    canEdit={canEdit(a)}
                                     admin={admin}
                                 />
                             ))}
@@ -363,31 +505,65 @@ function EventCard({
     a,
     onApprove,
     onReject,
+    onEdit,
+    onDelete,
+    canEdit,
     admin,
 }: {
     a: Announcement;
     onApprove: (a: Announcement) => void;
     onReject: (a: Announcement) => void;
+    onEdit: (a: Announcement) => void;
+    onDelete: (a: Announcement) => void;
+    canEdit: boolean;
     admin: boolean;
 }) {
     const color = colorForAnnouncement(a);
+    // Prefer external-channel badges (EMAIL / WHATSAPP / PUSH_NOTIFICATION) since those are
+    // what the recipient actually experiences. Fall back to the in-app mode for announcements
+    // with no external channel (pure SYSTEM_ALERT / DASHBOARD_PIN / DM / etc).
+    const badgeLabels: string[] =
+        a.mediumTypes && a.mediumTypes.length > 0
+            ? a.mediumTypes
+            : (a.modes || []).map((m) => m.modeType);
+    const timeLabel = formatScheduleTime(a.scheduling);
     return (
-        <div className="flex items-start justify-between gap-3 rounded border p-2">
+        <div className="flex items-start justify-between gap-3 rounded border p-3">
             <div className="flex-1">
                 <div className="flex items-center gap-2">
                     <span className={`inline-block size-2 rounded-full ${color}`} />
                     <div className="font-medium">{a.title}</div>
+                    {a.status && (
+                        <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${statusPillClasses(a.status)}`}
+                        >
+                            {a.status.replace('_', ' ')}
+                        </span>
+                    )}
                 </div>
-                <div className="mt-1 text-xs text-neutral-600">
-                    {a.modes?.map((m, i) => (
-                        <Badge key={i} variant="outline" className="mr-1">
-                            {m.modeType}
+                {timeLabel && (
+                    <div className="mt-1 text-sm font-medium text-neutral-800">{timeLabel}</div>
+                )}
+                <div className="mt-1 flex flex-wrap items-center gap-1 text-xs text-neutral-600">
+                    {badgeLabels.map((label, i) => (
+                        <Badge key={i} variant="outline">
+                            {label}
                         </Badge>
                     ))}
                 </div>
                 <div className="mt-1 text-xs text-neutral-500">{renderSchedule(a.scheduling)}</div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center gap-2">
+                {canEdit && (
+                    <Button size="sm" variant="secondary" onClick={() => onEdit(a)}>
+                        Edit
+                    </Button>
+                )}
+                {canEdit && (
+                    <Button size="sm" variant="destructive" onClick={() => onDelete(a)}>
+                        Delete
+                    </Button>
+                )}
                 {a.status === 'PENDING_APPROVAL' && admin && (
                     <>
                         <Button size="sm" onClick={() => onApprove(a)}>
@@ -401,6 +577,46 @@ function EventCard({
             </div>
         </div>
     );
+}
+
+function statusPillClasses(status: string): string {
+    switch (status) {
+        case 'SCHEDULED':
+            return 'bg-blue-100 text-blue-800';
+        case 'ACTIVE':
+            return 'bg-green-100 text-green-800';
+        case 'PENDING_APPROVAL':
+            return 'bg-amber-100 text-amber-800';
+        case 'DRAFT':
+            return 'bg-neutral-200 text-neutral-700';
+        case 'INACTIVE':
+        case 'EXPIRED':
+            return 'bg-neutral-200 text-neutral-500';
+        case 'REJECTED':
+            return 'bg-red-100 text-red-800';
+        default:
+            return 'bg-neutral-200 text-neutral-700';
+    }
+}
+
+function formatScheduleTime(s?: Announcement['scheduling']): string {
+    if (!s) return '';
+    if (s.scheduleType === 'IMMEDIATE') return 'Immediate';
+    if (s.scheduleType === 'RECURRING') {
+        return s.cronExpression ? `Recurring · ${s.cronExpression}` : 'Recurring';
+    }
+    // ONE_TIME — prefer just the local-formatted time, no awkward "→ -" tail
+    if (!s.startDate) return '';
+    try {
+        return new Date(s.startDate).toLocaleString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        });
+    } catch {
+        return s.startDate;
+    }
 }
 
 function EventPill({ a }: { a: Announcement }) {
@@ -450,11 +666,19 @@ function formatRange(from: Date, to: Date) {
 
 function renderSchedule(s?: Announcement['scheduling']) {
     if (!s) return '-';
-    if (s.scheduleType === 'RECURRING')
-        return `CRON ${s.cronExpression || ''} (${s.timezone || ''})`;
-    if (s.scheduleType === 'ONE_TIME')
-        return `${fmt(s.startDate)} → ${fmt(s.endDate)} (${s.timezone || ''})`;
-    return 'Immediate';
+    const tzSuffix = s.timezone ? ` · ${s.timezone}` : '';
+    if (s.scheduleType === 'RECURRING') {
+        const cron = s.cronExpression ? `CRON ${s.cronExpression}` : 'Recurring';
+        return `${cron}${tzSuffix}`;
+    }
+    if (s.scheduleType === 'ONE_TIME') {
+        // Render as a range only when an endDate exists. Most one-time campaigns have no
+        // endDate, so we surface just the start time + zone — cleaner than "<time> → - (UTC)".
+        return s.endDate
+            ? `${fmt(s.startDate)} → ${fmt(s.endDate)}${tzSuffix}`
+            : `${fmt(s.startDate)}${tzSuffix}`;
+    }
+    return `Immediate${tzSuffix}`;
 }
 
 function fmt(v?: string) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { CartComponentProps } from "../../-types/course-catalogue-types";
@@ -13,6 +13,7 @@ import { BASE_URL_LEARNER_DASHBOARD } from "@/constants/urls";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { Preferences } from "@capacitor/preferences";
+import { PriceWithMrp } from "@/components/common/price-with-mrp";
 
 
 // Helper for simple image loading in Rent loop
@@ -124,9 +125,13 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
           {/* Price - Always visible on top right */}
           {showPrice && (
             <div className="text-right flex-shrink-0">
-              <p className="text-sm sm:text-base font-bold text-gray-900">
-                ₹{item.price.toFixed(0)}
-              </p>
+              <PriceWithMrp
+                actual={item.price}
+                elevated={item.elevatedPrice}
+                currency={item.currency}
+                size="sm"
+                freeForZero={false}
+              />
             </div>
           )}
         </div>
@@ -203,7 +208,7 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
     ? `Maximum ${maxSeats} books can be rented in this period`
     : "No limit on total number of books in this period";
   const price = plan.min_plan_actual_price || 0;
-  const currencySymbol = '₹';
+  const elevatedPrice = plan.min_plan_elevated_price;
 
   return (
     <div
@@ -224,9 +229,13 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
             {planName}
           </h3>
           <div className="flex items-baseline gap-0.5 flex-shrink-0">
-            <span className="text-xs sm:text-sm font-bold text-gray-900">
-              {currencySymbol}{price.toFixed(0)}
-            </span>
+            <PriceWithMrp
+              actual={price}
+              elevated={elevatedPrice}
+              currency={plan.currency}
+              size="sm"
+              freeForZero={false}
+            />
           </div>
         </div>
 
@@ -273,6 +282,63 @@ const MembershipPlanCard: React.FC<MembershipPlanCardProps> = ({ plan }) => {
       </div>
     </div>
   );
+};
+
+/**
+ * Tiny banner shown above cart items when the cart holds items from a store
+ * that isn't the currently-selected store. Reads `storeFilter` from
+ * localStorage (set by the catalogue page) and listens for changes.
+ */
+const CrossStoreWarning: React.FC<{ items: CartItem[] }> = ({ items }) => {
+  const [storeFilter, setStoreFilter] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : localStorage.getItem("storeFilter")
+  );
+  useEffect(() => {
+    const refresh = () =>
+      setStoreFilter(typeof window === "undefined" ? null : localStorage.getItem("storeFilter"));
+    window.addEventListener("storage", refresh);
+    window.addEventListener("storeFilterChanged", refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("storeFilterChanged", refresh);
+    };
+  }, []);
+
+  const distinctStoresInCart = useMemo(() => {
+    const set = new Map<string, string>();
+    for (const item of items) {
+      if (item.sessionId) {
+        set.set(item.sessionId, item.sessionName || item.sessionId);
+      }
+    }
+    return Array.from(set.entries()).map(([id, name]) => ({ id, name }));
+  }, [items]);
+
+  if (distinctStoresInCart.length === 0) return null;
+
+  // Case A: multiple stores within the cart itself.
+  if (distinctStoresInCart.length > 1) {
+    return (
+      <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        Your cart contains items from {distinctStoresInCart.length} different stores
+        ({distinctStoresInCart.map((s) => s.name).join(", ")}). Each store handles its
+        own fulfillment, so you may need to check out separately.
+      </div>
+    );
+  }
+
+  // Case B: single store in cart, but doesn't match the active filter.
+  const cartStore = distinctStoresInCart[0];
+  if (storeFilter && storeFilter !== cartStore.id) {
+    return (
+      <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+        Your cart items are from <span className="font-semibold">{cartStore.name}</span>,
+        but your active store is different. Switch stores or remove these items to keep
+        things consistent.
+      </div>
+    );
+  }
+  return null;
 };
 
 export const CartComponent: React.FC<CartComponentProps> = ({
@@ -753,6 +819,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
       style={{ backgroundColor, padding }}
     >
       {paymentBanner}
+      <CrossStoreWarning items={items} />
       {items.map((item) => (
         <CartItemCard
           key={item.enrollInviteId || item.id}

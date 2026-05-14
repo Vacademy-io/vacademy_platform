@@ -1,0 +1,162 @@
+import { formatCurrency, getCurrencySymbol } from "@/utils/currency";
+import { cn } from "@/lib/utils";
+
+export interface PriceWithMrpProps {
+  actual?: number | null;
+  elevated?: number | null;
+  currency?: string | null;
+  /** Visual size for the price text. Defaults to "md". */
+  size?: "xs" | "sm" | "md" | "lg" | "xl";
+  /**
+   * "stacked" — small struck-through MRP on top, big offer price below with a
+   *   "% off" badge (e-commerce default).
+   * "inline" — offer price, struck-through MRP and badge all on one line. Good
+   *   for tight horizontal layouts (cart rows, etc.).
+   * Defaults to "stacked".
+   */
+  layout?: "stacked" | "inline";
+  /** Hide the percent-off badge when true. Defaults to false. */
+  hideBadge?: boolean;
+  /** When actual is 0, render "Free" instead of a zero amount. Defaults to true. */
+  freeForZero?: boolean;
+  className?: string;
+}
+
+const sizeClassMap: Record<NonNullable<PriceWithMrpProps["size"]>, { actual: string; mrp: string }> = {
+  xs: { actual: "text-sm font-semibold", mrp: "text-[10px]" },
+  sm: { actual: "text-base font-semibold", mrp: "text-xs" },
+  md: { actual: "text-lg font-bold", mrp: "text-sm" },
+  lg: { actual: "text-2xl font-bold", mrp: "text-base" },
+  xl: { actual: "text-3xl font-bold", mrp: "text-lg" },
+};
+
+export const computeMrpPercent = (
+  actual?: number | null,
+  elevated?: number | null
+): number | null => {
+  if (
+    actual == null ||
+    elevated == null ||
+    elevated <= 0 ||
+    actual >= elevated
+  ) {
+    return null;
+  }
+  return Math.round(((elevated - actual) / elevated) * 100);
+};
+
+/**
+ * Format an amount as currency. Falls back to the rupee symbol when no
+ * currency code is provided — matches the legacy inline formatting in
+ * the catalogue/cart components.
+ */
+export const formatPriceAmount = (
+  amount: number,
+  currency?: string | null
+): string => {
+  if (currency) return formatCurrency(amount, currency);
+  const isInt = Number.isInteger(amount);
+  return `₹${isInt ? amount : amount.toFixed(2)}`;
+};
+
+/**
+ * Renders an actual price with a struck-through MRP and a "% off" badge
+ * when the actual price is below the elevated price. Falls back to a
+ * single price when there is no discount.
+ */
+export const PriceWithMrp = ({
+  actual,
+  elevated,
+  currency,
+  size = "md",
+  layout = "stacked",
+  hideBadge = false,
+  freeForZero = true,
+  className,
+}: PriceWithMrpProps) => {
+  if (actual == null) {
+    return <span className={className}>—</span>;
+  }
+
+  if (freeForZero && actual === 0) {
+    return <span className={cn("text-green-600 font-semibold", className)}>Free</span>;
+  }
+
+  const percent = computeMrpPercent(actual, elevated);
+  const sizing = sizeClassMap[size];
+  const hasMrp = percent != null;
+
+  if (layout === "inline") {
+    return (
+      <span className={cn("inline-flex items-baseline flex-wrap gap-x-2 gap-y-0.5", className)}>
+        <span className={cn(sizing.actual, "text-gray-900 tracking-tight")}>
+          {formatPriceAmount(actual, currency)}
+        </span>
+        {hasMrp && (
+          <>
+            <span className={cn(sizing.mrp, "text-gray-500 line-through")}>
+              {formatPriceAmount(elevated as number, currency)}
+            </span>
+            {!hideBadge && (
+              <span className="rounded bg-green-100 px-1.5 py-0.5 text-xs font-semibold text-green-700">
+                {percent}% off
+              </span>
+            )}
+          </>
+        )}
+      </span>
+    );
+  }
+
+  // Stacked: MRP on top (small, struck), actual + badge below (big).
+  return (
+    <span className={cn("inline-flex flex-col items-start gap-0.5", className)}>
+      {hasMrp && (
+        <span className={cn(sizing.mrp, "text-gray-500")}>
+          M.R.P.{" "}
+          <span className="line-through">
+            {formatPriceAmount(elevated as number, currency)}
+          </span>
+        </span>
+      )}
+      <span className="flex items-baseline flex-wrap gap-x-2 gap-y-0.5">
+        <span className={cn(sizing.actual, "text-gray-900 tracking-tight")}>
+          {formatPriceAmount(actual, currency)}
+        </span>
+        {hasMrp && !hideBadge && (
+          <span className="rounded bg-green-100 px-1.5 py-0.5 text-xs font-semibold text-green-700">
+            {percent}% off
+          </span>
+        )}
+      </span>
+    </span>
+  );
+};
+
+/**
+ * Small corner ribbon for book / course thumbnails. Renders only when
+ * actual < elevated. Intended for absolute positioning on image overlays.
+ */
+export interface OfferBadgeProps {
+  actual?: number | null;
+  elevated?: number | null;
+  className?: string;
+}
+
+export const OfferBadge = ({ actual, elevated, className }: OfferBadgeProps) => {
+  const percent = computeMrpPercent(actual, elevated);
+  if (percent == null) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md bg-red-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm",
+        className
+      )}
+    >
+      {percent}% OFF
+    </span>
+  );
+};
+
+// Avoid unused-import lint when callers only need the symbol elsewhere.
+export { getCurrencySymbol };

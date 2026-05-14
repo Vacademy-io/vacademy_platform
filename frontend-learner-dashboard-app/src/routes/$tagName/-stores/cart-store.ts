@@ -5,12 +5,19 @@ export interface CartItem {
   id: string;
   title: string;
   price: number;
+  /** Strike-through MRP shown alongside the offer price. Optional. */
+  elevatedPrice?: number;
+  /** Currency code (e.g. INR). When absent, callers fall back to the rupee symbol. */
+  currency?: string;
   quantity: number;
   image?: string;
   level?: string;
   packageSessionId?: string;
   enrollInviteId?: string;
   levelId?: string;
+  /** Store/session id (the academic session, e.g. "store 1") this item was added from. */
+  sessionId?: string;
+  sessionName?: string;
   courseId?: string;
   [key: string]: any; // Allow additional fields
 }

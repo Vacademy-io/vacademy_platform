@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
-import { getCurrencySymbol } from "@/utils/currency";
 import { useNavigate } from "@tanstack/react-router";
 import { CourseCatalogProps } from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
@@ -12,6 +11,7 @@ import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 // EnrollmentPaymentDialog import removed - not used in catalog
 
 type PriceRangeState = { min?: number; max?: number } | null;
@@ -147,6 +147,7 @@ interface Course {
   description: string;
   thumbnail: string;
   price: number;
+  elevatedPrice?: number;
   type: string;
   level: string;
   instructor: string;
@@ -313,11 +314,15 @@ const CartControls: React.FC<{
             id: course.id,
             title: course.title,
             price: course.price,
+            elevatedPrice: course.elevatedPrice,
+            currency: course.currency,
             image: course.thumbnail,
             level: course.level,
             packageSessionId: course.packageSessionId,
             enrollInviteId: course.enrollInviteId,
             levelId: course.levelId,
+            sessionId: course.sessionId,
+            sessionName: course.sessionName,
             courseId: course.courseId,
           });
           toast.success(`${course.title} added to cart!`);
@@ -566,6 +571,10 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           // For course catalog, we use min_plan_actual_price from search API
           // This should already be the minimum price from all available plans
           const finalPrice = course.min_plan_actual_price || 0;
+          const elevatedPrice =
+            typeof course.min_plan_elevated_price === "number"
+              ? course.min_plan_elevated_price
+              : undefined;
           const isFree = finalPrice === 0;
 
 
@@ -576,6 +585,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             thumbnail: thumbnailUrl,
             bannerImage: thumbnailUrl, // Use the same image as banner for details page
             price: finalPrice,
+            elevatedPrice,
+            currency: course.currency,
             type: course.package_type || course.type || "General",
             level: course.level_name || "Beginner",
             instructor: course.instructors?.[0]?.full_name || "Unknown Instructor",
@@ -583,6 +594,8 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             rating: course.rating || 0,
             packageSessionId: course.package_session_id,
             enrollInviteId: course.enroll_invite_id, // Use real enroll_invite_id from API
+            sessionId: course.session_id,
+            sessionName: course.session_name,
             // Add all other fields from the API response for dynamic filtering
             ...course
           };
@@ -1037,11 +1050,19 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 >
                   {/* Course Thumbnail */}
                   {displayImage && (
-                    <CourseImage
-                      previewImageUrl={course.thumbnail}
-                      alt={course.title}
-                      className="w-full h-40 object-cover"
-                    />
+                    <div className="relative">
+                      <CourseImage
+                        previewImageUrl={course.thumbnail}
+                        alt={course.title}
+                        className="w-full h-40 object-cover"
+                      />
+                      <div className="absolute top-2 left-2">
+                        <OfferBadge
+                          actual={course.price}
+                          elevated={course.elevatedPrice}
+                        />
+                      </div>
+                    </div>
                   )}
 
                   <div className="p-3">
@@ -1063,9 +1084,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     <div className="flex flex-col gap-2">
                       {/* Price */}
                       {displayPrice && globalSettings?.payment?.enabled !== false && (
-                        <span className="text-lg font-bold text-primary-600">
-                          {course.price === 0 ? "Free" : `${getCurrencySymbol(course.currency || 'INR')}${course.price.toFixed(2)}`}
-                        </span>
+                        <PriceWithMrp
+                          actual={course.price}
+                          elevated={course.elevatedPrice}
+                          currency={course.currency}
+                          size="md"
+                          className="text-primary-600"
+                        />
                       )}
 
                       {/* Badges and Cart */}

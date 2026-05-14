@@ -365,6 +365,8 @@ public class OpenPackageService {
                                         projection.getPackageSessionId(),
                                         projection.getLevelId(),
                                         projection.getLevelName(),
+                                        projection.getSessionId(),
+                                        projection.getSessionName(),
                                         projection.getDripConditionJson(),
                                         instructors,
                                         projection.getReadTimeInMinutes(),
@@ -376,6 +378,7 @@ public class OpenPackageService {
                                         projection.getPaymentOptionStatus(),
                                         projection.getPaymentPlanId(),
                                         projection.getMinPlanActualPrice(),
+                                        projection.getMinPlanElevatedPrice(),
                                         projection.getCurrency(),
                                         projection.getAvailableSlots(),
                                         projection.getMaxSeats());

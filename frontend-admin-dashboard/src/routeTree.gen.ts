@@ -111,6 +111,7 @@ import { Route as AdmissionsDashboardIndexRouteImport } from "./routes/admission
 import { Route as AdmissionsApplicationIndexRouteImport } from "./routes/admissions/application/index"
 import { Route as AdmissionsAdmissionListIndexRouteImport } from "./routes/admissions/admission-list/index"
 import { Route as AdmissionsAdmissionFormIndexRouteImport } from "./routes/admissions/admission-form/index"
+import { Route as AdminPackageManagementOffersIndexRouteImport } from "./routes/admin-package-management/offers/index"
 import { Route as AdminPackageManagementBulkCreateIndexRouteImport } from "./routes/admin-package-management/bulk-create/index"
 import { Route as VimReelsNewRouteImport } from "./routes/vim/reels/new"
 import { Route as TemplatesEditTemplateIdRouteImport } from "./routes/templates/edit/$templateId"
@@ -956,6 +957,16 @@ const AdmissionsAdmissionFormIndexRoute =
       (d) => d.Route,
     ),
   )
+const AdminPackageManagementOffersIndexRoute =
+  AdminPackageManagementOffersIndexRouteImport.update({
+    id: "/admin-package-management/offers/",
+    path: "/admin-package-management/offers/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/admin-package-management/offers/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const AdminPackageManagementBulkCreateIndexRoute =
   AdminPackageManagementBulkCreateIndexRouteImport.update({
     id: "/admin-package-management/bulk-create/",
@@ -1474,6 +1485,7 @@ export interface FileRoutesByFullPath {
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/vim/reels/new": typeof VimReelsNewRoute
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
+  "/admin-package-management/offers/": typeof AdminPackageManagementOffersIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/admission-list/": typeof AdmissionsAdmissionListIndexRoute
   "/admissions/application/": typeof AdmissionsApplicationIndexRoute
@@ -1635,6 +1647,7 @@ export interface FileRoutesByTo {
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/vim/reels/new": typeof VimReelsNewRoute
   "/admin-package-management/bulk-create": typeof AdminPackageManagementBulkCreateIndexRoute
+  "/admin-package-management/offers": typeof AdminPackageManagementOffersIndexRoute
   "/admissions/admission-form": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/admission-list": typeof AdmissionsAdmissionListIndexRoute
   "/admissions/application": typeof AdmissionsApplicationIndexRoute
@@ -1798,6 +1811,7 @@ export interface FileRoutesById {
   "/templates/edit/$templateId": typeof TemplatesEditTemplateIdRoute
   "/vim/reels/new": typeof VimReelsNewRoute
   "/admin-package-management/bulk-create/": typeof AdminPackageManagementBulkCreateIndexRoute
+  "/admin-package-management/offers/": typeof AdminPackageManagementOffersIndexRoute
   "/admissions/admission-form/": typeof AdmissionsAdmissionFormIndexRoute
   "/admissions/admission-list/": typeof AdmissionsAdmissionListIndexRoute
   "/admissions/application/": typeof AdmissionsApplicationIndexRoute
@@ -1962,6 +1976,7 @@ export interface FileRouteTypes {
     | "/templates/edit/$templateId"
     | "/vim/reels/new"
     | "/admin-package-management/bulk-create/"
+    | "/admin-package-management/offers/"
     | "/admissions/admission-form/"
     | "/admissions/admission-list/"
     | "/admissions/application/"
@@ -2123,6 +2138,7 @@ export interface FileRouteTypes {
     | "/templates/edit/$templateId"
     | "/vim/reels/new"
     | "/admin-package-management/bulk-create"
+    | "/admin-package-management/offers"
     | "/admissions/admission-form"
     | "/admissions/admission-list"
     | "/admissions/application"
@@ -2285,6 +2301,7 @@ export interface FileRouteTypes {
     | "/templates/edit/$templateId"
     | "/vim/reels/new"
     | "/admin-package-management/bulk-create/"
+    | "/admin-package-management/offers/"
     | "/admissions/admission-form/"
     | "/admissions/admission-list/"
     | "/admissions/application/"
@@ -2447,6 +2464,7 @@ export interface RootRouteChildren {
   TemplatesEditTemplateIdRoute: typeof TemplatesEditTemplateIdRoute
   VimReelsNewRoute: typeof VimReelsNewRoute
   AdminPackageManagementBulkCreateIndexRoute: typeof AdminPackageManagementBulkCreateIndexRoute
+  AdminPackageManagementOffersIndexRoute: typeof AdminPackageManagementOffersIndexRoute
   AdmissionsAdmissionFormIndexRoute: typeof AdmissionsAdmissionFormIndexRoute
   AdmissionsAdmissionListIndexRoute: typeof AdmissionsAdmissionListIndexRoute
   AdmissionsApplicationIndexRoute: typeof AdmissionsApplicationIndexRoute
@@ -3290,6 +3308,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AdmissionsAdmissionFormIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/admin-package-management/offers/": {
+      id: "/admin-package-management/offers/"
+      path: "/admin-package-management/offers"
+      fullPath: "/admin-package-management/offers/"
+      preLoaderRoute: typeof AdminPackageManagementOffersIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/admin-package-management/bulk-create/": {
       id: "/admin-package-management/bulk-create/"
       path: "/admin-package-management/bulk-create"
@@ -3746,6 +3771,8 @@ const rootRouteChildren: RootRouteChildren = {
   VimReelsNewRoute: VimReelsNewRoute,
   AdminPackageManagementBulkCreateIndexRoute:
     AdminPackageManagementBulkCreateIndexRoute,
+  AdminPackageManagementOffersIndexRoute:
+    AdminPackageManagementOffersIndexRoute,
   AdmissionsAdmissionFormIndexRoute: AdmissionsAdmissionFormIndexRoute,
   AdmissionsAdmissionListIndexRoute: AdmissionsAdmissionListIndexRoute,
   AdmissionsApplicationIndexRoute: AdmissionsApplicationIndexRoute,

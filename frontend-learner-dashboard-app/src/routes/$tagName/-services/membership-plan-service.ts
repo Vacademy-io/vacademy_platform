@@ -5,6 +5,7 @@ export interface MembershipPlan {
     id: string;
     package_name: string;
     min_plan_actual_price: number;
+    min_plan_elevated_price?: number;
     currency: string;
     package_type: string;
     enroll_invite_id: string;

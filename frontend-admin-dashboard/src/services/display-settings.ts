@@ -357,6 +357,9 @@ function mergeDisplayWithDefaults(
         viewCourseOverviewItem: true,
         viewContentNumbering: true,
         allowViewSlidesInReadOnly: true,
+        directEditPublishedCourse: false,
+        canEditCourseStructure: false,
+        canDeleteCourseStructure: false,
     };
     merged.coursePage = {
         viewInviteLinks: incoming?.coursePage?.viewInviteLinks ?? defCoursePage.viewInviteLinks,
@@ -372,6 +375,18 @@ function mergeDisplayWithDefaults(
             incoming?.coursePage?.allowViewSlidesInReadOnly ??
             defCoursePage.allowViewSlidesInReadOnly ??
             true,
+        directEditPublishedCourse:
+            incoming?.coursePage?.directEditPublishedCourse ??
+            defCoursePage.directEditPublishedCourse ??
+            false,
+        canEditCourseStructure:
+            incoming?.coursePage?.canEditCourseStructure ??
+            defCoursePage.canEditCourseStructure ??
+            false,
+        canDeleteCourseStructure:
+            incoming?.coursePage?.canDeleteCourseStructure ??
+            defCoursePage.canDeleteCourseStructure ??
+            false,
     };
 
     // Redirect
@@ -382,10 +397,12 @@ function mergeDisplayWithDefaults(
     const defSlideView = defaults.slideView || {
         showCopyTo: true,
         showMoveTo: true,
+        showDelete: true,
     };
     merged.slideView = {
         showCopyTo: incoming?.slideView?.showCopyTo ?? defSlideView.showCopyTo,
         showMoveTo: incoming?.slideView?.showMoveTo ?? defSlideView.showMoveTo,
+        showDelete: incoming?.slideView?.showDelete ?? defSlideView.showDelete ?? true,
     };
 
     // Authored Courses Card Settings

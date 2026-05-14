@@ -112,6 +112,9 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         viewCourseOverviewItem: true,
         viewContentNumbering: true,
         allowViewSlidesInReadOnly: true,
+        directEditPublishedCourse: false,
+        canEditCourseStructure: false,
+        canDeleteCourseStructure: false,
     },
     courseList: {
         tabs: [
@@ -163,6 +166,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
     slideView: {
         showCopyTo: true,
         showMoveTo: true,
+        showDelete: true,
     },
     authoredCoursesCard: {
         showCopyToEdit: false,

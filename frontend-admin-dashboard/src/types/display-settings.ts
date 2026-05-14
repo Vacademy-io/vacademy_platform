@@ -266,12 +266,24 @@ export interface DisplaySettingsData {
         // into slides on a published / in-review course in read-only mode.
         // When false, slide click is blocked entirely (legacy behavior).
         allowViewSlidesInReadOnly?: boolean;
+        // When true, non-admin roles bypass the read-only lock on published
+        // courses and the Copy-to-Edit / Submit-for-Review approval flow —
+        // they can edit and publish published courses directly.
+        directEditPublishedCourse?: boolean;
+        // When true, Edit buttons on Subject / Module / Chapter rows in the
+        // Outline & Content Structure tabs are visible regardless of course
+        // status. Admin always sees these; this flag is for non-admin roles.
+        canEditCourseStructure?: boolean;
+        // When true, Delete buttons on Subject / Module / Chapter rows are
+        // visible regardless of course status.
+        canDeleteCourseStructure?: boolean;
     };
 
     // 10) Slide view action visibility toggles
     slideView?: {
         showCopyTo: boolean;
         showMoveTo: boolean;
+        showDelete?: boolean;
     };
 
     // 10b) Authored Courses card action visibility (Explore Courses → Authored tab)

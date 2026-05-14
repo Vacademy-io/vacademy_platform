@@ -1132,17 +1132,21 @@ export const CourseDetailsPage = () => {
     const courseCreatedBy = form.getValues('courseData')?.created_by_user_id;
     const isOwnCourse = courseCreatedBy === currentUserId;
 
-    const canEdit =
-        isAdmin ||
-        (isOwnCourse && courseStatus === 'DRAFT') ||
-        (!courseCreatedBy && courseStatus === 'DRAFT');
-    const isPublishedCourse = courseStatus === 'ACTIVE';
-    const isInReviewCourse = courseStatus === 'IN_REVIEW';
-    const isTeacherOnPublishedCourse = !isAdmin && isPublishedCourse;
     // Role display settings (course page toggles)
     const roleKey = isAdmin ? ADMIN_DISPLAY_SETTINGS_KEY : TEACHER_DISPLAY_SETTINGS_KEY;
     const roleDisplay: DisplaySettingsData | null = getDisplaySettingsFromCache(roleKey);
     const coursePage = roleDisplay?.coursePage;
+    const allowDirectEditPublished = coursePage?.directEditPublishedCourse === true;
+
+    const canEdit =
+        isAdmin ||
+        allowDirectEditPublished ||
+        (isOwnCourse && courseStatus === 'DRAFT') ||
+        (!courseCreatedBy && courseStatus === 'DRAFT');
+    const isPublishedCourse = courseStatus === 'ACTIVE';
+    const isInReviewCourse = courseStatus === 'IN_REVIEW';
+    const isTeacherOnPublishedCourse =
+        !isAdmin && isPublishedCourse && !allowDirectEditPublished;
     const showSelectors = !(
         coursePage?.viewCourseConfiguration === false &&
         sessionOptions.length <= 1 &&
@@ -1151,7 +1155,8 @@ export const CourseDetailsPage = () => {
 
     const { instituteDetails } = useInstituteDetailsStore();
     // Show restriction message for non-editable courses
-    const shouldShowRestriction = !isAdmin && (isPublishedCourse || isInReviewCourse);
+    const shouldShowRestriction =
+        !isAdmin && !allowDirectEditPublished && (isPublishedCourse || isInReviewCourse);
 
     // Show dashboard loader while loading
     if (isLoading) {

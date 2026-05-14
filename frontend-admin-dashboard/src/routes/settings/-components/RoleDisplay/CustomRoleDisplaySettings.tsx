@@ -486,6 +486,8 @@ export default function CustomRoleDisplaySettings({
                                                 prev.coursePage?.viewContentNumbering ?? true,
                                             allowViewSlidesInReadOnly:
                                                 prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                            directEditPublishedCourse:
+                                                prev.coursePage?.directEditPublishedCourse ?? false,
                                             [key]: checked,
                                         },
                                     }))
@@ -493,6 +495,34 @@ export default function CustomRoleDisplaySettings({
                             />
                         </div>
                     ))}
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">
+                            Allow direct edit of published courses (skip Copy-to-Edit / approval
+                            flow)
+                        </div>
+                        <Switch
+                            checked={settings.coursePage?.directEditPublishedCourse === true}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    coursePage: {
+                                        viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
+                                        viewShortInviteLinks:
+                                            prev.coursePage?.viewShortInviteLinks ?? false,
+                                        viewCourseConfiguration:
+                                            prev.coursePage?.viewCourseConfiguration ?? true,
+                                        viewCourseOverviewItem:
+                                            prev.coursePage?.viewCourseOverviewItem ?? true,
+                                        viewContentNumbering:
+                                            prev.coursePage?.viewContentNumbering ?? true,
+                                        allowViewSlidesInReadOnly:
+                                            prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                        directEditPublishedCourse: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                 </CardContent>
             </Card>
 

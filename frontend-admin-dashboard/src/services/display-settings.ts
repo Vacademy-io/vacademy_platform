@@ -320,6 +320,7 @@ function mergeDisplayWithDefaults(
         viewCourseOverviewItem: true,
         viewContentNumbering: true,
         allowViewSlidesInReadOnly: true,
+        directEditPublishedCourse: false,
     };
     merged.coursePage = {
         viewInviteLinks: incoming?.coursePage?.viewInviteLinks ?? defCoursePage.viewInviteLinks,
@@ -335,6 +336,10 @@ function mergeDisplayWithDefaults(
             incoming?.coursePage?.allowViewSlidesInReadOnly ??
             defCoursePage.allowViewSlidesInReadOnly ??
             true,
+        directEditPublishedCourse:
+            incoming?.coursePage?.directEditPublishedCourse ??
+            defCoursePage.directEditPublishedCourse ??
+            false,
     };
 
     // Redirect

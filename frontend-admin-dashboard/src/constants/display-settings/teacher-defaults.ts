@@ -71,6 +71,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         viewCourseOverviewItem: true,
         viewContentNumbering: true,
         allowViewSlidesInReadOnly: true,
+        directEditPublishedCourse: false,
     },
     courseList: {
         tabs: [

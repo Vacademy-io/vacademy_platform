@@ -260,6 +260,10 @@ export interface DisplaySettingsData {
         // into slides on a published / in-review course in read-only mode.
         // When false, slide click is blocked entirely (legacy behavior).
         allowViewSlidesInReadOnly?: boolean;
+        // When true, non-admin roles bypass the read-only lock on published
+        // courses and the Copy-to-Edit / Submit-for-Review approval flow —
+        // they can edit and publish published courses directly.
+        directEditPublishedCourse?: boolean;
     };
 
     // 10) Slide view action visibility toggles

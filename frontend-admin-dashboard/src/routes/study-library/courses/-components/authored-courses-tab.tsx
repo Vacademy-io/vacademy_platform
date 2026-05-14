@@ -210,7 +210,15 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
             .catch(() => setRoleDisplay(null));
     }, []);
     const cardSettings = roleDisplay?.authoredCoursesCard;
-    const showCopyToEdit = cardSettings ? cardSettings.showCopyToEdit !== false : Boolean(isAdmin);
+    const allowDirectEditPublished =
+        roleDisplay?.coursePage?.directEditPublishedCourse === true;
+    // When direct-edit is on, the Copy-to-Edit step on published courses is
+    // bypassed — non-admin roles edit published courses in place. The
+    // DRAFT → IN_REVIEW → ACTIVE approval path for new draft courses is left
+    // intact so teachers still have a way to publish brand-new courses.
+    const showCopyToEdit =
+        !allowDirectEditPublished &&
+        (cardSettings ? cardSettings.showCopyToEdit !== false : Boolean(isAdmin));
     const showDelete = cardSettings ? cardSettings.showDelete !== false : Boolean(isAdmin);
     const showEnrolledStudentCount =
         roleDisplay?.courseListCard?.showEnrolledStudentCount === true;

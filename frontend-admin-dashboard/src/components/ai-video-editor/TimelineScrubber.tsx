@@ -1028,12 +1028,16 @@ export function TimelineScrubber() {
                                 steal clicks first (handler stops propagation). Visual: a small
                                 amber pill sits above the waveform line so it's distinguishable
                                 from sentence-region borders without obscuring the waveform. */}
-                            {soundCues.map(({ cue, entryId, absoluteTime }) => {
+                            {soundCues.map(({ cue, entryId, absoluteTime }, i) => {
                                 const left = `${(absoluteTime / totalDuration) * 100}%`;
                                 const isActive = editingCue?.cue.id === cue.id;
+                                // Index suffix because the planner can emit
+                                // duplicate cue.id within one entry; the
+                                // entryId+cueId pair alone isn't guaranteed
+                                // unique.
                                 return (
                                     <button
-                                        key={`${entryId}:${cue.id}`}
+                                        key={`${entryId}:${cue.id}:${i}`}
                                         type="button"
                                         title={`${cue.role || 'SFX'} · ${absoluteTime.toFixed(2)}s`}
                                         onClick={(e) =>

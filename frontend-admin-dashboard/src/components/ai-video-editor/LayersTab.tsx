@@ -5,13 +5,11 @@ import {
     Type as TypeIcon,
     Image as ImageIcon,
     Video as VideoIcon,
-    Box,
     LayoutGrid,
     Trash2,
     Copy,
     ArrowUp,
     ArrowDown,
-    Shapes,
     Plus,
     Upload,
     Loader2,
@@ -22,7 +20,6 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import { getUserId } from '@/utils/userDetails';
 import {
     LayerNode,
-    LayerKind,
     NewLayerKind,
     buildLayerTree,
     pathsEqual,
@@ -34,15 +31,9 @@ import {
     moveNodeAtPath,
     insertChildLayer,
 } from './utils/html-tree';
-
-const KIND_ICON: Record<LayerKind, React.ComponentType<{ className?: string }>> = {
-    text: TypeIcon,
-    image: ImageIcon,
-    video: VideoIcon,
-    svg: Shapes,
-    group: LayoutGrid,
-    other: Box,
-};
+import { inferDisplayMeta } from './registry/friendly-labels';
+import { AdvancedSection } from './AdvancedSection';
+import { LengthControl, RotationControl } from './controls';
 
 interface LayersTabProps {
     entryId: string;
@@ -208,10 +199,25 @@ function LayerRow({
     applyStructural,
     onInsertChild,
 }: LayerRowProps) {
-    const Icon = KIND_ICON[node.kind];
+    const viewMode = useVideoEditorStore((s) => s.viewMode);
+    const display = inferDisplayMeta({
+        tag: node.tag,
+        kind: node.kind,
+        style: node.style,
+    });
+    const Icon = display.icon;
     const isSelected = pathsEqual(node.path, selectedPath);
     const isCollapsed = collapsed[node.id] ?? false;
-    const hasChildren = node.children.length > 0;
+    // In simple mode, filter advanced children (SVG filter primitives etc.)
+    // out of the visible tree. Capability is preserved — switch to developer
+    // mode to see and edit them, or use the entry's HTML/Code tab.
+    const visibleChildren =
+        viewMode === 'simple'
+            ? node.children.filter(
+                  (c) => !inferDisplayMeta({ tag: c.tag, kind: c.kind, style: c.style }).advanced
+              )
+            : node.children;
+    const hasChildren = visibleChildren.length > 0;
 
     return (
         <div>
@@ -254,11 +260,15 @@ function LayerRow({
 
                 <Icon className="size-3 shrink-0 text-gray-400" />
 
-                <span className="flex-1 truncate">{node.label}</span>
+                <span className="flex-1 truncate">{display.label}</span>
 
-                <span className="hidden shrink-0 font-mono text-[9px] text-gray-400 group-hover:inline">
-                    {node.tag}
-                </span>
+                {/* Tag-name badge — only shown in developer mode. Layman users
+                    don't need to know whether something is a `div` or a `span`. */}
+                {viewMode === 'developer' && (
+                    <span className="hidden shrink-0 font-mono text-[9px] text-gray-400 group-hover:inline">
+                        {node.tag}
+                    </span>
+                )}
 
                 {/* Row actions — only for the selected row to avoid clutter */}
                 {isSelected && (
@@ -307,7 +317,7 @@ function LayerRow({
 
             {hasChildren && !isCollapsed && (
                 <div>
-                    {node.children.map((child) => (
+                    {visibleChildren.map((child) => (
                         <LayerRow
                             key={child.id}
                             node={child}
@@ -498,6 +508,8 @@ interface NodeInspectorProps {
 }
 
 function NodeInspector({ node, entryHtml, apply }: NodeInspectorProps) {
+    const viewMode = useVideoEditorStore((s) => s.viewMode);
+    const display = inferDisplayMeta({ tag: node.tag, kind: node.kind, style: node.style });
     const setStyle = (patch: Record<string, string | null>) => {
         apply(patchNodeStyle(entryHtml, node.path, patch));
     };
@@ -510,10 +522,13 @@ function NodeInspector({ node, entryHtml, apply }: NodeInspectorProps) {
 
     return (
         <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-gray-200 bg-gray-50 p-3">
+            {/* Header — friendly kind label. The raw HTML tag only shows in
+                developer mode so layman users don't see `div` / `svg` etc. */}
             <div className="mb-2 flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-gray-500">
-                <span>Layer:</span>
-                <span className="font-mono text-indigo-600">{node.tag}</span>
-                <span className="text-gray-400">· {node.kind}</span>
+                <span className="font-semibold text-gray-600">{display.label}</span>
+                {viewMode === 'developer' && (
+                    <span className="font-mono text-indigo-500">{node.tag}</span>
+                )}
             </div>
 
             {node.kind === 'text' && (
@@ -536,62 +551,49 @@ function NodeInspector({ node, entryHtml, apply }: NodeInspectorProps) {
                 </Field>
             )}
 
-            {/* Geometry */}
-            <div className="grid grid-cols-2 gap-2">
-                <Field label="Left">
-                    <StyleInput
-                        value={node.style.left ?? ''}
-                        onCommit={(v) => setStyle({ left: v || null })}
-                        placeholder="40%"
-                    />
-                </Field>
-                <Field label="Top">
-                    <StyleInput
-                        value={node.style.top ?? ''}
-                        onCommit={(v) => setStyle({ top: v || null })}
-                        placeholder="40%"
-                    />
-                </Field>
-                <Field label="Width">
-                    <StyleInput
-                        value={node.style.width ?? ''}
-                        onCommit={(v) => setStyle({ width: v || null })}
-                        placeholder="auto"
-                    />
-                </Field>
-                <Field label="Height">
-                    <StyleInput
-                        value={node.style.height ?? ''}
-                        onCommit={(v) => setStyle({ height: v || null })}
-                        placeholder="auto"
-                    />
-                </Field>
-            </div>
-
-            <Field label="Transform">
-                <StyleInput
-                    value={node.style.transform ?? ''}
-                    onCommit={(v) => setStyle({ transform: v || null })}
-                    placeholder="translate(-50%,-50%) rotate(0deg)"
+            {/* Primary controls — friendly sliders / pickers. Non-percentage
+                values (auto / px / calc) fall back to a raw text input via
+                LengthControl's `Custom` mode, so every value is reachable. */}
+            <Field label="X position">
+                <LengthControl
+                    value={node.style.left ?? ''}
+                    onCommit={(v) => setStyle({ left: v || null })}
+                    placeholder="40%"
+                    min={-50}
+                    max={100}
+                />
+            </Field>
+            <Field label="Y position">
+                <LengthControl
+                    value={node.style.top ?? ''}
+                    onCommit={(v) => setStyle({ top: v || null })}
+                    placeholder="40%"
+                    min={-50}
+                    max={100}
+                />
+            </Field>
+            <Field label="Width">
+                <LengthControl
+                    value={node.style.width ?? ''}
+                    onCommit={(v) => setStyle({ width: v || null })}
+                    placeholder="auto"
+                />
+            </Field>
+            <Field label="Height">
+                <LengthControl
+                    value={node.style.height ?? ''}
+                    onCommit={(v) => setStyle({ height: v || null })}
+                    placeholder="auto"
                 />
             </Field>
 
-            <div className="grid grid-cols-2 gap-2">
-                <Field label="Opacity">
-                    <StyleInput
-                        value={node.style.opacity ?? ''}
-                        onCommit={(v) => setStyle({ opacity: v || null })}
-                        placeholder="1"
-                    />
-                </Field>
-                <Field label="z-index">
-                    <StyleInput
-                        value={node.style['z-index'] ?? ''}
-                        onCommit={(v) => setStyle({ 'z-index': v || null })}
-                        placeholder="1"
-                    />
-                </Field>
-            </div>
+            <Field label="Opacity">
+                <StyleInput
+                    value={node.style.opacity ?? ''}
+                    onCommit={(v) => setStyle({ opacity: v || null })}
+                    placeholder="1"
+                />
+            </Field>
 
             {(node.kind === 'text' || node.kind === 'group' || node.kind === 'other') && (
                 <div className="grid grid-cols-2 gap-2">
@@ -602,7 +604,7 @@ function NodeInspector({ node, entryHtml, apply }: NodeInspectorProps) {
                             placeholder="#fff"
                         />
                     </Field>
-                    <Field label="Font size">
+                    <Field label="Text size">
                         <StyleInput
                             value={node.style['font-size'] ?? ''}
                             onCommit={(v) => setStyle({ 'font-size': v || null })}
@@ -612,13 +614,38 @@ function NodeInspector({ node, entryHtml, apply }: NodeInspectorProps) {
                 </div>
             )}
 
-            {/* CSS class — handy escape hatch */}
-            <Field label="Class">
-                <ControlledTextInput
-                    value={node.attrs.class ?? ''}
-                    onCommit={(v) => setAttr('class', v || null)}
-                />
-            </Field>
+            {/* Advanced — raw CSS escape hatches plus the friendly rotation
+                control. Collapsed in simple mode, expanded in developer mode;
+                the user can always click to expand. Nothing here is hidden
+                from a layman who wants to drill in. */}
+            <AdvancedSection>
+                <Field label="Rotation">
+                    <RotationControl
+                        value={node.style.transform ?? ''}
+                        onCommit={(v) => setStyle({ transform: v || null })}
+                    />
+                </Field>
+                <Field label="Transform (raw CSS)">
+                    <StyleInput
+                        value={node.style.transform ?? ''}
+                        onCommit={(v) => setStyle({ transform: v || null })}
+                        placeholder="translate(-50%,-50%) rotate(0deg)"
+                    />
+                </Field>
+                <Field label="Layer order (z-index)">
+                    <StyleInput
+                        value={node.style['z-index'] ?? ''}
+                        onCommit={(v) => setStyle({ 'z-index': v || null })}
+                        placeholder="1"
+                    />
+                </Field>
+                <Field label="CSS class">
+                    <ControlledTextInput
+                        value={node.attrs.class ?? ''}
+                        onCommit={(v) => setAttr('class', v || null)}
+                    />
+                </Field>
+            </AdvancedSection>
         </div>
     );
 }

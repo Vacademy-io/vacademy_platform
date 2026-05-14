@@ -226,6 +226,9 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: Pipel
         const linearOrder: PipelineNodeId[] = [
             // Research runs before SCRIPT, so it leads the list when present.
             ...(state.research ? (['research'] as PipelineNodeId[]) : []),
+            // BeatPlanner runs at the start of SCRIPT (before _draft_script)
+            // so Beats sits between Research and Screenplay when present.
+            ...(state.beats ? (['beats'] as PipelineNodeId[]) : []),
             'screenplay',
             'narration',
             'storyboard',

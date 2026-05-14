@@ -39,6 +39,33 @@ export function getEditorIframeAgentScript(): string {
     var pendingSeek = 0;
     var ready = false;
 
+    // ── Critical: pause GSAP synchronously right now ─────────────────
+    // This script is injected at the top of body, AFTER gsap is loaded in
+    // the head but BEFORE the shot inline script tags execute. Pausing the
+    // global timeline here means every subsequent tween is added to a paused
+    // timeline — so the animation never auto-plays and the canvas stays at
+    // frame 0 until we call totalTime(currentTime). Without this, the tween
+    // runs for ~50-200ms (until DOMContentLoaded) and the user sees a
+    // visible flicker on every iframe re-mount.
+    function pauseGsapNow() {
+        try {
+            if (window.gsap && window.gsap.globalTimeline) {
+                window.gsap.globalTimeline.pause();
+                return true;
+            }
+        } catch(e) {}
+        return false;
+    }
+    pauseGsapNow();
+    // If gsap hasn't loaded yet (rare — should be in <head>), keep retrying
+    // until it appears, then pause immediately. Capped at ~3s.
+    if (!window.gsap) {
+        var pauseRetry = setInterval(function() {
+            if (pauseGsapNow()) clearInterval(pauseRetry);
+        }, 4);
+        setTimeout(function(){ clearInterval(pauseRetry); }, 3000);
+    }
+
     function applySeek(tSec) {
         try {
             var g = window.gsap;
@@ -153,7 +180,86 @@ export function getEditorIframeAgentScript(): string {
         if (!el || !style) return;
         for (var k in style) {
             if (!Object.prototype.hasOwnProperty.call(style, k)) continue;
-            try { el.style.setProperty(k, style[k]); } catch (_) {}
+            // Parse out trailing "!important" so the parent can mark inline
+            // writes as important — required when the shot's gsap/anime
+            // animation animates the same property and would otherwise
+            // overwrite our value on every seek.
+            var v = style[k];
+            var priority = '';
+            if (typeof v === 'string') {
+                var m = /^(.*?)\\s*!important\\s*$/.exec(v);
+                if (m) { v = m[1].trim(); priority = 'important'; }
+            }
+            try { el.style.setProperty(k, v, priority); } catch (_) {}
+        }
+    }
+
+    // Parse a CSS declaration string ("left:10px; top:20px !important") into
+    // an array of {prop, value, priority} entries.
+    function parseDeclarations(styleString) {
+        var out = [];
+        if (!styleString) return out;
+        var decls = styleString.split(';');
+        for (var i = 0; i < decls.length; i++) {
+            var d = decls[i].trim();
+            if (!d) continue;
+            var idx = d.indexOf(':');
+            if (idx <= 0) continue;
+            var prop = d.slice(0, idx).trim();
+            var val = d.slice(idx + 1).trim();
+            var priority = '';
+            var m = /^(.*?)\\s*!important\\s*$/.exec(val);
+            if (m) { val = m[1].trim(); priority = 'important'; }
+            if (prop) out.push({ prop: prop, value: val, priority: priority });
+        }
+        return out;
+    }
+
+    // Walk live DOM and the parsed new-HTML body in lockstep; whenever an
+    // element's style attribute differs, replay the new declarations on the
+    // live element via setProperty (so !important is respected and any
+    // gsap/anime-managed properties NOT listed in the new HTML are left
+    // alone — we never blow away a transform that the animation library is
+    // actively tweening). This is what lets style-only edits propagate to
+    // the iframe without forcing an iframe re-mount.
+    function syncStylesFromHtml(html) {
+        if (!html) return;
+        try {
+            var newDoc = new DOMParser().parseFromString(html, 'text/html');
+            var newBody = newDoc.body;
+            if (newBody && document.body) syncStylesRecursive(document.body, newBody);
+        } catch (_) {}
+    }
+
+    function syncStylesRecursive(oldEl, newEl) {
+        if (!oldEl || !newEl) return;
+        if (oldEl.tagName !== newEl.tagName) return;
+        var oldStyle = oldEl.getAttribute('style') || '';
+        var newStyle = newEl.getAttribute('style') || '';
+        if (oldStyle !== newStyle) {
+            // Additive sync: apply every declaration from the new style.
+            // Anything in the OLD style that's NOT in the new style is left
+            // in place; this is intentional so gsap-set inline values (e.g.
+            // transform on an animated element) don't get cleared mid-tween.
+            var decls = parseDeclarations(newStyle);
+            for (var i = 0; i < decls.length; i++) {
+                var d = decls[i];
+                try { oldEl.style.setProperty(d.prop, d.value, d.priority); } catch (_) {}
+            }
+        }
+        var oldKids = [];
+        var newKids = [];
+        for (var i = 0; i < oldEl.children.length; i++) {
+            var c = oldEl.children[i];
+            if (c && !IGNORED[c.tagName.toLowerCase()]) oldKids.push(c);
+        }
+        for (var j = 0; j < newEl.children.length; j++) {
+            var c2 = newEl.children[j];
+            if (c2 && !IGNORED[c2.tagName.toLowerCase()]) newKids.push(c2);
+        }
+        var len = Math.min(oldKids.length, newKids.length);
+        for (var k = 0; k < len; k++) {
+            syncStylesRecursive(oldKids[k], newKids[k]);
         }
     }
 
@@ -185,6 +291,10 @@ export function getEditorIframeAgentScript(): string {
             } catch (_) {}
         } else if (msg.type === 'vx-set-style') {
             applyStylePatch(findElementAtPath(msg.path || []), msg.style);
+        } else if (msg.type === 'vx-sync-styles') {
+            // Parent committed a style-only edit; reapply inline styles to
+            // the existing DOM rather than reloading the iframe.
+            syncStylesFromHtml(msg.html || '');
         } else if (msg.type === 'vx-resize-to-rect') {
             var target = findElementAtPath(msg.path || []);
             var ok = false;

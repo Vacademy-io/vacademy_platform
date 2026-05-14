@@ -156,9 +156,13 @@ public class BulkAssignmentService {
                 }
             }
         } else if (!CollectionUtils.isEmpty(request.getNewUsers()) && dryRun) {
-            // In dry-run, report new users as "would be created"
-            for (NewUserDTO newUser : request.getNewUsers()) {
-                allUserIds.add("dry-run-new-" + newUser.getEmail());
+            // In dry-run, report new users as "would be created". Use the list
+            // index for placeholder uniqueness — for phone-identifier institutes
+            // email may be blank, and several rows could otherwise collide on
+            // the same "dry-run-new-null" key.
+            List<NewUserDTO> newUsers = request.getNewUsers();
+            for (int i = 0; i < newUsers.size(); i++) {
+                allUserIds.add(dryRunPlaceholderId(i, newUsers.get(i)));
             }
         }
 
@@ -168,14 +172,18 @@ public class BulkAssignmentService {
 
         // 2. Fetch user details for email reporting
         Map<String, UserDTO> userMap = fetchUserDetails(allUserIds);
-        // Add dry-run new user placeholders to userMap
+        // Add dry-run new user placeholders to userMap (keyed by the same id
+        // built above in the dry-run branch — see dryRunPlaceholderId).
         if (dryRun && !CollectionUtils.isEmpty(request.getNewUsers())) {
-            for (NewUserDTO newUser : request.getNewUsers()) {
-                String placeholderId = "dry-run-new-" + newUser.getEmail();
+            List<NewUserDTO> newUsers = request.getNewUsers();
+            for (int i = 0; i < newUsers.size(); i++) {
+                NewUserDTO newUser = newUsers.get(i);
+                String placeholderId = dryRunPlaceholderId(i, newUser);
                 userMap.put(placeholderId, UserDTO.builder()
                         .id(placeholderId)
                         .email(newUser.getEmail())
                         .fullName(newUser.getFullName())
+                        .mobileNumber(newUser.getMobileNumber())
                         .build());
             }
         }
@@ -374,13 +382,24 @@ public class BulkAssignmentService {
      * read-back from auth-service.
      */
     private String createNewUser(NewUserDTO newUser, String instituteId, boolean sendCredentials, String learndashBaseUrl) {
+        // Resolve the username explicitly: caller-supplied → email → null.
+        // Sending null lets auth-service generate a username from full_name
+        // (UsernameGenerator). Passing an empty/whitespace string would slip
+        // past the auth-service's StringUtils.hasText check; passing the email
+        // verbatim (which may be blank for phone-identifier institutes) is
+        // confusing — be explicit instead.
+        String resolvedUsername = null;
+        if (StringUtils.hasText(newUser.getUsername())) {
+            resolvedUsername = newUser.getUsername();
+        } else if (StringUtils.hasText(newUser.getEmail())) {
+            resolvedUsername = newUser.getEmail();
+        }
+
         UserDTO.UserDTOBuilder builder = UserDTO.builder()
-                .email(newUser.getEmail())
+                .email(StringUtils.hasText(newUser.getEmail()) ? newUser.getEmail() : null)
                 .fullName(newUser.getFullName())
                 .mobileNumber(newUser.getMobileNumber())
-                .username(StringUtils.hasText(newUser.getUsername())
-                        ? newUser.getUsername()
-                        : newUser.getEmail())
+                .username(resolvedUsername)
                 .password(newUser.getPassword())
                 .gender(newUser.getGender())
                 .roles(CollectionUtils.isEmpty(newUser.getRoles())
@@ -416,9 +435,35 @@ public class BulkAssignmentService {
                 userDTO, instituteId, sendCredentials, learndashBaseUrl);
 
         if (created == null || !StringUtils.hasText(created.getId())) {
-            throw new VacademyException("User creation returned empty result for " + newUser.getEmail());
+            throw new VacademyException("User creation returned empty result for " + describeNewUser(newUser));
         }
         return created.getId();
+    }
+
+    /**
+     * Identifier-agnostic short label used in error/log messages so phone-only
+     * users do not show up as "null" or empty strings.
+     */
+    private static String describeNewUser(NewUserDTO newUser) {
+        if (newUser == null) return "<null>";
+        if (StringUtils.hasText(newUser.getEmail())) return newUser.getEmail();
+        if (StringUtils.hasText(newUser.getMobileNumber())) return "mobile:" + newUser.getMobileNumber();
+        if (StringUtils.hasText(newUser.getFullName())) return "name:" + newUser.getFullName();
+        return "<no identifier>";
+    }
+
+    /**
+     * Stable, unique placeholder id for a not-yet-created new user during dry
+     * run. Uses the row index so phone-only rows (which may share an empty
+     * email) do not collide on the same key.
+     */
+    private static String dryRunPlaceholderId(int index, NewUserDTO newUser) {
+        String suffix = newUser != null && StringUtils.hasText(newUser.getEmail())
+                ? newUser.getEmail()
+                : newUser != null && StringUtils.hasText(newUser.getMobileNumber())
+                        ? newUser.getMobileNumber()
+                        : "row";
+        return "dry-run-new-" + index + "-" + suffix;
     }
 
     private Map<String, UserDTO> fetchUserDetails(Set<String> userIds) {

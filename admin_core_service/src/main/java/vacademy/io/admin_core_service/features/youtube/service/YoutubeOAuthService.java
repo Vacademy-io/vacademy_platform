@@ -90,16 +90,22 @@ public class YoutubeOAuthService {
 
     /**
      * Step 1 — generate the Google consent URL. Caller redirects the browser
-     * here. We stash the (institute, user) pair against a random state token
-     * so the callback can recover context without trusting the URL.
+     * here. We stash the (institute, user, frontendOrigin) tuple against a
+     * random state token so the callback can recover context without trusting
+     * the URL.
+     *
+     * frontendOrigin captures which white-labeled domain the admin came from
+     * (admin.shikshanation.com, dash.vacademy.io, …) so we can redirect them
+     * back to that same domain after Google's callback — not to the backend
+     * host where the callback was served.
      */
-    public String buildAuthorizationUrl(String instituteId, String userId) {
+    public String buildAuthorizationUrl(String instituteId, String userId, String frontendOrigin) {
         if (!isConfigured()) {
             throw new VacademyException(
                     "YouTube OAuth is not configured. Set youtube.oauth.client-id, client-secret, and redirect-uri.");
         }
         String state = randomState();
-        stateCache.put(state, new StatePayload(instituteId, userId));
+        stateCache.put(state, new StatePayload(instituteId, userId, frontendOrigin));
 
         return UriComponentsBuilder.fromHttpUrl(AUTH_URL)
                 .queryParam("client_id", clientId)
@@ -120,10 +126,11 @@ public class YoutubeOAuthService {
     /**
      * Step 2 — handle the OAuth callback. Exchanges the code for tokens,
      * fetches the connected channel info, and stores the refresh token
-     * encrypted. Returns the resolved institute_id so the controller can
-     * redirect the browser appropriately.
+     * encrypted. Returns the resolved institute_id + originating frontend
+     * origin so the controller can redirect the browser back to whichever
+     * white-labeled domain the admin started from.
      */
-    public String exchangeCodeAndStore(String code, String state) {
+    public ExchangeResult exchangeCodeAndStore(String code, String state) {
         StatePayload payload = stateCache.getIfPresent(state);
         if (payload == null) {
             throw new VacademyException("Invalid or expired OAuth state. Restart the connect flow.");
@@ -164,7 +171,7 @@ public class YoutubeOAuthService {
 
         log.info("[YouTube OAuth] Connected institute={} channel={} ({})",
                 payload.instituteId, channel.title, channel.id);
-        return payload.instituteId;
+        return new ExchangeResult(payload.instituteId, payload.frontendOrigin);
     }
 
     /**
@@ -306,6 +313,7 @@ public class YoutubeOAuthService {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(buf);
     }
 
-    private record StatePayload(String instituteId, String userId) {}
+    private record StatePayload(String instituteId, String userId, String frontendOrigin) {}
     private record ChannelInfo(String id, String title, String thumbnailUrl) {}
+    public record ExchangeResult(String instituteId, String frontendOrigin) {}
 }

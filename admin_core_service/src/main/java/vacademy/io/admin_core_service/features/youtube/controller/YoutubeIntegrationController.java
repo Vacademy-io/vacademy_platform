@@ -74,8 +74,14 @@ public class YoutubeIntegrationController {
     @PostMapping("/oauth/initiate")
     public ResponseEntity<Map<String, String>> initiate(
             @RequestParam String instituteId,
+            @RequestHeader(value = "Origin", required = false) String originHeader,
+            @RequestHeader(value = "Referer", required = false) String refererHeader,
             @RequestAttribute("user") CustomUserDetails userDetails) {
-        String url = oauthService.buildAuthorizationUrl(instituteId, userDetails.getUserId());
+        // Capture which white-labeled frontend the admin came from
+        // (admin.shikshanation.com, dash.vacademy.io, …) so the post-OAuth
+        // redirect can return them to the *same* domain.
+        String frontendOrigin = resolveFrontendOrigin(originHeader, refererHeader);
+        String url = oauthService.buildAuthorizationUrl(instituteId, userDetails.getUserId(), frontendOrigin);
         return ResponseEntity.ok(Map.of("authorization_url", url));
     }
 
@@ -93,20 +99,64 @@ public class YoutubeIntegrationController {
             @RequestParam(required = false) String code,
             @RequestParam(required = false) String state,
             @RequestParam(required = false) String error) {
+        // For error paths we don't have the captured frontend origin yet
+        // (state lookup may have failed) — fall back to the configured path
+        // alone. Browsers will then interpret it relative to the backend
+        // host, which is fine for the primary Vacademy domain.
         if (error != null) {
             log.warn("[YouTube OAuth] Google returned error: {}", error);
-            return redirect(errorRedirect + "&reason=" + error);
+            return redirect(buildRedirect(null, errorRedirect + "&reason=" + error));
         }
         if (code == null || state == null) {
-            return redirect(errorRedirect + "&reason=missing_code");
+            return redirect(buildRedirect(null, errorRedirect + "&reason=missing_code"));
         }
         try {
-            oauthService.exchangeCodeAndStore(code, state);
-            return redirect(successRedirect);
+            var result = oauthService.exchangeCodeAndStore(code, state);
+            return redirect(buildRedirect(result.frontendOrigin(), successRedirect));
         } catch (Exception e) {
             log.error("[YouTube OAuth] Callback failed: {}", e.getMessage(), e);
-            return redirect(errorRedirect + "&reason=exchange_failed");
+            return redirect(buildRedirect(null, errorRedirect + "&reason=exchange_failed"));
         }
+    }
+
+    /**
+     * Prepend the captured frontend origin (e.g. https://admin.shikshanation.com)
+     * to the relative success/error path so the browser lands back on the same
+     * white-labeled domain the admin started from. Falls back to the raw
+     * relative path when no origin was captured.
+     *
+     * Open-redirect guard: only allows http/https origins, and only those
+     * matching an entry in {@code youtube.oauth.allowed-origin-suffixes}.
+     * Anything else falls back to the default path (browser interprets it
+     * relative to the backend host).
+     */
+    private String buildRedirect(String frontendOrigin, String path) {
+        if (frontendOrigin == null || frontendOrigin.isBlank()) return path;
+        if (!isAllowedOrigin(frontendOrigin)) {
+            log.warn("[YouTube OAuth] Rejecting non-allowlisted redirect origin: {}", frontendOrigin);
+            return path;
+        }
+        String origin = frontendOrigin.endsWith("/")
+                ? frontendOrigin.substring(0, frontendOrigin.length() - 1)
+                : frontendOrigin;
+        return origin + (path.startsWith("/") ? path : "/" + path);
+    }
+
+    @Value("${youtube.oauth.allowed-origin-suffixes:vacademy.io,shikshanation.com,localhost}")
+    private String allowedOriginSuffixes;
+
+    private boolean isAllowedOrigin(String origin) {
+        try {
+            java.net.URL u = new java.net.URL(origin);
+            if (!"http".equals(u.getProtocol()) && !"https".equals(u.getProtocol())) return false;
+            String host = u.getHost();
+            for (String suffix : allowedOriginSuffixes.split(",")) {
+                String s = suffix.trim();
+                if (s.isEmpty()) continue;
+                if (host.equals(s) || host.endsWith("." + s)) return true;
+            }
+        } catch (Exception ignored) { /* malformed origin → reject */ }
+        return false;
     }
 
     @PostMapping("/disconnect")
@@ -275,6 +325,27 @@ public class YoutubeIntegrationController {
 
     private static String orDefault(String s, String d) {
         return (s == null || s.isBlank()) ? d : s;
+    }
+
+    /**
+     * Prefer the browser-set Origin header (only sent on cross-origin POSTs).
+     * Falls back to parsing scheme+host from the Referer for same-origin
+     * cases. Returns null if neither is usable — buildRedirect then falls
+     * back to the relative path interpreted by the browser as backend-host
+     * relative.
+     */
+    private String resolveFrontendOrigin(String originHeader, String refererHeader) {
+        if (originHeader != null && !originHeader.isBlank() && !"null".equals(originHeader)) {
+            return originHeader;
+        }
+        if (refererHeader != null && !refererHeader.isBlank()) {
+            try {
+                java.net.URL u = new java.net.URL(refererHeader);
+                int port = u.getPort();
+                return u.getProtocol() + "://" + u.getHost() + (port == -1 ? "" : ":" + port);
+            } catch (Exception ignored) { /* fall through */ }
+        }
+        return null;
     }
 
     private ResponseEntity<Void> redirect(String location) {

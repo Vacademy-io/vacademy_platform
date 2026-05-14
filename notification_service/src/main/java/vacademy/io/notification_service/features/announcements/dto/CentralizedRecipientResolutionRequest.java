@@ -68,6 +68,9 @@ public class CentralizedRecipientResolutionRequest {
         @NoArgsConstructor
         public static class CustomFieldFilter {
 
+            // Preferred way to identify the field; admin-core looks up by ID when present.
+            private String customFieldId;
+            // Backward-compatible fallback; only consulted when customFieldId is blank.
             private String fieldName;
             private String fieldValue;
             private String operator = "equals"; // equals, contains, not_equals, etc.

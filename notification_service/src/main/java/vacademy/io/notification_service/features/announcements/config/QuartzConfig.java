@@ -10,17 +10,23 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.quartz.SchedulerFactoryBean;
 import vacademy.io.notification_service.features.announcements.job.AnnouncementSchedulerJob;
 
-import javax.sql.DataSource;
 import java.util.Properties;
 
 @Configuration
 public class QuartzConfig {
 
     @Bean
-    public SchedulerFactoryBean schedulerFactoryBean() {
+    public SchedulerFactoryBean schedulerFactoryBean(
+            JobDetail announcementSchedulerJobDetail,
+            Trigger announcementSchedulerTrigger) {
         SchedulerFactoryBean factory = new SchedulerFactoryBean();
         factory.setQuartzProperties(quartzProperties());
         factory.setJobFactory(new AutowiringSpringBeanJobFactory());
+        // Without these the scheduler boots with zero jobs and the every-minute sweep
+        // never fires. Spring Boot's QuartzAutoConfiguration would normally auto-wire all
+        // JobDetail/Trigger beans, but it backs off entirely once this @Bean is defined.
+        factory.setJobDetails(announcementSchedulerJobDetail);
+        factory.setTriggers(announcementSchedulerTrigger);
         return factory;
     }
 

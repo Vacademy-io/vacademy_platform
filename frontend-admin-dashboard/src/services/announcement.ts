@@ -81,6 +81,20 @@ export const AnnouncementService = {
         return data;
     },
 
+    update: async (
+        announcementId: string,
+        payload: Omit<CreateAnnouncementRequest, 'instituteId'> & { instituteId?: string }
+    ) => {
+        const instituteId = payload.instituteId ?? getInstituteId();
+        if (!instituteId) throw new Error('Missing instituteId');
+        const body: CreateAnnouncementRequest = {
+            ...payload,
+            instituteId,
+        } as CreateAnnouncementRequest;
+        const { data } = await axios.put(`${BASE}/announcements/${announcementId}`, body);
+        return data;
+    },
+
     listByInstitute: async (params?: { page?: number; size?: number; status?: string }) => {
         const instituteId = getInstituteId();
         if (!instituteId) throw new Error('Missing instituteId');

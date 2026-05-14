@@ -12,7 +12,6 @@ import { createFileRoute } from "@tanstack/react-router"
 
 import { Route as rootRouteImport } from "./routes/__root"
 import { Route as LockedFeatureRouteImport } from "./routes/locked-feature"
-import { Route as ErrorPageRouteImport } from "./routes/error-page"
 import { Route as AgentChatRouteImport } from "./routes/agent-chat"
 import { Route as VimIndexRouteImport } from "./routes/vim/index"
 import { Route as VideoApiStudioIndexRouteImport } from "./routes/video-api-studio/index"
@@ -198,11 +197,6 @@ const ExploreAiLazyRoute = ExploreAiLazyRouteImport.update({
 const LockedFeatureRoute = LockedFeatureRouteImport.update({
   id: "/locked-feature",
   path: "/locked-feature",
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ErrorPageRoute = ErrorPageRouteImport.update({
-  id: "/error-page",
-  path: "/error-page",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentChatRoute = AgentChatRouteImport.update({
@@ -1426,7 +1420,6 @@ const AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTy
 
 export interface FileRoutesByFullPath {
   "/agent-chat": typeof AgentChatRoute
-  "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
@@ -1588,7 +1581,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/agent-chat": typeof AgentChatRoute
-  "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
@@ -1750,7 +1742,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/agent-chat": typeof AgentChatRoute
-  "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
@@ -1914,7 +1905,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | "/agent-chat"
-    | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
     | "/landing"
@@ -2076,7 +2066,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/agent-chat"
-    | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
     | "/landing"
@@ -2237,7 +2226,6 @@ export interface FileRouteTypes {
   id:
     | "__root__"
     | "/agent-chat"
-    | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
     | "/landing"
@@ -2400,7 +2388,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AgentChatRoute: typeof AgentChatRoute
-  ErrorPageRoute: typeof ErrorPageRoute
   LockedFeatureRoute: typeof LockedFeatureRoute
   ExploreAiLazyRoute: typeof ExploreAiLazyRoute
   LandingLazyRoute: typeof LandingLazyRoute
@@ -2595,13 +2582,6 @@ declare module "@tanstack/react-router" {
       path: "/locked-feature"
       fullPath: "/locked-feature"
       preLoaderRoute: typeof LockedFeatureRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    "/error-page": {
-      id: "/error-page"
-      path: "/error-page"
-      fullPath: "/error-page"
-      preLoaderRoute: typeof ErrorPageRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/agent-chat": {
@@ -3698,7 +3678,6 @@ const LearnerInsightsLazyRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   AgentChatRoute: AgentChatRoute,
-  ErrorPageRoute: ErrorPageRoute,
   LockedFeatureRoute: LockedFeatureRoute,
   ExploreAiLazyRoute: ExploreAiLazyRoute,
   LandingLazyRoute: LandingLazyRoute,

@@ -16,8 +16,10 @@ import java.util.Optional;
 public interface AnnouncementTaskRepository extends JpaRepository<AnnouncementTask, String> {
     
     List<AnnouncementTask> findByAnnouncementId(String announcementId);
-    
+
     List<AnnouncementTask> findByAnnouncementIdAndIsActive(String announcementId, Boolean isActive);
+
+    void deleteByAnnouncementId(String announcementId);
     
     Optional<AnnouncementTask> findByAnnouncementIdAndIsActiveAndId(String announcementId, Boolean isActive, String id);
     

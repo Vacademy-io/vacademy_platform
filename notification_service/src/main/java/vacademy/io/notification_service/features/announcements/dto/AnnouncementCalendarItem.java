@@ -18,8 +18,13 @@ public class AnnouncementCalendarItem {
     // Mode summary for quick UI badges
     private List<String> modeTypes;
 
+    // Medium summary for UI badges (EMAIL / WHATSAPP / PUSH_NOTIFICATION) — the
+    // user-facing "how is this going out" axis. Empty for in-app-only announcements.
+    private List<String> mediumTypes;
+
     // Scheduling info (if any)
     private ScheduleType scheduleType;
+    private String timezone;
     private LocalDateTime startDate;
     private LocalDateTime endDate;
     private LocalDateTime nextRunTime;

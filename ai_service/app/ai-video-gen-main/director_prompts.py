@@ -928,6 +928,21 @@ def build_ai_video_director_block(
         "avoid in-frame text",
         "  `ai_video_duration_s` (integer, REQUIRED) — one of 4, 6, or 8",
         "",
+        "**For shots longer than 8s:** Veo's hard ceiling per call is 8 seconds. "
+        "You have TWO ways to extend a shot beyond that, both supported:",
+        "  Option A (recommended for continuity) — emit `ai_video_segments` as a "
+        "JSON list of `{prompt, duration_s}` objects. Each segment chains to the "
+        "next via image-to-video conditioning on the prior segment's last frame, "
+        "so a character or scene persists across the cut. Use a slightly evolved "
+        "prompt for each segment (e.g. 'dragon banks left' then 'dragon climbs "
+        "over the ridge') for natural motion. Max 6 segments per shot.",
+        "  Option B (auto-split, simplest) — set `ai_video_duration_s` to the "
+        "total target (e.g. 16, 24). The pipeline auto-splits into 8s chunks "
+        "reusing the same `ai_video_prompt`. The visual continuity is preserved "
+        "by image-to-video chaining, but the prompt stays fixed so motion may "
+        "feel repetitive. Best for ambient / mood shots where exact action "
+        "isn't load-bearing.",
+        "",
         "**Fallback hint (recommended):** also set `video_query` (stock-video "
         "search terms) on the same shot. If Veo fails (safety block, timeout, "
         "cost cap), the shot falls back to a stock VIDEO_HERO using "

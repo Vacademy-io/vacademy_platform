@@ -458,6 +458,31 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: Pipel
                                 <dd>{stats.tokenUsage.image_count}</dd>
                             </>
                         ) : null}
+                        {(() => {
+                            // AI video shot count, derived from scenes since
+                            // the per-shot cost detail isn't plumbed to FE
+                            // state today (lives in timeline meta which the
+                            // editor reads separately). Showing just the
+                            // count is enough to communicate that AI video
+                            // contributed to this run; the editor surfaces
+                            // per-shot detail when the user drills into a
+                            // scene.
+                            const aiVideoCount = state.scenes.filter(
+                                (s) => s.shotType === 'AI_VIDEO_HERO'
+                            ).length;
+                            if (!aiVideoCount) return null;
+                            return (
+                                <>
+                                    <dt className="text-muted-foreground">AI video</dt>
+                                    <dd
+                                        title="Veo-generated shots (fal.ai). Each runs $0.12–$0.40 — hard cap $1.50/video."
+                                        className="font-medium text-violet-700"
+                                    >
+                                        ✨ {aiVideoCount} shot{aiVideoCount === 1 ? '' : 's'}
+                                    </dd>
+                                </>
+                            );
+                        })()}
                     </dl>
                 </div>
             )}

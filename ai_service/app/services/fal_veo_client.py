@@ -38,7 +38,6 @@ max_workers=2 for Veo (slow + expensive) per the plan §5 Phase 3.
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import os
 import time
@@ -545,11 +544,14 @@ def _looks_like_safety_block(text: str) -> bool:
 def get_fal_api_key_from_env() -> Optional[str]:
     """Resolve the fal.ai API key from environment.
 
-    Honors `FAL_KEY` (the canonical fal.ai env var name) AND `FAL_API_KEY`
-    (the legacy variant used elsewhere in this codebase). Returns None if
-    neither is set so the caller can degrade gracefully.
+    Canonical env var is `FAL_API_KEY` — matches the rest of this codebase
+    (Settings.fal_api_key, host planner, avatar batch). `FAL_KEY` is
+    accepted as a legacy fallback for compatibility with fal.ai's own
+    docs/SDK convention; new deployments should set `FAL_API_KEY`.
+
+    Returns None if neither is set so the caller can degrade gracefully.
     """
-    for key in ("FAL_KEY", "FAL_API_KEY"):
+    for key in ("FAL_API_KEY", "FAL_KEY"):
         v = os.environ.get(key)
         if v and v.strip():
             return v.strip()

@@ -172,6 +172,12 @@ export interface VisualPreferences {
     /** Bias for DEVICE_MOCKUP (HTML-rendered app/web/mobile UI). */
     app_ui_mockup?: FamilyBias | null;
     /**
+     * Bias for AI_VIDEO_HERO and inline `<aivideo>` clips (fal.ai Veo).
+     * Ultra+ tiers only — even when set, the run-level `ai_video_enabled`
+     * flag must be on for Veo to actually fire.
+     */
+    ai_video?: FamilyBias | null;
+    /**
      * On-screen text density. Does NOT affect narration length — only the
      * amount of visible text in each shot. On `minimal`/`low` the Director
      * forbids KINETIC_TEXT and the per-shot HTML caps headline word count.
@@ -186,10 +192,18 @@ export const VISUAL_PREFERENCE_FAMILIES = [
     { key: 'svg_illustrated', label: 'SVG / illustrated diagrams' },
     { key: 'motion_graphics', label: 'Motion graphics' },
     { key: 'app_ui_mockup', label: 'App / device UI mockups' },
+    { key: 'ai_video', label: 'AI-generated video (Veo)' },
 ] as const satisfies ReadonlyArray<{
     key: keyof Omit<VisualPreferences, 'text_density'>;
     label: string;
 }>;
+
+/** Default AI video model when none is specified. Phase 3 only ships
+ *  fal-ai/veo3.1/lite; the dropdown exists for future model additions. */
+export const AI_VIDEO_MODELS = [
+    { value: 'fal-ai/veo3.1/lite', label: 'Veo 3.1 Lite (fal.ai)' },
+] as const;
+export type AiVideoModel = (typeof AI_VIDEO_MODELS)[number]['value'];
 
 /** Returns true when the user has expressed any non-default opinion. */
 export function hasActiveVisualPreferences(prefs: VisualPreferences | undefined | null): boolean {
@@ -333,6 +347,24 @@ export interface GenerateVideoRequest {
      * matching field via the IntentRouter free-text scanner.
      */
     visual_preferences?: VisualPreferences;
+    /**
+     * Enable AI video generation (fal.ai Veo) for this run. Ultra and
+     * super_ultra tiers only — backend downgrades to false on other tiers
+     * with a warning. Each AI video shot costs $0.12–$0.40 and the run is
+     * circuit-broken at $1.50 total.
+     */
+    ai_video_enabled?: boolean;
+    /**
+     * When ai_video_enabled is on, lets AI video clips bring their own audio.
+     * Master narration is silenced during those shots. Veo audio is $0.05/s
+     * instead of $0.03/s; only meaningful with ai_video_enabled=true.
+     */
+    ai_video_audio_enabled?: boolean;
+    /**
+     * Optional override for the AI video model. Defaults to
+     * 'fal-ai/veo3.1/lite'. Currently the only supported value.
+     */
+    ai_video_model?: AiVideoModel;
 }
 
 // ── Intent Router types ─────────────────────────────────────────────────
@@ -969,6 +1001,10 @@ export const DEFAULT_OPTIONS: Omit<GenerateVideoRequest, 'prompt'> = {
     quality_tier: 'ultra',
     orientation: 'landscape',
     visual_style: 'standard',
+    // AI video flags default OFF (ultra+ users opt in per run). Backend
+    // downgrades these to false on tier-ineligible runs even when sent.
+    ai_video_enabled: false,
+    ai_video_audio_enabled: false,
 };
 
 export function generateVideoId(): string {
@@ -1699,6 +1735,12 @@ export async function getRemoteHistory(
                 orientation,
                 visual_style: visualStyle,
                 ...(visualPreferences ? { visual_preferences: visualPreferences } : {}),
+                // Phase 3b/4/5 AI video flags — surfaced so re-runs from
+                // history rehydrate the user's original choice. Defaults
+                // false; backend gates against tier eligibility.
+                ai_video_enabled: pickBool('ai_video_enabled', false),
+                ai_video_audio_enabled: pickBool('ai_video_audio_enabled', false),
+                ai_video_model: pickStrOrUndef('ai_video_model') as AiVideoModel | undefined,
             },
             token_usage: item.token_usage ?? null,
             thumbnails,

@@ -97,6 +97,12 @@ function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
     const visual = STATE_VISUAL[scene.state];
     const sceneNumber = String(scene.index + 1).padStart(2, '0');
     const hasThumb = !!(scene.imageUrl || scene.videoUrl);
+    // AI video badge — shown on Scene nodes whose Director-assigned shot_type
+    // is AI_VIDEO_HERO. Marks the shot as Veo-generated so a viewer can spot
+    // at a glance which shots used the AI video capability (and contributed
+    // to the per-video cost cap). Audio variant gets a slightly different
+    // visual; cost is summarized at the PipelinePanel level.
+    const isAiVideo = scene.shotType === 'AI_VIDEO_HERO';
 
     return (
         <div
@@ -146,6 +152,14 @@ function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
                 >
                     {scene.shotType.replace(/_/g, ' ')}
                 </span>
+                {isAiVideo && (
+                    <span
+                        title="AI-generated video (fal.ai Veo)"
+                        className="shrink-0 rounded bg-violet-100 px-1 text-[9px] font-semibold uppercase tracking-wider text-violet-700"
+                    >
+                        ✨ AI
+                    </span>
+                )}
                 <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums text-muted-foreground">
                     {scene.durationS.toFixed(1)}s
                 </span>

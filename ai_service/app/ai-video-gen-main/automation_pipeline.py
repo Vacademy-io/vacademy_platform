@@ -26,7 +26,7 @@ import sys
 import textwrap
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import urllib.error
 import urllib.error
@@ -550,6 +550,10 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # legacy monolithic TTS path remains live. Flip true on a tier to opt
         # into per-shot TTS once the implementation lands and verifies.
         "tts_per_shot_enabled": False,
+        # BeatPlanner (Phase 1) feature flag. Off everywhere by default; the
+        # legacy Script-Generator-emits-beats path remains canonical until
+        # the full BeatPlanner-as-input refactor lands.
+        "beat_planner_enabled": False,
         # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
         "ai_video_eligible": False,
     },
@@ -2184,7 +2188,7 @@ class VideoGenerationPipeline:
             if self._ai_video_run_enabled:
                 _fal_key = get_fal_api_key_from_env()
                 if not _fal_key:
-                    print("⚠️  AI video enabled but neither FAL_KEY nor FAL_API_KEY is set; disabling.")
+                    print("⚠️  AI video enabled but FAL_API_KEY is not set; disabling.")
                     self._ai_video_run_enabled = False
                     self._ai_video_audio_run_enabled = False
                 else:
@@ -2620,6 +2624,62 @@ class VideoGenerationPipeline:
         if do_script:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
+
+            # ── BeatPlanner (Phase 1, opt-in) ─────────────────────────
+            # When `beat_planner_enabled` is set on the tier, run an explicit
+            # beat-planning LLM call BEFORE Script Generator. The beats land
+            # on `self._beats_v2_plan` for telemetry + future Director
+            # consumption. Script Generator still owns narration writing
+            # this round — full BeatPlanner-as-input refactor is deferred.
+            # Failure is non-fatal: log and continue (legacy Script
+            # Generator path remains the source of truth).
+            self._beats_v2_plan = None
+            if self._tier_config.get("beat_planner_enabled"):
+                try:
+                    from beat_planner import plan_beats, BeatPlanError
+                    self._emit_progress({"type": "sub_stage", "sub_stage": "beats_planning",
+                                          "message": "Planning beats from intent..."})
+                    # Convert "2-3 minutes" / "5 minutes" / numeric → seconds.
+                    _bp_target_s = float(getattr(self, "_target_seconds", 0) or 0)
+                    if _bp_target_s <= 0:
+                        _bp_target_s = 150.0  # 2.5min default — matches script-budget fallback
+                    _bp_result = plan_beats(
+                        prompt=base_prompt,
+                        target_duration_s=_bp_target_s,
+                        target_audience=target_audience,
+                        language=language,
+                        content_type=content_type,
+                        tier=self._quality_tier,
+                        llm_chat=self.script_client.chat,
+                        visual_preferences=getattr(self, "_visual_preferences", None) or None,
+                        ai_video_enabled=getattr(self, "_ai_video_run_enabled", False),
+                    )
+                    self._beats_v2_plan = _bp_result
+                    accumulate_usage(_bp_result.get("usage", {}) or {})
+                    _beats_count = len(_bp_result.get("beats") or [])
+                    print(f"📊 BeatPlanner: {_beats_count} beats planned ({_bp_target_s:.0f}s target)")
+                    # Persist to run_dir for resume / debugging. Beats are a
+                    # planning artifact, not load-bearing for the legacy
+                    # script path, so write failure is non-fatal.
+                    try:
+                        (run_dir / "beats_v2.json").write_text(
+                            json.dumps({
+                                "beats": _bp_result.get("beats") or [],
+                                "wpm": _bp_result.get("wpm"),
+                                "usage": _bp_result.get("usage") or {},
+                            }, indent=2),
+                            encoding="utf-8",
+                        )
+                    except Exception:
+                        pass
+                    self._emit_progress({"type": "sub_stage", "sub_stage": "beats_done",
+                                          "message": f"Planned {_beats_count} beats",
+                                          "beat_count": _beats_count})
+                except BeatPlanError as _bp_err:
+                    print(f"   ⚠️ BeatPlanner failed ({_bp_err}); falling through to legacy script path")
+                except Exception as _bp_err:
+                    print(f"   ⚠️ BeatPlanner skipped ({type(_bp_err).__name__}: {_bp_err})")
+
             print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
             self._emit_progress({"type": "sub_stage", "sub_stage": "script_writing",
                                   "message": "Writing script..."})
@@ -3153,6 +3213,21 @@ class VideoGenerationPipeline:
                             _ckpt_plan = json.loads(_director_ckpt.read_text())
                             if _ckpt_plan and _ckpt_plan.get("shots"):
                                 _director_plan = _ckpt_plan
+                                # Resume parity: also run AudioPolicyPlanner on
+                                # checkpoint-loaded plans, since plans saved
+                                # before this fix landed have no audio_policy
+                                # field. Idempotent — re-running on a plan
+                                # that already has audio_policy preserves it.
+                                try:
+                                    from audio_policy_planner import plan_audio_policy
+                                    plan_audio_policy(
+                                        _ckpt_plan["shots"],
+                                        ai_video_audio_enabled=getattr(
+                                            self, "_ai_video_audio_run_enabled", False
+                                        ),
+                                    )
+                                except Exception as _ap_err:
+                                    print(f"   ⚠️ AudioPolicyPlanner skipped on resume ({_ap_err})")
                                 print(f"♻️  Loaded Director plan from checkpoint ({len(_ckpt_plan['shots'])} shots)")
                                 self._emit_progress({
                                     "type": "sub_stage", "sub_stage": "director_done",
@@ -3186,6 +3261,26 @@ class VideoGenerationPipeline:
                             )
                             _dir_usage = director_usage
                             accumulate_usage(_dir_usage)
+                            # ── AudioPolicyPlanner (Phase 2a stub) ──
+                            # Bug fix: the orchestrator's audio gate reads
+                            # `shot["audio_policy"]` but no code path ever
+                            # SET this field until now — so the audio toggle
+                            # was a no-op end-to-end. Call the planner once
+                            # per Director plan to materialize the policy
+                            # decision onto every shot. Quiescent (≤50ms)
+                            # when AI video audio isn't enabled.
+                            if _director_plan and _director_plan.get("shots"):
+                                try:
+                                    from audio_policy_planner import plan_audio_policy
+                                    plan_audio_policy(
+                                        _director_plan["shots"],
+                                        ai_video_audio_enabled=getattr(
+                                            self, "_ai_video_audio_run_enabled", False
+                                        ),
+                                        log_fn=print,
+                                    )
+                                except Exception as _ap_err:
+                                    print(f"   ⚠️ AudioPolicyPlanner skipped ({_ap_err}) — defaulting all shots to narration_only")
                             if _director_plan and _director_plan.get("shots"):
                                 self._emit_progress({
                                     "type": "sub_stage", "sub_stage": "director_done",
@@ -3541,10 +3636,65 @@ class VideoGenerationPipeline:
                 # Use preset based on background_type
                 preset = BACKGROUND_PRESETS.get(background_type, BACKGROUND_PRESETS["black"])
                 render_bg_color = preset["background"]
-            
-            
+
+            # ── Phase 5: silence master narration during intrinsic-audio shots ──
+            # When a shot is AI_VIDEO_HERO + ai_video_audio=true, the Veo MP4
+            # carries its own audio AND the browser plays it (orchestrator
+            # emitted <video> unmuted). Without this pass the user hears
+            # narration AND Veo audio simultaneously during those windows.
+            #
+            # Pipeline-wide consequence: many downstream consumers read
+            # narration.mp3 by NAME (S3 upload, editor playback,
+            # avatar_video pipeline, etc.). To make those see the muted
+            # version, we ATOMIC-SWAP after a successful mute — the muted
+            # file becomes narration.mp3 and the original is preserved as
+            # narration_unmuted.mp3 for resume/debugging.
+            _final_audio_path = tts_outputs.get("audio_path") or audio_path
+            try:
+                from ai_video_orchestrator import mute_master_narration_for_intrinsic_shots
+                _intrinsic_entries = []
+                if timeline_path and Path(timeline_path).exists():
+                    try:
+                        _timeline_data = json.loads(Path(timeline_path).read_text())
+                        _intrinsic_entries = _timeline_data.get("entries", []) or []
+                    except Exception:
+                        _intrinsic_entries = []
+                if _intrinsic_entries and _final_audio_path and Path(_final_audio_path).exists():
+                    _mute_result = mute_master_narration_for_intrinsic_shots(
+                        _intrinsic_entries, Path(_final_audio_path), log_fn=print,
+                    )
+                    if _mute_result.get("processed"):
+                        # Atomic swap: muted sidecar → narration.mp3,
+                        # original narration.mp3 → narration_unmuted.mp3.
+                        # Ensures S3 upload + editor preview see the muted
+                        # version without ALL downstream consumers needing
+                        # to know about the sidecar path.
+                        _master = Path(_final_audio_path)
+                        _sidecar = Path(_mute_result["output"])
+                        _backup = _master.with_name(
+                            f"{_master.stem}_unmuted{_master.suffix}"
+                        )
+                        try:
+                            if _master.exists():
+                                _master.replace(_backup)
+                            _sidecar.replace(_master)
+                            print(
+                                f"   🔁 Swapped narration: muted → {_master.name}, "
+                                f"original preserved as {_backup.name}"
+                            )
+                        except Exception as _swap_err:
+                            # Swap failure: ship with the original; render
+                            # will have narration+Veo collision but won't
+                            # crash. The mute sidecar still exists for
+                            # forensic comparison.
+                            print(f"   ⚠️ narration atomic swap failed ({_swap_err}); shipping unmuted")
+            except Exception as _mute_err:
+                # Mute step is purely additive — failure should never block
+                # render. We ship with the original narration in that case.
+                print(f"   ⚠️ intrinsic-audio mute skipped ({type(_mute_err).__name__}: {_mute_err})")
+
             video_path = self._render_video(
-                audio_path=tts_outputs.get("audio_path") or audio_path,
+                audio_path=_final_audio_path,
                 timeline_path=timeline_path,
                 words_json_path=word_outputs.get("words_json") or words_json,
                 run_dir=run_dir,
@@ -3565,6 +3715,60 @@ class VideoGenerationPipeline:
               f"{total_usage.get('completion_tokens', 0):,} out tokens, "
               f"{total_usage.get('image_count', 0)} images, "
               f"{total_usage.get('tts_character_count', 0):,} TTS chars")
+
+        # Phase 7: AI video telemetry summary — write a per-run JSON with cost
+        # tally, segment counts, and fallback stats so the service layer can
+        # surface the data in the run summary / DB without poking around in
+        # individual entry fields. No-op when AI video wasn't enabled.
+        try:
+            _av_tracker = getattr(self, "_ai_video_cost_tracker", None)
+            if _av_tracker is not None:
+                _av_summary = _av_tracker.summary()
+                # Merge with per-entry AI video counts so the consumer gets
+                # both the run-level circuit-breaker view AND per-shot detail.
+                # Inline <aivideo> counts aren't broken out per-entry (they
+                # live in composer telemetry that isn't pushed to the
+                # timeline) — the tracker's shots_completed total already
+                # rolls them into the run-level view.
+                _av_chain_calls = 0
+                _av_single_calls = 0
+                # Iterate entries to count chain / single hits. We look at
+                # timeline.json since that's the authoritative final state
+                # (entries with _ai_video_* fields).
+                try:
+                    if timeline_path and Path(timeline_path).exists():
+                        _tl = json.loads(Path(timeline_path).read_text())
+                        for _e in _tl.get("entries", []) or []:
+                            if _e.get("_shot_type") == "AI_VIDEO_HERO":
+                                _segs = _e.get("_ai_video_segments") or []
+                                if isinstance(_segs, list) and len(_segs) > 1:
+                                    _av_chain_calls += 1
+                                else:
+                                    _av_single_calls += 1
+                except Exception:
+                    pass
+                _av_summary.update({
+                    "ai_video_enabled": bool(getattr(self, "_ai_video_run_enabled", False)),
+                    "ai_video_audio_enabled": bool(getattr(self, "_ai_video_audio_run_enabled", False)),
+                    "single_shot_count": _av_single_calls,
+                    "chain_shot_count": _av_chain_calls,
+                    # Inline tag counts are aggregated into shots_completed
+                    # already; we record the run-level numbers and let the
+                    # consumer drill into entries for per-shot detail.
+                })
+                (run_dir / "ai_video_summary.json").write_text(
+                    json.dumps(_av_summary, indent=2), encoding="utf-8"
+                )
+                print(
+                    f"🎬 AI video summary: "
+                    f"{_av_summary['shots_completed']} completed, "
+                    f"{_av_summary['shots_failed']} failed, "
+                    f"{_av_summary['shots_skipped_circuit_breaker']} cap-skipped, "
+                    f"${_av_summary['spent_usd']:.2f}/${_av_summary['cap_usd']:.2f} spent"
+                )
+        except Exception as _av_sum_err:
+            # Telemetry write must never fail the run.
+            print(f"   ⚠️ AI video summary write failed (non-fatal): {_av_sum_err}")
 
         return {
             "run_dir": run_dir,
@@ -9796,6 +10000,68 @@ class VideoGenerationPipeline:
 
         return all_results, all_artifacts
 
+    # ------------------------------------------------------------------
+    # AI video — S3 uploader factory (Phase 4b)
+    # ------------------------------------------------------------------
+    def _build_ai_video_uploaders(
+        self,
+    ) -> Optional[Tuple[Callable[["Path"], Optional[str]], Callable[["Path"], Optional[str]]]]:
+        """Construct two upload closures for the chain orchestrator:
+          - `upload_mp4_fn`   : uploads the concatenated chain MP4 → public URL
+          - `upload_frame_fn` : uploads an intermediate last-frame PNG → public URL
+
+        Both bind to the same S3Service (constructed lazily on first call per
+        pipeline instance). Returns None when S3 is unavailable so the caller
+        can degrade gracefully (chain falls back to single-segment).
+
+        Cached on `self._ai_video_s3_service` so subsequent shots in the same
+        run reuse the connection. The cache is reset to a sentinel on init
+        failure so we don't keep retrying.
+        """
+        # Cache slot: None means not yet attempted; False means tried and failed;
+        # an S3Service instance means ready.
+        svc = getattr(self, "_ai_video_s3_service", None)
+        if svc is False:
+            return None
+        if svc is None:
+            # Lazy import — same idiom as avatar batch (line 9986 area).
+            try:
+                import sys as _sys_s3
+                from pathlib import Path as _Path_s3
+                _app_dir = _Path_s3(__file__).parent.parent
+                if str(_app_dir.parent) not in _sys_s3.path:
+                    _sys_s3.path.insert(0, str(_app_dir.parent))
+                from app.services.s3_service import S3Service
+                svc = S3Service()
+            except Exception as _s3_err:
+                print(f"[AI video] ⚠️ S3Service init failed: {_s3_err} — chain disabled")
+                self._ai_video_s3_service = False  # type: ignore[assignment]
+                return None
+            self._ai_video_s3_service = svc
+
+        run_name = getattr(self, "_run_name", None) or "run"
+
+        def _upload_mp4(local_path: "Path") -> Optional[str]:
+            """Upload the concatenated chain MP4. Returns public URL or None."""
+            try:
+                key = f"ai-videos/chains/{run_name}/{local_path.name}"
+                return svc.upload_file(local_path, s3_key=key, content_type="video/mp4")
+            except Exception as up_err:
+                print(f"[AI video] ⚠️ MP4 upload failed for {local_path.name}: {up_err}")
+                return None
+
+        def _upload_frame(local_path: "Path") -> Optional[str]:
+            """Upload an intermediate last-frame PNG (consumed by Veo as
+            image_url for the next chain segment). Returns public URL or None."""
+            try:
+                key = f"ai-videos/chains/{run_name}/frames/{local_path.name}"
+                return svc.upload_file(local_path, s3_key=key, content_type="image/png")
+            except Exception as up_err:
+                print(f"[AI video] ⚠️ frame upload failed for {local_path.name}: {up_err}")
+                return None
+
+        return (_upload_mp4, _upload_frame)
+
     def _run_avatar_batch_sync(
         self,
         director_plan: Dict[str, Any],
@@ -10899,19 +11165,69 @@ class VideoGenerationPipeline:
                     # import below is the canonical path. No fallback is
                     # possible — the directory name has a hyphen so it can
                     # never be imported as `app.ai_video_orchestrator`.
-                    from ai_video_orchestrator import orchestrate_ai_video_shot
-                    _av_canvas = "portrait" if _h > _w else "landscape"
-                    _av_result = orchestrate_ai_video_shot(
-                        shot=shot,
-                        shot_idx=shot_idx,
-                        run_dir=run_dir,
-                        veo_client=self._fal_veo_client,
-                        cost_tracker=self._ai_video_cost_tracker,
-                        canvas=_av_canvas,
-                        run_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
-                        safety_tolerance="3",
-                        log_fn=print,
+                    from ai_video_orchestrator import (
+                        orchestrate_ai_video_shot, orchestrate_ai_video_chain,
                     )
+                    _av_canvas = "portrait" if _h > _w else "landscape"
+
+                    # Dispatch single-shot vs chain. Chain when EITHER:
+                    #   - `ai_video_segments` carries >1 entry (Director explicit), OR
+                    #   - `ai_video_duration_s` > 8 (auto-split into 8s chunks)
+                    _av_segs_field = shot.get("ai_video_segments") or []
+                    _av_has_multi_segments = (
+                        isinstance(_av_segs_field, list) and len(_av_segs_field) > 1
+                    )
+                    try:
+                        _av_dur_req = float(shot.get("ai_video_duration_s") or 0.0)
+                    except (TypeError, ValueError):
+                        _av_dur_req = 0.0
+                    _av_use_chain = _av_has_multi_segments or _av_dur_req > 8.0
+
+                    if _av_use_chain:
+                        # Build S3 uploaders for the chain. The chain needs
+                        # two: one for intermediate frames (PNG) that get
+                        # passed back to Veo as image_url for the next
+                        # segment, and one for the concatenated final MP4
+                        # that becomes the shot's video src.
+                        _av_uploaders = self._build_ai_video_uploaders()
+                        if _av_uploaders is None:
+                            # S3 unavailable → can't chain. Fall back to a
+                            # single 8s segment via the simpler path so the
+                            # shot still ships *something* meaningful.
+                            print(
+                                f"   ⚠️  {_log_label} AI_VIDEO_HERO chain "
+                                f"needs S3 but it's unavailable — degrading "
+                                f"to single 8s segment"
+                            )
+                            _av_use_chain = False
+
+                    if _av_use_chain:
+                        _av_upload_mp4, _av_upload_frame = _av_uploaders
+                        _av_result = orchestrate_ai_video_chain(
+                            shot=shot,
+                            shot_idx=shot_idx,
+                            run_dir=run_dir,
+                            veo_client=self._fal_veo_client,
+                            cost_tracker=self._ai_video_cost_tracker,
+                            upload_mp4_fn=_av_upload_mp4,
+                            upload_frame_fn=_av_upload_frame,
+                            canvas=_av_canvas,
+                            run_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                            safety_tolerance="3",
+                            log_fn=print,
+                        )
+                    else:
+                        _av_result = orchestrate_ai_video_shot(
+                            shot=shot,
+                            shot_idx=shot_idx,
+                            run_dir=run_dir,
+                            veo_client=self._fal_veo_client,
+                            cost_tracker=self._ai_video_cost_tracker,
+                            canvas=_av_canvas,
+                            run_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                            safety_tolerance="3",
+                            log_fn=print,
+                        )
                     if _av_result.error is None:
                         # Success — build entry and return, mirroring the
                         # template-bypass shape so downstream stages see
@@ -11081,6 +11397,29 @@ class VideoGenerationPipeline:
                 )
                 if _skill_catalog:
                     system_prompt = system_prompt + "\n\n" + _skill_catalog
+
+            # Phase 6: inline `<aivideo>` teaching block. Conditional on the
+            # run having AI video enabled AND the shot being a non-specialized
+            # composite type (AI_VIDEO_HERO doesn't need the inline tag — it's
+            # already AI-video at the whole-canvas level; KINETIC_TEXT /
+            # SOURCE_CLIP / IMAGE_CLIP don't support arbitrary composite HTML).
+            if (
+                getattr(self, "_ai_video_run_enabled", False)
+                and shot_type not in ("AI_VIDEO_HERO", "KINETIC_TEXT", "KINETIC_TITLE",
+                                      "SOURCE_CLIP", "IMAGE_CLIP")
+            ):
+                try:
+                    from shot_type_cards import build_ai_video_inline_teaching_block
+                    _av_cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or 1.50)
+                    _av_inline_block = build_ai_video_inline_teaching_block(
+                        enabled=True,
+                        audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                        cost_cap_usd=_av_cap,
+                    )
+                    if _av_inline_block:
+                        system_prompt = system_prompt + "\n\n" + _av_inline_block
+                except Exception as _av_block_err:
+                    print(f"   ⚠️ inline <aivideo> teaching block unavailable ({_av_block_err})")
 
             # Filter word timings to this shot's time range
             shot_words = [w for w in words if start_time <= float(w.get("start", 0)) < end_time]
@@ -12252,6 +12591,50 @@ class VideoGenerationPipeline:
                             )
                 except Exception as _sc_err:
                     print(f"   ⚠️ Skill composer error on shot {shot_idx + 1}: {_sc_err}")
+
+            # ── Inline <aivideo> composer (Phase 6) ──
+            # Scans HTML for <aivideo> tags emitted by the per-shot LLM and
+            # substitutes each with a <video> element backed by a Veo MP4.
+            # Only fires when AI video is enabled for the run; otherwise the
+            # composer is a no-op (it still scans, but the LLM was told not
+            # to emit the tags so the scan finds nothing).
+            #
+            # Order rationale: comes AFTER skill_compose so a future skill
+            # could emit <aivideo> tags that get resolved here on this pass.
+            # Comes BEFORE _ensure_fonts so the inline <video> elements are
+            # in place when font preconnects are computed.
+            #
+            # Failures (Veo error, cap exhausted, missing prompt) fall back
+            # to a CSS gradient placeholder per tag — the shot still ships.
+            if getattr(self, "_ai_video_run_enabled", False) and "<aivideo" in (html or "").lower():
+                try:
+                    from ai_video_composer import compose as _ai_video_compose_fn
+                    _av_inline_result = _ai_video_compose_fn(
+                        html,
+                        ctx={
+                            "shot_index": shot_idx,
+                            "canvas": "portrait" if _h > _w else "landscape",
+                            "audio_policy": shot.get("audio_policy") or "narration_only",
+                        },
+                        veo_client=self._fal_veo_client,
+                        cost_tracker=self._ai_video_cost_tracker,
+                        run_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                        safety_tolerance="3",
+                        log_fn=print,
+                    )
+                    html = _av_inline_result.get("html", html)
+                    _av_inline_succeeded = _av_inline_result.get("succeeded", 0)
+                    _av_inline_failed = _av_inline_result.get("failed", 0)
+                    if _av_inline_succeeded or _av_inline_failed:
+                        _av_inline_cost = _av_inline_result.get("cost_usd", 0.0)
+                        _cap_partial = "  ⚠️ partial (cap)" if _av_inline_result.get("circuit_breaker_partial") else ""
+                        print(
+                            f"   🎞️  Shot {shot_idx + 1} inline <aivideo>: "
+                            f"{_av_inline_succeeded} rendered, {_av_inline_failed} fallback"
+                            f"  (${_av_inline_cost:.3f}){_cap_partial}"
+                        )
+                except Exception as _av_err:
+                    print(f"   ⚠️ Inline <aivideo> composer error on shot {shot_idx + 1}: {_av_err}")
 
             # ── Animation density validator + targeted regen (super_ultra only) ──
             # Scans the generated HTML for GSAP tweens and sync-point delays. If the

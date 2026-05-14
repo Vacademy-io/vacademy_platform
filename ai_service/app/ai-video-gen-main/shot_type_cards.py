@@ -1885,3 +1885,76 @@ def build_per_shot_system_prompt(
     parts.append(do_not)
 
     return "\n".join(parts)
+
+
+def build_ai_video_inline_teaching_block(
+    *,
+    enabled: bool,
+    audio_enabled: bool = False,
+    cost_cap_usd: float = 1.50,
+) -> str:
+    """Per-shot HTML LLM teaching block for the inline `<aivideo>` tag (Phase 6).
+
+    Returns "" when `enabled=False` so the prompt stays clean for runs
+    without AI video. When enabled, this block tells the per-shot LLM that
+    it MAY drop `<aivideo>` tags into composite shot HTML when stock /
+    generated stills can't capture the motion the shot wants.
+
+    Stays in sync with `ai_video_composer.py`'s tag syntax — any changes
+    to attribute names / allowed values must be reflected in both places.
+    """
+    if not enabled:
+        return ""
+
+    lines = [
+        "",
+        "## INLINE `<aivideo>` (fal.ai Veo, ENABLED FOR THIS RUN)",
+        "",
+        "You MAY embed AI-generated video clips INSIDE a composite shot's HTML "
+        "using the `<aivideo>` tag. Use SPARINGLY — each tag costs $0.12–$0.24 "
+        f"(720p, 4–8s). The run has a hard ${cost_cap_usd:.2f} cap; once exceeded, "
+        "additional `<aivideo>` tags resolve to a placeholder.",
+        "",
+        "**Tag syntax (self-closing OR with explicit close):**",
+        "  <aivideo",
+        '    data-prompt="a coral reef teeming with fish, slow current"',
+        '    data-duration="6"',
+        '    data-audio="false"',
+        '    data-aspect="16:9"',
+        "  ></aivideo>",
+        "",
+        "**Attributes:**",
+        "  data-prompt (REQUIRED) — visual description, third-person present "
+        "tense; describe action, subject, framing, lighting; avoid in-frame text",
+        "  data-duration (4 | 6 | 8) — defaults to 8 if omitted; other values "
+        "snap to the nearest allowed",
+        "  data-aspect (16:9 | 9:16) — defaults to the shot's canvas orientation",
+        "  data-audio (true | false) — defaults to false; only takes effect "
+        "when run-level audio is on AND the host shot's audio_policy is "
+        "intrinsic_only (most shots can't enable inline audio)",
+        "",
+        "**Best fits for inline `<aivideo>`:**",
+        "- Side-by-side comparisons where each panel needs its own moving footage",
+        "- Picture-in-picture overlays (small Veo clip inside a larger composite)",
+        "- A motion-graphic shot with one cinematic accent",
+        "",
+        "**Do NOT use `<aivideo>`:**",
+        "- For full-canvas video shots — the Director should set shot_type=AI_VIDEO_HERO instead",
+        "- More than 2 per shot — composite shots with 3+ Veo clips read as chaotic and burn budget",
+        "- For routine visuals stock photos / CSS gradients could carry",
+        "",
+        "The tag resolves to a `<video autoplay muted loop>` element styled to "
+        "fill its parent. Position with normal CSS — the composer fills the "
+        "tag's bounding box with `object-fit: cover`.",
+    ]
+    if audio_enabled:
+        lines.extend([
+            "",
+            "**Audio mode is ON for this run.** Inline `data-audio=\"true\"` only "
+            "takes effect when the host shot's `audio_policy` is "
+            "`intrinsic_only` — i.e. the Director already silenced narration "
+            "for the shot. Otherwise the tag's audio is muted regardless of "
+            "what you set.",
+        ])
+    lines.append("")
+    return "\n".join(lines)

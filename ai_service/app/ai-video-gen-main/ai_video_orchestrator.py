@@ -1,38 +1,50 @@
-"""AI video orchestrator — bridges shot dicts to fal.ai Veo (Phase 3b).
+"""AI video orchestrator — bridges shot dicts to fal.ai Veo (Phase 3b + 4).
 
-Called from `automation_pipeline._shot_task` when shot_type=='AI_VIDEO_HERO'.
-Single entry point `orchestrate_ai_video_shot(...)` does:
-  1. Validate the shot has the required AI-video fields (`ai_video_prompt`,
-     `ai_video_duration_s`)
-  2. Charge the per-call cost against the run's circuit-breaker tally;
-     bail with `CircuitBreakerExhausted` if the tally would exceed the cap
-  3. Call the Veo client (text-to-video for Phase 3)
-  4. Build minimal HTML wrapping the Veo MP4
-  5. Return a result dict the caller can drop into the shot's entry
+Two entry points:
+
+  `orchestrate_ai_video_shot(...)` — Phase 3b single-segment path. Used when
+  the shot is ≤8s and has no `ai_video_segments`. One text-to-video Veo
+  call; returns immediately with the fal CDN URL embedded in HTML.
+
+  `orchestrate_ai_video_chain(...)` — Phase 4 multi-segment path. Used when
+  the shot has `ai_video_segments` with >1 entry OR `ai_video_duration_s` >8.
+  First segment is text-to-video; each subsequent segment uses image-to-
+  video conditioned on the ffmpeg-extracted last frame of the prior
+  segment. Segments are downloaded, concatenated via ffmpeg, and the
+  resulting MP4 is uploaded back (via caller-injected `upload_mp4_fn`)
+  for a stable URL on the final HTML.
+
+  `_shot_task` dispatches to the chain orchestrator when the shot's
+  ai_video_segments / duration cross the single-segment threshold;
+  otherwise the single-shot orchestrator handles it.
 
 Failure modes (every one returns or raises something the caller can act on):
   - `VeoError` subclasses bubble up to caller for the regen-without-AI-video
     fallback path
   - `CircuitBreakerExhausted` bubbles up before any Veo call is made
   - Missing/invalid shot fields raise `AiVideoSpecError`
+  - In the chain path: partial success (some segments completed, then a
+    later one failed or cap-exhausted) returns an `AiVideoShotResult` with
+    `error` populated AND the successfully-rendered prior segments listed
+    on `segments` — the caller MAY salvage them via a downgrade-and-trim
+    strategy if it wants. Phase 4 default: treat partial-chain failure as
+    full failure and fall back to a non-AI shot (mirrors single-shot
+    failure semantics).
 
-The orchestrator is intentionally a pure function over (shot, run_dir,
-ctx, veo_client, cost_tracker) — no class state. This keeps the wiring
-into `_shot_task` to a single function call, makes the orchestrator
-testable in isolation, and avoids tangling Veo state into the pipeline
-object.
-
-Phase 4 will extend this for multi-segment chains (`ai_video_segments`)
-via image-to-video. The current implementation handles only single-segment
-(≤8s) shots; longer shots get truncated to the first 8s with a warning
-logged. Phase 4 lifts that limit.
+Phase 5 will add audio policy gating (Veo's `generate_audio` per segment).
+Phase 6 will add inline `<aivideo>` composer support.
+Phase 7 polish: persist all segments to S3 (today only the concat output
+goes through `upload_mp4_fn`; segments live on the fal CDN until then).
 """
 from __future__ import annotations
 
+import hashlib
 import html as _html
 import json
 import logging
+import subprocess
 import threading
+import time as _time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -521,3 +533,898 @@ def orchestrate_ai_video_shot(
             "request_id": veo_result.request_id,
         }],
     )
+
+
+# ===========================================================================
+# Phase 4 — multi-segment chain via image-to-video
+# ===========================================================================
+
+# ffmpeg subprocess defaults. Overridable via env so the same code runs in
+# dev (homebrew ffmpeg on PATH) and in the container (pinned binary).
+_FFMPEG_BIN = "ffmpeg"
+_FFPROBE_BIN = "ffprobe"
+_FFMPEG_TIMEOUT_S = 60.0
+_FFMPEG_CONCAT_TIMEOUT_S = 180.0
+
+# Per-segment chain budget caps. Beyond `MAX_CHAIN_SEGMENTS` the orchestrator
+# refuses to schedule more segments — a runaway 30s shot at 4 segments × 8s
+# would cost ~$1.00 alone, eating most of the per-video cap.
+MAX_CHAIN_SEGMENTS = 6
+
+
+def _ffmpeg_extract_last_frame(
+    mp4_path: Path,
+    out_png_path: Path,
+    *,
+    ffmpeg_bin: str = _FFMPEG_BIN,
+    timeout_s: float = _FFMPEG_TIMEOUT_S,
+) -> bool:
+    """Extract the last frame of `mp4_path` as PNG at `out_png_path`.
+
+    Uses ffmpeg's `-sseof -1` (seek 1 second from end) + `-vframes 1` to grab
+    the final visible frame. Returns True on success. Returns False on
+    timeout / non-zero exit / missing output file — caller treats as a
+    chain-breaking error.
+
+    Pure-ish: takes paths in, writes a file out, returns bool. No state.
+    """
+    out_png_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        ffmpeg_bin, "-y", "-loglevel", "error",
+        "-sseof", "-1",
+        "-i", str(mp4_path),
+        "-update", "1",
+        "-vframes", "1",
+        "-f", "image2",
+        str(out_png_path),
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        logger.warning(f"[Veo chain] ffmpeg last-frame extract timed out on {mp4_path}")
+        return False
+    except FileNotFoundError:
+        logger.warning(f"[Veo chain] ffmpeg binary '{ffmpeg_bin}' not found")
+        return False
+    if proc.returncode != 0:
+        logger.warning(
+            f"[Veo chain] ffmpeg last-frame extract failed (rc={proc.returncode}): "
+            f"{(proc.stderr or '').strip()[:200]}"
+        )
+        return False
+    return out_png_path.exists() and out_png_path.stat().st_size > 0
+
+
+def _ffmpeg_concat_mp4s(
+    segment_paths: List[Path],
+    out_mp4_path: Path,
+    *,
+    ffmpeg_bin: str = _FFMPEG_BIN,
+    timeout_s: float = _FFMPEG_CONCAT_TIMEOUT_S,
+) -> bool:
+    """Concat the MP4s in `segment_paths` into `out_mp4_path` via ffmpeg's
+    concat demuxer. Re-encodes to a uniform 720p/30fps/AAC stream so chained
+    segments with slight encoding drift line up cleanly. Returns True on
+    success, False on any ffmpeg failure (caller treats as chain failure).
+
+    Mirrors the per-shot TTS concat pattern in `_concat_master_narration` —
+    builds a concat list file, runs ffmpeg, checks the output. The
+    re-encode is cheap (~3-5s per minute of footage) and worth it for the
+    smooth transitions.
+    """
+    if not segment_paths:
+        logger.warning("[Veo chain] concat called with empty segment list")
+        return False
+    out_mp4_path.parent.mkdir(parents=True, exist_ok=True)
+    concat_list_path = out_mp4_path.with_suffix(".concat.txt")
+    concat_lines = [f"file '{p.absolute()}'" for p in segment_paths if p.exists()]
+    if not concat_lines:
+        logger.warning("[Veo chain] concat — no input segments exist on disk")
+        return False
+    concat_list_path.write_text("\n".join(concat_lines), encoding="utf-8")
+    cmd = [
+        ffmpeg_bin, "-y", "-loglevel", "error",
+        "-f", "concat", "-safe", "0",
+        "-i", str(concat_list_path),
+        # Re-encode video: H.264, CRF 23 (visually transparent for 720p),
+        # explicit pixel format for compatibility, capped at 30fps to match
+        # Veo's output and avoid framerate fights at concat boundaries.
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-pix_fmt", "yuv420p", "-r", "30",
+        # Re-encode audio when present, drop cleanly when not. AAC 128k is
+        # the universal-compatibility default; segments with `generate_audio`
+        # mixed across will all conform.
+        "-c:a", "aac", "-b:a", "128k", "-ar", "44100",
+        str(out_mp4_path),
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        logger.warning(f"[Veo chain] ffmpeg concat timed out")
+        return False
+    except FileNotFoundError:
+        logger.warning(f"[Veo chain] ffmpeg binary '{ffmpeg_bin}' not found")
+        return False
+    if proc.returncode != 0:
+        logger.warning(
+            f"[Veo chain] ffmpeg concat failed (rc={proc.returncode}): "
+            f"{(proc.stderr or '').strip()[:300]}"
+        )
+        return False
+    return out_mp4_path.exists() and out_mp4_path.stat().st_size > 0
+
+
+def _download_url_to_path(
+    url: str,
+    out_path: Path,
+    *,
+    timeout_s: float = 60.0,
+) -> bool:
+    """Download `url` to `out_path` via httpx.
+
+    Returns True on success. Returns False on any HTTP / network / file-write
+    failure — caller treats as chain-breaking (we can't proceed without the
+    segment for last-frame extraction).
+    """
+    try:
+        import httpx
+    except ImportError:
+        logger.warning("[Veo chain] httpx not available — cannot download segment")
+        return False
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with httpx.stream("GET", url, timeout=timeout_s, follow_redirects=True) as resp:
+            if resp.status_code >= 400:
+                logger.warning(
+                    f"[Veo chain] download HTTP {resp.status_code} for {url[:80]}"
+                )
+                return False
+            with open(out_path, "wb") as f:
+                for chunk in resp.iter_bytes(chunk_size=1 << 16):
+                    if chunk:
+                        f.write(chunk)
+    except Exception as err:
+        logger.warning(f"[Veo chain] download failed: {type(err).__name__}: {err}")
+        return False
+    return out_path.exists() and out_path.stat().st_size > 0
+
+
+def _resolve_segments(shot: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Normalize a shot's `ai_video_segments` field into a clean list of
+    segment dicts {prompt, duration_s}.
+
+    Two input shapes accepted:
+      - Director-supplied `ai_video_segments` list — used verbatim after
+        normalization
+      - Single-prompt shot with `ai_video_prompt + ai_video_duration_s > 8`
+        — auto-split into N segments of `_normalize_duration_s` length each,
+        reusing the same prompt (so the chain stays on the same scene/character)
+
+    Each segment's prompt defaults to the parent `ai_video_prompt` when
+    blank — useful for Director plans that emit `ai_video_segments` with
+    only durations.
+
+    Returns at most MAX_CHAIN_SEGMENTS segments. Excess entries are
+    truncated with a logged warning at the call site (this function returns
+    the truncated list).
+    """
+    parent_prompt = (shot.get("ai_video_prompt") or "").strip()
+    raw_segments = shot.get("ai_video_segments") or []
+    out: List[Dict[str, Any]] = []
+
+    if isinstance(raw_segments, list) and raw_segments:
+        for raw in raw_segments:
+            if not isinstance(raw, dict):
+                continue
+            prompt = (raw.get("prompt") or parent_prompt or "").strip()
+            if not prompt:
+                continue
+            dur = _normalize_duration_s(raw.get("duration_s"))
+            out.append({"prompt": prompt, "duration_s": dur})
+    elif parent_prompt:
+        # Auto-split path: single prompt, total duration > 8s.
+        # Snap total duration to a multiple of 8s, capped at MAX_CHAIN_SEGMENTS * 8.
+        total_req = 0.0
+        try:
+            total_req = float(shot.get("ai_video_duration_s") or 0.0)
+        except (TypeError, ValueError):
+            total_req = 0.0
+        if total_req <= 8.0:
+            out.append({"prompt": parent_prompt, "duration_s": _normalize_duration_s(total_req or 8)})
+        else:
+            # Split into 8s chunks, with the final chunk taking the remainder
+            # snapped to the nearest allowed duration.
+            full_chunks = int(total_req // 8)
+            remainder = total_req - full_chunks * 8.0
+            for _ in range(full_chunks):
+                out.append({"prompt": parent_prompt, "duration_s": 8})
+            if remainder >= 2.0:  # only bother with a remainder segment if substantial
+                out.append({"prompt": parent_prompt, "duration_s": _normalize_duration_s(remainder)})
+
+    return out[:MAX_CHAIN_SEGMENTS]
+
+
+def _segment_cache_key(
+    *, prompt: str, duration_s: int, resolution: str, aspect_ratio: str,
+    audio_on: bool, seed: Optional[int], prev_seg_key: Optional[str],
+) -> str:
+    """Stable 12-char hex key for a single segment.
+
+    A segment is cache-equivalent when prompt / duration / resolution /
+    aspect / audio / seed all match AND the *content identity* of its
+    starting frame matches. We can't use the start_frame's upload URL
+    directly (URLs are regenerated each upload), so we derive identity
+    from the previous segment's cache key — since segment N-1's cache
+    key uniquely identifies its output content, using it transitively
+    identifies segment N's start frame.
+
+    Result: a chain re-run with the same inputs produces the same cache
+    keys across every segment, so all of them hit cache on a retry.
+
+    Stored at `<run_dir>/ai_video/seg_cache/<key>.mp4` and reused across
+    retries.
+    """
+    payload = "|".join([
+        prompt.strip(),
+        str(int(duration_s)),
+        resolution,
+        aspect_ratio,
+        "audio" if audio_on else "silent",
+        str(int(seed)) if seed is not None else "noseed",
+        prev_seg_key or "head",
+    ])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def _build_chain_html(
+    *,
+    shot_idx: int,
+    video_url: str,
+    audio_policy: str,
+) -> str:
+    """Shorthand — chain output gets the same HTML as a single-shot, since
+    we concat all segments into one MP4 before this point."""
+    return build_ai_video_html(
+        shot_idx=shot_idx, video_url=video_url, audio_policy=audio_policy,
+    )
+
+
+def orchestrate_ai_video_chain(
+    *,
+    shot: Dict[str, Any],
+    shot_idx: int,
+    run_dir: Path,
+    veo_client: Any,
+    cost_tracker: Optional[AiVideoCostTracker],
+    upload_mp4_fn: Callable[[Path], Optional[str]],
+    upload_frame_fn: Optional[Callable[[Path], Optional[str]]] = None,
+    canvas: str = "landscape",
+    run_audio_enabled: bool = False,
+    safety_tolerance: str = "3",
+    log_fn: Optional[Callable[[str], None]] = None,
+) -> AiVideoShotResult:
+    """Multi-segment AI video chain (Phase 4).
+
+    Loops the Veo client across `_resolve_segments(shot)`. First segment is
+    text-to-video; each subsequent segment downloads the prior MP4, extracts
+    the last frame, uploads it (via `upload_frame_fn` or falls back to
+    `upload_mp4_fn`), and submits an image-to-video Veo call. All segments
+    are concatenated via ffmpeg into a single MP4 and uploaded via
+    `upload_mp4_fn` for the final HTML.
+
+    Dependency injection of the upload functions keeps this orchestrator
+    free of S3 state. Tests pass a fake that returns predictable URLs;
+    production passes the real S3 service wrapper.
+
+    Cost behavior:
+      - `try_charge` is called per-segment BEFORE that segment's Veo call.
+        A cap exhaustion mid-chain returns the chain-so-far as an error
+        result; partial output is NOT shipped because a truncated chain
+        would shorten the shot below the planned duration.
+      - On any failure, every segment's reservation is refunded (so a
+        cap-tripped shot doesn't permanently eat budget).
+
+    Returns AiVideoShotResult with `error=None` on success, populated
+    error on any failure. NO exceptions leak.
+    """
+    def _log(msg: str) -> None:
+        if log_fn is not None:
+            try: log_fn(msg)
+            except Exception: pass
+        logger.info(msg)
+
+    # Lazy import — same pattern as single-shot orchestrator
+    try:
+        from app.services.fal_veo_client import VeoError, price_per_call_usd
+    except ImportError:
+        try:
+            from fal_veo_client import VeoError, price_per_call_usd  # type: ignore[no-redef]
+        except ImportError as imp_err:
+            return AiVideoShotResult(
+                shot_idx=shot_idx,
+                error=f"fal_veo_client import failed: {imp_err}",
+                error_class="ImportError",
+                skipped=True,
+            )
+
+    # ── 1. Resolve segments ──────────────────────────────────────────
+    segments_spec = _resolve_segments(shot)
+    if not segments_spec:
+        return AiVideoShotResult(
+            shot_idx=shot_idx,
+            error="ai_video chain has no resolvable segments (missing ai_video_prompt or ai_video_segments)",
+            error_class="AiVideoSpecError",
+        )
+
+    # Director may have requested more than MAX_CHAIN_SEGMENTS — warn so we
+    # have a paper trail when a shot got truncated.
+    requested = shot.get("ai_video_segments") or []
+    if isinstance(requested, list) and len(requested) > MAX_CHAIN_SEGMENTS:
+        _log(
+            f"⚠️  AI_VIDEO_HERO shot {shot_idx}: chain truncated from "
+            f"{len(requested)} to {MAX_CHAIN_SEGMENTS} segments (budget guard)"
+        )
+
+    # ── 2. Resolve common Veo params ──────────────────────────────────
+    aspect_ratio = _resolve_aspect_ratio(canvas)
+    resolution = "720p"
+    audio_policy = (shot.get("audio_policy") or "narration_only").strip().lower()
+    audio_on = _resolve_audio_flag(
+        audio_policy=audio_policy,
+        ai_video_audio=bool(shot.get("ai_video_audio")),
+        run_audio_enabled=run_audio_enabled,
+    )
+    seed = shot.get("ai_video_seed")
+    try:
+        seed_int = int(seed) if seed is not None else None
+    except (TypeError, ValueError):
+        seed_int = None
+    negative_prompt = (shot.get("ai_video_negative_prompt") or "").strip() or None
+
+    # ── 3. Pre-flight cost check ─────────────────────────────────────
+    # Total cost is fully known up-front (params determine price). Reserve
+    # the whole budget atomically — if we can't, fail fast WITHOUT making
+    # any Veo calls. This avoids the "half a chain shipped before cap
+    # tripped" outcome.
+    per_seg_costs = [
+        price_per_call_usd(resolution=resolution, duration_s=seg["duration_s"], audio_on=audio_on)
+        for seg in segments_spec
+    ]
+    total_cost = sum(per_seg_costs)
+    if cost_tracker is not None:
+        try:
+            cost_tracker.try_charge(total_cost)
+        except CircuitBreakerExhausted as cap_err:
+            _log(
+                f"🛑 AI_VIDEO_HERO chain shot {shot_idx}: chain total "
+                f"${total_cost:.2f} would exceed cap "
+                f"(${cost_tracker.spent_usd:.2f}/${cost_tracker.cap_usd:.2f}); "
+                f"falling back."
+            )
+            return AiVideoShotResult(
+                shot_idx=shot_idx,
+                duration_s=sum(s["duration_s"] for s in segments_spec),
+                resolution=resolution,
+                aspect_ratio=aspect_ratio,
+                audio_on=audio_on,
+                cost_usd=0.0,
+                error=str(cap_err),
+                error_class="CircuitBreakerExhausted",
+                skipped=True,
+            )
+
+    # ── 4. Per-segment caching ───────────────────────────────────────
+    seg_cache_dir = run_dir / "ai_video" / "seg_cache"
+    seg_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    chain_dir = run_dir / "ai_video"
+    chain_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── 5. Loop segments ─────────────────────────────────────────────
+    rendered_segments: List[Dict[str, Any]] = []
+    segment_paths: List[Path] = []
+    prev_frame_url: Optional[str] = None
+    prev_seg_key: Optional[str] = None  # cache key of the previous segment
+    chain_start = _time.time()
+
+    for seg_idx, seg_spec in enumerate(segments_spec):
+        seg_prompt = seg_spec["prompt"]
+        seg_dur = seg_spec["duration_s"]
+        seg_start_frame_url: Optional[str] = prev_frame_url if seg_idx > 0 else None
+
+        # Per-segment cache key. Uses `prev_seg_key` (NOT the volatile upload
+        # URL) so a re-run with the same chain spec hits cache on every
+        # segment — including those past the first.
+        ck = _segment_cache_key(
+            prompt=seg_prompt, duration_s=seg_dur, resolution=resolution,
+            aspect_ratio=aspect_ratio, audio_on=audio_on, seed=seed_int,
+            prev_seg_key=prev_seg_key,
+        )
+        cached_mp4 = seg_cache_dir / f"{ck}.mp4"
+        cached_meta = seg_cache_dir / f"{ck}.json"
+
+        if cached_mp4.exists() and cached_meta.exists():
+            # Cache hit — reuse. Refund the budget reservation for this segment.
+            try:
+                meta = json.loads(cached_meta.read_text(encoding="utf-8"))
+            except Exception:
+                meta = {}
+            if cost_tracker is not None:
+                cost_tracker.refund(per_seg_costs[seg_idx])
+            video_url = meta.get("video_url") or ""
+            req_id = meta.get("request_id") or f"cached_{ck}"
+            _log(
+                f"♻️  AI_VIDEO_HERO chain shot {shot_idx} seg {seg_idx}: "
+                f"cache hit ({ck}, ${per_seg_costs[seg_idx]:.2f} refunded)"
+            )
+            segment_paths.append(cached_mp4)
+            rendered_segments.append({
+                "seg_idx": seg_idx,
+                "video_url": video_url,
+                "duration_s": seg_dur,
+                "request_id": req_id,
+                "cache_hit": True,
+            })
+            # NB: prev_frame_url is intentionally reset — even on cache hit we
+            # must re-extract the last frame for the next segment, since the
+            # uploaded frame URL from a previous run isn't preserved in cache.
+            prev_frame_url = None
+            # Cache-hit segments still need their last frame extracted +
+            # uploaded for the next segment's image_url. Handle that the same
+            # way as fresh segments (after this block) via the loop tail.
+            if seg_idx < len(segments_spec) - 1:
+                frame_path = chain_dir / f"shot_{shot_idx:03d}_seg{seg_idx:02d}_last.png"
+                if not _ffmpeg_extract_last_frame(cached_mp4, frame_path):
+                    _refund_chain(cost_tracker, per_seg_costs, seg_idx + 1)
+                    if cost_tracker is not None: cost_tracker.mark_failed()
+                    return AiVideoShotResult(
+                        shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
+                        resolution=resolution, aspect_ratio=aspect_ratio, audio_on=audio_on,
+                        cost_usd=0.0,
+                        error=f"last-frame extract failed on cached seg {seg_idx}",
+                        error_class="FfmpegError",
+                        segments=rendered_segments,
+                    )
+                uploader = upload_frame_fn or upload_mp4_fn
+                uploaded_url = uploader(frame_path) if uploader else None
+                if not uploaded_url:
+                    _refund_chain(cost_tracker, per_seg_costs, seg_idx + 1)
+                    if cost_tracker is not None: cost_tracker.mark_failed()
+                    return AiVideoShotResult(
+                        shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
+                        resolution=resolution, aspect_ratio=aspect_ratio, audio_on=audio_on,
+                        cost_usd=0.0,
+                        error=f"frame upload returned no URL on cached seg {seg_idx}",
+                        error_class="UploadError",
+                        segments=rendered_segments,
+                    )
+                prev_frame_url = uploaded_url
+            # Update prev_seg_key so the NEXT segment's cache key chains off
+            # this one's identity, regardless of cache hit/miss.
+            prev_seg_key = ck
+            continue
+
+        # Cache miss — call Veo
+        _log(
+            f"🎬 AI_VIDEO_HERO chain shot {shot_idx} seg {seg_idx + 1}/{len(segments_spec)}: "
+            f"{seg_dur}s, ${per_seg_costs[seg_idx]:.2f}"
+            + (f", start_frame={seg_start_frame_url[:60]}..." if seg_start_frame_url else "")
+        )
+        try:
+            if seg_idx == 0:
+                veo_result = veo_client.generate_text_to_video(
+                    prompt=seg_prompt,
+                    duration_s=seg_dur,
+                    aspect_ratio=aspect_ratio,
+                    resolution=resolution,
+                    generate_audio=audio_on,
+                    negative_prompt=negative_prompt,
+                    seed=seed_int,
+                    auto_fix=True,
+                    safety_tolerance=safety_tolerance,
+                )
+            else:
+                if not seg_start_frame_url:
+                    raise RuntimeError(
+                        f"chain segment {seg_idx} missing start_frame_url — last-frame "
+                        f"extraction or upload failed on segment {seg_idx - 1}"
+                    )
+                veo_result = veo_client.generate_image_to_video(
+                    prompt=seg_prompt,
+                    image_url=seg_start_frame_url,
+                    duration_s=seg_dur,
+                    aspect_ratio=aspect_ratio,
+                    resolution=resolution,
+                    generate_audio=audio_on,
+                    negative_prompt=negative_prompt,
+                    seed=seed_int,
+                    auto_fix=True,
+                    safety_tolerance=safety_tolerance,
+                )
+        except VeoError as err:
+            _refund_chain(cost_tracker, per_seg_costs, seg_idx)
+            if cost_tracker is not None: cost_tracker.mark_failed()
+            klass = type(err).__name__
+            _log(f"❌ AI_VIDEO_HERO chain shot {shot_idx} seg {seg_idx}: {klass}: {err}")
+            return AiVideoShotResult(
+                shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
+                resolution=resolution, aspect_ratio=aspect_ratio, audio_on=audio_on,
+                cost_usd=0.0, error=str(err), error_class=klass,
+                segments=rendered_segments,
+            )
+        except Exception as err:
+            _refund_chain(cost_tracker, per_seg_costs, seg_idx)
+            if cost_tracker is not None: cost_tracker.mark_failed()
+            klass = type(err).__name__
+            _log(f"❌ AI_VIDEO_HERO chain shot {shot_idx} seg {seg_idx}: unexpected {klass}: {err}")
+            return AiVideoShotResult(
+                shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
+                resolution=resolution, aspect_ratio=aspect_ratio, audio_on=audio_on,
+                cost_usd=0.0, error=str(err), error_class=klass,
+                segments=rendered_segments,
+            )
+
+        # Download the segment locally so we can a) extract last frame, b) concat.
+        # (Per-segment Veo elapsed time is captured in the segment record but
+        # not accumulated separately — the chain wall-clock from `chain_start`
+        # already covers it for the run summary.)
+        seg_local = seg_cache_dir / f"{ck}.mp4"
+        if not _download_url_to_path(veo_result.video_url, seg_local):
+            _refund_chain(cost_tracker, per_seg_costs, seg_idx + 1)
+            if cost_tracker is not None: cost_tracker.mark_failed()
+            return AiVideoShotResult(
+                shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
+                resolution=resolution, aspect_ratio=aspect_ratio, audio_on=audio_on,
+                cost_usd=0.0,
+                error=f"segment {seg_idx} download failed from {veo_result.video_url[:80]}",
+                error_class="VeoDownloadError",
+                segments=rendered_segments,
+            )
+        # Persist cache metadata so re-runs can reuse this segment.
+        try:
+            cached_meta.write_text(json.dumps({
+                "request_id": veo_result.request_id,
+                "video_url": veo_result.video_url,
+                "duration_s": veo_result.duration_s,
+                "resolution": veo_result.resolution,
+                "aspect_ratio": veo_result.aspect_ratio,
+                "audio_on": veo_result.audio_on,
+                "cost_usd": veo_result.cost_usd,
+                "start_frame_url": seg_start_frame_url,
+            }, indent=2), encoding="utf-8")
+        except Exception as meta_err:
+            _log(f"⚠️  AI_VIDEO_HERO chain shot {shot_idx} seg {seg_idx}: cache metadata write failed: {meta_err}")
+
+        segment_paths.append(seg_local)
+        rendered_segments.append({
+            "seg_idx": seg_idx,
+            "video_url": veo_result.video_url,
+            "duration_s": veo_result.duration_s,
+            "request_id": veo_result.request_id,
+            "cache_hit": False,
+        })
+
+        # If this isn't the last segment, extract its last frame + upload it
+        # so the next iteration can use it as image_url.
+        if seg_idx < len(segments_spec) - 1:
+            frame_path = chain_dir / f"shot_{shot_idx:03d}_seg{seg_idx:02d}_last.png"
+            if not _ffmpeg_extract_last_frame(seg_local, frame_path):
+                _refund_chain(cost_tracker, per_seg_costs, seg_idx + 1)
+                if cost_tracker is not None: cost_tracker.mark_failed()
+                return AiVideoShotResult(
+                    shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
+                    resolution=resolution, aspect_ratio=aspect_ratio, audio_on=audio_on,
+                    cost_usd=0.0,
+                    error=f"last-frame extract failed on seg {seg_idx}",
+                    error_class="FfmpegError",
+                    segments=rendered_segments,
+                )
+            uploader = upload_frame_fn or upload_mp4_fn
+            uploaded_url = uploader(frame_path) if uploader else None
+            if not uploaded_url:
+                _refund_chain(cost_tracker, per_seg_costs, seg_idx + 1)
+                if cost_tracker is not None: cost_tracker.mark_failed()
+                return AiVideoShotResult(
+                    shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
+                    resolution=resolution, aspect_ratio=aspect_ratio, audio_on=audio_on,
+                    cost_usd=0.0,
+                    error=f"frame upload returned no URL on seg {seg_idx}",
+                    error_class="UploadError",
+                    segments=rendered_segments,
+                )
+            prev_frame_url = uploaded_url
+        # Carry this segment's cache key forward so segment N+1 chains its
+        # cache key off this one's stable identity (not the volatile URL).
+        prev_seg_key = ck
+
+    # ── 6. Concat all segments + upload final MP4 ────────────────────
+    if cost_tracker is not None:
+        cost_tracker.mark_completed()
+    final_mp4 = chain_dir / f"shot_{shot_idx:03d}_chain.mp4"
+    if not _ffmpeg_concat_mp4s(segment_paths, final_mp4):
+        return AiVideoShotResult(
+            shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
+            resolution=resolution, aspect_ratio=aspect_ratio, audio_on=audio_on,
+            cost_usd=total_cost,
+            error="ffmpeg concat failed at end of chain",
+            error_class="FfmpegError",
+            segments=rendered_segments,
+        )
+    final_url = upload_mp4_fn(final_mp4) if upload_mp4_fn else None
+    if not final_url:
+        return AiVideoShotResult(
+            shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
+            resolution=resolution, aspect_ratio=aspect_ratio, audio_on=audio_on,
+            cost_usd=total_cost,
+            error="concat output upload returned no URL",
+            error_class="UploadError",
+            segments=rendered_segments,
+        )
+
+    # Persist top-level chain metadata
+    try:
+        (chain_dir / f"shot_{shot_idx:03d}.json").write_text(json.dumps({
+            "shot_idx": shot_idx,
+            "video_url": final_url,
+            "duration_s": sum(s["duration_s"] for s in segments_spec),
+            "resolution": resolution,
+            "aspect_ratio": aspect_ratio,
+            "audio_on": audio_on,
+            "cost_usd": total_cost,
+            "segments": rendered_segments,
+            "elapsed_total_s": round(_time.time() - chain_start, 2),
+        }, indent=2), encoding="utf-8")
+    except Exception as meta_err:
+        _log(f"⚠️  AI_VIDEO_HERO chain shot {shot_idx}: top-level meta write failed: {meta_err}")
+
+    html = _build_chain_html(shot_idx=shot_idx, video_url=final_url, audio_policy=audio_policy)
+    chain_elapsed = round(_time.time() - chain_start, 2)
+    _log(
+        f"✅ AI_VIDEO_HERO chain shot {shot_idx}: "
+        f"{len(rendered_segments)} segments, {chain_elapsed:.1f}s wall, "
+        f"${total_cost:.3f}, {final_url[:80]}"
+    )
+    return AiVideoShotResult(
+        shot_idx=shot_idx,
+        html=html,
+        video_url=final_url,
+        request_id=rendered_segments[-1]["request_id"] if rendered_segments else "",
+        duration_s=sum(s["duration_s"] for s in segments_spec),
+        resolution=resolution,
+        aspect_ratio=aspect_ratio,
+        audio_on=audio_on,
+        cost_usd=total_cost,
+        elapsed_s=chain_elapsed,
+        segments=rendered_segments,
+    )
+
+
+def _refund_chain(
+    cost_tracker: Optional[AiVideoCostTracker],
+    per_seg_costs: List[float],
+    seg_idx_failed: int,
+) -> None:
+    """Refund unspent budget for segments not yet executed.
+
+    Segments [0, seg_idx_failed) succeeded; segments [seg_idx_failed, end)
+    will not run. Refund the latter range so a chain failure mid-way doesn't
+    permanently consume budget for segments we never tried.
+    """
+    if cost_tracker is None:
+        return
+    refund_amount = sum(per_seg_costs[seg_idx_failed:])
+    if refund_amount > 0:
+        cost_tracker.refund(refund_amount)
+
+
+# ===========================================================================
+# Phase 5 — master narration silencing for intrinsic_only shot windows
+# ===========================================================================
+#
+# When a shot has audio_policy=intrinsic_only (the orchestrator sets this for
+# AI_VIDEO_HERO + ai_video_audio=true + run audio enabled), TWO audio sources
+# would play simultaneously in the final MP4 unless we intervene:
+#   1. Master narration (covers the full video duration)
+#   2. Veo audio embedded in the <video> element (the browser plays it during
+#      that shot's window since the orchestrator emits the <video> unmuted)
+#
+# The render server's audio mix is: master narration + browser-captured audio.
+# Without silencing master narration in the intrinsic_only window, the user
+# hears narration AND Veo audio simultaneously — exactly the wrong mix.
+#
+# Fix: post-process master narration.mp3 to zero-volume the affected windows
+# BEFORE render compose. The browser-rendered Veo audio fills the silence at
+# render time, no further mixing needed.
+#
+# These helpers are deliberately pure (path-in/path-out, returns bool) so
+# they're testable in isolation and slot into the pipeline as a single
+# conditional call after master narration is finalized.
+
+
+def collect_intrinsic_audio_ranges(
+    entries: List[Dict[str, Any]],
+) -> List[tuple[float, float]]:
+    """Scan a timeline entry list and return [(start_s, end_s)] for every
+    shot whose audio is intrinsic — i.e. where the master narration MUST be
+    silenced so the shot's embedded audio plays alone.
+
+    Identifies an intrinsic shot by EITHER:
+      - `_ai_video_audio_on == True` on the entry (set by the orchestrator
+        when audio_policy=intrinsic_only AND Veo's generate_audio fired), OR
+      - explicit `_audio_policy == "intrinsic_only"` on the entry (future-
+        proofs the helper against non-AI-video intrinsic sources like
+        source-clip native VO when those land).
+
+    Ranges are clamped to non-negative starts and merged when adjacent /
+    overlapping. Empty input → empty output. Out-of-order entries are
+    tolerated (we sort before merging).
+    """
+    raw_ranges: List[tuple[float, float]] = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        is_intrinsic = bool(e.get("_ai_video_audio_on")) or (
+            (e.get("_audio_policy") or "").lower() == "intrinsic_only"
+        )
+        if not is_intrinsic:
+            continue
+        try:
+            start = max(0.0, float(e.get("start") or 0.0))
+            end = max(start, float(e.get("end") or 0.0))
+        except (TypeError, ValueError):
+            continue
+        if end > start:
+            raw_ranges.append((start, end))
+    if not raw_ranges:
+        return []
+    # Sort + merge overlaps so the ffmpeg expression stays compact.
+    raw_ranges.sort()
+    merged: List[tuple[float, float]] = [raw_ranges[0]]
+    for s, e in raw_ranges[1:]:
+        last_s, last_e = merged[-1]
+        if s <= last_e:
+            merged[-1] = (last_s, max(last_e, e))
+        else:
+            merged.append((s, e))
+    return merged
+
+
+def _make_silence_enable_expr(ranges_s: List[tuple[float, float]]) -> str:
+    """Build the ffmpeg `enable=` expression that activates the volume=0
+    filter ONLY during the given ranges. Multiple ranges are OR'd via `+`.
+
+    Returns "0" (never-enable) for empty input — callers should skip the
+    ffmpeg call entirely when this happens, but the safe default keeps the
+    pipeline running if they don't.
+    """
+    parts = [f"between(t,{s:.3f},{e:.3f})" for s, e in ranges_s if e > s]
+    return "+".join(parts) if parts else "0"
+
+
+def silence_audio_ranges(
+    input_audio_path: Path,
+    output_audio_path: Path,
+    ranges_s: List[tuple[float, float]],
+    *,
+    ffmpeg_bin: str = _FFMPEG_BIN,
+    timeout_s: float = _FFMPEG_CONCAT_TIMEOUT_S,
+) -> bool:
+    """Produce `output_audio_path` = `input_audio_path` with audio zeroed in
+    each `(start_s, end_s)` range.
+
+    Uses ffmpeg's `volume` filter with a time-conditional `enable=`. Re-
+    encodes at libmp3lame q=4 (matching the per-shot TTS encoder so the
+    output blends cleanly downstream).
+
+    Returns True on success, False on:
+      - empty input ranges (caller would have called this for nothing)
+      - missing input file
+      - ffmpeg failure / timeout / binary missing
+
+    Pure: path-in, path-out, no state. Caller decides whether to overwrite
+    the master narration or write to a sidecar.
+    """
+    if not ranges_s:
+        return False
+    if not input_audio_path.exists():
+        logger.warning(f"[Veo audio] silence: input missing {input_audio_path}")
+        return False
+    output_audio_path.parent.mkdir(parents=True, exist_ok=True)
+    enable_expr = _make_silence_enable_expr(ranges_s)
+    cmd = [
+        ffmpeg_bin, "-y", "-loglevel", "error",
+        "-i", str(input_audio_path),
+        "-af", f"volume=0:enable='{enable_expr}'",
+        "-c:a", "libmp3lame", "-q:a", "4",
+        str(output_audio_path),
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        logger.warning(f"[Veo audio] silence timed out on {input_audio_path}")
+        return False
+    except FileNotFoundError:
+        logger.warning(f"[Veo audio] ffmpeg binary '{ffmpeg_bin}' not found")
+        return False
+    if proc.returncode != 0:
+        logger.warning(
+            f"[Veo audio] silence failed (rc={proc.returncode}): "
+            f"{(proc.stderr or '').strip()[:200]}"
+        )
+        return False
+    return output_audio_path.exists() and output_audio_path.stat().st_size > 0
+
+
+def mute_master_narration_for_intrinsic_shots(
+    entries: List[Dict[str, Any]],
+    master_narration_path: Path,
+    *,
+    output_path: Optional[Path] = None,
+    log_fn: Optional[Callable[[str], None]] = None,
+) -> Dict[str, Any]:
+    """One-call entry point for the pipeline.
+
+    Scans `entries` for intrinsic_only shots; if any, post-processes
+    `master_narration_path` so master narration is silent during those
+    windows. Browser-rendered Veo audio fills the gap at render time.
+
+    Returns a result dict the pipeline can use for telemetry:
+      {
+        "processed":  bool,      # True if we actually muted something
+        "ranges":     [...],     # the merged ranges silenced
+        "output":     Path,      # final narration path (input or muted)
+        "in_place":   bool,      # True if we overwrote the master
+        "error":      str|None,  # populated only on ffmpeg failure
+      }
+
+    When no intrinsic_only shots are present, returns `processed=False`
+    with `output=master_narration_path` so the caller can use the same
+    variable in either case.
+    """
+    def _log(msg: str) -> None:
+        if log_fn is not None:
+            try: log_fn(msg)
+            except Exception: pass
+        logger.info(msg)
+
+    ranges = collect_intrinsic_audio_ranges(entries)
+    if not ranges:
+        return {
+            "processed": False,
+            "ranges": [],
+            "output": master_narration_path,
+            "in_place": False,
+            "error": None,
+        }
+
+    # Default sidecar path: alongside the master narration so the input file
+    # is preserved (useful for debugging and for the case where post-render
+    # we want to inspect the original). The caller passes `output_path` when
+    # they want a specific name (e.g. in-place overwrite via two-step swap).
+    if output_path is None:
+        output_path = master_narration_path.with_name(
+            f"{master_narration_path.stem}_intrinsic_muted{master_narration_path.suffix}"
+        )
+
+    total_muted_s = sum(e - s for s, e in ranges)
+    _log(
+        f"🔇 Muting master narration in {len(ranges)} intrinsic_only window(s) "
+        f"({total_muted_s:.1f}s total) for Veo-audio shots"
+    )
+
+    ok = silence_audio_ranges(master_narration_path, output_path, ranges)
+    if not ok:
+        return {
+            "processed": False,
+            "ranges": ranges,
+            "output": master_narration_path,
+            "in_place": False,
+            "error": "ffmpeg silence failed (see prior log)",
+        }
+    return {
+        "processed": True,
+        "ranges": ranges,
+        "output": output_path,
+        "in_place": False,
+        "error": None,
+    }

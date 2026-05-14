@@ -76,6 +76,8 @@ import {
     TextDensity,
     VISUAL_PREFERENCE_FAMILIES,
     hasActiveVisualPreferences,
+    AI_VIDEO_MODELS,
+    AiVideoModel,
 } from '../../-services/video-generation';
 import {
     type VideoBrandingConfig,
@@ -970,6 +972,18 @@ function SettingsBody({
                     </p>
                 </div>
 
+                <AiVideoPanel
+                    enabled={!!options.ai_video_enabled}
+                    audioEnabled={!!options.ai_video_audio_enabled}
+                    model={options.ai_video_model}
+                    qualityTier={options.quality_tier || 'ultra'}
+                    onChange={(patch) => {
+                        if ('enabled' in patch) update('ai_video_enabled', patch.enabled);
+                        if ('audioEnabled' in patch) update('ai_video_audio_enabled', patch.audioEnabled);
+                        if ('model' in patch) update('ai_video_model', patch.model);
+                    }}
+                />
+
                 <VisualPreferencesPanel
                     prefs={options.visual_preferences}
                     qualityTier={options.quality_tier || 'ultra'}
@@ -978,6 +992,109 @@ function SettingsBody({
                 />
             </TabsContent>
         </Tabs>
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AiVideoPanel — Phase 3b–6 user-facing toggle
+//
+// Three controls:
+//   - Enable AI video (master toggle)
+//   - Model dropdown (Phase 3 ships with one option; future-proofed)
+//   - Veo audio toggle (visible only when AI video is on)
+//
+// Disabled with an explanation when the run's quality_tier is below ultra,
+// since the backend hard-gates eligibility there. The disabled state keeps
+// any previously-set values intact — switching tier back up restores them.
+// ─────────────────────────────────────────────────────────────────────────
+
+interface AiVideoPanelChange {
+    enabled?: boolean;
+    audioEnabled?: boolean;
+    model?: AiVideoModel;
+}
+
+function AiVideoPanel({
+    enabled,
+    audioEnabled,
+    model,
+    qualityTier,
+    onChange,
+}: {
+    enabled: boolean;
+    audioEnabled: boolean;
+    model: AiVideoModel | undefined;
+    qualityTier: QualityTier;
+    onChange: (patch: AiVideoPanelChange) => void;
+}) {
+    const tierEligible = qualityTier === 'ultra' || qualityTier === 'super_ultra';
+    const effectiveModel: AiVideoModel = model ?? AI_VIDEO_MODELS[0].value;
+    return (
+        <div className="space-y-3 rounded-md border border-border/60 bg-muted/30 p-3">
+            <div className="flex items-center justify-between gap-3">
+                <Label className="flex items-center gap-1.5 text-xs font-medium">
+                    <Film className="size-3.5" />
+                    AI video generation
+                    <Badge variant="outline" className="px-1 py-0 text-[9px]">
+                        Beta
+                    </Badge>
+                </Label>
+                <Switch
+                    checked={enabled && tierEligible}
+                    disabled={!tierEligible}
+                    onCheckedChange={(v) => onChange({ enabled: v })}
+                    aria-label="Enable AI video"
+                />
+            </div>
+            {!tierEligible && (
+                <p className="pl-5 text-[10px] text-amber-600">
+                    Available on Ultra and Super Ultra tiers only. Switch tier above to enable.
+                </p>
+            )}
+            {tierEligible && (
+                <p className="pl-5 text-[10px] text-muted-foreground">
+                    Generates cinematic clips with fal.ai Veo. ≈$0.12–$0.40 per shot, hard-capped
+                    at $1.50 per video. Director picks when content fits.
+                </p>
+            )}
+            {enabled && tierEligible && (
+                <>
+                    <div className="space-y-1.5 pl-5">
+                        <Label className="text-[10px] text-muted-foreground">Model</Label>
+                        <Select
+                            value={effectiveModel}
+                            onValueChange={(v) => onChange({ model: v as AiVideoModel })}
+                        >
+                            <SelectTrigger className="h-8 text-xs">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {AI_VIDEO_MODELS.map((m) => (
+                                    <SelectItem key={m.value} value={m.value} className="text-xs">
+                                        {m.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 pl-5">
+                        <Label className="flex items-center gap-1.5 text-[11px]">
+                            <Volume2 className="size-3" />
+                            Veo audio
+                        </Label>
+                        <Switch
+                            checked={audioEnabled}
+                            onCheckedChange={(v) => onChange({ audioEnabled: v })}
+                            aria-label="Enable Veo audio"
+                        />
+                    </div>
+                    <p className="pl-5 text-[10px] text-muted-foreground">
+                        When ON, AI video shots play their own audio. Master narration is
+                        silenced during those shots. Cost rises from $0.03/s to $0.05/s.
+                    </p>
+                </>
+            )}
+        </div>
     );
 }
 

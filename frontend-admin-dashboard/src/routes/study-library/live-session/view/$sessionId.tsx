@@ -1,11 +1,12 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
 import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb } from '../-services/utils';
 import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording } from '../-services/utils';
-import { enqueueYoutubeUpload } from '@/routes/settings/-services/youtube-integration-service';
+import { enqueueYoutubeUpload, getYoutubeDefaults } from '@/routes/settings/-services/youtube-integration-service';
 import { AttendanceMarkingTable } from '../-components/AttendanceMarkingTable';
 import { FeedbackStats } from './-components/FeedbackStats';
 import {
@@ -128,6 +129,14 @@ function ViewLiveSession() {
     const [refreshedRecordings, setRefreshedRecordings] = useState<Record<string, MeetingRecording[]>>({});
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+
+    const instituteId = getCurrentInstituteId() ?? '';
+    const { data: youtubeDefaults } = useQuery({
+        queryKey: ['youtube-defaults', instituteId],
+        queryFn: () => getYoutubeDefaults(instituteId),
+        enabled: !!instituteId,
+    });
+    const youtubeFeatureEnabled = youtubeDefaults?.featureEnabled ?? false;
 
     useEffect(() => {
         const fetchSessionDetails = async () => {
@@ -1008,7 +1017,10 @@ function ViewLiveSession() {
                                                         </>
                                                     );
                                                 })()}
-                                                <RecordingYoutubeAction rec={rec} />
+                                                <RecordingYoutubeAction
+                                                    rec={rec}
+                                                    featureEnabled={youtubeFeatureEnabled}
+                                                />
                                             </div>
                                         </div>
                                     ))}
@@ -1569,8 +1581,10 @@ function SettingItem({ label, value }: { label: string; value: string }) {
  */
 function RecordingYoutubeAction({
     rec,
+    featureEnabled,
 }: {
     rec: MeetingRecording & { scheduleId: string };
+    featureEnabled: boolean;
 }) {
     const [queued, setQueued] = useState(false);
     const { mutate, isPending } = useMutation({
@@ -1607,6 +1621,7 @@ function RecordingYoutubeAction({
         );
     }
     if (!rec.fileId) return null;
+    if (!featureEnabled) return null;
     return (
         <button
             onClick={() => mutate()}

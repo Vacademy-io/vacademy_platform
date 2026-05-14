@@ -30,6 +30,7 @@ import {
 } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
+import { widgetLabel } from '@/constants/display-settings/widget-labels';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
@@ -1883,7 +1884,12 @@ export default function AdminDisplaySettings() {
                                         <ArrowDown className="h-3 w-3" />
                                     </Button>
                                 </div>
-                                <div className="flex-1 text-sm font-medium">{w.id}</div>
+                                <div className="flex flex-1 flex-col">
+                                    <span className="text-sm font-medium">
+                                        {widgetLabel(w.id)}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">{w.id}</span>
+                                </div>
                                 <div className="flex items-center gap-2">
                                     <Switch
                                         checked={w.visible}

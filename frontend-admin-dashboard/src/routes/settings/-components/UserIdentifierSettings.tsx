@@ -2,47 +2,20 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
-import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
-import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-
-const SAVE_SETTING_URL = GET_INSITITUTE_SETTINGS.replace('/get', '/save-setting');
-const SETTING_KEY = 'USER_IDENTIFIER';
-
-type UserIdentifier = 'EMAIL' | 'PHONE';
-
-const fetchUserIdentifierSetting = async (): Promise<UserIdentifier> => {
-    const instituteId = getCurrentInstituteId();
-    const response = await authenticatedAxiosInstance({
-        method: 'GET',
-        url: GET_INSITITUTE_SETTINGS,
-        params: { instituteId, settingKey: SETTING_KEY },
-    });
-    // response.data is SettingDto; .data is the stored value string
-    const val = response.data?.data;
-    return val === 'PHONE' ? 'PHONE' : 'EMAIL';
-};
-
-const saveUserIdentifierSetting = async (identifier: UserIdentifier): Promise<void> => {
-    const instituteId = getCurrentInstituteId();
-    await authenticatedAxiosInstance.post(
-        SAVE_SETTING_URL,
-        { setting_name: 'User Identifier Setting', setting_data: identifier },
-        { params: { instituteId, settingKey: SETTING_KEY } },
-    );
-};
+import {
+    UserIdentifier,
+    saveUserIdentifierSetting,
+    useUserIdentifierSetting,
+    userIdentifierQueryKey,
+} from '@/services/user-identifier-setting';
 
 export default function UserIdentifierSettings() {
     const queryClient = useQueryClient();
 
-    const { data: savedIdentifier, isLoading } = useQuery({
-        queryKey: ['user-identifier-setting'],
-        queryFn: fetchUserIdentifierSetting,
-        staleTime: 5 * 60 * 1000,
-    });
+    const { data: savedIdentifier, isLoading } = useUserIdentifierSetting();
 
     const [selected, setSelected] = useState<UserIdentifier>('EMAIL');
 
@@ -54,7 +27,7 @@ export default function UserIdentifierSettings() {
         mutationFn: saveUserIdentifierSetting,
         onSuccess: () => {
             toast.success('User identifier setting saved successfully');
-            queryClient.invalidateQueries({ queryKey: ['user-identifier-setting'] });
+            queryClient.invalidateQueries({ queryKey: userIdentifierQueryKey() });
         },
         onError: (error: any) => {
             toast.error(error?.response?.data?.message || 'Failed to save setting');

@@ -34,6 +34,11 @@ class VideoCostPreviewRequest(BaseModel):
     review_mode: bool = False
     attachments_count: int = 0
     host: Optional["HostConfig"] = None
+    # When true, the estimator adds an AI video (Veo) upper-bound row to
+    # the breakdown so the FE pre-submit panel surfaces the worst-case
+    # spend. Ultra/super_ultra tiers only — silently ignored otherwise.
+    ai_video_enabled: bool = False
+    ai_video_audio_enabled: bool = False
 
 
 class VideoCostPreviewResponse(BaseModel):

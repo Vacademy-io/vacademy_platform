@@ -45,7 +45,23 @@ from __future__ import annotations
 
 import html as _html
 import re
+from decimal import Decimal
 from typing import Any, Callable, Dict, List, Optional
+
+
+def _load_ledger_insufficient_exc():
+    """Lazy-load `AiVideoLedgerInsufficient`. See orchestrator for the same
+    pattern — keeps the composer importable when the credit stack isn't
+    on path (unit tests, standalone usage)."""
+    try:
+        from app.services.ai_video_ledger import AiVideoLedgerInsufficient
+        return AiVideoLedgerInsufficient
+    except ImportError:
+        try:
+            from ai_video_ledger import AiVideoLedgerInsufficient  # type: ignore[no-redef]
+            return AiVideoLedgerInsufficient
+        except ImportError:
+            return None
 
 
 # Regex that captures an <aivideo> tag with its data-* attributes.
@@ -142,6 +158,7 @@ def compose(
     *,
     veo_client: Any,
     cost_tracker: Optional[Any] = None,
+    ledger: Optional[Any] = None,  # AiVideoLedger, duck-typed
     run_audio_enabled: bool = False,
     safety_tolerance: str = "3",
     log_fn: Optional[Callable[[str], None]] = None,
@@ -191,6 +208,7 @@ def compose(
             "succeeded": 0,
             "failed": 0,
             "cost_usd": 0.0,
+            "cost_credits": 0.0,
             "circuit_breaker_partial": False,
         }
 
@@ -209,6 +227,7 @@ def compose(
                 "succeeded": 0,
                 "failed": 1,
                 "cost_usd": 0.0,
+                "cost_credits": 0.0,
                 "circuit_breaker_partial": False,
             }
 
@@ -219,12 +238,14 @@ def compose(
 
     invocations: List[Dict[str, Any]] = []
     total_cost = 0.0
+    total_credits = Decimal("0")
     succeeded = 0
     failed = 0
     cap_tripped = [False]  # mutable to write from inner _replace
+    _LedgerInsufficient = _load_ledger_insufficient_exc()
 
     def _replace(match: re.Match) -> str:
-        nonlocal total_cost, succeeded, failed
+        nonlocal total_cost, total_credits, succeeded, failed
         attrs = _parse_attrs(match.group(1))
         prompt = (attrs.get("prompt") or "").strip()
 
@@ -285,6 +306,43 @@ def compose(
                 })
                 return _placeholder_html(reason="cost cap reached", prompt=prompt)
 
+        # Credit ledger deduction — mirrors the orchestrator single-shot
+        # behavior. On insufficient balance: roll back tracker, mark the
+        # cap tripped for the rest of this shot, fall back to placeholder.
+        tag_credits = Decimal("0")
+        if ledger is not None and getattr(ledger, "enabled", False):
+            try:
+                tag_credits = ledger.charge(
+                    cost_usd=expected_cost,
+                    shot_idx=shot_idx,
+                    duration_s=duration_s,
+                    audio_on=audio_on,
+                )
+            except Exception as ledger_err:  # noqa: BLE001
+                is_insufficient = (
+                    _LedgerInsufficient is not None
+                    and isinstance(ledger_err, _LedgerInsufficient)
+                )
+                if cost_tracker is not None:
+                    cost_tracker.refund(expected_cost)
+                if is_insufficient:
+                    cap_tripped[0] = True
+                    failed += 1
+                    invocations.append({
+                        "ok": False, "prompt": prompt, "duration_s": duration_s,
+                        "video_url": None, "cost_usd": 0.0,
+                        "error": "credit ledger insufficient",
+                        "error_class": "CircuitBreakerExhausted",
+                    })
+                    return _placeholder_html(reason="credit cap reached", prompt=prompt)
+                # Transient ledger error — log and proceed (mirrors
+                # orchestrator policy). tag_credits stays at 0; the run
+                # summary's USD figure is still authoritative.
+                _log(
+                    f"⚠️  inline <aivideo> shot {shot_idx}: ledger.charge raised "
+                    f"{type(ledger_err).__name__}: {ledger_err}; proceeding without ledger row."
+                )
+
         _log(
             f"🎬 inline <aivideo> shot {shot_idx}: {duration_s}s, "
             f"audio={'on' if audio_on else 'off'}, ${expected_cost:.2f} — {prompt[:50]}..."
@@ -302,6 +360,12 @@ def compose(
         except VeoError as err:
             if cost_tracker is not None:
                 cost_tracker.refund(expected_cost)
+            if ledger is not None and tag_credits > 0:
+                ledger.refund(
+                    credits=tag_credits,
+                    shot_idx=shot_idx,
+                    reason=type(err).__name__,
+                )
             klass = type(err).__name__
             _log(f"❌ inline <aivideo> shot {shot_idx}: {klass}: {err}")
             failed += 1
@@ -314,6 +378,12 @@ def compose(
         except Exception as err:
             if cost_tracker is not None:
                 cost_tracker.refund(expected_cost)
+            if ledger is not None and tag_credits > 0:
+                ledger.refund(
+                    credits=tag_credits,
+                    shot_idx=shot_idx,
+                    reason=f"unexpected:{type(err).__name__}",
+                )
             klass = type(err).__name__
             _log(f"❌ inline <aivideo> shot {shot_idx}: unexpected {klass}: {err}")
             failed += 1
@@ -326,6 +396,7 @@ def compose(
 
         succeeded += 1
         total_cost += veo_result.cost_usd
+        total_credits += tag_credits
         invocations.append({
             "ok": True,
             "prompt": prompt,
@@ -333,6 +404,7 @@ def compose(
             "video_url": veo_result.video_url,
             "request_id": veo_result.request_id,
             "cost_usd": veo_result.cost_usd,
+            "cost_credits": float(tag_credits),
             "audio_on": veo_result.audio_on,
             "aspect_ratio": veo_result.aspect_ratio,
             "error": None,
@@ -347,5 +419,6 @@ def compose(
         "succeeded": succeeded,
         "failed": failed,
         "cost_usd": round(total_cost, 4),
+        "cost_credits": float(total_credits),
         "circuit_breaker_partial": cap_tripped[0] and succeeded > 0,
     }

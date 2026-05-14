@@ -181,14 +181,14 @@ The original Phase 2b plan called for moving Director to run BEFORE TTS so the S
 
 ## 7. Cost model and circuit breaker
 
-Pricing table (locked to 720p, the only resolution we ship):
+Pricing table (locked to 720p, the only resolution we ship). USD is the source of truth — credits derive via the live `credit_rate_config` ratio (seed 150×):
 
-| Audio | $/s | 4s call | 6s call | 8s call |
+| Audio | $/s · cr/s | 4s call ($ · cr) | 6s call ($ · cr) | 8s call ($ · cr) |
 |---|---|---|---|---|
-| off | $0.03 | $0.12 | $0.18 | $0.24 |
-| on  | $0.05 | $0.20 | $0.30 | $0.40 |
+| off | $0.03 · 4.5 cr | $0.12 · 18 cr | $0.18 · 27 cr | $0.24 · 36 cr |
+| on  | $0.05 · 7.5 cr | $0.20 · 30 cr | $0.30 · 45 cr | $0.40 · 60 cr |
 
-Per-video cap: **$1.50** on ultra and super_ultra tiers (`ai_video_per_video_cost_cap_usd`).
+Per-video cap: **$1.50 · 225 cr** on ultra and super_ultra tiers (`ai_video_per_video_cost_cap_usd`; credit equivalent derived at runtime via `credit_rate_config`).
 
 Enforced by `AiVideoCostTracker.try_charge(amount)`:
 - Atomic increment under a thread lock — concurrent shots can't both sneak past the cap
@@ -196,12 +196,16 @@ Enforced by `AiVideoCostTracker.try_charge(amount)`:
 - `refund(amount)` rolls back budget when a Veo call fails (transient errors don't permanently eat budget)
 - `summary()` returns telemetry dict written to `<run_dir>/ai_video_summary.json` at end of run
 
-Chain pre-flight: chain orchestrator charges the FULL chain cost up front before making any Veo call. If the total would exceed cap, the whole chain is rejected — partial chains never ship (a truncated chain would be shorter than the planned shot duration).
+**Global credit ledger integration (Phase 2, 2026-05):** every successful `try_charge` is paired with an `AiVideoLedger.charge(...)` that writes a `USAGE_DEDUCTION` row to `credit_transactions` (`request_type="ai_video"`, `batch_id=video_id`). On Veo failure / cache-hit / mid-chain abort, the ledger writes a matching `REFUND` row. Per-shot timeline entries now carry both `_ai_video_cost_usd` and `_ai_video_cost_credits`. On insufficient balance at charge time (race past pre-flight), the tracker reservation is rolled back and the shot falls back exactly like `CircuitBreakerExhausted` — see `ai_video_ledger.py` for details.
 
-Inline tag cost flow: each `<aivideo>` resolution is a separate `try_charge`. When the cap trips mid-shot, the first N tags succeed (and bill), remaining tags resolve to a CSS placeholder. Shot logs `circuit_breaker_partial: true`.
+**Veo-aware pre-flight (Phase 2d, 2026-05):** `POST /external/video/v1/generate` now refuses with HTTP 402 when `ai_video_enabled=true` and the institute's balance is below the worst-case Veo cap × current ratio. The check uses `CreditService.get_balance` + `CreditRateService.get_effective_ratio` and runs immediately after the generic `require_credits("video", ...)` dependency.
 
-Worst-case bound per video at default flags (audio off): ~6 segments × $0.24 = $1.44 < $1.50 cap. ✓
-Worst-case with audio on: 1 segment × $0.40 + remaining gets clipped by cap. ✓
+Chain pre-flight: chain orchestrator charges the FULL chain cost up front before making any Veo call. If the total would exceed cap, the whole chain is rejected — partial chains never ship (a truncated chain would be shorter than the planned shot duration). Ledger emits one charge for the chain total; cache hits and mid-chain failures issue per-segment refunds proportional to USD weight.
+
+Inline tag cost flow: each `<aivideo>` resolution is a separate `try_charge` + `ledger.charge`. When the cap trips mid-shot, the first N tags succeed (and bill), remaining tags resolve to a CSS placeholder. Shot logs `circuit_breaker_partial: true`.
+
+Worst-case bound per video at default flags (audio off): ~6 segments × $0.24 = $1.44 (216 cr) < $1.50 (225 cr) cap. ✓
+Worst-case with audio on: 1 segment × $0.40 (60 cr) + remaining gets clipped by cap. ✓
 
 ---
 
@@ -234,9 +238,9 @@ Cardinal rule: **a failure in the AI video stack must never make a working video
 
 ```jsonc
 {
-  "cap_usd": 1.50,
-  "spent_usd": 0.72,
-  "remaining_usd": 0.78,
+  "cap_usd": 1.50,        "cap_credits": 225.0,
+  "spent_usd": 0.72,      "spent_credits": 108.0,
+  "remaining_usd": 0.78,  "remaining_credits": 117.0,
   "shots_completed": 3,
   "shots_failed": 0,
   "shots_skipped_circuit_breaker": 0,
@@ -247,15 +251,24 @@ Cardinal rule: **a failure in the AI video stack must never make a working video
 }
 ```
 
+USD and credit fields are written side-by-side per the "keep both for internal accounting" decision: customer-facing surfaces read `*_credits`, internal/forensic tooling can still cross-check against `*_usd`. `*_credits` numbers are derived at end-of-run via the live `CreditRateService.get_effective_ratio()`; on lookup failure they fall back to 0 and trust USD as authoritative.
+
 Per-shot entries in `timeline.json` carry:
 - `_ai_video_request_id` — fal.ai request_id, useful for debugging
 - `_ai_video_url` — the resolved video URL (S3 for chains, fal CDN for singles)
-- `_ai_video_cost_usd` — what this shot actually cost
+- `_ai_video_cost_usd` — what this shot actually cost in dollars
+- `_ai_video_cost_credits` — what was actually deducted from the institute ledger (NEW Phase 2)
 - `_ai_video_elapsed_s` — wall-clock for the Veo call(s)
 - `_ai_video_segments` — list of `{seg_idx, video_url, duration_s, request_id, cache_hit?}`
 - `_ai_video_audio_on` — was Veo's `generate_audio` true for this shot
 
-Pipeline logs a `🎬 AI video summary:` line at end of run when the tracker existed.
+Corresponding `credit_transactions` rows (NEW Phase 2):
+- `request_type="ai_video"`, `model_name="fal-ai/veo-3.1-lite"`, `batch_id=video_id`
+- One `USAGE_DEDUCTION` row per single shot, per chain (one row, not per-segment), per inline `<aivideo>` tag
+- Matching `REFUND` rows on per-shot Veo failures + chain cache hits + mid-chain aborts
+- Full-pipeline failure uses the existing `TokenUsageService.refund_video_credits(video_id)` which sums all batch_id-matching deductions
+
+Pipeline logs a `🎬 AI video summary:` line at end of run when the tracker existed, including credit + USD totals side-by-side.
 
 ---
 

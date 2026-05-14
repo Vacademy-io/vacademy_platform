@@ -1656,6 +1656,10 @@ class VideoGenerationService:
                     # so it's safe to forward whatever the request had.
                     ai_video_enabled=bool(ai_video_enabled),
                     ai_video_audio_enabled=bool(ai_video_audio_enabled),
+                    # Bind the AI video ledger writer to this institute so
+                    # Veo USAGE_DEDUCTION rows are attributed correctly.
+                    # Pipeline downgrades to no-op when institute_id is None.
+                    institute_id=institute_id,
                     progress_callback=_progress_cb,
                     stop_event=stop_event,
                 )

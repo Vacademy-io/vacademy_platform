@@ -30,6 +30,8 @@ import {
     type RenderSettings,
 } from '../../-services/video-generation';
 import { RenderSettingsDialog } from '../RenderSettingsDialog';
+import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
+import { formatCredits, usdToCredits } from '../../-utils/credits';
 import type { PipelineState } from './-utils/derive-pipeline-state';
 import { NODE_LABELS, type PipelineNodeId } from './-utils/stage-vocab';
 import { ThumbnailPickerPanel } from './ThumbnailPickerPanel';
@@ -87,6 +89,16 @@ interface PipelinePanelProps {
 export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: PipelinePanelProps) {
     const { videoId, status, contentType, orientation, artifactUrls, stats } = state;
     const isPortrait = orientation === 'portrait';
+    // Live USD→credits rate for AI video cost tooltips (Veo per-shot range,
+    // per-video cap). Falls back to the seed 150× when offline.
+    const ratio = useEffectiveCreditRatio();
+    const aiVideoTooltip = `Veo-generated shots (fal.ai). Each runs ${formatCredits(
+        usdToCredits(0.12, ratio),
+        { suffix: '' }
+    )}–${formatCredits(usdToCredits(0.4, ratio), { suffix: '' })} credits — hard cap ${formatCredits(
+        usdToCredits(1.5, ratio),
+        { suffix: 'credits' }
+    )}/video.`;
     const showDownload =
         (contentType === 'VIDEO' || contentType === 'SLIDES' || !!artifactUrls.audio) && !!apiKey;
 
@@ -478,7 +490,7 @@ export function PipelinePanel({ state, apiKey, onAbort, onRetry, onEdit }: Pipel
                                 <>
                                     <dt className="text-muted-foreground">AI video</dt>
                                     <dd
-                                        title="Veo-generated shots (fal.ai). Each runs $0.12–$0.40 — hard cap $1.50/video."
+                                        title={aiVideoTooltip}
                                         className="font-medium text-violet-700"
                                     >
                                         ✨ {aiVideoCount} shot{aiVideoCount === 1 ? '' : 's'}

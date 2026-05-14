@@ -242,7 +242,9 @@ export interface HostAvatarConfig {
     face_image_url?: string;
     /** Free-form description: clothing, demeanour, background hints. Threaded into per-shot avatar image prompts. */
     details_prompt?: string;
-    /** fal.ai model. Default Kling v2 ($0.0562/sec). Ignored for argil/veed providers (their endpoints are fixed). */
+    /** fal.ai model. Default Kling v2 (≈8.4 credits/sec @ current rate; see
+     *  `useCreditRate()` for the live multiplier). Ignored for argil/veed
+     *  providers (their endpoints are fixed). */
     avatar_model?: AvatarModel;
     /** Avatar video resolution. Same per-second price for both. */
     quality?: AvatarQuality;
@@ -274,6 +276,9 @@ export interface HostConfig {
     raw?: HostRawConfig;
 }
 
+// `perSecondUsd` is the source-of-truth price from fal.ai's pricing page.
+// UI labels render this via `usdToCredits(perSecondUsd, ratio)` from
+// `useEffectiveCreditRatio()` — never display the raw USD value to users.
 export const AVATAR_MODELS: Array<{ value: AvatarModel; label: string; perSecondUsd: number }> = [
     {
         value: 'fal-ai/flashtalk',
@@ -350,14 +355,16 @@ export interface GenerateVideoRequest {
     /**
      * Enable AI video generation (fal.ai Veo) for this run. Ultra and
      * super_ultra tiers only — backend downgrades to false on other tiers
-     * with a warning. Each AI video shot costs $0.12–$0.40 and the run is
-     * circuit-broken at $1.50 total.
+     * with a warning. Each AI video shot costs ≈18–60 credits @ current
+     * rate (USD source: $0.12–$0.40); the run is circuit-broken at the
+     * per-video credit cap (≈225 credits @ current rate, USD source: $1.50).
      */
     ai_video_enabled?: boolean;
     /**
      * When ai_video_enabled is on, lets AI video clips bring their own audio.
-     * Master narration is silenced during those shots. Veo audio is $0.05/s
-     * instead of $0.03/s; only meaningful with ai_video_enabled=true.
+     * Master narration is silenced during those shots. Veo audio is ≈7.5
+     * credits/sec instead of ≈4.5 credits/sec (USD source: $0.05/s vs
+     * $0.03/s); only meaningful with ai_video_enabled=true.
      */
     ai_video_audio_enabled?: boolean;
     /**
@@ -1851,6 +1858,10 @@ export interface VideoCostPreviewRequest {
     attachments_count: number;
     /** Optional on-screen host. Adds avatar synthesis cost lines on ultra+ tiers. */
     host?: HostConfig;
+    /** When true (ultra+ only), the estimator adds an AI video (Veo)
+     *  upper-bound row to the breakdown. Mirrors the runtime flag. */
+    ai_video_enabled?: boolean;
+    ai_video_audio_enabled?: boolean;
 }
 
 export interface VideoCostPreviewBreakdownRow {

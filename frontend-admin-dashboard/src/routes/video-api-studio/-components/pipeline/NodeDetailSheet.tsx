@@ -3,6 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
+import { formatCredits, usdToCredits } from '../../-utils/credits';
 import {
     AlignLeft,
     Camera,
@@ -154,6 +156,9 @@ function DetailSheetContents({
  *   - Artifact URLs (script / audio / words / timeline / mp4 / videoId)
  */
 function RunSummaryFooter({ state }: { state: PipelineState }) {
+    // Backend reports cumulative cost in USD; convert to credits via the
+    // live rate so all surfaces consistently use the credit denomination.
+    const ratio = useEffectiveCreditRatio();
     const cum = state.stats.cumulativeTokens;
     const tokenUsage = state.stats.tokenUsage;
     const totalTokens = cum?.total_tokens ?? tokenUsage?.total_tokens;
@@ -234,7 +239,7 @@ function RunSummaryFooter({ state }: { state: PipelineState }) {
                             <>
                                 <span className="text-muted-foreground">Estimated cost</span>
                                 <span className="text-right font-mono tabular-nums text-foreground">
-                                    ${cost.toFixed(4)}
+                                    {formatCredits(usdToCredits(cost, ratio), { precision: 2 })}
                                 </span>
                             </>
                         )}

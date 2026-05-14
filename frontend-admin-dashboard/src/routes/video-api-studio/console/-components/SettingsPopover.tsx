@@ -92,6 +92,8 @@ import {
 import { VimBrandKitSelect } from '@/features/vimotion/composer/VimBrandKitSelect';
 import { VimSavedAvatarSelect } from '@/features/vimotion/composer/VimSavedAvatarSelect';
 import type { StudioAvatar } from '@/features/vimotion/api/dashboardTypes';
+import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
+import { formatCredits, usdToCredits } from '../../-utils/credits';
 
 interface AiModel {
     model_id: string;
@@ -979,7 +981,8 @@ function SettingsBody({
                     qualityTier={options.quality_tier || 'ultra'}
                     onChange={(patch) => {
                         if ('enabled' in patch) update('ai_video_enabled', patch.enabled);
-                        if ('audioEnabled' in patch) update('ai_video_audio_enabled', patch.audioEnabled);
+                        if ('audioEnabled' in patch)
+                            update('ai_video_audio_enabled', patch.audioEnabled);
                         if ('model' in patch) update('ai_video_model', patch.model);
                     }}
                 />
@@ -1029,6 +1032,15 @@ function AiVideoPanel({
 }) {
     const tierEligible = qualityTier === 'ultra' || qualityTier === 'super_ultra';
     const effectiveModel: AiVideoModel = model ?? AI_VIDEO_MODELS[0].value;
+    // Live USD→credits rate (V252-driven; falls back to seed 150× when offline).
+    // Used to render the per-shot range, per-video cap, and per-second
+    // Veo audio rate as credit values.
+    const ratio = useEffectiveCreditRatio();
+    const perShotMinCredits = formatCredits(usdToCredits(0.12, ratio), { suffix: '' });
+    const perShotMaxCredits = formatCredits(usdToCredits(0.4, ratio), { suffix: '' });
+    const perVideoCapCredits = formatCredits(usdToCredits(1.5, ratio), { suffix: 'credits' });
+    const audioOffPerSec = formatCredits(usdToCredits(0.03, ratio), { precision: 1, suffix: '' });
+    const audioOnPerSec = formatCredits(usdToCredits(0.05, ratio), { precision: 1, suffix: '' });
     return (
         <div className="space-y-3 rounded-md border border-border/60 bg-muted/30 p-3">
             <div className="flex items-center justify-between gap-3">
@@ -1053,8 +1065,9 @@ function AiVideoPanel({
             )}
             {tierEligible && (
                 <p className="pl-5 text-[10px] text-muted-foreground">
-                    Generates cinematic clips with fal.ai Veo. ≈$0.12–$0.40 per shot, hard-capped
-                    at $1.50 per video. Director picks when content fits.
+                    Generates cinematic clips with fal.ai Veo. ≈{perShotMinCredits}–
+                    {perShotMaxCredits} credits per shot, hard-capped at {perVideoCapCredits} per
+                    video. Director picks when content fits.
                 </p>
             )}
             {enabled && tierEligible && (
@@ -1089,8 +1102,9 @@ function AiVideoPanel({
                         />
                     </div>
                     <p className="pl-5 text-[10px] text-muted-foreground">
-                        When ON, AI video shots play their own audio. Master narration is
-                        silenced during those shots. Cost rises from $0.03/s to $0.05/s.
+                        When ON, AI video shots play their own audio. Master narration is silenced
+                        during those shots. Cost rises from {audioOffPerSec} credits/s to{' '}
+                        {audioOnPerSec} credits/s.
                     </p>
                 </>
             )}
@@ -1322,6 +1336,10 @@ function HostTabBody({
     const tierAllowed = tier === 'ultra' || tier === 'super_ultra';
     const host = options.host;
     const hostEnabled = !!host;
+    // Avatar models are billed in USD/sec internally; render in credits/sec
+    // using the live rate from `credit_rate_config` (falls back to the seed
+    // 150× when the rate endpoint is unreachable).
+    const ratio = useEffectiveCreditRatio();
 
     const { uploadFile, getPublicUrl, isUploading } = useFileUpload();
     const [uploadError, setUploadError] = useState<string | null>(null);
@@ -1459,8 +1477,9 @@ function HostTabBody({
                     <Switch checked={hostEnabled} onCheckedChange={handleEnableToggle} />
                 </div>
                 <p className="pl-5 text-[10px] text-muted-foreground">
-                    A talking-head host appears in some shots and narrates in 1st person. Costs
-                    $0.0562/sec of host footage on top of the base video.
+                    A talking-head host appears in some shots and narrates in 1st person. Costs{' '}
+                    {formatCredits(usdToCredits(0.0562, ratio), { precision: 1, suffix: '' })}{' '}
+                    credits/sec of host footage on top of the base video.
                 </p>
             </div>
 
@@ -1649,8 +1668,17 @@ function HostTabBody({
                                                                 <div className="flex flex-col">
                                                                     <span>{m.label}</span>
                                                                     <span className="text-[10px] text-muted-foreground">
-                                                                        ${m.perSecondUsd.toFixed(4)}
-                                                                        /sec
+                                                                        {formatCredits(
+                                                                            usdToCredits(
+                                                                                m.perSecondUsd,
+                                                                                ratio
+                                                                            ),
+                                                                            {
+                                                                                precision: 1,
+                                                                                suffix: '',
+                                                                            }
+                                                                        )}{' '}
+                                                                        cr/sec
                                                                     </span>
                                                                 </div>
                                                             </SelectItem>
@@ -1780,7 +1808,17 @@ function HostTabBody({
                                                         <div className="flex flex-col">
                                                             <span>{m.label}</span>
                                                             <span className="text-[10px] text-muted-foreground">
-                                                                ${m.perSecondUsd.toFixed(4)}/sec
+                                                                {formatCredits(
+                                                                    usdToCredits(
+                                                                        m.perSecondUsd,
+                                                                        ratio
+                                                                    ),
+                                                                    {
+                                                                        precision: 1,
+                                                                        suffix: '',
+                                                                    }
+                                                                )}{' '}
+                                                                cr/sec
                                                             </span>
                                                         </div>
                                                     </SelectItem>

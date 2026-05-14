@@ -46,10 +46,34 @@ import subprocess
 import threading
 import time as _time
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+
+if TYPE_CHECKING:
+    # The ledger is duck-typed at runtime so this file stays importable
+    # without a working DB/credit service on path (matches how
+    # `veo_client: Any` is treated). The orchestrator only relies on the
+    # `charge` / `refund` shape.
+    from app.services.ai_video_ledger import AiVideoLedger as _LedgerType
 
 logger = logging.getLogger(__name__)
+
+
+def _load_ledger_insufficient_exc():
+    """Resolve `AiVideoLedgerInsufficient` lazily so the orchestrator can
+    be unit-tested without the app DB on path. Returns `None` when the
+    import path isn't available — in which case ledger.charge can't raise
+    that specific exception either."""
+    try:
+        from app.services.ai_video_ledger import AiVideoLedgerInsufficient
+        return AiVideoLedgerInsufficient
+    except ImportError:
+        try:
+            from ai_video_ledger import AiVideoLedgerInsufficient  # type: ignore[no-redef]
+            return AiVideoLedgerInsufficient
+        except ImportError:
+            return None
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +170,14 @@ class AiVideoCostTracker:
         with self._lock:
             self.shots_failed += 1
 
+    def mark_skipped_circuit_breaker(self) -> None:
+        """Increment the skip counter for a shot that was rejected AFTER
+        try_charge succeeded — e.g. when the global credit ledger says
+        insufficient balance and the cost-tracker reservation has just
+        been rolled back."""
+        with self._lock:
+            self.shots_skipped_circuit_breaker += 1
+
     def summary(self) -> Dict[str, Any]:
         with self._lock:
             return {
@@ -175,6 +207,7 @@ class AiVideoShotResult:
     aspect_ratio: str = "16:9"
     audio_on: bool = False
     cost_usd: float = 0.0
+    cost_credits: float = 0.0  # Credits actually deducted from the institute ledger
     elapsed_s: float = 0.0
     error: Optional[str] = None
     error_class: Optional[str] = None  # exception class name for telemetry
@@ -311,6 +344,7 @@ def orchestrate_ai_video_shot(
     run_dir: Path,
     veo_client: Any,                         # FalVeoClient, duck-typed
     cost_tracker: Optional[AiVideoCostTracker],
+    ledger: Optional["_LedgerType"] = None,  # AiVideoLedger, duck-typed
     canvas: str = "landscape",
     run_audio_enabled: bool = False,
     safety_tolerance: str = "3",
@@ -418,6 +452,59 @@ def orchestrate_ai_video_shot(
                 skipped=True,
             )
 
+    # ── Credit ledger deduction ──────────────────────────────────────
+    # The cost-tracker reservation is in-process only. The global credit
+    # ledger is what actually bills the institute. We deduct BEFORE the
+    # Veo call so a balance race (concurrent shots across runs) can never
+    # let a Veo call ship without a matching USAGE_DEDUCTION row.
+    #
+    # On insufficient balance: roll back the tracker reservation, treat
+    # exactly like CircuitBreakerExhausted (the per-shot fallback path).
+    charged_credits: Decimal = Decimal("0")
+    if ledger is not None and getattr(ledger, "enabled", False):
+        _LedgerInsufficient = _load_ledger_insufficient_exc()
+        try:
+            charged_credits = ledger.charge(
+                cost_usd=expected_cost,
+                shot_idx=shot_idx,
+                duration_s=duration_s,
+                audio_on=audio_on,
+            )
+        except Exception as ledger_err:  # noqa: BLE001
+            is_insufficient = (
+                _LedgerInsufficient is not None
+                and isinstance(ledger_err, _LedgerInsufficient)
+            )
+            if cost_tracker is not None:
+                cost_tracker.refund(expected_cost)
+                cost_tracker.mark_skipped_circuit_breaker()
+            if is_insufficient:
+                _log(
+                    f"🛑 AI_VIDEO_HERO shot {shot_idx}: credit ledger said "
+                    f"insufficient balance for ~${expected_cost:.2f}; falling back."
+                )
+                return AiVideoShotResult(
+                    shot_idx=shot_idx,
+                    duration_s=duration_s,
+                    resolution=resolution,
+                    aspect_ratio=aspect_ratio,
+                    audio_on=audio_on,
+                    cost_usd=0.0,
+                    error=str(ledger_err),
+                    error_class="CircuitBreakerExhausted",
+                    skipped=True,
+                )
+            # Any other ledger exception is treated as "fail safely" — we
+            # don't want a ledger transient (DB hiccup, etc.) to kill an
+            # already-paid-up Veo call. Log and proceed without a ledger
+            # row; pipeline-abort refund (refund_video_credits by batch_id)
+            # will still net-zero if the whole pipeline rolls back.
+            _log(
+                f"⚠️  AI_VIDEO_HERO shot {shot_idx}: ledger.charge unexpectedly "
+                f"raised {type(ledger_err).__name__}: {ledger_err}; proceeding "
+                f"without ledger deduction."
+            )
+
     # ── Veo call ─────────────────────────────────────────────────────
     _log(
         f"🎬 AI_VIDEO_HERO shot {shot_idx}: requesting Veo "
@@ -445,6 +532,12 @@ def orchestrate_ai_video_shot(
         if cost_tracker is not None:
             cost_tracker.refund(expected_cost)
             cost_tracker.mark_failed()
+        if ledger is not None and charged_credits > 0:
+            ledger.refund(
+                credits=charged_credits,
+                shot_idx=shot_idx,
+                reason=type(err).__name__,
+            )
         klass = type(err).__name__
         _log(f"❌ AI_VIDEO_HERO shot {shot_idx}: {klass}: {err}")
         return AiVideoShotResult(
@@ -465,6 +558,12 @@ def orchestrate_ai_video_shot(
         if cost_tracker is not None:
             cost_tracker.refund(expected_cost)
             cost_tracker.mark_failed()
+        if ledger is not None and charged_credits > 0:
+            ledger.refund(
+                credits=charged_credits,
+                shot_idx=shot_idx,
+                reason=f"unexpected:{type(err).__name__}",
+            )
         klass = type(err).__name__
         _log(f"❌ AI_VIDEO_HERO shot {shot_idx}: unexpected {klass}: {err}")
         return AiVideoShotResult(
@@ -525,6 +624,7 @@ def orchestrate_ai_video_shot(
         aspect_ratio=veo_result.aspect_ratio,
         audio_on=veo_result.audio_on,
         cost_usd=veo_result.cost_usd,
+        cost_credits=float(charged_credits),
         elapsed_s=veo_result.elapsed_s,
         segments=[{
             "seg_idx": 0,
@@ -796,6 +896,7 @@ def orchestrate_ai_video_chain(
     run_dir: Path,
     veo_client: Any,
     cost_tracker: Optional[AiVideoCostTracker],
+    ledger: Optional["_LedgerType"] = None,  # AiVideoLedger, duck-typed
     upload_mp4_fn: Callable[[Path], Optional[str]],
     upload_frame_fn: Optional[Callable[[Path], Optional[str]]] = None,
     canvas: str = "landscape",
@@ -913,6 +1014,71 @@ def orchestrate_ai_video_chain(
                 skipped=True,
             )
 
+    # Credit-ledger deduction mirrors the chain's all-or-nothing tracker
+    # reservation: one charge for the whole chain. Per-segment refunds
+    # (cache hits, mid-chain failures) prorate against this single
+    # deduction. On insufficient balance: roll back the tracker reservation
+    # and fall back exactly like CircuitBreakerExhausted.
+    chain_charged_credits: Decimal = Decimal("0")
+    # Per-segment credits — derived proportionally from chain_charged_credits.
+    # `_refund_chain_ledger` uses them to refund the un-executed range.
+    per_seg_credits: List[Decimal] = [Decimal("0")] * len(per_seg_costs)
+    if ledger is not None and getattr(ledger, "enabled", False):
+        _LedgerInsufficient = _load_ledger_insufficient_exc()
+        try:
+            chain_charged_credits = ledger.charge(
+                cost_usd=total_cost,
+                shot_idx=shot_idx,
+                duration_s=sum(int(s["duration_s"]) for s in segments_spec),
+                audio_on=audio_on,
+            )
+            # Allocate per-segment credits proportionally to USD costs so
+            # mid-chain refunds use exact credit amounts (no rounding drift
+            # versus the total). Last segment absorbs any rounding residue.
+            if chain_charged_credits > 0 and total_cost > 0:
+                allocated = Decimal("0")
+                for i, sc in enumerate(per_seg_costs):
+                    if i < len(per_seg_costs) - 1:
+                        share = (
+                            chain_charged_credits * Decimal(str(sc)) / Decimal(str(total_cost))
+                        ).quantize(Decimal("0.0001"))
+                        per_seg_credits[i] = share
+                        allocated += share
+                    else:
+                        per_seg_credits[i] = chain_charged_credits - allocated
+        except Exception as ledger_err:  # noqa: BLE001
+            is_insufficient = (
+                _LedgerInsufficient is not None
+                and isinstance(ledger_err, _LedgerInsufficient)
+            )
+            if cost_tracker is not None:
+                cost_tracker.refund(total_cost)
+                cost_tracker.mark_skipped_circuit_breaker()
+            if is_insufficient:
+                _log(
+                    f"🛑 AI_VIDEO_HERO chain shot {shot_idx}: credit ledger said "
+                    f"insufficient balance for ~${total_cost:.2f}; falling back."
+                )
+                return AiVideoShotResult(
+                    shot_idx=shot_idx,
+                    duration_s=sum(s["duration_s"] for s in segments_spec),
+                    resolution=resolution,
+                    aspect_ratio=aspect_ratio,
+                    audio_on=audio_on,
+                    cost_usd=0.0,
+                    error=str(ledger_err),
+                    error_class="CircuitBreakerExhausted",
+                    skipped=True,
+                )
+            # Transient ledger error: log and proceed without ledger
+            # accounting (same policy as single-shot). Pipeline-abort
+            # refund (refund_video_credits by batch_id) is the backstop.
+            _log(
+                f"⚠️  AI_VIDEO_HERO chain shot {shot_idx}: ledger.charge unexpectedly "
+                f"raised {type(ledger_err).__name__}: {ledger_err}; proceeding "
+                f"without ledger deduction."
+            )
+
     # ── 4. Per-segment caching ───────────────────────────────────────
     seg_cache_dir = run_dir / "ai_video" / "seg_cache"
     seg_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -951,6 +1117,13 @@ def orchestrate_ai_video_chain(
                 meta = {}
             if cost_tracker is not None:
                 cost_tracker.refund(per_seg_costs[seg_idx])
+            if ledger is not None and per_seg_credits[seg_idx] > 0:
+                ledger.refund(
+                    credits=per_seg_credits[seg_idx],
+                    shot_idx=shot_idx,
+                    segment_idx=seg_idx,
+                    reason="cache hit",
+                )
             video_url = meta.get("video_url") or ""
             req_id = meta.get("request_id") or f"cached_{ck}"
             _log(
@@ -975,7 +1148,11 @@ def orchestrate_ai_video_chain(
             if seg_idx < len(segments_spec) - 1:
                 frame_path = chain_dir / f"shot_{shot_idx:03d}_seg{seg_idx:02d}_last.png"
                 if not _ffmpeg_extract_last_frame(cached_mp4, frame_path):
-                    _refund_chain(cost_tracker, per_seg_costs, seg_idx + 1)
+                    _refund_chain(
+                        cost_tracker, per_seg_costs, seg_idx + 1,
+                        ledger=ledger, per_seg_credits=per_seg_credits,
+                        shot_idx=shot_idx, reason="cached frame extract failed",
+                    )
                     if cost_tracker is not None: cost_tracker.mark_failed()
                     return AiVideoShotResult(
                         shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
@@ -988,7 +1165,11 @@ def orchestrate_ai_video_chain(
                 uploader = upload_frame_fn or upload_mp4_fn
                 uploaded_url = uploader(frame_path) if uploader else None
                 if not uploaded_url:
-                    _refund_chain(cost_tracker, per_seg_costs, seg_idx + 1)
+                    _refund_chain(
+                        cost_tracker, per_seg_costs, seg_idx + 1,
+                        ledger=ledger, per_seg_credits=per_seg_credits,
+                        shot_idx=shot_idx, reason="cached frame upload failed",
+                    )
                     if cost_tracker is not None: cost_tracker.mark_failed()
                     return AiVideoShotResult(
                         shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
@@ -1042,9 +1223,13 @@ def orchestrate_ai_video_chain(
                     safety_tolerance=safety_tolerance,
                 )
         except VeoError as err:
-            _refund_chain(cost_tracker, per_seg_costs, seg_idx)
-            if cost_tracker is not None: cost_tracker.mark_failed()
             klass = type(err).__name__
+            _refund_chain(
+                cost_tracker, per_seg_costs, seg_idx,
+                ledger=ledger, per_seg_credits=per_seg_credits,
+                shot_idx=shot_idx, reason=klass,
+            )
+            if cost_tracker is not None: cost_tracker.mark_failed()
             _log(f"❌ AI_VIDEO_HERO chain shot {shot_idx} seg {seg_idx}: {klass}: {err}")
             return AiVideoShotResult(
                 shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
@@ -1053,9 +1238,13 @@ def orchestrate_ai_video_chain(
                 segments=rendered_segments,
             )
         except Exception as err:
-            _refund_chain(cost_tracker, per_seg_costs, seg_idx)
-            if cost_tracker is not None: cost_tracker.mark_failed()
             klass = type(err).__name__
+            _refund_chain(
+                cost_tracker, per_seg_costs, seg_idx,
+                ledger=ledger, per_seg_credits=per_seg_credits,
+                shot_idx=shot_idx, reason=f"unexpected:{klass}",
+            )
+            if cost_tracker is not None: cost_tracker.mark_failed()
             _log(f"❌ AI_VIDEO_HERO chain shot {shot_idx} seg {seg_idx}: unexpected {klass}: {err}")
             return AiVideoShotResult(
                 shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
@@ -1070,7 +1259,11 @@ def orchestrate_ai_video_chain(
         # already covers it for the run summary.)
         seg_local = seg_cache_dir / f"{ck}.mp4"
         if not _download_url_to_path(veo_result.video_url, seg_local):
-            _refund_chain(cost_tracker, per_seg_costs, seg_idx + 1)
+            _refund_chain(
+                cost_tracker, per_seg_costs, seg_idx + 1,
+                ledger=ledger, per_seg_credits=per_seg_credits,
+                shot_idx=shot_idx, reason="segment download failed",
+            )
             if cost_tracker is not None: cost_tracker.mark_failed()
             return AiVideoShotResult(
                 shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
@@ -1109,7 +1302,11 @@ def orchestrate_ai_video_chain(
         if seg_idx < len(segments_spec) - 1:
             frame_path = chain_dir / f"shot_{shot_idx:03d}_seg{seg_idx:02d}_last.png"
             if not _ffmpeg_extract_last_frame(seg_local, frame_path):
-                _refund_chain(cost_tracker, per_seg_costs, seg_idx + 1)
+                _refund_chain(
+                    cost_tracker, per_seg_costs, seg_idx + 1,
+                    ledger=ledger, per_seg_credits=per_seg_credits,
+                    shot_idx=shot_idx, reason="frame extract failed",
+                )
                 if cost_tracker is not None: cost_tracker.mark_failed()
                 return AiVideoShotResult(
                     shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
@@ -1122,7 +1319,11 @@ def orchestrate_ai_video_chain(
             uploader = upload_frame_fn or upload_mp4_fn
             uploaded_url = uploader(frame_path) if uploader else None
             if not uploaded_url:
-                _refund_chain(cost_tracker, per_seg_costs, seg_idx + 1)
+                _refund_chain(
+                    cost_tracker, per_seg_costs, seg_idx + 1,
+                    ledger=ledger, per_seg_credits=per_seg_credits,
+                    shot_idx=shot_idx, reason="frame upload failed",
+                )
                 if cost_tracker is not None: cost_tracker.mark_failed()
                 return AiVideoShotResult(
                     shot_idx=shot_idx, duration_s=sum(s["duration_s"] for s in segments_spec),
@@ -1184,6 +1385,15 @@ def orchestrate_ai_video_chain(
         f"{len(rendered_segments)} segments, {chain_elapsed:.1f}s wall, "
         f"${total_cost:.3f}, {final_url[:80]}"
     )
+    # Net credit cost for this chain = sum of per-segment credits for
+    # segments that actually billed (i.e. cache misses). Cache hits were
+    # refunded mid-loop, so they don't count toward what the institute
+    # paid. The cost-tracker's USD `spent` math mirrors this.
+    net_credits = Decimal("0")
+    if ledger is not None and getattr(ledger, "enabled", False):
+        for i, seg in enumerate(rendered_segments):
+            if not seg.get("cache_hit") and i < len(per_seg_credits):
+                net_credits += per_seg_credits[i]
     return AiVideoShotResult(
         shot_idx=shot_idx,
         html=html,
@@ -1194,6 +1404,7 @@ def orchestrate_ai_video_chain(
         aspect_ratio=aspect_ratio,
         audio_on=audio_on,
         cost_usd=total_cost,
+        cost_credits=float(net_credits),
         elapsed_s=chain_elapsed,
         segments=rendered_segments,
     )
@@ -1203,18 +1414,35 @@ def _refund_chain(
     cost_tracker: Optional[AiVideoCostTracker],
     per_seg_costs: List[float],
     seg_idx_failed: int,
+    *,
+    ledger: Optional["_LedgerType"] = None,
+    per_seg_credits: Optional[List[Decimal]] = None,
+    shot_idx: int = -1,
+    reason: str = "chain failure",
 ) -> None:
     """Refund unspent budget for segments not yet executed.
 
     Segments [0, seg_idx_failed) succeeded; segments [seg_idx_failed, end)
     will not run. Refund the latter range so a chain failure mid-way doesn't
     permanently consume budget for segments we never tried.
+
+    When `ledger` is supplied (Phase 2 wiring), also issues REFUND rows
+    against the global credit ledger for the same unexecuted range — the
+    in-process tracker and the institute-level ledger stay in lockstep.
     """
-    if cost_tracker is None:
-        return
-    refund_amount = sum(per_seg_costs[seg_idx_failed:])
-    if refund_amount > 0:
-        cost_tracker.refund(refund_amount)
+    if cost_tracker is not None:
+        refund_amount = sum(per_seg_costs[seg_idx_failed:])
+        if refund_amount > 0:
+            cost_tracker.refund(refund_amount)
+
+    if ledger is not None and per_seg_credits is not None:
+        refund_credits = sum(per_seg_credits[seg_idx_failed:], Decimal("0"))
+        if refund_credits > 0:
+            ledger.refund(
+                credits=refund_credits,
+                shot_idx=shot_idx,
+                reason=reason,
+            )
 
 
 # ===========================================================================

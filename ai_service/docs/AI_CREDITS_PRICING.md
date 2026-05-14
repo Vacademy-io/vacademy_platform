@@ -2,11 +2,23 @@
 
 ## How Credits Work
 
-- **1 credit = ₹0.93** (at $1 = ₹93)
-- **$1 = 100 credits**
-- All AI operations (video, content, chat, images) consume credits
+- **1 credit = ₹0.93** (at $1 = ₹93) — the customer-facing rate, includes margin
+- **$1 USD API cost → 150 credits** (DB-tunable, see "Rate configuration" below)
+- All AI operations (video, content, chat, images, AI video / Veo) consume credits
 - Free models still cost a tiny base amount (0.05 credits) to cover infrastructure
 - We maintain a **50% margin** over actual AI API costs
+
+### Rate configuration (V252 onwards)
+
+The conversion ratio is **no longer hardcoded**. It lives in the `credit_rate_config` table as two independent knobs:
+
+- `usd_to_credits` — base ratio (default `100`)
+- `margin_pct` — markup percent on top (default `50`)
+- **Effective ratio** = `usd_to_credits × (1 + margin_pct/100)` → `100 × 1.5 = 150` at seed
+
+A ROOT_ADMIN can change either knob without a deploy via `POST /credits/v1/admin/rate-config`. Historical `credit_transactions` are NEVER repriced — `amount` and `balance_after` are credit-denominated snapshots that freeze at issue time. Rate changes apply only to future deductions.
+
+The FE reads the live ratio via `GET /credits/v1/rate-config` (24-hour client cache) and converts USD upper bounds (Veo cost cap, per-second avatar rates) to credits at render time.
 
 ---
 
@@ -32,6 +44,9 @@
 | Medium video (5 min) | ~35 | ~170 videos |
 | Long video (10 min) | ~48 | ~125 videos |
 | Short video (Premium model) | ~60 | ~100 videos |
+| **+ AI video (Veo, worst case)** | **+225** | — |
+
+> **AI video** (fal.ai Veo on Ultra/Super Ultra tiers): hard-capped per video at the Veo upper bound. Today that's 225 credits per video (USD source: $1.50; multiplier from `credit_rate_config`). Typical runs use far less — Director picks AI_VIDEO_HERO shots only when content fits. The cap is the worst case, not the average.
 
 ### Content Generation
 

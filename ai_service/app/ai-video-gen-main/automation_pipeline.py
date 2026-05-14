@@ -1952,6 +1952,11 @@ class VideoGenerationPipeline:
         # warning rather than failing, so the rest of the run still works.
         ai_video_enabled: bool = False,
         ai_video_audio_enabled: bool = False,
+        # Institute identity — used to bind the AI video ledger writer so
+        # Veo charges land as `USAGE_DEDUCTION` rows on the right institute.
+        # None ⇒ ledger writes are skipped (legacy / standalone runs that
+        # don't go through the credit-aware service entrypoint).
+        institute_id: Optional[str] = None,
         progress_callback: Optional[Any] = None,
         stop_event: Optional[Any] = None,
     ) -> Dict[str, Any]:
@@ -2158,6 +2163,7 @@ class VideoGenerationPipeline:
         self._ai_video_audio_run_enabled: bool = bool(ai_video_audio_enabled)
         self._fal_veo_client = None
         self._ai_video_cost_tracker = None
+        self._ai_video_ledger = None
         if self._ai_video_run_enabled:
             # Lazy-import the client + tracker so a run without AI video pays
             # no import cost. Any failure here (import error, missing key)
@@ -2195,6 +2201,34 @@ class VideoGenerationPipeline:
                     self._fal_veo_client = FalVeoClient(_fal_key)
                     _cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or 1.50)
                     self._ai_video_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
+                    # Credit ledger writer. Bound to (institute_id, run_name)
+                    # — every Veo charge from this run lands as a
+                    # USAGE_DEDUCTION row with batch_id=run_name, so the
+                    # existing `refund_video_credits(video_id)` net-zeros
+                    # on pipeline-level failure without any change there.
+                    # Disabled (no-op) when institute_id is None.
+                    self._ai_video_ledger = None
+                    try:
+                        from app.services.ai_video_ledger import AiVideoLedger
+                        self._ai_video_ledger = AiVideoLedger(
+                            institute_id=institute_id,
+                            video_id=run_name,
+                        )
+                        if self._ai_video_ledger.enabled:
+                            print(
+                                f"💳 AI video credit ledger enabled "
+                                f"(institute={institute_id}, video_id={run_name})"
+                            )
+                        else:
+                            print(
+                                "⚠️  AI video credit ledger disabled "
+                                "(missing institute_id or video_id)"
+                            )
+                    except ImportError as _led_err:
+                        print(
+                            f"⚠️  AI video ledger import failed ({_led_err}); "
+                            f"Veo charges will not land in credit_transactions."
+                        )
                     print(
                         f"🎬 AI video enabled (tier={self._quality_tier}, audio="
                         f"{'on' if self._ai_video_audio_run_enabled else 'off'}, "
@@ -4036,11 +4070,45 @@ class VideoGenerationPipeline:
                                     _av_single_calls += 1
                 except Exception:
                     pass
+                # Credit-side parity fields — derived from the ledger's
+                # running totals when AI video credits were active.
+                # Kept ALONGSIDE the USD fields (not as a replacement) so
+                # internal accounting and audit can still cross-check USD
+                # vs credit numbers. The FE / sales-facing surfaces read
+                # the credit fields; backend logs keep both.
+                _av_ledger = getattr(self, "_ai_video_ledger", None)
+                _cap_credits = 0.0
+                _spent_credits = 0.0
+                _remaining_credits = 0.0
+                if _av_ledger is not None and getattr(_av_ledger, "enabled", False):
+                    try:
+                        _spent_credits = float(_av_ledger.net_credits)
+                        # Cap in credits is derived from the USD cap × live
+                        # ratio. Resolve via a short-lived session so we
+                        # use the same rate the ledger used at charge time.
+                        try:
+                            from app.db import db_session as _db_ctx
+                            from app.services.credit_rate_service import CreditRateService
+                            with _db_ctx() as _db:
+                                _ratio = float(CreditRateService(_db).get_effective_ratio())
+                            _cap_credits = float(_av_summary.get("cap_usd") or 0.0) * _ratio
+                            _remaining_credits = max(0.0, _cap_credits - _spent_credits)
+                        except Exception:
+                            # Rate lookup failure is non-fatal — leave
+                            # credit-side cap/remaining at 0 and trust
+                            # the USD fields. Spent_credits is still
+                            # authoritative from the ledger's own state.
+                            pass
+                    except Exception:
+                        pass
                 _av_summary.update({
                     "ai_video_enabled": bool(getattr(self, "_ai_video_run_enabled", False)),
                     "ai_video_audio_enabled": bool(getattr(self, "_ai_video_audio_run_enabled", False)),
                     "single_shot_count": _av_single_calls,
                     "chain_shot_count": _av_chain_calls,
+                    "cap_credits": round(_cap_credits, 4),
+                    "spent_credits": round(_spent_credits, 4),
+                    "remaining_credits": round(_remaining_credits, 4),
                     # Inline tag counts are aggregated into shots_completed
                     # already; we record the run-level numbers and let the
                     # consumer drill into entries for per-shot detail.
@@ -4053,7 +4121,8 @@ class VideoGenerationPipeline:
                     f"{_av_summary['shots_completed']} completed, "
                     f"{_av_summary['shots_failed']} failed, "
                     f"{_av_summary['shots_skipped_circuit_breaker']} cap-skipped, "
-                    f"${_av_summary['spent_usd']:.2f}/${_av_summary['cap_usd']:.2f} spent"
+                    f"${_av_summary['spent_usd']:.2f}/${_av_summary['cap_usd']:.2f} spent "
+                    f"({_av_summary['spent_credits']:.1f}/{_av_summary['cap_credits']:.1f} credits)"
                 )
         except Exception as _av_sum_err:
             # Telemetry write must never fail the run.
@@ -11800,6 +11869,7 @@ class VideoGenerationPipeline:
                             run_dir=run_dir,
                             veo_client=self._fal_veo_client,
                             cost_tracker=self._ai_video_cost_tracker,
+                            ledger=getattr(self, "_ai_video_ledger", None),
                             upload_mp4_fn=_av_upload_mp4,
                             upload_frame_fn=_av_upload_frame,
                             canvas=_av_canvas,
@@ -11814,6 +11884,7 @@ class VideoGenerationPipeline:
                             run_dir=run_dir,
                             veo_client=self._fal_veo_client,
                             cost_tracker=self._ai_video_cost_tracker,
+                            ledger=getattr(self, "_ai_video_ledger", None),
                             canvas=_av_canvas,
                             run_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
                             safety_tolerance="3",
@@ -11848,6 +11919,7 @@ class VideoGenerationPipeline:
                             "_ai_video_request_id": _av_result.request_id,
                             "_ai_video_url": _av_result.video_url,
                             "_ai_video_cost_usd": _av_result.cost_usd,
+                            "_ai_video_cost_credits": _av_result.cost_credits,
                             "_ai_video_elapsed_s": _av_result.elapsed_s,
                             "_ai_video_segments": _av_result.segments,
                             "_ai_video_audio_on": _av_result.audio_on,
@@ -13209,6 +13281,7 @@ class VideoGenerationPipeline:
                         },
                         veo_client=self._fal_veo_client,
                         cost_tracker=self._ai_video_cost_tracker,
+                        ledger=getattr(self, "_ai_video_ledger", None),
                         run_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
                         safety_tolerance="3",
                         log_fn=print,

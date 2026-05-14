@@ -245,6 +245,13 @@ def estimate_video_generation(
     review_mode: bool,
     attachments_count: int,
     host: Optional[Dict[str, Any]] = None,
+    # Opt-in: when True (and tier is ultra/super_ultra) the estimator adds
+    # an AI video upper-bound row to the breakdown so the pre-submit
+    # preview surfaces the worst-case Veo spend. Mirrors the runtime
+    # `ai_video_enabled` flag — the runtime cap is the per-video circuit
+    # breaker in QUALITY_TIERS, not a per-shot guess.
+    ai_video_enabled: bool = False,
+    ai_video_audio_enabled: bool = False,
 ) -> Dict[str, Any]:
     """
     Estimate credits and USD cost for a video generation request, plus echo back
@@ -423,6 +430,29 @@ def estimate_video_generation(
                     "cost_usd": round(host_extra_image_usd, 4),
                     "credits": float(_credits_from_usd("image", host_extra_image_usd, rate_ratio)),
                 })
+
+        # AI video (Veo) upper-bound row — present only when the user
+        # opted-in AND the tier supports it. Veo spend is unpredictable
+        # (Director picks AI_VIDEO_HERO shots at runtime), so we surface
+        # the per-video circuit-breaker cap as the worst case. Same
+        # number across low/expected/high — variance doesn't apply here
+        # since the cap is fixed.
+        if ai_video_enabled and quality_tier in ("ultra", "super_ultra"):
+            _av_cap_usd = 1.50  # mirrors QUALITY_TIERS[ultra+]
+            rows.append({
+                "component": "AI video (worst case)",
+                "detail": (
+                    "fal.ai Veo · upper bound = per-video cap. Actual spend "
+                    "depends on Director's per-shot decisions."
+                    + (
+                        " Veo audio enabled (≈+67% per second)."
+                        if ai_video_audio_enabled
+                        else ""
+                    )
+                ),
+                "cost_usd": round(_av_cap_usd, 4),
+                "credits": float(_credits_from_usd("ai_video", _av_cap_usd, rate_ratio)),
+            })
         return rows
 
     def _scale(v: int, factor: float) -> int:
@@ -467,7 +497,7 @@ def estimate_video_generation(
                 else "Uses segment-based shot generation (no Director pass)."
             ),
             f"Range reflects ±{int(_TOKEN_VARIANCE * 100)}% variance on tokens, ±{int(_IMAGE_VARIANCE * 100)}% on image count.",
-            "Conversion rate: $1 USD → 150 credits (50% markup).",
+            f"Current rate: $1 USD → {rate_ratio:.0f} credits (DB-driven, see credit_rate_config).",
         ],
         "model_registered": llm_pricing is not None,
     }

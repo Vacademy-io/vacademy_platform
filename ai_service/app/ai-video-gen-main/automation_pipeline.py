@@ -3606,56 +3606,61 @@ class VideoGenerationPipeline:
                             # Refresh words + seg_audio_dur from concat result.
                             try:
                                 _v2_raw = tts_outputs.get("response_json")
+                                # ── Phase B v3: derive flat word list from stitched raw ──
+                                # `_concat_master_narration` writes a custom shape
+                                # `{metadata, word_entries, shot_offsets}` to narration_raw.json.
+                                # `_load_words` is a one-liner json.loads — it would return that
+                                # dict and downstream code would iterate it as strings (the keys),
+                                # blowing up later in _shot_task with
+                                # `'str' object has no attribute 'get'`. So we build a flat list
+                                # of `{word, start, end}` dicts directly from `word_entries`,
+                                # assign it to `words`, AND persist it to narration.words.json
+                                # (the legacy WORDS-stage output that downstream code expects).
+                                _flat_words: List[Dict[str, Any]] = []
                                 if _v2_raw and Path(str(_v2_raw)).exists():
-                                    words = self._load_words(Path(str(_v2_raw)))
-                                # ── Phase B v3: ALSO write narration.words.json ──
-                                # The legacy WORDS stage produces this file via
-                                # _parse_timestamps (a subprocess to parse_timestamps.py
-                                # which expects character-alignment or word-list shape).
-                                # The stitched narration_raw.json from _concat_master_narration
-                                # has a custom shape (metadata + word_entries + shot_offsets),
-                                # so parse_timestamps rejects it. Instead, write
-                                # narration.words.json + narration.words.csv DIRECTLY from
-                                # the stitched word_entries — same format the legacy WORDS
-                                # stage's _parse_timestamps would emit (a flat list of
-                                # `{word, start, end}` dicts).
-                                try:
-                                    _words_json_path = run_dir / "narration.words.json"
-                                    _words_csv_path = run_dir / "narration.words.csv"
-                                    _stitched_raw = json.loads(
-                                        Path(str(_v2_raw)).read_text(encoding="utf-8")
-                                    )
-                                    _word_entries = _stitched_raw.get("word_entries") or []
-                                    _flat_words = [
-                                        {
-                                            "word": w.get("word", ""),
-                                            "start": float(w.get("start") or 0.0),
-                                            "end": float(w.get("end") or 0.0),
+                                    try:
+                                        _words_json_path = run_dir / "narration.words.json"
+                                        _words_csv_path = run_dir / "narration.words.csv"
+                                        _stitched_raw = json.loads(
+                                            Path(str(_v2_raw)).read_text(encoding="utf-8")
+                                        )
+                                        _word_entries = _stitched_raw.get("word_entries") or []
+                                        _flat_words = [
+                                            {
+                                                "word": w.get("word", ""),
+                                                "start": float(w.get("start") or 0.0),
+                                                "end": float(w.get("end") or 0.0),
+                                            }
+                                            for w in _word_entries
+                                            if isinstance(w, dict) and w.get("word")
+                                        ]
+                                        _words_json_path.write_text(
+                                            json.dumps(_flat_words, ensure_ascii=False),
+                                            encoding="utf-8",
+                                        )
+                                        # CSV: word,start,end header-less, same as parse_timestamps.py
+                                        _csv_lines = [f'"{w["word"]}",{w["start"]:.3f},{w["end"]:.3f}'
+                                                      for w in _flat_words]
+                                        _words_csv_path.write_text("\n".join(_csv_lines), encoding="utf-8")
+                                        word_outputs = {
+                                            "words_json": _words_json_path,
+                                            "words_csv": _words_csv_path,
                                         }
-                                        for w in _word_entries
-                                        if isinstance(w, dict) and w.get("word")
-                                    ]
-                                    _words_json_path.write_text(
-                                        json.dumps(_flat_words, ensure_ascii=False),
-                                        encoding="utf-8",
-                                    )
-                                    # CSV: word,start,end header-less, same as parse_timestamps.py
-                                    _csv_lines = [f'"{w["word"]}",{w["start"]:.3f},{w["end"]:.3f}'
-                                                  for w in _flat_words]
-                                    _words_csv_path.write_text("\n".join(_csv_lines), encoding="utf-8")
-                                    word_outputs = {
-                                        "words_json": _words_json_path,
-                                        "words_csv": _words_csv_path,
-                                    }
-                                    print(
-                                        f"   📝 v2 word timings written: "
-                                        f"{_words_json_path} ({len(_flat_words)} words)"
-                                    )
-                                except Exception as _wj_err:
-                                    print(
-                                        f"   ⚠️ Failed to write narration.words.json "
-                                        f"after v2 concat: {_wj_err}"
-                                    )
+                                        # CRITICAL: assign the flat list to `words` — this is what
+                                        # `_generate_html_per_shot` receives. Without this, the
+                                        # outer `words` stays as `[]` from the Phase B init at L3211
+                                        # OR (if a prior buggy load ran) becomes the stitched dict
+                                        # whose keys iterate as strings.
+                                        words = _flat_words
+                                        print(
+                                            f"   📝 v2 word timings written: "
+                                            f"{_words_json_path} ({len(_flat_words)} words)"
+                                        )
+                                    except Exception as _wj_err:
+                                        print(
+                                            f"   ⚠️ Failed to write narration.words.json "
+                                            f"after v2 concat: {_wj_err}"
+                                        )
                                 _v2_audio = tts_outputs.get("audio_path")
                                 if _v2_audio and Path(str(_v2_audio)).exists():
                                     try:

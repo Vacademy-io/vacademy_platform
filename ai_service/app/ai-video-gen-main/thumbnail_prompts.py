@@ -36,59 +36,61 @@ KNOWN_INTENTS = {
 }
 
 
-# Style cues per intent. Each entry feeds into the Seedream prompt and into
-# the headline LLM call. Tone strings are descriptive ("benefit promise, ≤4
-# words") rather than templated so the LLM has room to write good copy.
+# Style cues per intent. KEEP THESE PHOTOGRAPHIC ONLY — every word here goes
+# straight into the Seedream prompt, and the model treats editorial-layout
+# language ("lower-third", "masthead", "title space", "type-led") as a
+# directive to render text/UI inside the image. We want clean photographs
+# with intent-appropriate mood; the FE overlay handles all on-screen text.
 INTENT_PRESETS: Dict[str, Dict[str, str]] = {
     "ad": {
         "composition_cues": (
-            "product-hero composition, high contrast, brand-saturated lighting, "
-            "punchy depth of field, magazine-cover energy"
+            "studio product photography, high contrast, dramatic lighting, "
+            "shallow depth of field, polished commercial look"
         ),
-        "mood_cues": "bold, confident, sales-forward, conversion-focused",
+        "mood_cues": "bold, premium, aspirational",
         "headline_tone": "benefit-promise — at most 4 punchy words, present tense",
         "max_words": 4,
     },
     "explainer": {
         "composition_cues": (
-            "single clear subject, generous negative space, soft directional light, "
-            "conceptual illustration sensibility"
+            "single clear subject, generous breathing room, soft directional light, "
+            "minimal background, calm composition"
         ),
-        "mood_cues": "calm, clear, intellectually inviting",
+        "mood_cues": "clean, considered, approachable",
         "headline_tone": "topic noun-phrase — at most 5 words, no question marks",
         "max_words": 5,
     },
     "tutorial": {
         "composition_cues": (
-            "UI screen or workbench framing, monitor-on-desk vibe, step or arrow motifs, "
-            "isometric or 3/4 perspective"
+            "hands-on workspace photograph, tools or materials on a clean surface, "
+            "top-down or 3/4 angle, natural light"
         ),
-        "mood_cues": "practical, capable, step-by-step",
+        "mood_cues": "practical, hands-on, instructive",
         "headline_tone": "imperative 'How to X' phrasing — at most 5 words",
         "max_words": 5,
     },
     "announcement": {
         "composition_cues": (
-            "emblem or badge composition, confetti-light accents, celebratory framing, "
-            "centered hero with halo lighting"
+            "celebratory environmental portrait or symbolic centerpiece, "
+            "warm key light, soft halo, uncluttered background"
         ),
-        "mood_cues": "celebratory, momentous, on-brand",
+        "mood_cues": "celebratory, momentous, optimistic",
         "headline_tone": "event noun — at most 3 words, title-case",
         "max_words": 3,
     },
     "news_recap": {
         "composition_cues": (
-            "newsroom motif, lower-third zone, masthead-like type space, "
-            "photojournalistic clarity"
+            "documentary photograph of the relevant scene or subject, "
+            "natural lighting, photojournalistic clarity, sharp focus"
         ),
-        "mood_cues": "urgent, credible, informational",
+        "mood_cues": "credible, informational, grounded",
         "headline_tone": "sharp news headline — at most 6 words, no period",
         "max_words": 6,
     },
     "story": {
         "composition_cues": (
-            "cinematic vignette, character or location framing, atmospheric haze, "
-            "shallow focus, narrative tension"
+            "cinematic environmental shot, atmospheric haze, shallow focus, "
+            "evocative natural lighting"
         ),
         "mood_cues": "cinematic, evocative, atmospheric",
         "headline_tone": "evocative short phrase — at most 4 words",
@@ -96,18 +98,21 @@ INTENT_PRESETS: Dict[str, Dict[str, str]] = {
     },
     "trailer": {
         "composition_cues": (
-            "movie-poster art direction, dramatic key light + rim light, oversized title space, "
-            "heroic low-angle framing"
+            "dramatic environmental hero shot, strong key light with rim light, "
+            "heroic low-angle, deep contrast"
         ),
-        "mood_cues": "dramatic, hyped, premiere-night",
+        "mood_cues": "dramatic, charged, premiere-quality",
         "headline_tone": "trailer-style title — at most 3 words, all caps okay",
         "max_words": 3,
     },
 }
 
 
-# Four (subject_focus, composition, layout) bundles. Layout names match the
-# overlay slots rendered by the frontend ThumbnailRenderer.
+# Four (subject_focus, composition, layout) bundles. Each describes ONLY the
+# visual framing — never anything about "where text will sit", "type space",
+# or "the frontend will render typography". Seedream interprets those phrases
+# as instructions to render text-shaped graphics. The FE overlay is purely a
+# downstream concern the image generator should know nothing about.
 OPTION_VARIANTS: List[Dict[str, str]] = [
     {
         "id": "thumb_1",
@@ -115,8 +120,8 @@ OPTION_VARIANTS: List[Dict[str, str]] = [
         "composition": "bottom_band",
         "layout": "bottom_band",
         "framing_brief": (
-            "hero object or product fills the upper two-thirds; bottom third left "
-            "intentionally clear and gently darkened for overlay text"
+            "the main subject sits in the upper two-thirds of the frame, "
+            "with a gradual fade to deeper tones toward the bottom edge"
         ),
     },
     {
@@ -125,8 +130,8 @@ OPTION_VARIANTS: List[Dict[str, str]] = [
         "composition": "rule_of_thirds",
         "layout": "top_left",
         "framing_brief": (
-            "single human subject on the right two-thirds, top-left quadrant kept "
-            "uncluttered and softly lit for the title overlay"
+            "a single human subject framed on the right side of the image, "
+            "with a softer, uncluttered area in the top-left of the scene"
         ),
     },
     {
@@ -135,18 +140,18 @@ OPTION_VARIANTS: List[Dict[str, str]] = [
         "composition": "full_frame",
         "layout": "center",
         "framing_brief": (
-            "abstract or symbolic motif filling the frame with a clear high-contrast "
-            "center where overlay text will sit"
+            "a strong symbolic visual element fills the frame with a "
+            "naturally darker center vignette"
         ),
     },
     {
         "id": "thumb_4",
-        "subject_focus": "type_led",
-        "composition": "center",
+        "subject_focus": "atmospheric",
+        "composition": "full_frame",
         "layout": "none",
         "framing_brief": (
-            "minimal abstract background with strong directional gradient, large empty "
-            "center stage — no main subject; the frontend will render large typography only"
+            "an atmospheric, painterly composition with strong directional "
+            "lighting and one dominant tonal hue across the frame"
         ),
     },
 ]
@@ -167,20 +172,67 @@ def normalize_intent(value: Any) -> str:
 # ---------------------------------------------------------------------------
 
 
+_TEXT_CUE_PATTERNS = [
+    # Lines / phrases that, when present in the subject hint, cause Seedream
+    # to render text on the image. We strip them aggressively.
+    r"\b(title|subtitle|caption|headline|heading|subhead|label|callout)\s*(card|bar|strip|block|graphic|banner|chip|tag)?\b",
+    r"\b(lower[- ]third|chyron|nameplate|masthead|watermark|logo|wordmark)\b",
+    r"\b(text\s+(on|in|over|across)\b)",
+    r"\b(type(set|written|face|graphy|writer))\b",
+    r"\bwith the (text|words|caption|title|label)\b",
+    r"\b(displaying|showing|reads?|says?)\s+['\"][^'\"]+['\"]",
+    # Quoted strings — almost always a literal phrase to render.
+    r"['\"][^'\"]{1,80}['\"]",
+    # Hex color codes — Seedream renders them as readable text labels.
+    r"#?\b[0-9a-fA-F]{6}\b",
+    r"#?\b[0-9a-fA-F]{3}\b(?=\s|$|,|\.)",
+]
+_TEXT_CUE_REGEXES = [re.compile(p, re.IGNORECASE) for p in _TEXT_CUE_PATTERNS]
+
+
+def _sanitize_for_image_gen(raw: Optional[str]) -> Optional[str]:
+    """Strip text-rendering and identifier-leaking phrases from a free-text hint.
+
+    Seedream is extremely literal: any mention of "title card", a quoted string,
+    a hex code, or "lower-third" turns into text or UI rendered on the image.
+    The Director's image_prompts and the script title regularly contain such
+    cues. We strip them before feeding the hint to the image model.
+    """
+    if not raw:
+        return None
+    cleaned = raw
+    for rx in _TEXT_CUE_REGEXES:
+        cleaned = rx.sub(" ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" ,.;:-—")
+    return cleaned or None
+
+
 def build_seedream_prompt(
     *,
     intent: str,
     variant: Dict[str, str],
     hero_subject_label: Optional[str],
     visual_style: Optional[str],
-    palette: Optional[Dict[str, str]],
-    title: Optional[str],
 ) -> str:
     """Compose a Seedream prompt for ONE thumbnail option.
 
-    Hard rule baked in: no text, no captions, no logos in the rendered image.
-    The frontend handles overlays so the model never has to render glyphs
-    (which Seedream is unreliable at).
+    Design rules learned the hard way:
+
+    1. The no-text instruction goes FIRST and is the loudest signal in the
+       prompt. Putting it last lets the model interpret all the cues above
+       it as content to render before the guard kicks in.
+    2. No word "YouTube" anywhere — the model renders literal YouTube
+       branding even when we want stylistic energy.
+    3. No palette hex codes in the prompt. Seedream renders `#FF6B00` as a
+       text label on the image. Brand color binding is the FE overlay's job;
+       the photograph just needs to be tonally clean — palette has been
+       removed from the prompt entirely.
+    4. The hero hint runs through `_sanitize_for_image_gen` to strip title-
+       card / lower-third / quoted-string / hex cues that the Director may
+       have written into the shot's `image_prompt`.
+    5. No "title space", "type-led", "for overlay text" phrases — they all
+       cue text-shaped graphics. The FE overlay is downstream and invisible
+       to the image generator.
     """
     intent = normalize_intent(intent)
     preset = INTENT_PRESETS[intent]
@@ -188,44 +240,53 @@ def build_seedream_prompt(
     mood = preset["mood_cues"]
 
     style_hint = (visual_style or "realistic cinematic photograph").strip()
-
-    palette_str = ""
-    if palette:
-        accents: List[str] = []
-        for key in ("primary", "secondary", "accent", "background"):
-            v = palette.get(key)
-            if isinstance(v, str) and v.strip():
-                accents.append(f"{key} {v.strip()}")
-        if accents:
-            palette_str = "Color palette accents: " + ", ".join(accents) + ". "
-
-    subject_clause = ""
-    if hero_subject_label:
-        subject_clause = (
-            f"Subject of the video: {hero_subject_label}. Anchor the composition "
-            "around this subject's identity (or a clearly related stand-in if "
-            "the focus axis is abstract). "
-        )
-    elif title:
-        subject_clause = f"Topic of the video: {title}. "
-
     framing = variant["framing_brief"]
-    subject_focus = variant["subject_focus"]
 
-    # The "no text" guard is repeated deliberately — Seedream sometimes
-    # hallucinates captions when it sees marketing-style cues.
+    subject = _sanitize_for_image_gen(hero_subject_label)
+    # If sanitization gutted the hint (e.g. the Director wrote a "title card"
+    # description full of quoted text + hex codes), what's left is usually
+    # fragments like "with hex codes and" — useless and confusing to the
+    # model. Drop the clause if the leftover is short, sparse, or starts with
+    # a connective stopword (which is the tell that sanitization decapitated
+    # the original noun phrase).
+    _SUBJECT_FRAGMENT_STARTERS = {
+        "with", "and", "or", "but", "from", "to", "of", "in", "on",
+        "at", "the", "a", "an", "for", "by",
+    }
+    _is_meaningful = (
+        subject is not None
+        and len(subject) >= 20
+        and len(subject.split()) >= 4
+        and subject.split()[0].lower() not in _SUBJECT_FRAGMENT_STARTERS
+    )
+    if _is_meaningful:
+        # Truncate aggressively — long Director image_prompts often contain
+        # multi-sentence rambling that confuses the model.
+        if len(subject) > 200:  # type: ignore[arg-type]
+            subject = subject[:200].rsplit(" ", 1)[0]  # type: ignore[index]
+        subject_clause = f"Visual focus: {subject}. "
+    else:
+        subject_clause = ""
+
     return (
-        f"YouTube-style thumbnail, {style_hint}. "
-        f"Mood: {mood}. Composition: {composition}. "
+        # 1. Hard "no text" rule. First sentence, in caps. Repeated below.
+        "NO TEXT, NO LETTERS, NO NUMBERS, NO CAPTIONS, NO WORDS, "
+        "NO LOGOS, NO WATERMARKS, NO UI ELEMENTS, NO SIGNAGE, "
+        "NO STICKERS, NO HASHTAGS, NO BORDERS. "
+        "Pure photographic image only — no graphic-design overlays. "
+        # 2. Photographic style + intent mood.
+        f"A high-impact editorial thumbnail photograph in the style of "
+        f"{style_hint}. Mood: {mood}. "
+        # 3. Composition + variant framing.
+        f"{composition}. {framing}. "
+        # 4. Subject hint (sanitized).
         f"{subject_clause}"
-        f"Focus axis: {subject_focus}. Framing: {framing}. "
-        f"{palette_str}"
-        "STRICT: do not render any text, captions, words, letters, numbers, "
-        "watermarks, logos, brand marks, UI chrome, or signage anywhere in "
-        "the image. The frame must read clearly at small thumbnail sizes "
-        "with high contrast between subject and background. Tasteful "
-        "professional studio look — no random doodles, no clutter, no "
-        "garish overlays."
+        # 5. Reinforce no-text at the end (Seedream pays more attention to
+        # the tail of long prompts).
+        "Crucially: the rendered image must NOT contain any visible text, "
+        "letters, words, numbers, captions, logos, watermarks, hashtags, or "
+        "UI mockups. No screen, browser, or video-player chrome of any kind. "
+        "Clean professional photograph that reads instantly at thumbnail size."
     )
 
 

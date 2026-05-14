@@ -3347,9 +3347,25 @@ class VideoGenerationPipeline:
                             glossary.append({"term": term, "time": seg["start"]})
                 self._current_glossary = glossary
 
+                # ── Phase B v3 segment-derivation tolerance ──────────────
+                # On the Phase B path (TTS deferred to HTML stage), `words`
+                # is empty at this point so `_segment_words` returns []. But
+                # segments aren't actually used when a Director plan exists
+                # — they're the legacy fallback for free/standard tiers.
+                # Don't crash here: Director will run shortly and produce
+                # the real shot plan. If Director ALSO fails, the v2 fallback
+                # path (monolithic TTS + segment regen) at line ~3678 will
+                # rebuild segments from real words.
+                _phase_b_deferred = tts_outputs.get("deferred_to_html") is True
                 if not segments:
-                    raise RuntimeError("Failed to derive segments from narration.")
-                
+                    if _phase_b_deferred and self._tier_config.get("use_director"):
+                        print(
+                            f"   ℹ️  Phase B path: skipping empty-segments check "
+                            f"(words deferred — Director will produce the shot plan)"
+                        )
+                    else:
+                        raise RuntimeError("Failed to derive segments from narration.")
+
                 print(f"🎨 Generating {len(segments)} HTML overlay sets via OpenRouter ...")
 
                 # ── Pipelined HTML + image generation ─────────────────────────────────
@@ -3592,6 +3608,28 @@ class VideoGenerationPipeline:
                                 _v2_raw = tts_outputs.get("response_json")
                                 if _v2_raw and Path(str(_v2_raw)).exists():
                                     words = self._load_words(Path(str(_v2_raw)))
+                                # ── Phase B v3: ALSO write narration.words.json ──
+                                # The legacy WORDS stage produces this file via
+                                # _parse_timestamps, but on Phase B that stage
+                                # is deferred (no-op). Generate it here so the
+                                # service's html-stage upload list at line ~1510
+                                # picks it up. Downstream consumers (editor,
+                                # render, FE caption rendering) read this file
+                                # by name from S3.
+                                if _v2_raw and Path(str(_v2_raw)).exists():
+                                    try:
+                                        word_outputs = self._parse_timestamps(
+                                            Path(str(_v2_raw)), run_dir
+                                        )
+                                        print(
+                                            f"   📝 v2 word timings written: "
+                                            f"{word_outputs.get('words_json')}"
+                                        )
+                                    except Exception as _wj_err:
+                                        print(
+                                            f"   ⚠️ Failed to write narration.words.json "
+                                            f"after v2 concat: {_wj_err}"
+                                        )
                                 _v2_audio = tts_outputs.get("audio_path")
                                 if _v2_audio and Path(str(_v2_audio)).exists():
                                     try:
@@ -18428,22 +18466,12 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # Mark started so we don't double-trigger inside the same run().
         self._thumbnails_started = True
 
-        # Resolve a brand_kit-shaped dict from style_config — only `palette`
-        # is consumed by Seedream prompts. Heading font + watermark are
-        # applied client-side by the FE overlay so they always reflect the
-        # currently-active brand kit (not whatever was active at gen time).
-        _style = getattr(self, "_current_style_config", None) or {}
-        palette: Dict[str, str] = {}
-        for src_key, dst_key in (
-            ("primary_color", "primary"),
-            ("secondary_color", "secondary"),
-            ("accent_color", "accent"),
-            ("background_color", "background"),
-        ):
-            v = _style.get(src_key)
-            if isinstance(v, str) and v.strip():
-                palette[dst_key] = v.strip()
-        brand_kit = {"palette": palette} if palette else None
+        # The brand palette is intentionally NOT forwarded to the thumbnail
+        # generator — Seedream renders hex codes as text labels on the image
+        # ("#FF6B00" came back as a visible chip). Brand color binding lives
+        # entirely in the FE overlay (heading font, palette accent, watermark)
+        # so it always reflects the currently-active brand kit rather than
+        # whatever was active at gen time.
 
         # Use the script_client for the small headline LLM call — same model
         # the script/director uses, so token usage is accounted for cleanly.
@@ -18482,7 +18510,6 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     director_plan=director_plan,
                     orientation=_orientation,
                     subjects_list=[],
-                    brand_kit=brand_kit,
                     llm_chat=_llm_chat,
                 )
 

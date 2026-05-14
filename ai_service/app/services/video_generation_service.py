@@ -1536,6 +1536,35 @@ class VideoGenerationService:
         # safety net by the router's _run_generation finally block).
         stop_event = cancellation_registry.register(video_id)
 
+        # ── PHASE B COMBINE (2026-05-14) ──────────────────────────────────
+        # Phase B's per-shot TTS reorder requires the pipeline.run() call to
+        # see do_tts=True AND do_html=True together. The per-stage iteration
+        # below normally calls pipeline.run(start_from="tts", stop_at="tts")
+        # for the TTS stage, which makes do_html=False inside that call —
+        # falsifying the v2 gate. To fix: when Phase B conditions are met,
+        # SKIP the individual TTS+WORDS iterations and run TTS+WORDS+HTML
+        # as a single pipeline.run(start_from="tts", stop_at="html") during
+        # what would have been the HTML iteration. The pipeline produces
+        # narration.mp3 + words.json + timeline.json + per_shot_tts/ all in
+        # that combined run, and the html-stage upload list at line ~1510
+        # uploads every one of them.
+        #
+        # Conditions: target ≥ HTML, start ≤ TTS (fresh run or resume from
+        # script), premium+ tier (has Director), VIDEO content type.
+        _phase_b_combine = (
+            target_stage_idx >= 4  # html
+            and start_stage_idx <= 2  # tts or earlier
+            and quality_tier in ("premium", "ultra", "super_ultra")
+            and content_type == "VIDEO"
+        )
+        if _phase_b_combine:
+            logger.info(
+                f"[VideoGenService] 🧪 Phase B combine ACTIVE: TTS+WORDS+HTML "
+                f"will run in a single pipeline.run(start_from='tts', stop_at='html') "
+                f"call to enable per-shot TTS deferral (target={stop_at}, "
+                f"start={start_from}, tier={quality_tier})"
+            )
+
         # Iterate through stages individually
         for stage_idx in range(start_stage_idx, target_stage_idx + 1):
             if pipeline_error:
@@ -1564,9 +1593,44 @@ class VideoGenerationService:
                 cancellation_registry.clear(video_id)
                 return
 
+            # ── PHASE B COMBINE: skip TTS + WORDS individual iterations ──
+            # When Phase B combine is active (Director-before-TTS reorder
+            # requires TTS+HTML in a single pipeline.run), the per-shot TTS
+            # + concat + reconcile work happens INSIDE the HTML iteration's
+            # pipeline call (via start_from="tts"). The TTS and WORDS
+            # individual iterations would otherwise call pipeline.run with
+            # stop_at="tts" / "words" — falsifying do_html in the gate. So
+            # we skip them here. The HTML iteration's upload list at
+            # line ~1510 handles narration.mp3 + narration.words.json
+            # upload, so the external file contract is preserved.
+            if _phase_b_combine and stage_idx in (2, 3):
+                logger.info(
+                    f"[VideoGenService] 🧪 Phase B combine: skipping individual "
+                    f"stage iteration for {self.STAGES[stage_idx]} (folded into HTML)"
+                )
+                try:
+                    self.repository.update_stage(video_id, self.STAGES[stage_idx], "IN_PROGRESS")
+                except Exception:
+                    pass
+                continue
+
             stage_name = self.STAGES[stage_idx]
             config = stage_config[stage_idx]
             stage_pipeline_name = config["name"]
+            # Phase B: when HTML iteration runs with combine active, the
+            # pipeline must start FROM TTS (not HTML) so the deferral gate
+            # sees do_tts=True AND do_html=True in the same call. The pipeline
+            # internally runs TTS-stage block (deferring), WORDS-stage block
+            # (also deferring), then HTML-stage block (Director + per-shot
+            # TTS + concat + html gen).
+            _pipeline_start_from = stage_pipeline_name
+            if _phase_b_combine and stage_idx == 4:  # html
+                _pipeline_start_from = "tts"
+                logger.info(
+                    f"[VideoGenService] 🧪 Phase B combine: HTML iteration will "
+                    f"call pipeline.run(start_from='tts', stop_at='html') to "
+                    f"enable Director-before-TTS deferral"
+                )
             
             # Yield progress at start of stage
             # Calculate percentage for start of this stage
@@ -1619,7 +1683,7 @@ class VideoGenerationService:
                     base_prompt=prompt,
                     run_name=video_id,
                     resume_run=None,
-                    start_from=stage_pipeline_name,
+                    start_from=_pipeline_start_from,
                     stop_at=stage_pipeline_name,
                     language=language,
                     show_captions=captions_enabled,
@@ -3102,7 +3166,6 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 director_plan=director_plan,
                 orientation=orientation,
                 subjects_list=[],
-                brand_kit=None,
                 llm_chat=None,
             )
 

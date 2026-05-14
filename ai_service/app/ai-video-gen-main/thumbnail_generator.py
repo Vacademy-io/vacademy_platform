@@ -263,7 +263,6 @@ def run(
     director_plan: Optional[Dict[str, Any]],
     orientation: str = "landscape",
     subjects_list: Optional[List[Dict[str, Any]]] = None,
-    brand_kit: Optional[Dict[str, Any]] = None,
     llm_chat: Optional[Callable[..., Tuple[str, Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
     """Generate 4 thumbnail options + persist images to S3.
@@ -301,9 +300,12 @@ def run(
 
         visual_style = (script_plan or {}).get("visual_style") if script_plan else None
         title = ((script_plan or {}).get("title") or "").strip()
-        palette = (brand_kit or {}).get("palette") if brand_kit else None
 
         # Hero subject — recurring subject from extractor wins; otherwise first shot's prompt.
+        # Note: brand palette is intentionally NOT passed to Seedream. The model
+        # rendered hex codes (e.g. "#FF6B00") as text labels on the image. Brand
+        # color binding is the FE overlay's job — the photograph just needs to
+        # be tonally clean.
         hero_label = _pick_hero_subject_label(director_plan or {}, subjects_list or [])
 
         # Headlines — main from Director's title, 3 alternates from a small LLM call.
@@ -346,8 +348,6 @@ def run(
                 variant=variant,
                 hero_subject_label=hero_label,
                 visual_style=visual_style,
-                palette=palette,
-                title=title or None,
             )
             try:
                 image_bytes, _usage = seedream_call(

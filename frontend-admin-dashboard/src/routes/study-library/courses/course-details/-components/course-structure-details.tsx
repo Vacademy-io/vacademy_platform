@@ -1904,6 +1904,7 @@ export const CourseStructureDetails = ({
                                                                                                                                             />
                                                                                                                                         </SortableDragHandle>
                                                                                                                                     )}
+                                                                                {(canEditAllowed || canDeleteAllowed || dripConditionsEnabled) && (
                                                                                                                                     <DropdownMenu>
                                                                                                                                         <DropdownMenuTrigger
                                                                                                                                             asChild
@@ -2028,6 +2029,7 @@ export const CourseStructureDetails = ({
                                                                                                                                             )}
                                                                                                                                         </DropdownMenuContent>
                                                                                                                                     </DropdownMenu>
+                                                                                )}
                                                                                                                                 </div>
                                                                                                                             )}
                                                                                                                         </CollapsibleTrigger>
@@ -2544,6 +2546,7 @@ export const CourseStructureDetails = ({
                                                                                                                                             }
                                                                                                                                         />
                                                                                                                                     </SortableDragHandle>
+                                                                                {(canEditAllowed || canDeleteAllowed || dripConditionsEnabled) && (
                                                                                                                                     <DropdownMenu>
                                                                                                                                         <DropdownMenuTrigger
                                                                                                                                             asChild
@@ -2668,6 +2671,7 @@ export const CourseStructureDetails = ({
                                                                                                                                             )}
                                                                                                                                         </DropdownMenuContent>
                                                                                                                                     </DropdownMenu>
+                                                                                )}
                                                                                                                                 </div>
                                                                                                                             )}
                                                                                                                         </CollapsibleTrigger>
@@ -3055,6 +3059,7 @@ export const CourseStructureDetails = ({
                                                                                                                                             }
                                                                                                                                         />
                                                                                                                                     </SortableDragHandle>
+                                                                                {(canEditAllowed || canDeleteAllowed || dripConditionsEnabled) && (
                                                                                                                                     <DropdownMenu>
                                                                                                                                         <DropdownMenuTrigger
                                                                                                                                             asChild
@@ -3179,6 +3184,7 @@ export const CourseStructureDetails = ({
                                                                                                                                             )}
                                                                                                                                         </DropdownMenuContent>
                                                                                                                                     </DropdownMenu>
+                                                                                )}
                                                                                                                                 </div>
                                                                                                                             )}
                                                                                                                         </CollapsibleTrigger>

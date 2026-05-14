@@ -313,25 +313,34 @@ export const CourseStructureDetails = ({
     const allowReadOnlyNavigation =
         roleDisplay?.coursePage?.allowViewSlidesInReadOnly !== false;
     const blockReadOnlyClick = readOnly && !allowReadOnlyNavigation;
-    // `canEditAllowed` / `canDeleteAllowed` gate the Edit (rename) and Delete
-    // action buttons on Subject / Module / Chapter rows independently, so the
-    // admin can toggle "Can edit subject/module/chapter" and "Can delete
-    // subject/module/chapter" separately and they behave separately.
-    // `canEditStructure` (back-compat name) is used for the outer action area,
-    // Add / drag-reorder buttons, and the "Editing Restricted" banner — shows
-    // if EITHER action is allowed.
-    //   - directEditPublishedCourse — full in-place edit (covers everything)
-    //   - canEditCourseStructure    — Edit / rename only
-    //   - canDeleteCourseStructure  — Delete only
+    // `canEditAllowed` / `canDeleteAllowed` are the FINAL gates for the Edit
+    // (rename) and Delete buttons on Subject / Module / Chapter rows.
+    //
+    //  Decision rules:
+    //   - Admin / DRAFT owner (base permission) → always shown
+    //   - Otherwise the action shows only if its explicit Display Settings
+    //     toggle is ON:
+    //        canEditCourseStructure   — controls Edit / rename
+    //        canDeleteCourseStructure — controls Delete
+    //
+    //  Note: `directEditPublishedCourse` does NOT auto-enable these. The
+    //  admin gets independent control over edit vs delete vs the slide-level
+    //  direct-edit. The "Editing Restricted" banner / in-place editing of
+    //  the course form are still tied to `directEditPublishedCourse` —
+    //  these two structure toggles are surgical.
     const canEditAllowed =
         canEditStructureBase ||
-        roleDisplay?.coursePage?.directEditPublishedCourse === true ||
         roleDisplay?.coursePage?.canEditCourseStructure === true;
     const canDeleteAllowed =
         canEditStructureBase ||
-        roleDisplay?.coursePage?.directEditPublishedCourse === true ||
         roleDisplay?.coursePage?.canDeleteCourseStructure === true;
-    const canEditStructure = canEditAllowed || canDeleteAllowed;
+    // Used by the banner gate, Add buttons, and drag-reorder — these still
+    // honour `directEditPublishedCourse` so direct-edit teachers can at least
+    // navigate the structure even when the per-row toggles are off.
+    const canEditStructure =
+        canEditAllowed ||
+        canDeleteAllowed ||
+        roleDisplay?.coursePage?.directEditPublishedCourse === true;
     useEffect(() => {
         try {
             // Use getActiveRoleDisplaySettingsKey which handles ADMIN, TEACHER, and custom roles (faculty)

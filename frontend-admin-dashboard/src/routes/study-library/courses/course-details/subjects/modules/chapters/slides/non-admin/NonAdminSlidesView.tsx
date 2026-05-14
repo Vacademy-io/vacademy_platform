@@ -430,15 +430,20 @@ export function NonAdminSlidesView({
 
             {/* Action Buttons Container */}
             <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-                {/* Preview Changes Button - Show for all courses */}
-                <PreviewChangesButton
-                    currentCourseId={courseId}
-                    originalCourseId={originalCourseId}
-                    subjectId={subjectId}
-                    packageSessionId={sessionId}
-                    chapterId={chapterId}
-                    disabled={unsavedChanges.hasChanges}
-                />
+                {/* Preview / View Content button — only relevant in the
+                    Copy-to-Edit / approval flow. In direct-edit mode the
+                    teacher is editing the live course in place, so there's
+                    no separate "original" to preview. */}
+                {!allowDirectEditPublished && (
+                    <PreviewChangesButton
+                        currentCourseId={courseId}
+                        originalCourseId={originalCourseId}
+                        subjectId={subjectId}
+                        packageSessionId={sessionId}
+                        chapterId={chapterId}
+                        disabled={unsavedChanges.hasChanges}
+                    />
+                )}
 
                 {/* Send for Approval Button - Only show for draft courses with changes */}
                 {isDraftCourse && (

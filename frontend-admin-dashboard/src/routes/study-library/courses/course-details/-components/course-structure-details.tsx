@@ -296,7 +296,7 @@ export const CourseStructureDetails = ({
     // 1. User is admin, OR
     // 2. User is the course creator and course is in DRAFT status, OR
     // 3. If createdByUserId is not available, allow editing for DRAFT status (fallback for authored courses)
-    const canEditStructure =
+    const canEditStructureBase =
         isAdmin ||
         (isOwnCourse && courseStatus === 'DRAFT') ||
         (!courseCreatedBy && courseStatus === 'DRAFT');
@@ -313,6 +313,15 @@ export const CourseStructureDetails = ({
     const allowReadOnlyNavigation =
         roleDisplay?.coursePage?.allowViewSlidesInReadOnly !== false;
     const blockReadOnlyClick = readOnly && !allowReadOnlyNavigation;
+    // `canEditStructure` gates Edit / Delete / Add / drag-reorder buttons on
+    // Subject / Module / Chapter rows in both the Outline and Content Structure
+    // tabs. Either of the new role display flags (canEditCourseStructure /
+    // canDeleteCourseStructure) is enough to enable the action area for
+    // non-admin roles on ACTIVE / IN_REVIEW courses.
+    const canEditStructure =
+        canEditStructureBase ||
+        roleDisplay?.coursePage?.canEditCourseStructure === true ||
+        roleDisplay?.coursePage?.canDeleteCourseStructure === true;
     useEffect(() => {
         try {
             // Use getActiveRoleDisplaySettingsKey which handles ADMIN, TEACHER, and custom roles (faculty)

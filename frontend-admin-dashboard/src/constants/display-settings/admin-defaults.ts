@@ -61,6 +61,8 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         viewContentNumbering: true,
         allowViewSlidesInReadOnly: true,
         directEditPublishedCourse: true,
+        canEditCourseStructure: true,
+        canDeleteCourseStructure: true,
     },
     courseList: {
         tabs: [
@@ -112,6 +114,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
     slideView: {
         showCopyTo: true,
         showMoveTo: true,
+        showDelete: true,
     },
     authoredCoursesCard: {
         showCopyToEdit: true,

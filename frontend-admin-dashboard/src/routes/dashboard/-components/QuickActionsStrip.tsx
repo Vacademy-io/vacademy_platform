@@ -18,7 +18,14 @@ export default function QuickActionsStrip({ roles }: QuickActionsStripProps) {
                     <button
                         key={a.id}
                         type="button"
-                        onClick={() => navigate({ to: a.to })}
+                        onClick={() =>
+                            navigate(
+                                a.search
+                                    ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                      ({ to: a.to, search: a.search } as any)
+                                    : { to: a.to }
+                            )
+                        }
                         className="group flex shrink-0 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-medium text-neutral-700 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md"
                     >
                         <span className="flex size-6 items-center justify-center rounded-lg bg-primary-50 text-primary-600 transition-colors group-hover:bg-primary-100">

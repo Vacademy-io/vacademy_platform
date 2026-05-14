@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ui/card';
@@ -11,13 +10,9 @@ import {
     CurrencyInr,
     WarningCircle,
     VideoCamera,
-    TrendUp,
-    TrendDown,
-    Minus,
     type Icon,
 } from '@phosphor-icons/react';
 import { getDashboardKpisQuery, type DashboardKpi } from '../-services/dashboard-kpis-service';
-import { computeKpiDeltas, type KpiDelta } from '../-utils/kpi-deltas';
 
 interface KpiBandProps {
     instituteId: string;
@@ -108,32 +103,9 @@ const formatValue = (k: DashboardKpi): string => {
     return k.value.toLocaleString('en-IN');
 };
 
-const DeltaChip = ({ delta }: { delta: KpiDelta }) => {
-    const Icon =
-        delta.direction === 'up' ? TrendUp : delta.direction === 'down' ? TrendDown : Minus;
-    const sign = delta.direction === 'up' ? '+' : delta.direction === 'down' ? '-' : '';
-    const tone = delta.isPositive ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700';
-    return (
-        <span
-            className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${tone}`}
-        >
-            <Icon size={10} weight="bold" />
-            {sign}
-            {delta.percent}%
-        </span>
-    );
-};
-
 export default function KpiBand({ instituteId, roles }: KpiBandProps) {
     const navigate = useNavigate();
     const { data, isLoading, isError } = useQuery(getDashboardKpisQuery({ instituteId, roles }));
-    const [deltas, setDeltas] = useState<Record<string, KpiDelta>>({});
-
-    useEffect(() => {
-        if (data && data.length && instituteId) {
-            setDeltas(computeKpiDeltas(data, instituteId));
-        }
-    }, [data, instituteId]);
 
     if (isError) return null;
     if (!isLoading && (!data || data.length === 0)) return null;
@@ -202,10 +174,6 @@ export default function KpiBand({ instituteId, roles }: KpiBandProps) {
                                 <span className="text-2xl font-semibold tabular-nums text-neutral-900 sm:text-[26px]">
                                     {formatValue(k)}
                                 </span>
-                                {(() => {
-                                    const d = deltas[k.id];
-                                    return d ? <DeltaChip delta={d} /> : null;
-                                })()}
                             </div>
                             {k.subtitle && (
                                 <div className="mt-1 flex items-center justify-between gap-2">

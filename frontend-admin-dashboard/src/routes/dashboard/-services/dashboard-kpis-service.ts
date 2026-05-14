@@ -1,6 +1,8 @@
 import { fetchPendingAdjustments } from '@/services/manage-finances';
 import { getUpcomingSessions } from '@/routes/study-library/live-session/-services/utils';
-import { fetchInstituteDashboardDetails, fetchInstituteDashboardUsers } from './dashboard-services';
+import { fetchInstituteDashboardDetails } from './dashboard-services';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { GET_USER_ROLES_COUNT } from '@/constants/urls';
 
 export type KpiFormat = 'number' | 'currency' | 'percent';
 
@@ -42,57 +44,29 @@ const fetchInstituteCounts = async (instituteId: string): Promise<InstituteCount
     return safe(fetchInstituteDashboardDetails(instituteId) as Promise<InstituteCounts>);
 };
 
-// Sum of all non-student users at the institute, across active + disabled +
-// invited. The endpoint is paginated; we only need the totals so we ask for
-// pageSize=1 and read `totalElements`.
-const ALL_TEAM_ROLES = [
-    { id: '1', name: 'ADMIN' },
-    { id: '2', name: 'COURSE CREATOR' },
-    { id: '3', name: 'ASSESSMENT CREATOR' },
-    { id: '4', name: 'EVALUATOR' },
-    { id: '5', name: 'TEACHER' },
-];
-
-const totalElementsFromResponse = (resp: unknown): number => {
-    if (!resp) return 0;
-    if (Array.isArray(resp)) return resp.length;
-    const r = resp as { totalElements?: number; content?: unknown[] };
-    if (typeof r.totalElements === 'number') return r.totalElements;
-    if (Array.isArray(r.content)) return r.content.length;
-    return 0;
-};
+// Sum of all non-student users at the institute. Uses the dedicated count
+// endpoint, which groups by role across the institute (excluding STUDENT) and
+// naturally includes any custom roles defined for the institute.
+interface RoleCountRow {
+    role_name?: string;
+    roleName?: string;
+    user_count?: number;
+    userCount?: number;
+}
 
 const fetchTeamMemberCount = async (instituteId: string): Promise<number> => {
     if (!instituteId) return 0;
-    const [active, invited] = await Promise.all([
-        safe(
-            fetchInstituteDashboardUsers(
-                instituteId,
-                {
-                    roles: ALL_TEAM_ROLES,
-                    status: [
-                        { id: '1', name: 'ACTIVE' },
-                        { id: '2', name: 'DISABLED' },
-                    ],
-                },
-                0,
-                1
-            )
-        ),
-        safe(
-            fetchInstituteDashboardUsers(
-                instituteId,
-                {
-                    roles: ALL_TEAM_ROLES,
-                    status: [{ id: '1', name: 'INVITED' }],
-                },
-                0,
-                1
-            )
-        ),
-    ]);
-    return totalElementsFromResponse(active) + totalElementsFromResponse(invited);
+    const rows = await safe(
+        authenticatedAxiosInstance({
+            method: 'GET',
+            url: GET_USER_ROLES_COUNT,
+            params: { instituteId },
+        }).then((r) => r.data as RoleCountRow[])
+    );
+    if (!Array.isArray(rows)) return 0;
+    return rows.reduce((sum, row) => sum + Number(row.user_count ?? row.userCount ?? 0), 0);
 };
+
 
 const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
     const [counts, dues, sessions, teamCount] = await Promise.all([
@@ -116,14 +90,14 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
             value: counts?.student_count || 0,
             format: 'number',
             subtitle: 'Enrolled across batches',
-            deepLink: '/manage-students',
+            deepLink: '/manage-students/students-list',
         },
         {
             id: 'totalCourses',
             label: 'Total Courses',
             value: counts?.course_count || 0,
             format: 'number',
-            subtitle: 'Across all subjects',
+            subtitle: 'Active courses',
             deepLink: '/study-library/courses',
         },
         {
@@ -139,7 +113,6 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
             value: Math.round(outstanding),
             format: 'currency',
             subtitle: 'Due across overdue items',
-            deepLink: '/financial-management/collection-dashboard',
         },
         {
             id: 'overdueItems',
@@ -147,7 +120,6 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
             value: overdueCount,
             format: 'number',
             subtitle: 'Need follow-up',
-            deepLink: '/financial-management/collection-dashboard',
         },
         {
             id: 'classesToday',

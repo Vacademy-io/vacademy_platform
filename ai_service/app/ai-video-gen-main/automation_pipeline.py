@@ -549,11 +549,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # Per-shot TTS migration flag (Phase 0). Off everywhere by default; the
         # legacy monolithic TTS path remains live. Flip true on a tier to opt
         # into per-shot TTS once the implementation lands and verifies.
-        "tts_per_shot_enabled": False,
+        "tts_per_shot_enabled": True,
         # BeatPlanner (Phase 1) feature flag. Off everywhere by default; the
         # legacy Script-Generator-emits-beats path remains canonical until
         # the full BeatPlanner-as-input refactor lands.
-        "beat_planner_enabled": False,
+        "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
         "ai_video_eligible": False,
     },
@@ -583,11 +583,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "vision_review_run_cost_cap_usd": 0.40,
         "vision_review_max_regens_pct": 30,
         # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
-        "tts_per_shot_enabled": False,
+        "tts_per_shot_enabled": True,
         # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
         # everywhere by default; Phase 2 flips it on per tier once the
         # Director-consumes-beats integration ships.
-        "beat_planner_enabled": False,
+        "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
         "ai_video_eligible": False,
     },
@@ -620,11 +620,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "vision_review_run_cost_cap_usd": 0.50,
         "vision_review_max_regens_pct": 30,
         # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
-        "tts_per_shot_enabled": False,
+        "tts_per_shot_enabled": True,
         # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
         # everywhere by default; Phase 2 flips it on per tier once the
         # Director-consumes-beats integration ships.
-        "beat_planner_enabled": False,
+        "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
         "ai_video_eligible": False,
     },
@@ -683,11 +683,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "vision_review_run_cost_cap_usd": 0.60,
         "vision_review_max_regens_pct": 30,
         # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
-        "tts_per_shot_enabled": False,
+        "tts_per_shot_enabled": True,
         # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
         # everywhere by default; Phase 2 flips it on per tier once the
         # Director-consumes-beats integration ships.
-        "beat_planner_enabled": False,
+        "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ELIGIBLE on this tier, but still
         # gated on per-run user opt-in via AdvancedSettings.ai_video_enabled.
         # The eligible flag controls whether the toggle is exposed in the UI;
@@ -739,11 +739,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "vision_review_run_cost_cap_usd": 0.60,
         "vision_review_max_regens_pct": 30,
         # Per-shot TTS migration flag (Phase 0); see "free" tier comment.
-        "tts_per_shot_enabled": False,
+        "tts_per_shot_enabled": True,
         # BeatPlanner + DefaultShotMapper (Phase 1) feature flag. Off
         # everywhere by default; Phase 2 flips it on per tier once the
         # Director-consumes-beats integration ships.
-        "beat_planner_enabled": False,
+        "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ELIGIBLE on this tier (see ultra
         # for the eligible-vs-enabled distinction).
         "ai_video_eligible": True,
@@ -2625,6 +2625,25 @@ class VideoGenerationPipeline:
             if not base_prompt or not base_prompt.strip():
                 raise ValueError("A prompt is required when starting from the script stage.")
 
+            # Pre-parse target_duration → seconds so BeatPlanner (which runs
+            # BEFORE the script-budget validation block at line ~2700 that
+            # also computes this) gets the actual user-requested duration
+            # rather than the 150s fallback. The full validation block below
+            # still runs for the post-script word-count check; this is just
+            # an earlier read of the same target_duration string.
+            try:
+                import re as _re_dur_pre
+                _td_lo_pre = (target_duration or "").lower().strip()
+                _nums_pre = [float(n) for n in _re_dur_pre.findall(r"[\d.]+", _td_lo_pre)]
+                if _nums_pre:
+                    if "second" in _td_lo_pre:
+                        _pre_target_s = sum(_nums_pre) / len(_nums_pre)
+                    else:
+                        _pre_target_s = (sum(_nums_pre) / len(_nums_pre)) * 60.0
+                    self._target_seconds = float(_pre_target_s)
+            except Exception:
+                pass  # validation block below will fill in a safe default
+
             # ── BeatPlanner (Phase 1, opt-in) ─────────────────────────
             # When `beat_planner_enabled` is set on the tier, run an explicit
             # beat-planning LLM call BEFORE Script Generator. The beats land
@@ -2639,7 +2658,8 @@ class VideoGenerationPipeline:
                     from beat_planner import plan_beats, BeatPlanError
                     self._emit_progress({"type": "sub_stage", "sub_stage": "beats_planning",
                                           "message": "Planning beats from intent..."})
-                    # Convert "2-3 minutes" / "5 minutes" / numeric → seconds.
+                    # Target duration was pre-parsed above; fall through to
+                    # 150s default only if parsing failed (malformed input).
                     _bp_target_s = float(getattr(self, "_target_seconds", 0) or 0)
                     if _bp_target_s <= 0:
                         _bp_target_s = 150.0  # 2.5min default — matches script-budget fallback
@@ -2829,6 +2849,72 @@ class VideoGenerationPipeline:
                             script_plan["plan"],
                             script_plan.get("script_text", ""),
                         )
+
+            # ── BeatPlanner → Director bridge (v2) ─────────────────────
+            # When BeatPlanner ran successfully (above, before _draft_script),
+            # enrich script_plan.beat_outline with v2 planning fields
+            # (`duration_estimate_s`, `intent_role`, `narration_hint`) so the
+            # Director plans shots informed by beat-level pacing. The script
+            # text the TTS speaks still comes from _draft_script — beats are
+            # a planning frame, not the narration source.
+            #
+            # Strategy: MERGE when beat counts match (preserve Script's
+            # `visual_idea` / `emotion` / `key_terms` richness); OVERRIDE
+            # only when counts diverge (BeatPlanner is then the planning
+            # source of truth since the Script's outline can't be aligned).
+            if getattr(self, "_beats_v2_plan", None):
+                try:
+                    from beat_planner import to_script_plan_beat_outline
+                    _v2_outline = to_script_plan_beat_outline(
+                        self._beats_v2_plan.get("beats") or []
+                    )
+                    if _v2_outline:
+                        if not isinstance(script_plan.get("plan"), dict):
+                            script_plan["plan"] = {}
+                        _script_outline = script_plan["plan"].get("beat_outline") or []
+                        _v2_only_keys = (
+                            "duration_estimate_s",
+                            "intent_role",
+                            "narration_hint",
+                        )
+                        if (
+                            isinstance(_script_outline, list)
+                            and len(_script_outline) == len(_v2_outline)
+                        ):
+                            # MERGE path — zip per index, keep Script's rich
+                            # fields, layer v2 fields on top.
+                            merged: List[Dict[str, Any]] = []
+                            for s_beat, v_beat in zip(_script_outline, _v2_outline):
+                                if not isinstance(s_beat, dict):
+                                    s_beat = {}
+                                m = dict(s_beat)
+                                for k in _v2_only_keys:
+                                    if k in v_beat:
+                                        m[k] = v_beat[k]
+                                # Backfill visual_type when Script's was blank.
+                                if not (m.get("visual_type") or "").strip():
+                                    vt = (v_beat.get("visual_type") or "").strip()
+                                    if vt:
+                                        m["visual_type"] = vt
+                                merged.append(m)
+                            script_plan["plan"]["beat_outline"] = merged
+                            print(
+                                f"📊 BeatPlanner bridge: merged v2 fields into "
+                                f"{len(merged)} script beats"
+                            )
+                        else:
+                            # OVERRIDE path — counts diverged. Use v2 outline
+                            # as the planning frame; Director adapts.
+                            script_plan["plan"]["beat_outline"] = _v2_outline
+                            print(
+                                f"📊 BeatPlanner bridge: replaced script "
+                                f"beat_outline ({len(_script_outline)} → {len(_v2_outline)} v2 beats)"
+                            )
+                except Exception as _bridge_err:
+                    print(
+                        f"   ⚠️ BeatPlanner→Director bridge failed "
+                        f"({type(_bridge_err).__name__}: {_bridge_err}) — falling back to script-generated outline"
+                    )
         else:
             self._require_file(script_path, "script.txt (narration text)")
             # Try to load the plan if it exists, otherwise provide a dummy one
@@ -2849,7 +2935,44 @@ class VideoGenerationPipeline:
 
         # Only proceed to TTS if we are not stopping before it
         if self.STAGE_INDEX["tts"] < stop_idx:
-            if do_tts:
+            # ── Phase B: v2 TTS deferral ──────────────────────────────
+            # On v2 (`tts_per_shot_enabled`) for VIDEO runs, defer all TTS
+            # work to the html stage where it can run AFTER Director plans
+            # shots. The TTS stage becomes a no-op + sub_stage signal; the
+            # html stage produces per-shot mp3s → concat → narration.mp3.
+            # Service tolerates missing narration.mp3 at TTS-stage exit
+            # (the upload loop skips missing files) AND the html-stage
+            # upload list re-uploads narration.mp3 (line 1514 of
+            # video_generation_service.py), so the external API contract
+            # is preserved: narration.mp3 lands in S3 by end-of-html-stage.
+            #
+            # Gated on (a) the run will REACH the html stage (`do_html`) so
+            # per-shot TTS actually fires, and (b) the tier runs Director
+            # (`use_director`) — free/standard tiers have no Director plan
+            # to slice narration by, so per-shot TTS has nothing to consume.
+            # Both fallbacks run the legacy monolithic _synthesize_voice.
+            _v2_tts_deferred = (
+                do_tts
+                and self._tier_config.get("tts_per_shot_enabled")
+                and self._tier_config.get("use_director")
+                and do_html
+                and content_type == "VIDEO"
+                and content_type not in NO_AUDIO_TYPES
+            )
+            if _v2_tts_deferred:
+                print("🗣️  TTS deferred to html stage (v2 per-shot path)")
+                self._emit_progress({
+                    "type": "sub_stage",
+                    "sub_stage": "tts_deferred",
+                    "message": "Voice recording deferred — Director picks shots first",
+                })
+                tts_outputs = {
+                    "audio_path": None,
+                    "response_json": None,
+                    "tts_character_count": 0,
+                    "deferred_to_html": True,
+                }
+            elif do_tts:
                 self._emit_progress({"type": "sub_stage", "sub_stage": "tts_generating",
                                       "message": "Generating voice narration..."})
                 tts_outputs = self._synthesize_voice(
@@ -2986,7 +3109,14 @@ class VideoGenerationPipeline:
 
         # Only proceed to WORDS if we are not stopping before it
         if self.STAGE_INDEX["words"] < stop_idx:
-            if do_words:
+            # On v2 the words derivation is also deferred — we stitch word
+            # timings out of per-shot TTS outputs during concat in the html
+            # stage. Skip _parse_timestamps cleanly; `words` stays empty and
+            # Director runs without word-snapping (already supported).
+            if do_words and tts_outputs.get("deferred_to_html"):
+                print("🔤 Word timings deferred to html stage (v2 per-shot path)")
+                word_outputs = {"words_json": None, "words_csv": None}
+            elif do_words:
                 print("🔤 Deriving word timings ...")
                 word_outputs = self._parse_timestamps(tts_outputs["response_json"], run_dir)
             elif content_type not in NO_AUDIO_TYPES:
@@ -3091,6 +3221,27 @@ class VideoGenerationPipeline:
                             pass
                     if _seg_audio_dur > 0:
                         print(f"   ℹ️  Actual audio duration: {_seg_audio_dur:.1f}s")
+
+                # ── Phase B: estimate audio_duration on v2 deferred path ──
+                # Director's call site below gates on `_seg_audio_dur > 0`.
+                # Without an estimate, Director would be skipped on every v2
+                # run. Use BeatPlanner beats' duration_estimate_s when
+                # available; otherwise fall back to self._target_seconds.
+                if _seg_audio_dur <= 0 and tts_outputs.get("deferred_to_html"):
+                    _bp_plan = getattr(self, "_beats_v2_plan", None)
+                    if _bp_plan and (_bp_plan.get("beats") or []):
+                        try:
+                            _seg_audio_dur = sum(
+                                float(b.get("duration_estimate_s") or 0.0)
+                                for b in _bp_plan["beats"]
+                            )
+                        except Exception:
+                            _seg_audio_dur = 0.0
+                    if _seg_audio_dur <= 0:
+                        _seg_audio_dur = float(getattr(self, "_target_seconds", 0) or 0.0)
+                    if _seg_audio_dur <= 0:
+                        _seg_audio_dur = 30.0  # last-ditch — keep Director firing
+                    print(f"   ℹ️  Estimated audio duration (v2 pre-TTS): {_seg_audio_dur:.1f}s")
 
                 # Configurable max segments to limit LLM expense
                 # Default: max 12 segments (covers ~8 minutes of video at ~40s each)
@@ -3225,6 +3376,9 @@ class VideoGenerationPipeline:
                                         ai_video_audio_enabled=getattr(
                                             self, "_ai_video_audio_run_enabled", False
                                         ),
+                                        mute_tts_on_source_clips=getattr(
+                                            self, "_mute_tts_on_source_clips", False
+                                        ),
                                     )
                                 except Exception as _ap_err:
                                     print(f"   ⚠️ AudioPolicyPlanner skipped on resume ({_ap_err})")
@@ -3276,6 +3430,9 @@ class VideoGenerationPipeline:
                                         _director_plan["shots"],
                                         ai_video_audio_enabled=getattr(
                                             self, "_ai_video_audio_run_enabled", False
+                                        ),
+                                        mute_tts_on_source_clips=getattr(
+                                            self, "_mute_tts_on_source_clips", False
                                         ),
                                         log_fn=print,
                                     )
@@ -3330,6 +3487,88 @@ class VideoGenerationPipeline:
                         print(f"   ⚠️ Could not start thumbnail batch: {_tb_err}")
 
                 if _director_plan and _director_plan.get("shots"):
+                    # ── Phase B: v2 per-shot TTS (after Director, before avatar) ──
+                    # Director plan is final and AudioPolicyPlanner has set
+                    # `audio_policy` per shot. Now produce per-shot narration
+                    # MP3s, concat into master narration.mp3, and reconcile
+                    # shot timings from the actual audio durations.
+                    # Skipped when tts_outputs already has audio_path (legacy
+                    # v1 path, or v2 resume where narration.mp3 exists on disk).
+                    if (
+                        tts_outputs.get("deferred_to_html")
+                        and content_type == "VIDEO"
+                    ):
+                        try:
+                            self._run_per_shot_tts_v2(
+                                _director_plan["shots"],
+                                run_dir,
+                                tts_outputs,
+                                language=language,
+                                voice_gender=voice_gender,
+                                tts_provider=tts_provider,
+                                voice_id=voice_id,
+                            )
+                            # Credit accounting: per-shot TTS char count is
+                            # stashed on tts_outputs by `_run_per_shot_tts_v2`;
+                            # forward to the run-level usage accumulator.
+                            _v2_chars = int(tts_outputs.get("tts_character_count") or 0)
+                            if _v2_chars > 0:
+                                accumulate_usage({"tts_character_count": _v2_chars})
+                            # Refresh words + seg_audio_dur from concat result.
+                            try:
+                                _v2_raw = tts_outputs.get("response_json")
+                                if _v2_raw and Path(str(_v2_raw)).exists():
+                                    words = self._load_words(Path(str(_v2_raw)))
+                                _v2_audio = tts_outputs.get("audio_path")
+                                if _v2_audio and Path(str(_v2_audio)).exists():
+                                    try:
+                                        _probe = subprocess.run(
+                                            ["ffprobe", "-v", "quiet", "-show_entries",
+                                             "format=duration", "-of",
+                                             "default=noprint_wrappers=1:nokey=1",
+                                             str(_v2_audio)],
+                                            capture_output=True, text=True, timeout=10,
+                                        )
+                                        _seg_audio_dur = float((_probe.stdout or "0").strip() or 0.0)
+                                    except Exception:
+                                        pass
+                            except Exception as _refresh_err:
+                                print(f"   ⚠️ v2 words/audio refresh failed: {_refresh_err}")
+                        except Exception as _v2_tts_err:
+                            # Per-shot TTS failure on v2 is recoverable IF the
+                            # legacy monolithic TTS can run as fallback. Try
+                            # once; if it succeeds the run continues.
+                            print(
+                                f"   ⚠️ v2 per-shot TTS failed "
+                                f"({type(_v2_tts_err).__name__}: {_v2_tts_err}) — "
+                                f"falling back to monolithic TTS"
+                            )
+                            try:
+                                _fallback = self._synthesize_voice(
+                                    script_plan["script_path"],
+                                    run_dir,
+                                    language=language,
+                                    voice_gender=voice_gender,
+                                    tts_provider=tts_provider,
+                                    voice_id=voice_id,
+                                )
+                                tts_outputs["audio_path"] = _fallback.get("audio_path")
+                                tts_outputs["response_json"] = _fallback.get("response_json")
+                                tts_outputs["deferred_to_html"] = False
+                                _fb_chars = _fallback.get("tts_character_count", 0)
+                                tts_outputs["tts_character_count"] = _fb_chars
+                                accumulate_usage({"tts_character_count": _fb_chars})
+                                # Re-derive words from monolithic raw json
+                                _w_out = self._parse_timestamps(
+                                    _fallback.get("response_json"), run_dir
+                                )
+                                if _w_out.get("words_json"):
+                                    words = self._load_words(_w_out["words_json"])
+                            except Exception as _fb_err:
+                                print(f"   ❌ Monolithic TTS fallback also failed: {_fb_err}")
+                                # Re-raise — the run can't proceed without audio
+                                raise
+
                     # Per-shot HTML generation using Director plan
                     print(f"🎬 Using Director plan: {len(_director_plan['shots'])} shots")
 
@@ -3382,6 +3621,56 @@ class VideoGenerationPipeline:
                     )
                 else:
                     # Fallback: segment-based flow (free/standard, or Director failed)
+                    # ── Phase B safety net ────────────────────────────
+                    # If TTS was deferred for v2 but Director didn't produce
+                    # a plan (failure/empty), run the legacy monolithic TTS
+                    # now — otherwise the run would proceed with no audio.
+                    # Also re-derive words so segment-based HTML gen sees
+                    # real word timings instead of the empty stub.
+                    if tts_outputs.get("deferred_to_html") and content_type == "VIDEO":
+                        print(
+                            "   ⚠️ v2 TTS deferred but Director plan empty — "
+                            "running monolithic TTS fallback so the run can ship"
+                        )
+                        try:
+                            _fb = self._synthesize_voice(
+                                script_plan["script_path"],
+                                run_dir,
+                                language=language,
+                                voice_gender=voice_gender,
+                                tts_provider=tts_provider,
+                                voice_id=voice_id,
+                            )
+                            tts_outputs["audio_path"] = _fb.get("audio_path")
+                            tts_outputs["response_json"] = _fb.get("response_json")
+                            tts_outputs["deferred_to_html"] = False
+                            _fb_chars = int(_fb.get("tts_character_count") or 0)
+                            tts_outputs["tts_character_count"] = _fb_chars
+                            if _fb_chars > 0:
+                                accumulate_usage({"tts_character_count": _fb_chars})
+                            # Re-derive words so the segment loop can use them
+                            try:
+                                _w_out = self._parse_timestamps(
+                                    _fb.get("response_json"), run_dir
+                                )
+                                if _w_out.get("words_json"):
+                                    words = self._load_words(_w_out["words_json"])
+                            except Exception as _wd_err:
+                                print(f"   ⚠️ words re-derive failed: {_wd_err}")
+                            # Rebuild segments now that we have real words.
+                            if beat_outline and len(beat_outline) >= 2 and words:
+                                segments = self._segment_words_by_beats(
+                                    words, beat_outline, max_segments=max_segments,
+                                    audio_duration=_seg_audio_dur or 0,
+                                )
+                            elif words:
+                                segments = self._segment_words(
+                                    words, audio_duration=_seg_audio_dur or 0,
+                                )
+                        except Exception as _fb_err:
+                            print(f"   ❌ Monolithic TTS fallback failed: {_fb_err}")
+                            raise
+
                     self._emit_progress({
                         "type": "sub_stage", "sub_stage": "html_generating",
                         "message": f"Generating visuals for {len(segments)} segments...",
@@ -5255,6 +5544,293 @@ class VideoGenerationPipeline:
             "total_duration_s": cum_offset,
             "shot_offsets": shot_offsets,
         }
+
+    # --- Phase B: v2 per-shot TTS orchestrator + reconciliation ------------
+    def _run_per_shot_tts_v2(
+        self,
+        shots: List[Dict[str, Any]],
+        run_dir: Path,
+        tts_outputs: Dict[str, Any],
+        language: str = "English",
+        voice_gender: str = "female",
+        tts_provider: str = "standard",
+        voice_id: Optional[str] = None,
+    ) -> None:
+        """v2 TTS orchestrator: per-shot synthesis → concat → reconcile.
+
+        Runs INSIDE the html stage, after the Director plan finalizes and
+        AudioPolicyPlanner has assigned `audio_policy` per shot. Side-effects:
+
+        - Writes `<run_dir>/tts/shot_NNN.mp3` and `_raw.json` per shot
+        - Concats into `<run_dir>/narration.mp3` and `narration_raw.json`
+          (same paths as the legacy monolithic TTS — downstream consumers
+          read these by name)
+        - Mutates `tts_outputs` in place with new audio_path / response_json
+          / tts_character_count, and clears `deferred_to_html`
+        - Mutates `shots` in place via `_reconcile_shot_timings_after_tts`
+          so `start_time` / `end_time` / `shot_duration_s` reflect actual
+          MP3 durations rather than Director estimates
+
+        Emits sub_stage events: `tts_shot_start` / `tts_shot_done` per
+        shot, `narration_concat_start` / `narration_concat_done` around
+        the ffmpeg concat, and a summary `tts_done`.
+        """
+        if not shots:
+            raise RuntimeError("_run_per_shot_tts_v2 called with empty shot plan")
+
+        # Build per-shot input list. Each shot gets a `_v2_narration_text`
+        # field set from `narration_excerpt` UNLESS audio_policy is
+        # intrinsic_only (in which case Veo provides the audio and master
+        # narration is silent in that window — empty string → silent gap).
+        _v2_shots: List[Dict[str, Any]] = []
+        for s in shots:
+            s_copy = dict(s)
+            policy = s_copy.get("audio_policy", "narration_only")
+            if policy == "intrinsic_only":
+                s_copy["_v2_narration_text"] = ""
+            else:
+                s_copy["_v2_narration_text"] = (
+                    s_copy.get("narration_excerpt")
+                    or s_copy.get("narration_text")
+                    or ""
+                )
+            try:
+                _dur = float(s_copy.get("end_time", 0) or 0) - float(
+                    s_copy.get("start_time", 0) or 0
+                )
+            except (TypeError, ValueError):
+                _dur = 0.0
+            s_copy["shot_duration_s"] = max(_dur, 0.0)
+            _v2_shots.append(s_copy)
+
+        total_shots = len(_v2_shots)
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "tts_generating",
+            "message": f"Recording narration for {total_shots} shots...",
+            "shot_count": total_shots,
+        })
+
+        # ── Per-shot TTS loop with progress events ────────────────────
+        per_shot_outputs: List[Dict[str, Any]] = []
+        total_chars = 0
+        for loop_idx, shot in enumerate(_v2_shots):
+            shot_idx = self._coerce_shot_index(shot.get("shot_index"), loop_idx)
+            narration_text = shot.get("_v2_narration_text") or ""
+            self._emit_progress({
+                "type": "sub_stage",
+                "sub_stage": "tts_shot_start",
+                "shot_index": shot_idx,
+                "shot_count": total_shots,
+                "loop_index": loop_idx,
+            })
+            try:
+                result = self._synthesize_voice_for_shot(
+                    shot_idx=shot_idx,
+                    narration_text=narration_text,
+                    run_dir=run_dir,
+                    language=language,
+                    voice_gender=voice_gender,
+                    tts_provider=tts_provider,
+                    voice_id=voice_id,
+                )
+            except Exception as tts_err:
+                print(f"   ⚠️ Per-shot TTS failed for shot {shot_idx}: {tts_err}")
+                result = {
+                    "shot_idx": shot_idx,
+                    "skipped": True,
+                    "reason": f"tts_error: {type(tts_err).__name__}",
+                    "mp3_path": None,
+                    "raw_json_path": None,
+                    "char_count": 0,
+                }
+            result["intended_duration_s"] = float(shot.get("shot_duration_s") or 0.0)
+            per_shot_outputs.append(result)
+            total_chars += int(result.get("char_count") or 0)
+            self._emit_progress({
+                "type": "sub_stage",
+                "sub_stage": "tts_shot_done",
+                "shot_index": shot_idx,
+                "shot_count": total_shots,
+                "loop_index": loop_idx,
+                "skipped": bool(result.get("skipped")),
+                "char_count": result.get("char_count") or 0,
+            })
+
+        # ── Concat → master narration.mp3 ────────────────────────────
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "narration_concat_start",
+            "message": "Stitching master narration...",
+            "shot_count": total_shots,
+        })
+        concat = self._concat_master_narration(per_shot_outputs, run_dir)
+        master_audio_path = concat["audio_path"]
+        master_raw_json = concat["raw_json_path"]
+        total_dur = float(concat.get("total_duration_s") or 0.0)
+        shot_offsets = concat.get("shot_offsets") or []
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "narration_concat_done",
+            "audio_path": str(master_audio_path),
+            "total_duration_s": total_dur,
+            "shot_count": total_shots,
+        })
+
+        # ── Reconcile shot timings from actual MP3 durations ─────────
+        self._reconcile_shot_timings_after_tts(shots, shot_offsets)
+
+        # ── Attach per-shot S3 URLs to each shot ─────────────────────
+        # The service's upload loop posts `<run_dir>/tts/` as a directory
+        # to `s3://{bucket}/ai-videos/{video_id}/per_shot_tts/` (see html
+        # stage upload list in video_generation_service.py). The URL is
+        # deterministic from {bucket, video_id, shot_idx}, so we can
+        # pre-compute it here — by the time the timeline / director_plan
+        # land in S3, these URLs are valid. Editor reads them directly
+        # off the shot dict for per-shot audio playback + regeneration
+        # without an extra S3-listing round trip.
+        self._attach_per_shot_audio_urls(
+            shots=shots,
+            per_shot_outputs=per_shot_outputs,
+            shot_offsets=shot_offsets,
+            run_dir=run_dir,
+        )
+
+        # ── Update tts_outputs so downstream consumers see real audio ─
+        tts_outputs["audio_path"] = master_audio_path
+        tts_outputs["response_json"] = master_raw_json
+        tts_outputs["tts_character_count"] = total_chars
+        tts_outputs["deferred_to_html"] = False
+
+        # Track TTS character count for credit deduction (mirrors the
+        # legacy monolithic path's accumulate_usage call).
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "tts_done",
+            "message": f"Per-shot narration ready ({total_dur:.1f}s, {total_chars} chars)",
+            "tts_character_count": total_chars,
+            "shot_count": total_shots,
+        })
+        print(
+            f"   ✅ v2 per-shot TTS complete: {total_shots} shots, "
+            f"{total_dur:.1f}s total, {total_chars} chars"
+        )
+
+    def _attach_per_shot_audio_urls(
+        self,
+        shots: List[Dict[str, Any]],
+        per_shot_outputs: List[Dict[str, Any]],
+        shot_offsets: List[Dict[str, Any]],
+        run_dir: Path,
+    ) -> None:
+        """Annotate each shot with predictable S3 URLs for its per-shot TTS
+        artifacts. The service's html-stage upload list pushes `<run_dir>/tts/`
+        to `ai-videos/{video_id}/per_shot_tts/`, so URLs are deterministic
+        from {bucket, video_id, shot_idx}.
+
+        Fields added per shot:
+          - `audio_url`        — `s3://.../per_shot_tts/shot_NNN.mp3`
+          - `audio_words_url`  — `s3://.../per_shot_tts/shot_NNN_raw.json`
+          - `audio_script_url` — `s3://.../per_shot_tts/shot_NNN_script.txt`
+          - `audio_duration_s` — actual MP3 duration (post-reconcile)
+          - `audio_skipped`    — True for intrinsic_only / empty-narration shots
+
+        For shots where TTS was skipped (intrinsic_only or empty narration),
+        only `audio_skipped: True` and `audio_duration_s` are set — no S3
+        URLs since no mp3 was produced.
+
+        Mutates `shots` in place. Safe to call when video_id / bucket are
+        missing (logs a warning, leaves URL fields unset — local paths
+        remain on per_shot_outputs for editor consumption in local dev).
+        """
+        if len(shots) != len(per_shot_outputs):
+            print(
+                f"   ⚠️ per-shot URL attach: shot count {len(shots)} != "
+                f"output count {len(per_shot_outputs)} — skipping"
+            )
+            return
+
+        # Bucket name resolution mirrors the vision-review uploader's
+        # pattern (line ~16005). For environments where the public bucket
+        # differs, prefer the env override.
+        import os as _os_psv
+        bucket = (
+            _os_psv.environ.get("AWS_S3_PUBLIC_BUCKET")
+            or _os_psv.environ.get("AWS_BUCKET_NAME")
+            or "vacademy-media-storage-public"
+        )
+        video_id = getattr(self, "_current_video_id", None) or run_dir.name
+        if not video_id:
+            print("   ⚠️ per-shot URL attach: no video_id — skipping URL annotation")
+            return
+
+        _base = f"https://{bucket}.s3.amazonaws.com/ai-videos/{video_id}/per_shot_tts"
+
+        for shot, out, off in zip(shots, per_shot_outputs, shot_offsets):
+            try:
+                shot_idx = self._coerce_shot_index(
+                    out.get("shot_idx", shot.get("shot_index")), 0
+                )
+                dur = float(off.get("dur_s") or 0.0)
+            except Exception:
+                continue
+            shot["audio_duration_s"] = round(dur, 3)
+            if out.get("skipped"):
+                shot["audio_skipped"] = True
+                shot["audio_skip_reason"] = out.get("reason") or "skipped"
+                # Don't set URLs — no mp3 was uploaded for this shot.
+                continue
+            shot["audio_skipped"] = False
+            shot["audio_url"] = f"{_base}/shot_{shot_idx:03d}.mp3"
+            shot["audio_words_url"] = f"{_base}/shot_{shot_idx:03d}_raw.json"
+            shot["audio_script_url"] = f"{_base}/shot_{shot_idx:03d}_script.txt"
+
+    @staticmethod
+    def _reconcile_shot_timings_after_tts(
+        shots: List[Dict[str, Any]],
+        shot_offsets: List[Dict[str, Any]],
+    ) -> None:
+        """Update each shot's `start_time` / `end_time` / `shot_duration_s`
+        from actual TTS MP3 durations (via `_concat_master_narration` offsets).
+
+        Director plans shots from beat-level duration estimates; per-shot TTS
+        produces the real durations. Without reconciliation, shot boundaries
+        could drift by 0.5–2s per shot, accumulating to large mismatches by
+        the end of a 30-shot run. Mutates `shots` in place.
+
+        Falls through cleanly when shot count and offset count diverge (a
+        shot may have been dropped or split between planning and TTS) —
+        in that case logs and leaves Director-estimated timings alone.
+        """
+        if not shots or not shot_offsets:
+            return
+        if len(shots) != len(shot_offsets):
+            print(
+                f"   ⚠️ reconcile: shot count {len(shots)} != offset count "
+                f"{len(shot_offsets)} — skipping reconciliation"
+            )
+            return
+        _drift_max = 0.0
+        for s, off in zip(shots, shot_offsets):
+            try:
+                start = float(off.get("start_s") or 0.0)
+                dur = float(off.get("dur_s") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            old_start = float(s.get("start_time", 0) or 0)
+            old_end = float(s.get("end_time", 0) or 0)
+            new_start = round(start, 3)
+            new_end = round(start + dur, 3)
+            drift = max(abs(new_start - old_start), abs(new_end - old_end))
+            _drift_max = max(_drift_max, drift)
+            s["start_time"] = new_start
+            s["end_time"] = new_end
+            s["shot_duration_s"] = round(dur, 3)
+        if _drift_max > 0.5:
+            print(
+                f"   ⏱️ reconcile: max shot drift {_drift_max:.2f}s "
+                f"(Director estimate → actual TTS)"
+            )
 
     def regen_shot_narration(
         self,
@@ -7387,7 +7963,7 @@ class VideoGenerationPipeline:
     def _run_director(
         self,
         script_plan: Dict[str, Any],
-        words: List[Dict[str, Any]],
+        words: Optional[List[Dict[str, Any]]],
         style_guide: Dict[str, Any],
         run_dir: Path,
         language: str = "English",
@@ -7398,6 +7974,11 @@ class VideoGenerationPipeline:
 
         Returns the parsed director plan dict, or None if the call fails
         (the pipeline will fall back to the segment-based flow).
+
+        On the v2 path (`tts_per_shot_enabled`), Director runs BEFORE TTS, so
+        `words` is None / []. Shot boundary snapping to word timings is
+        skipped — boundaries land on round-second estimates and get
+        reconciled to actual MP3 durations after per-shot TTS completes.
         """
         from director_prompts import (
             DIRECTOR_SYSTEM_PROMPT,
@@ -8712,6 +9293,16 @@ class VideoGenerationPipeline:
             # sub-shot still routes to Veo correctly)
             "ai_video_prompt", "ai_video_duration_s", "ai_video_segments",
             "ai_video_audio",
+            # Phase B (v2): per-shot TTS artifacts so decomposed sub-shots
+            # carry their narration audio context forward. The reconciler
+            # rewrites start_time / end_time globally; these per-shot
+            # paths are preserved so editor regen can identify the source.
+            "narration_text", "audio_path", "audio_duration_s",
+            # Phase B per-shot S3 URLs (set by _attach_per_shot_audio_urls
+            # after per-shot TTS uploads). Editor reads these for shot-level
+            # audio playback + regeneration without an S3-listing round trip.
+            "audio_url", "audio_words_url", "audio_script_url",
+            "audio_skipped", "audio_skip_reason",
         )
         for _ss in (a, b):
             for _k in _inherit_keys:

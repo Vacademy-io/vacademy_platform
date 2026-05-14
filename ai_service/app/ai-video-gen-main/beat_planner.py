@@ -356,6 +356,34 @@ def _parse_beats(text: str) -> List[Dict[str, Any]]:
 # Public API
 # ---------------------------------------------------------------------------
 
+def to_script_plan_beat_outline(beats: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Convert BeatPlanner output → the `beat_outline` shape that the Director
+    and Script Generator already consume (see director_prompts.py:1216,
+    automation_pipeline._draft_script). One-to-one mapping; preserves order.
+
+    BeatPlanner adds two fields the legacy outline didn't carry —
+    `duration_estimate_s` and `intent_role` — both surface to the Director so
+    it can plan shot timings before TTS runs.
+    """
+    outline: List[Dict[str, Any]] = []
+    for i, b in enumerate(beats or []):
+        outline.append({
+            "label": b.get("label", f"Beat {i + 1}"),
+            "narration": b.get("intended_narration") or b.get("narration") or "",
+            "visual_type": b.get("visual_type_hint", ""),
+            "visual_idea": "",
+            "emotion": "",
+            "pacing": "normal",
+            "complexity_level": "moderate",
+            "key_terms": [],
+            # New v2 fields — opaque to legacy consumers (dict.get() noop).
+            "duration_estimate_s": float(b.get("duration_estimate_s") or 0.0),
+            "intent_role": b.get("intent_role", ""),
+            "narration_hint": bool(b.get("narration_hint", True)),
+        })
+    return outline
+
+
 def plan_beats(
     *,
     prompt: str,

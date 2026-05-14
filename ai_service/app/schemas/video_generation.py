@@ -712,6 +712,14 @@ class UpdateFrameRequest(BaseModel):
     exit_time: Optional[float] = Field(None, description="New end time in seconds (time_driven)")
     z: Optional[int] = Field(None, description="Z-index layer")
     entry_id: Optional[str] = Field(None, description="Client entry ID for verification")
+    entry_meta: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Free-form per-entry metadata (e.g. {'display_name': 'Welcome'}). "
+            "Merged into the entry's existing entry_meta — keys not present in "
+            "the payload are preserved. Pass an empty object to no-op."
+        ),
+    )
 
 
 class AddFrameRequest(BaseModel):
@@ -729,6 +737,14 @@ class AddFrameRequest(BaseModel):
     html_start_y: Optional[int] = Field(None, description="Top edge in pixels (default 0)")
     html_end_x: Optional[int] = Field(None, description="Right edge in pixels (default video width)")
     html_end_y: Optional[int] = Field(None, description="Bottom edge in pixels (default video height)")
+    entry_meta: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Free-form per-entry metadata (e.g. {'display_name': 'Welcome'}) "
+            "to attach to the new entry. An empty `display_name` is treated "
+            "as 'no override' and omitted from the stored entry_meta."
+        ),
+    )
 
 
 class AddFrameResponse(BaseModel):

@@ -313,15 +313,25 @@ export const CourseStructureDetails = ({
     const allowReadOnlyNavigation =
         roleDisplay?.coursePage?.allowViewSlidesInReadOnly !== false;
     const blockReadOnlyClick = readOnly && !allowReadOnlyNavigation;
-    // `canEditStructure` gates Edit / Delete / Add / drag-reorder buttons on
-    // Subject / Module / Chapter rows in both the Outline and Content Structure
-    // tabs. Either of the new role display flags (canEditCourseStructure /
-    // canDeleteCourseStructure) is enough to enable the action area for
-    // non-admin roles on ACTIVE / IN_REVIEW courses.
-    const canEditStructure =
+    // `canEditAllowed` / `canDeleteAllowed` gate the Edit (rename) and Delete
+    // action buttons on Subject / Module / Chapter rows independently, so the
+    // admin can toggle "Can edit subject/module/chapter" and "Can delete
+    // subject/module/chapter" separately and they behave separately.
+    // `canEditStructure` (back-compat name) is used for the outer action area,
+    // Add / drag-reorder buttons, and the "Editing Restricted" banner — shows
+    // if EITHER action is allowed.
+    //   - directEditPublishedCourse — full in-place edit (covers everything)
+    //   - canEditCourseStructure    — Edit / rename only
+    //   - canDeleteCourseStructure  — Delete only
+    const canEditAllowed =
         canEditStructureBase ||
-        roleDisplay?.coursePage?.canEditCourseStructure === true ||
+        roleDisplay?.coursePage?.directEditPublishedCourse === true ||
+        roleDisplay?.coursePage?.canEditCourseStructure === true;
+    const canDeleteAllowed =
+        canEditStructureBase ||
+        roleDisplay?.coursePage?.directEditPublishedCourse === true ||
         roleDisplay?.coursePage?.canDeleteCourseStructure === true;
+    const canEditStructure = canEditAllowed || canDeleteAllowed;
     useEffect(() => {
         try {
             // Use getActiveRoleDisplaySettingsKey which handles ADMIN, TEACHER, and custom roles (faculty)
@@ -1510,6 +1520,7 @@ export const CourseStructureDetails = ({
                                                                 <SortableDragHandle className="inline-flex size-6 cursor-grab items-center justify-center rounded-md border border-neutral-300 opacity-0 transition-opacity hover:bg-gray-100 group-hover/subject-trigger:opacity-100">
                                                                     <DotsSixVertical size={14} />
                                                                 </SortableDragHandle>
+                                                                {canEditAllowed && (
                                                                 <MyButton
                                                                     buttonType="secondary"
                                                                     layoutVariant="icon"
@@ -1525,6 +1536,8 @@ export const CourseStructureDetails = ({
                                                                 >
                                                                     <PencilSimple size={16} />
                                                                 </MyButton>
+                                                                )}
+                                                                {canDeleteAllowed && (
                                                                 <MyButton
                                                                     buttonType="secondary"
                                                                     layoutVariant="icon"
@@ -1543,6 +1556,7 @@ export const CourseStructureDetails = ({
                                                                 >
                                                                     <Trash size={16} />
                                                                 </MyButton>
+                                                                )}
                                                             </div>
                                                         )}
                                                     </CollapsibleTrigger>
@@ -1672,6 +1686,7 @@ export const CourseStructureDetails = ({
                                                                                                         }
                                                                                                     />
                                                                                                 </SortableDragHandle>
+                                                                                                {canEditAllowed && (
                                                                                                 <MyButton
                                                                                                     buttonType="secondary"
                                                                                                     layoutVariant="icon"
@@ -1697,6 +1712,8 @@ export const CourseStructureDetails = ({
                                                                                                         }
                                                                                                     />
                                                                                                 </MyButton>
+                                                                                                )}
+                                                                                                {canDeleteAllowed && (
                                                                                                 <MyButton
                                                                                                     buttonType="secondary"
                                                                                                     layoutVariant="icon"
@@ -1727,6 +1744,7 @@ export const CourseStructureDetails = ({
                                                                                                         }
                                                                                                     />
                                                                                                 </MyButton>
+                                                                                                )}
                                                                                             </div>
                                                                                         )}
                                                                                     </CollapsibleTrigger>
@@ -1917,6 +1935,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                 e.stopPropagation()
                                                                                                                                             }
                                                                                                                                         >
+                                                                                                                                            {canEditAllowed && (
                                                                                                                                             <DropdownMenuItem
                                                                                                                                                 onClick={(
                                                                                                                                                     e
@@ -1945,6 +1964,8 @@ export const CourseStructureDetails = ({
                                                                                                                                                 />
                                                                                                                                                 Edit
                                                                                                                                             </DropdownMenuItem>
+                                                                                                                                            )}
+                                                                                                                                            {canDeleteAllowed && (
                                                                                                                                             <DropdownMenuItem
                                                                                                                                                 onClick={(
                                                                                                                                                     e
@@ -1978,6 +1999,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                 />
                                                                                                                                                 Delete
                                                                                                                                             </DropdownMenuItem>
+                                                                                                                                            )}
                                                                                                                                             {dripConditionsEnabled && (
                                                                                                                                                 <DropdownMenuItem
                                                                                                                                                     onClick={(
@@ -2306,6 +2328,7 @@ export const CourseStructureDetails = ({
                                                                                                         }
                                                                                                     />
                                                                                                 </SortableDragHandle>
+                                                                                                {canEditAllowed && (
                                                                                                 <MyButton
                                                                                                     buttonType="secondary"
                                                                                                     layoutVariant="icon"
@@ -2331,6 +2354,8 @@ export const CourseStructureDetails = ({
                                                                                                         }
                                                                                                     />
                                                                                                 </MyButton>
+                                                                                                )}
+                                                                                                {canDeleteAllowed && (
                                                                                                 <MyButton
                                                                                                     buttonType="secondary"
                                                                                                     layoutVariant="icon"
@@ -2361,6 +2386,7 @@ export const CourseStructureDetails = ({
                                                                                                         }
                                                                                                     />
                                                                                                 </MyButton>
+                                                                                                )}
                                                                                             </div>
                                                                                         )}
                                                                                     </CollapsibleTrigger>
@@ -2549,6 +2575,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                 e.stopPropagation()
                                                                                                                                             }
                                                                                                                                         >
+                                                                                                                                            {canEditAllowed && (
                                                                                                                                             <DropdownMenuItem
                                                                                                                                                 onClick={(
                                                                                                                                                     e
@@ -2577,6 +2604,8 @@ export const CourseStructureDetails = ({
                                                                                                                                                 />
                                                                                                                                                 Edit
                                                                                                                                             </DropdownMenuItem>
+                                                                                                                                            )}
+                                                                                                                                            {canDeleteAllowed && (
                                                                                                                                             <DropdownMenuItem
                                                                                                                                                 onClick={(
                                                                                                                                                     e
@@ -2610,6 +2639,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                 />
                                                                                                                                                 Delete
                                                                                                                                             </DropdownMenuItem>
+                                                                                                                                            )}
                                                                                                                                             {dripConditionsEnabled && (
                                                                                                                                                 <DropdownMenuItem
                                                                                                                                                     onClick={(
@@ -3056,6 +3086,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                 e.stopPropagation()
                                                                                                                                             }
                                                                                                                                         >
+                                                                                                                                            {canEditAllowed && (
                                                                                                                                             <DropdownMenuItem
                                                                                                                                                 onClick={(
                                                                                                                                                     e
@@ -3084,6 +3115,8 @@ export const CourseStructureDetails = ({
                                                                                                                                                 />
                                                                                                                                                 Edit
                                                                                                                                             </DropdownMenuItem>
+                                                                                                                                            )}
+                                                                                                                                            {canDeleteAllowed && (
                                                                                                                                             <DropdownMenuItem
                                                                                                                                                 onClick={(
                                                                                                                                                     e
@@ -3117,6 +3150,7 @@ export const CourseStructureDetails = ({
                                                                                                                                                 />
                                                                                                                                                 Delete
                                                                                                                                             </DropdownMenuItem>
+                                                                                                                                            )}
                                                                                                                                             {dripConditionsEnabled && (
                                                                                                                                                 <DropdownMenuItem
                                                                                                                                                     onClick={(
@@ -3530,6 +3564,7 @@ export const CourseStructureDetails = ({
                                                         </button>
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
+                                                        {canEditAllowed && (
                                                         <DropdownMenuItem
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -3542,6 +3577,8 @@ export const CourseStructureDetails = ({
                                                             />
                                                             Edit
                                                         </DropdownMenuItem>
+                                                        )}
+                                                        {canDeleteAllowed && (
                                                         <DropdownMenuItem
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
@@ -3555,6 +3592,7 @@ export const CourseStructureDetails = ({
                                                             <Trash size={14} className="mr-2" />
                                                             Delete
                                                         </DropdownMenuItem>
+                                                        )}
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>
                                             </div>
@@ -3643,6 +3681,7 @@ export const CourseStructureDetails = ({
                                                                 </button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
+                                                                {canEditAllowed && (
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -3659,6 +3698,8 @@ export const CourseStructureDetails = ({
                                                                     />
                                                                     Edit
                                                                 </DropdownMenuItem>
+                                                                )}
+                                                                {canDeleteAllowed && (
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -3681,6 +3722,7 @@ export const CourseStructureDetails = ({
                                                                     />
                                                                     Delete
                                                                 </DropdownMenuItem>
+                                                                )}
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </div>
@@ -3776,6 +3818,7 @@ export const CourseStructureDetails = ({
                                                                 </button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
+                                                                {canEditAllowed && (
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -3792,6 +3835,8 @@ export const CourseStructureDetails = ({
                                                                     />
                                                                     Edit
                                                                 </DropdownMenuItem>
+                                                                )}
+                                                                {canDeleteAllowed && (
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -3814,6 +3859,7 @@ export const CourseStructureDetails = ({
                                                                     />
                                                                     Delete
                                                                 </DropdownMenuItem>
+                                                                )}
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </div>
@@ -3909,6 +3955,7 @@ export const CourseStructureDetails = ({
                                                             </button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end">
+                                                            {canEditAllowed && (
                                                             <DropdownMenuItem
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -3927,6 +3974,7 @@ export const CourseStructureDetails = ({
                                                                 />
                                                                 Edit
                                                             </DropdownMenuItem>
+                                                            )}
                                                             {dripConditionsEnabled && (
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
@@ -3944,6 +3992,7 @@ export const CourseStructureDetails = ({
                                                                     Drip Condition
                                                                 </DropdownMenuItem>
                                                             )}
+                                                            {canDeleteAllowed && (
                                                             <DropdownMenuItem
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -3965,6 +4014,7 @@ export const CourseStructureDetails = ({
                                                                 <Trash size={14} className="mr-2" />
                                                                 Delete
                                                             </DropdownMenuItem>
+                                                            )}
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
                                                 </div>
@@ -4059,6 +4109,7 @@ export const CourseStructureDetails = ({
                                                             </button>
                                                         </DropdownMenuTrigger>
                                                         <DropdownMenuContent align="end">
+                                                            {canEditAllowed && (
                                                             <DropdownMenuItem
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -4077,6 +4128,7 @@ export const CourseStructureDetails = ({
                                                                 />
                                                                 Edit
                                                             </DropdownMenuItem>
+                                                            )}
                                                             {dripConditionsEnabled && (
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
@@ -4094,6 +4146,7 @@ export const CourseStructureDetails = ({
                                                                     Drip Condition
                                                                 </DropdownMenuItem>
                                                             )}
+                                                            {canDeleteAllowed && (
                                                             <DropdownMenuItem
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -4116,6 +4169,7 @@ export const CourseStructureDetails = ({
                                                                 <Trash size={14} className="mr-2" />
                                                                 Delete
                                                             </DropdownMenuItem>
+                                                            )}
                                                         </DropdownMenuContent>
                                                     </DropdownMenu>
                                                 </div>
@@ -4210,6 +4264,7 @@ export const CourseStructureDetails = ({
                                                                 </button>
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
+                                                                {canEditAllowed && (
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -4233,6 +4288,7 @@ export const CourseStructureDetails = ({
                                                                     />
                                                                     Edit
                                                                 </DropdownMenuItem>
+                                                                )}
                                                                 {dripConditionsEnabled && (
                                                                     <DropdownMenuItem
                                                                         onClick={(e) => {
@@ -4251,6 +4307,7 @@ export const CourseStructureDetails = ({
                                                                         Drip Condition
                                                                     </DropdownMenuItem>
                                                                 )}
+                                                                {canDeleteAllowed && (
                                                                 <DropdownMenuItem
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
@@ -4283,6 +4340,7 @@ export const CourseStructureDetails = ({
                                                                     />
                                                                     Delete
                                                                 </DropdownMenuItem>
+                                                                )}
                                                             </DropdownMenuContent>
                                                         </DropdownMenu>
                                                     </div>

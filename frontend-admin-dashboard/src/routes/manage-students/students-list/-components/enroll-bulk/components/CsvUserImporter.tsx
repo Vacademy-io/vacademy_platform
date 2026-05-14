@@ -9,6 +9,7 @@ import {
     CustomField,
     CustomFieldSettingsData,
 } from '@/services/custom-field-settings';
+import { useUserIdentifierSetting } from '@/services/user-identifier-setting';
 import { parse, isValid } from 'date-fns';
 
 // ─── System field definitions ───────────────────────────────────
@@ -32,10 +33,10 @@ interface CsvColumnDef {
 // address_line and pin_code are included here (not in OPTIONAL) because
 // ADDRESS_LINE and PIN_CODE don't exist in DEFAULT_SYSTEM_FIELDS, so
 // the visibility gate would permanently hide them from the CSV template.
-const CORE_COLUMNS: CsvColumnDef[] = [
-    { csvKey: 'email', label: 'Email', required: true, sample: 'student@example.com' },
+const buildCoreColumns = (phoneRequired: boolean): CsvColumnDef[] => [
+    { csvKey: 'email', label: 'Email', required: !phoneRequired, sample: 'student@example.com' },
     { csvKey: 'full_name', label: 'Full Name', required: true, sample: 'John Doe' },
-    { csvKey: 'mobile_number', label: 'Mobile Number', required: false, sample: '+91 9876543210', systemKey: 'MOBILE_NUMBER' },
+    { csvKey: 'mobile_number', label: 'Mobile Number', required: phoneRequired, sample: '+91 9876543210', systemKey: 'MOBILE_NUMBER' },
     { csvKey: 'username', label: 'Username', required: false, sample: '' },
     { csvKey: 'password', label: 'Password', required: false, sample: '' },
     { csvKey: 'address_line', label: 'Address', required: false, sample: '' },
@@ -77,6 +78,8 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
     const [settings, setSettings] = useState<CustomFieldSettingsData | null>(
         () => getCustomFieldSettingsFromCache()
     );
+    const { data: userIdentifier } = useUserIdentifierSetting();
+    const phoneRequired = userIdentifier === 'PHONE';
 
     // If cache is empty (e.g. after settings save invalidates it), fetch
     // from API so the template still includes custom fields.
@@ -100,7 +103,7 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
         }
 
         // Core columns are always included
-        const cols: CsvColumnDef[] = [...CORE_COLUMNS];
+        const cols: CsvColumnDef[] = [...buildCoreColumns(phoneRequired)];
 
         // Add optional system columns if they're visible (or if no settings exist, include all)
         for (const col of OPTIONAL_SYSTEM_COLUMNS) {
@@ -133,7 +136,7 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
         }
 
         return { allColumns: cols, customFieldColumns: cfCols };
-    }, [settings]);
+    }, [settings, phoneRequired]);
 
     const REQUIRED_HEADERS = allColumns.filter((c) => c.required).map((c) => c.csvKey);
 
@@ -177,9 +180,16 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
 
                 result.data.forEach((row, i) => {
                     const rowNum = i + 2;
-                    if (!row.email?.trim()) {
-                        errs.push(`Row ${rowNum}: email is required`);
-                        return;
+                    if (phoneRequired) {
+                        if (!row.mobile_number?.trim()) {
+                            errs.push(`Row ${rowNum}: mobile_number is required`);
+                            return;
+                        }
+                    } else {
+                        if (!row.email?.trim()) {
+                            errs.push(`Row ${rowNum}: email is required`);
+                            return;
+                        }
                     }
                     if (!row.full_name?.trim()) {
                         errs.push(`Row ${rowNum}: full_name is required`);
@@ -213,7 +223,7 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
                     }
 
                     rows.push({
-                        email: row.email.trim(),
+                        email: row.email?.trim() || '',
                         full_name: row.full_name.trim(),
                         mobile_number: row.mobile_number?.trim() || undefined,
                         username: row.username?.trim() || undefined,
@@ -302,7 +312,9 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
                     <p className="text-sm font-medium text-neutral-700">Download Template</p>
                     <p className="text-xs text-neutral-400">
                         Fill in the template and re-upload. Required columns:{' '}
-                        <code className="text-primary-600">email, full_name</code>
+                        <code className="text-primary-600">
+                            {phoneRequired ? 'mobile_number, full_name' : 'email, full_name'}
+                        </code>
                         {extraColCount > 0 && (
                             <span>
                                 {' '}
@@ -384,7 +396,7 @@ export const CsvUserImporter = ({ onImport, onPaymentInfoDetected }: Props) => {
                     <div className="max-h-36 overflow-y-auto">
                         {preview.slice(0, 5).map((r, i) => (
                             <p key={i} className="text-xs text-success-600">
-                                {r.full_name} — {r.email}
+                                {r.full_name} — {r.email || r.mobile_number}
                                 {r.custom_field_values && r.custom_field_values.length > 0 && (
                                     <span className="text-success-400">
                                         {' '}

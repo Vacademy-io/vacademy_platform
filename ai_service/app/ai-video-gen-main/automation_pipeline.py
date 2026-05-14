@@ -28,6 +28,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
+# ── PHASE B MODULE-LOAD BANNER (2026-05-14 v3) ─────────────────────────────
+# Confirms in deployed-pod logs that the latest automation_pipeline.py is
+# loaded (vs a stale .pyc bytecode cache). If the line below DOES NOT appear
+# at app startup, the running process is reading bytecode that was compiled
+# from an older source. Fix: nuke __pycache__ in the deployed image and
+# restart the pod. Remove these diag prints once Phase B is verified live.
+print("🧪 [PHASE_B v3] automation_pipeline module loaded — TTS-deferral path is COMPILED IN")
+
 import urllib.error
 import urllib.error
 import urllib.request
@@ -2996,6 +3004,25 @@ class VideoGenerationPipeline:
             # (`use_director`) — free/standard tiers have no Director plan
             # to slice narration by, so per-shot TTS has nothing to consume.
             # Both fallbacks run the legacy monolithic _synthesize_voice.
+            # ── PHASE B DIAGNOSTIC (2026-05-14 v3) ─────────────────────
+            # Unique banner so we can verify in deployed-pod logs whether
+            # this exact code path is loaded vs a stale .pyc / older image.
+            # Prints every value the gate reads so we can see which one
+            # falsifies it. Remove once stable on prod.
+            _gate_diag = {
+                "do_tts": bool(do_tts),
+                "tts_per_shot_enabled": self._tier_config.get("tts_per_shot_enabled"),
+                "use_director": self._tier_config.get("use_director"),
+                "do_html": bool(do_html),
+                "content_type": content_type,
+                "in_NO_AUDIO_TYPES": content_type in NO_AUDIO_TYPES,
+                "quality_tier": self._quality_tier,
+                "tier_config_keys_sample": sorted(
+                    [k for k in (self._tier_config or {}).keys() if "tts" in k or "director" in k or "beat" in k]
+                ),
+            }
+            print(f"🧪 [PHASE_B v3 GATE DIAG] {_gate_diag}")
+
             _v2_tts_deferred = (
                 do_tts
                 and self._tier_config.get("tts_per_shot_enabled")
@@ -3004,6 +3031,7 @@ class VideoGenerationPipeline:
                 and content_type == "VIDEO"
                 and content_type not in NO_AUDIO_TYPES
             )
+            print(f"🧪 [PHASE_B v3 GATE RESULT] _v2_tts_deferred = {_v2_tts_deferred}")
             if _v2_tts_deferred:
                 print("🗣️  TTS deferred to html stage (v2 per-shot path)")
                 self._emit_progress({
@@ -4138,6 +4166,22 @@ class VideoGenerationPipeline:
         except Exception as _av_sum_err:
             # Telemetry write must never fail the run.
             print(f"   ⚠️ AI video summary write failed (non-fatal): {_av_sum_err}")
+
+        # ── Join the thumbnail daemon before returning ────────────────────
+        # The thumbnail batch is a daemon thread fired right after the
+        # Director plan completes. For a typical LLM-per-shot HTML stage it
+        # finishes well within the stage's wall-clock. But for a
+        # template-only HTML stage the stage can return in under 30s — fast
+        # enough to outrun the 4-Seedream-call batch. Joining briefly here
+        # guarantees the thread's `thumbnails_ready` event makes it onto the
+        # SSE queue before the service stops draining. Never blocks more
+        # than the timeout; the daemon flag handles the worst case.
+        _tt = getattr(self, "_thumbnail_thread", None)
+        if _tt is not None and _tt.is_alive():
+            try:
+                _tt.join(timeout=60.0)
+            except Exception:
+                pass
 
         return {
             "run_dir": run_dir,
@@ -18472,7 +18516,16 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     "message": "Thumbnail generation failed.",
                 })
 
-        _threading_thumb.Thread(target=_worker, name="thumbnail-batch", daemon=True).start()
+        _thread = _threading_thumb.Thread(
+            target=_worker, name="thumbnail-batch", daemon=True
+        )
+        # Stash the thread reference so `run()` can briefly join it before
+        # returning — guarantees the `thumbnails_ready` event lands in the
+        # SSE queue while the service is still draining (otherwise a
+        # template-only HTML stage that finishes in < 30s could outrun the
+        # thumbnail batch and the event would be lost).
+        self._thumbnail_thread = _thread
+        _thread.start()
 
     def _resolve_run_dir(self, run_name: Optional[str], resume_run: Optional[str]) -> Path:
         if resume_run:

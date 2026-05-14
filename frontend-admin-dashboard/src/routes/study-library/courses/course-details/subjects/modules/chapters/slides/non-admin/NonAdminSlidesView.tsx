@@ -330,8 +330,10 @@ export function NonAdminSlidesView({
                     </div>
                 </div>
 
-                {/* Add Button - Only show for draft courses and when not in learner view */}
-                {!isLearnerView && isDraftCourse && (
+                {/* Add Button - shown for DRAFT courses or when the role's
+                    `directEditPublishedCourse` flag lets the teacher edit
+                    published courses in place. Hidden in learner view. */}
+                {!isLearnerView && (isDraftCourse || allowDirectEditPublished) && (
                     <div className="fixed bottom-0 flex w-[280px] items-center justify-center bg-primary-50 pb-3">
                         <ChapterSidebarAddButton />
                     </div>
@@ -377,17 +379,19 @@ export function NonAdminSlidesView({
 
     const getCurrentEditorHTMLContentRef = useRef<() => string>(() => '');
 
-    // Create our custom save function for non-admin users
+    // Create our custom save function for non-admin users. Triggers on DRAFT
+    // courses (the approval-flow path) AND when the role's
+    // `directEditPublishedCourse` flag is on (in-place edit on published
+    // courses). Without the second branch, teachers in direct-edit mode would
+    // see their slide edits silently dropped on save.
     const customSaveDraft = useCallback(
         async (slide: Slide) => {
-            if (isDraftCourse) {
-                // For non-admin users in draft courses, save as published
-                // Get current editor content for document slides
+            if (isDraftCourse || allowDirectEditPublished) {
                 const currentEditorContent = getCurrentEditorHTMLContentRef.current();
-                await saveSlideAsPublished(slide, true, currentEditorContent); // Pass editor content
+                await saveSlideAsPublished(slide, true, currentEditorContent);
             }
         },
-        [isDraftCourse, saveSlideAsPublished]
+        [isDraftCourse, allowDirectEditPublished, saveSlideAsPublished]
     );
 
     return (

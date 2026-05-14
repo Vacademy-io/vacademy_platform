@@ -14,12 +14,19 @@ export interface QuickAction {
     label: string;
     icon: typeof UserPlus;
     to: string;
+    search?: Record<string, string>;
 }
 
 const ADMIN_ACTIONS: QuickAction[] = [
-    { id: 'add-student', label: 'Add Student', icon: UserPlus, to: '/manage-students' },
-    { id: 'new-batch', label: 'New Batch', icon: Plus, to: '/manage-institute' },
-    { id: 'announce', label: 'Announcement', icon: Megaphone, to: '/announcement' },
+    {
+        id: 'add-student',
+        label: 'Add Student',
+        icon: UserPlus,
+        to: '/manage-students/students-list',
+        search: { action: 'enroll' },
+    },
+    { id: 'new-batch', label: 'New Batch', icon: Plus, to: '/manage-institute/batches' },
+    { id: 'announce', label: 'Announcement', icon: Megaphone, to: '/announcement/create' },
     { id: 'collect-payment', label: 'Payments', icon: Receipt, to: '/manage-payments' },
     { id: 'reports', label: 'Reports', icon: ChartPie, to: '/study-library/reports' },
 ];

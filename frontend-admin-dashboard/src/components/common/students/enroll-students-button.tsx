@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from '@tanstack/react-router';
 import { MyButton } from '@/components/design-system/button';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { cn } from '@/lib/utils';
@@ -21,6 +22,26 @@ export const EnrollStudentsButton = ({
     const [open, setOpen] = useState(false);
 
     const isDisabled = getCourseFromPackage().length === 0;
+
+    // Auto-open the enroll dialog when this page is visited with ?action=enroll
+    // (e.g. from the dashboard "Add Student" quick action). The param is
+    // cleared once consumed so a refresh doesn't reopen the dialog.
+    const location = useLocation();
+    const navigate = useNavigate();
+    useEffect(() => {
+        const search = location.search as Record<string, unknown> | undefined;
+        if (search?.action !== 'enroll' || isDisabled) return;
+        setOpen(true);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        navigate({
+            to: location.pathname,
+            search: ((prev: Record<string, unknown>) => {
+                const { action: _omit, ...rest } = prev || {};
+                return rest;
+            }) as any,
+            replace: true,
+        });
+    }, [location.search, location.pathname, isDisabled, navigate]);
 
     return (
         <>

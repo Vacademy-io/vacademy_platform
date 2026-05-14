@@ -9,6 +9,7 @@ interface StudentListSearchParams {
     status?: string | string[];
     sessionExpiry?: number | number[];
     name?: string;
+    action?: string;
 }
 
 // Route definition only - component is lazy loaded from index.lazy.tsx
@@ -22,5 +23,6 @@ export const Route = createFileRoute('/manage-students/students-list/')({
         status: search.status as string | string[] | undefined,
         sessionExpiry: search.sessionExpiry as number | number[] | undefined,
         name: search.name as string | undefined,
+        action: search.action as string | undefined,
     }),
 });

@@ -30,7 +30,6 @@ import {
 } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
-import { widgetLabel } from '@/constants/display-settings/widget-labels';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
@@ -476,6 +475,12 @@ export default function AdminDisplaySettings() {
                                                 prev.coursePage?.viewContentNumbering ?? true,
                                             allowViewSlidesInReadOnly:
                                                 prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                            directEditPublishedCourse:
+                                                prev.coursePage?.directEditPublishedCourse ?? true,
+                                            canEditCourseStructure:
+                                                prev.coursePage?.canEditCourseStructure ?? true,
+                                            canDeleteCourseStructure:
+                                                prev.coursePage?.canDeleteCourseStructure ?? true,
                                             [key]: checked,
                                         },
                                     }))
@@ -488,14 +493,48 @@ export default function AdminDisplaySettings() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>Slide View Settings</CardTitle>
-                    <CardDescription>Control action visibility in Slide view.</CardDescription>
+                    <CardTitle>Course Permission</CardTitle>
+                    <CardDescription>
+                        Control what this role can do on a course and its slides.
+                    </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">
+                            Can directly edit (without Copy-to-Edit / approval)
+                        </div>
+                        <Switch
+                            checked={settings.coursePage?.directEditPublishedCourse !== false}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    coursePage: {
+                                        viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
+                                        viewShortInviteLinks:
+                                            prev.coursePage?.viewShortInviteLinks ?? false,
+                                        viewCourseConfiguration:
+                                            prev.coursePage?.viewCourseConfiguration ?? true,
+                                        viewCourseOverviewItem:
+                                            prev.coursePage?.viewCourseOverviewItem ?? true,
+                                        viewContentNumbering:
+                                            prev.coursePage?.viewContentNumbering ?? true,
+                                        allowViewSlidesInReadOnly:
+                                            prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                        canEditCourseStructure:
+                                            prev.coursePage?.canEditCourseStructure ?? true,
+                                        canDeleteCourseStructure:
+                                            prev.coursePage?.canDeleteCourseStructure ?? true,
+                                        directEditPublishedCourse: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                     {(
                         [
-                            ['showCopyTo', 'Show "Copy to" option'],
-                            ['showMoveTo', 'Show "Move to" option'],
+                            ['showCopyTo', 'Can copy slide'],
+                            ['showMoveTo', 'Can move slide'],
+                            ['showDelete', 'Can delete slide'],
                         ] as const
                     ).map(([key, label]) => (
                         <div
@@ -511,6 +550,7 @@ export default function AdminDisplaySettings() {
                                         slideView: {
                                             showCopyTo: prev.slideView?.showCopyTo ?? true,
                                             showMoveTo: prev.slideView?.showMoveTo ?? true,
+                                            showDelete: prev.slideView?.showDelete ?? true,
                                             [key]: checked,
                                         },
                                     }))
@@ -518,6 +558,80 @@ export default function AdminDisplaySettings() {
                             />
                         </div>
                     ))}
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">Can edit subject / module / chapter</div>
+                        <Switch
+                            checked={settings.coursePage?.canEditCourseStructure !== false}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    coursePage: {
+                                        viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
+                                        viewShortInviteLinks:
+                                            prev.coursePage?.viewShortInviteLinks ?? false,
+                                        viewCourseConfiguration:
+                                            prev.coursePage?.viewCourseConfiguration ?? true,
+                                        viewCourseOverviewItem:
+                                            prev.coursePage?.viewCourseOverviewItem ?? true,
+                                        viewContentNumbering:
+                                            prev.coursePage?.viewContentNumbering ?? true,
+                                        allowViewSlidesInReadOnly:
+                                            prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                        directEditPublishedCourse:
+                                            prev.coursePage?.directEditPublishedCourse ?? true,
+                                        canDeleteCourseStructure:
+                                            prev.coursePage?.canDeleteCourseStructure ?? true,
+                                        canEditCourseStructure: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">Can delete subject / module / chapter</div>
+                        <Switch
+                            checked={settings.coursePage?.canDeleteCourseStructure !== false}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    coursePage: {
+                                        viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
+                                        viewShortInviteLinks:
+                                            prev.coursePage?.viewShortInviteLinks ?? false,
+                                        viewCourseConfiguration:
+                                            prev.coursePage?.viewCourseConfiguration ?? true,
+                                        viewCourseOverviewItem:
+                                            prev.coursePage?.viewCourseOverviewItem ?? true,
+                                        viewContentNumbering:
+                                            prev.coursePage?.viewContentNumbering ?? true,
+                                        allowViewSlidesInReadOnly:
+                                            prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                        directEditPublishedCourse:
+                                            prev.coursePage?.directEditPublishedCourse ?? true,
+                                        canEditCourseStructure:
+                                            prev.coursePage?.canEditCourseStructure ?? true,
+                                        canDeleteCourseStructure: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">Can delete course</div>
+                        <Switch
+                            checked={settings.authoredCoursesCard?.showDelete !== false}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    authoredCoursesCard: {
+                                        showCopyToEdit:
+                                            prev.authoredCoursesCard?.showCopyToEdit ?? true,
+                                        showDelete: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                 </CardContent>
             </Card>
 
@@ -530,34 +644,22 @@ export default function AdminDisplaySettings() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                    {(
-                        [
-                            ['showCopyToEdit', 'Show "Copy to Edit" button'],
-                            ['showDelete', 'Show delete button'],
-                        ] as const
-                    ).map(([key, label]) => (
-                        <div
-                            key={key}
-                            className="flex items-center justify-between rounded border p-3"
-                        >
-                            <div className="text-sm">{label}</div>
-                            <Switch
-                                checked={settings.authoredCoursesCard?.[key] !== false}
-                                onCheckedChange={(checked) =>
-                                    updateSettings((prev) => ({
-                                        ...prev,
-                                        authoredCoursesCard: {
-                                            showCopyToEdit:
-                                                prev.authoredCoursesCard?.showCopyToEdit ?? true,
-                                            showDelete:
-                                                prev.authoredCoursesCard?.showDelete ?? true,
-                                            [key]: checked,
-                                        },
-                                    }))
-                                }
-                            />
-                        </div>
-                    ))}
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">Show &quot;Copy to Edit&quot; button</div>
+                        <Switch
+                            checked={settings.authoredCoursesCard?.showCopyToEdit !== false}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    authoredCoursesCard: {
+                                        showCopyToEdit: checked,
+                                        showDelete:
+                                            prev.authoredCoursesCard?.showDelete ?? true,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                 </CardContent>
             </Card>
 
@@ -1884,12 +1986,7 @@ export default function AdminDisplaySettings() {
                                         <ArrowDown className="h-3 w-3" />
                                     </Button>
                                 </div>
-                                <div className="flex flex-1 flex-col">
-                                    <span className="text-sm font-medium">
-                                        {widgetLabel(w.id)}
-                                    </span>
-                                    <span className="text-xs text-muted-foreground">{w.id}</span>
-                                </div>
+                                <div className="flex-1 text-sm font-medium">{w.id}</div>
                                 <div className="flex items-center gap-2">
                                     <Switch
                                         checked={w.visible}

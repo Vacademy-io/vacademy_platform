@@ -32,6 +32,8 @@ import { useNonAdminSlides } from './hooks/useNonAdminSlides';
 import { SendForApprovalButton } from '@/components/study-library/approval-workflow/SendForApprovalButton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { PreviewChangesButton } from '@/components/study-library/course-comparison/PreviewChangesButton';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 
 const SlideMaterial = React.lazy(() =>
     import(
@@ -73,7 +75,14 @@ export function NonAdminSlidesView({
     const courseStatus = courseData?.course?.status;
     const originalCourseId = courseData?.course?.originalCourseId || null;
     const isDraftCourse = courseStatus === 'DRAFT';
-    const isReadOnlyMode = !isDraftCourse;
+
+    // When the role's display settings allow direct edit of published courses,
+    // bypass the read-only lock and surface the manual Publish/Unpublish UI by
+    // forwarding hidePublishButtons={false} to SlideMaterial.
+    const allowDirectEditPublished =
+        getDisplaySettingsFromCache(getActiveRoleDisplaySettingsKey())?.coursePage
+            ?.directEditPublishedCourse === true;
+    const isReadOnlyMode = !isDraftCourse && !allowDirectEditPublished;
 
     // Non-admin slides management
     const { unsavedChanges, showApprovalButton, saveSlideAsPublished } =
@@ -405,7 +414,7 @@ export function NonAdminSlidesView({
                                         }
                                         setSaveDraft={() => {}} // Not used when customSaveFunction is provided
                                         isLearnerView={isLearnerView}
-                                        hidePublishButtons={true}
+                                        hidePublishButtons={!allowDirectEditPublished}
                                         customSaveFunction={customSaveDraft}
                                     />
                                 </Suspense>

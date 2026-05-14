@@ -15,14 +15,11 @@ from __future__ import annotations
 import base64
 import concurrent.futures
 import json
-import os
 import time
 import traceback
 import urllib.error
 import urllib.request
 from typing import Any, Callable, Dict, List, Optional, Tuple
-
-import boto3
 
 # Sibling import — `ai-video-gen-main` is not a Python package (the dirname
 # contains hyphens and there's no __init__.py). The caller adds the directory
@@ -199,26 +196,31 @@ def _upload_png_to_s3(
     `batch_ts` is the generated_at epoch ms — namespacing by it means a
     regenerate produces a fresh URL (no CDN/browser cache poisoning of the
     previous image).
+
+    Goes through the existing `S3Service`, which reads its credentials from
+    `settings.s3_aws_access_key` / `s3_aws_access_secret` (i.e. the
+    `S3_AWS_ACCESS_KEY` env vars used everywhere else in the codebase).
+    A bare `boto3.client(... aws_access_key_id=None)` fails in the
+    production pod with "Unable to locate credentials" — there's no IAM
+    role attached and the standard `AWS_*` env vars aren't populated.
     """
-    key = f"{_S3_KEY_PREFIX}/{run_id}/{batch_ts}/{option_id}.png"
+    s3_key = f"{_S3_KEY_PREFIX}/{run_id}/{batch_ts}/{option_id}.png"
     try:
-        client = boto3.client(
-            "s3",
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-            region_name=os.environ.get("AWS_REGION", "ap-south-1"),
-        )
-        client.put_object(
-            Bucket=_S3_BUCKET,
-            Key=key,
-            Body=image_bytes,
-            ContentType="image/png",
-            ACL="public-read",
+        # Lazy import: the standalone test path (no `app` on sys.path) still
+        # needs to be able to import this module without dragging in the
+        # FastAPI app's Pydantic settings.
+        from app.services.s3_service import S3Service  # type: ignore[import-not-found]
+
+        s3 = S3Service()
+        return s3.upload_file_content(
+            content=image_bytes,
+            filename=f"{option_id}.png",
+            s3_key=s3_key,
+            content_type="image/png",
         )
     except Exception as e:
         print(f"   ⚠️ Thumbnail S3 upload failed for {option_id}: {e}")
         return None
-    return f"https://{_S3_BUCKET}.s3.amazonaws.com/{key}"
 
 
 def _truncate_title_to_max_words(title: str, max_words: int) -> str:

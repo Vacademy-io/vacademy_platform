@@ -15,6 +15,7 @@ import type {
     NodeSlot,
     NodeState,
     PipelineState,
+    PitchArtifact,
     ResearchArtifact,
     SceneSlot,
     ScoreArtifact,
@@ -303,7 +304,46 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
             working = { ...working, research };
         }
 
-        // 6. Stats enrichment — history-restored runs only get whatever
+        // 6. Pitch + prompt enrichment — history-restored runs lose the
+        //    full user_selections snapshot and sometimes lose the prompt
+        //    itself (the History sidebar hydrates a thin subset). /status
+        //    carries both via `metadata.user_selections` and top-level
+        //    `prompt`. Fill in whichever the parent didn't have so the
+        //    Pitch sheet's Brief + Configuration sections populate.
+        const statusPrompt = (statusResp as { prompt?: string | null } | undefined)?.prompt;
+        const userSelections = meta?.user_selections;
+        const haveLocalPrompt = !!working.prompt && working.prompt.length > 0;
+        const backfillPrompt = haveLocalPrompt
+            ? working.prompt
+            : userSelections?.prompt || statusPrompt || '';
+        const pitchSlot = working.pitch;
+        const needsPitchEnrichment =
+            !!userSelections && pitchSlot.state === 'wrapped' && !pitchSlot.data.userSelections;
+        const needsPromptBackfill = !haveLocalPrompt && backfillPrompt.length > 0;
+        if (needsPromptBackfill || needsPitchEnrichment) {
+            const newPitch: NodeSlot<PitchArtifact> =
+                pitchSlot.state === 'wrapped'
+                    ? {
+                          state: 'wrapped',
+                          data: {
+                              prompt: backfillPrompt || pitchSlot.data.prompt,
+                              referenceCount:
+                                  userSelections?.reference_files_count ??
+                                  pitchSlot.data.referenceCount,
+                              userSelections: userSelections ?? pitchSlot.data.userSelections,
+                          },
+                      }
+                    : pitchSlot;
+            working = {
+                ...working,
+                prompt: backfillPrompt || working.prompt,
+                contentType: working.contentType || userSelections?.content_type || 'VIDEO',
+                orientation: working.orientation || userSelections?.orientation || 'landscape',
+                pitch: newPitch,
+            };
+        }
+
+        // 7. Stats enrichment — history-restored runs only get whatever
         //    `currentGeneration.tokenUsage` was hydrated from HistoryItem,
         //    and never get `cumulativeTokens`. /status carries both. Fill
         //    in whichever the parent didn't have so the right-rail Production

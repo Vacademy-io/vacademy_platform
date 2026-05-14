@@ -56,9 +56,11 @@ logger = logging.getLogger(__name__)
 INITIAL_CREDITS = Decimal("100")
 DEFAULT_LOW_BALANCE_THRESHOLD = Decimal("10")
 
-# $1 = 100 credits with 50% markup over AI cost
-# actual USD cost × 150 = credits charged
-# e.g. $0.028 API cost → 4.2 credits → customer pays $0.042 equivalent
+# Legacy fallback constant. Live calculations route through
+# `CreditRateService.get_effective_ratio()` (DB-driven via V252's
+# `credit_rate_config` table). This value matches the seeded row
+# (usd_to_credits=100, margin_pct=50 → effective=150) and is the
+# same number the codebase shipped with before V252.
 USD_TO_CREDIT_RATIO = Decimal("150")
 
 # Default model tier multipliers (used as fallback)
@@ -108,6 +110,13 @@ DEFAULT_PRICING = {
     # both Kling ($0.0562/s × 150 ≈ 8.4) and Fabric ($0.08/s × 150 = 12) on the
     # conservative-low side; the real-cost path picks the actual rate.
     "avatar_video": {"base_cost": Decimal("0.05"), "token_rate": Decimal("8"), "min_charge": Decimal("0.05"), "unit": "seconds"},
+    # AI video shots (fal.ai Veo, AI_VIDEO_HERO + inline <aivideo>).
+    # Pricing is non-uniform (audio on/off × duration) and lives in
+    # fal_veo_client._PRICE_PER_SECOND_USD; the orchestrator computes
+    # the exact USD cost per call and deducts via `precomputed_credits`,
+    # bypassing calculate_credits. This entry exists so usage analytics
+    # group "ai_video" deductions correctly (by_request_type breakdown).
+    "ai_video": {"base_cost": Decimal("0"), "token_rate": Decimal("0"), "min_charge": Decimal("0"), "unit": "none"},
 }
 
 
@@ -612,15 +621,22 @@ class CreditService:
 
     def deduct_credits(self, request: CreditDeductRequest) -> CreditDeductResponse:
         """Deduct credits after an AI operation."""
-        # Calculate actual credits
-        credits_to_deduct = self.calculate_credits(
-            request_type=request.request_type,
-            model=request.model,
-            prompt_tokens=request.prompt_tokens,
-            completion_tokens=request.completion_tokens,
-            character_count=request.character_count,
-            seconds=getattr(request, "seconds", 0) or 0,
-        )
+        # Calculate actual credits — bypassed when `precomputed_credits` is set
+        # (Veo path: pricing lives in fal_veo_client.py rather than ai_models).
+        precomputed = getattr(request, "precomputed_credits", None)
+        if precomputed is not None and precomputed > 0:
+            credits_to_deduct = Decimal(str(precomputed)).quantize(
+                Decimal("0.0001"), rounding=ROUND_HALF_UP
+            )
+        else:
+            credits_to_deduct = self.calculate_credits(
+                request_type=request.request_type,
+                model=request.model,
+                prompt_tokens=request.prompt_tokens,
+                completion_tokens=request.completion_tokens,
+                character_count=request.character_count,
+                seconds=getattr(request, "seconds", 0) or 0,
+            )
         
         now = datetime.utcnow()
         transaction_id = str(uuid4())
@@ -674,13 +690,14 @@ class CreditService:
             except Exception:
                 pass
 
+        desc_override = getattr(request, "description", None)
         self.db.execute(insert_txn, {
             "id": transaction_id,
             "institute_id": request.institute_id,
             "type": TransactionType.USAGE_DEDUCTION.value,
             "amount": -credits_to_deduct,  # Negative for deductions
             "balance": new_balance,
-            "desc": f"{request.request_type} using {request.model}",
+            "desc": desc_override or f"{request.request_type} using {request.model}",
             "ref_id": ref_id,
             "req_type": request.request_type,
             "model": request.model,
@@ -793,6 +810,23 @@ class CreditService:
     # Credit Calculation
     # ========================================================================
 
+    def _effective_usd_to_credit_ratio(self) -> Decimal:
+        """Current USD→credits multiplier from `credit_rate_config` (DB-driven).
+
+        Defers to `CreditRateService`, which caches the active row for 60s.
+        Falls back to the legacy `USD_TO_CREDIT_RATIO` constant only if the
+        table is missing or empty (pre-V252 environments).
+        """
+        try:
+            from .credit_rate_service import CreditRateService
+            return CreditRateService(self.db).get_effective_ratio()
+        except Exception as exc:
+            logger.warning(
+                "Failed to resolve effective USD→credit ratio (%s); using legacy fallback",
+                exc,
+            )
+            return USD_TO_CREDIT_RATIO
+
     def calculate_credits(
         self,
         request_type: str,
@@ -806,7 +840,9 @@ class CreditService:
         Calculate credits for an AI operation.
 
         Primary formula (when model USD pricing available):
-            max(min_charge, base_cost + actual_usd_cost × USD_TO_CREDIT_RATIO)
+            max(min_charge, base_cost + actual_usd_cost × effective_ratio)
+        where `effective_ratio = usd_to_credits × (1 + margin_pct/100)` from
+        `credit_rate_config` (seed: 100 × 1.5 = 150).
 
         Fallback formula (unknown models / flat-rate types):
             max(min_charge, base_cost + units × token_rate × model_multiplier)
@@ -823,7 +859,8 @@ class CreditService:
                     (Decimal(str(prompt_tokens)) * input_price_per_1m / Decimal("1000000"))
                     + (Decimal(str(completion_tokens)) * output_price_per_1m / Decimal("1000000"))
                 )
-                calculated = pricing["base_cost"] + (actual_usd * USD_TO_CREDIT_RATIO)
+                ratio = self._effective_usd_to_credit_ratio()
+                calculated = pricing["base_cost"] + (actual_usd * ratio)
                 result = max(pricing["min_charge"], calculated)
                 return result.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 
@@ -832,7 +869,8 @@ class CreditService:
             per_sec = self._get_model_video_per_second(model)
             if per_sec is not None:
                 actual_usd = Decimal(str(seconds)) * per_sec
-                calculated = pricing["base_cost"] + (actual_usd * USD_TO_CREDIT_RATIO)
+                ratio = self._effective_usd_to_credit_ratio()
+                calculated = pricing["base_cost"] + (actual_usd * ratio)
                 result = max(pricing["min_charge"], calculated)
                 return result.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
 

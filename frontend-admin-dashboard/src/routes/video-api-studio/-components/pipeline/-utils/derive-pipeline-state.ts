@@ -37,6 +37,13 @@ export type NodeSlot<A> =
 export interface PitchArtifact {
     prompt: string;
     referenceCount: number;
+    /**
+     * Full snapshot of what the user requested at gen-start. BE writes this
+     * once to `extra_metadata.user_selections`, so it's available from the
+     * first poll. Powers the Pitch sheet's Configuration + Advanced sections.
+     * Optional because older videos pre-date the snapshot.
+     */
+    userSelections?: VideoStatusUserSelections;
 }
 /** Screenshot / scraped image captured by `scrape_url`. */
 export interface ResearchScreenshot {

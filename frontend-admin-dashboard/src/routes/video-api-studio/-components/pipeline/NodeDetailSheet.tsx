@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,12 @@ import {
     XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { fetchScriptText, regenerateFrame, updateFrame } from '../../-services/video-generation';
+import {
+    fetchScriptText,
+    regenerateFrame,
+    updateFrame,
+    type VideoStatusUserSelections,
+} from '../../-services/video-generation';
 import { LatexRenderer } from '../LatexRenderer';
 import { useSceneHtml } from './-utils/scenes-html-context';
 import { NODE_LABELS, type PipelineNodeId } from './-utils/stage-vocab';
@@ -407,21 +412,14 @@ function BeatsDetail({ state }: { state: PipelineState }) {
                 {count > 0
                     ? `${count} beat${count === 1 ? '' : 's'} feeding the Director's shot plan.`
                     : 'Beat plan locked. The Director used these beats to scope shots before TTS.'}
-                {slot.data.wpm
-                    ? ` Duration estimates at ${slot.data.wpm.toFixed(0)} wpm.`
-                    : ''}
+                {slot.data.wpm ? ` Duration estimates at ${slot.data.wpm.toFixed(0)} wpm.` : ''}
             </p>
             {beats.length > 0 && (
                 <ol className="space-y-2 text-xs">
                     {beats.slice(0, 12).map((b: NonNullable<typeof beats>[number], i: number) => (
-                        <li
-                            key={i}
-                            className="rounded-md border bg-muted/20 px-3 py-2"
-                        >
+                        <li key={i} className="rounded-md border bg-muted/20 px-3 py-2">
                             <div className="flex items-center justify-between gap-2">
-                                <span className="font-medium">
-                                    {b.label || `Beat ${i + 1}`}
-                                </span>
+                                <span className="font-medium">{b.label || `Beat ${i + 1}`}</span>
                                 {typeof b.durationEstimateS === 'number' && (
                                     <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
                                         ~{b.durationEstimateS.toFixed(1)}s
@@ -449,22 +447,206 @@ function BeatsDetail({ state }: { state: PipelineState }) {
 // ── Per-node detail bodies ────────────────────────────────────────────────
 
 function PitchDetail({ state }: { state: PipelineState }) {
+    const pitchData = state.pitch.state === 'wrapped' ? state.pitch.data : undefined;
+    const sel = pitchData?.userSelections;
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const promptText = (pitchData?.prompt ?? state.prompt ?? '').trim();
+
     return (
-        <div className="space-y-3">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                The brief
-            </div>
-            <div className="rounded-lg border bg-muted/20 p-4">
-                <LatexRenderer
-                    text={state.prompt}
-                    className="whitespace-pre-wrap text-sm text-foreground"
-                />
-            </div>
-            <p className="text-xs text-muted-foreground">
-                The original prompt that drove this production.
-            </p>
+        <div className="space-y-4">
+            {/* ── Brief ──────────────────────────────────────────────── */}
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    The brief
+                </div>
+                <div className="rounded-lg border bg-muted/20 p-4">
+                    {promptText ? (
+                        <LatexRenderer
+                            text={promptText}
+                            className="whitespace-pre-wrap text-sm text-foreground"
+                        />
+                    ) : (
+                        <p className="text-sm italic text-muted-foreground">
+                            Prompt text not available for this run.
+                        </p>
+                    )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                    The original prompt that drove this production.
+                </p>
+            </section>
+
+            {/* ── Configuration (always shown; falls back to message) ── */}
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Configuration
+                </div>
+                {sel ? (
+                    <ConfigGrid
+                        rows={[
+                            ['Content type', formatLabel(sel.content_type ?? state.contentType)],
+                            ['Quality tier', formatLabel(sel.quality_tier)],
+                            ['Orientation', formatLabel(sel.orientation ?? state.orientation)],
+                            ['Target duration', sel.target_duration],
+                            ['Target audience', sel.target_audience],
+                            ['Language', sel.language],
+                            ['Voice', formatVoice(sel.voice_gender, sel.tts_provider)],
+                            ['Voice ID', sel.voice_id || undefined],
+                            ['Captions', formatBool(sel.captions_enabled)],
+                            ['Background music', formatBool(sel.background_music_enabled)],
+                            ['Sound effects', formatBool(sel.sound_effects_enabled)],
+                            ['Host avatar', formatHost(sel)],
+                            ['Reference files', formatCount(sel.reference_files_count)],
+                            ['Target stage', sel.target_stage],
+                        ]}
+                    />
+                ) : (
+                    <p className="text-xs text-muted-foreground">
+                        Configuration snapshot not persisted for this run. (Older videos predate the
+                        user_selections snapshot in /status.)
+                    </p>
+                )}
+            </section>
+
+            {/* ── Advanced (collapsible — only when config exists) ───── */}
+            {sel && (
+                <section className="space-y-2">
+                    <button
+                        type="button"
+                        onClick={() => setShowAdvanced((v) => !v)}
+                        className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground"
+                    >
+                        <span>{showAdvanced ? '▾' : '▸'}</span> Advanced
+                    </button>
+                    {showAdvanced && (
+                        <ConfigGrid
+                            rows={[
+                                ['Model', sel.model],
+                                ['HTML quality', formatLabel(sel.html_quality)],
+                                ['Sub-shots enabled', formatBool(sel.sub_shots_enabled)],
+                                [
+                                    'Routing overrides',
+                                    formatRoutingOverrides(sel.routing_overrides),
+                                ],
+                                [
+                                    'Visual preferences',
+                                    formatVisualPreferences(sel.visual_preferences),
+                                ],
+                                ['Avatar image URL', sel.avatar_image_url || undefined],
+                                ['Input video IDs', formatList(sel.input_video_ids)],
+                                ['Input video audio', formatLabel(sel.input_video_audio)],
+                                [
+                                    'Mute TTS on source clips',
+                                    formatBool(sel.mute_tts_on_source_clips_kwarg),
+                                ],
+                                [
+                                    'Background music volume',
+                                    sel.background_music_volume != null
+                                        ? sel.background_music_volume.toFixed(2)
+                                        : undefined,
+                                ],
+                            ]}
+                            emptyMessage="No advanced overrides recorded."
+                        />
+                    )}
+                </section>
+            )}
         </div>
     );
+}
+
+/**
+ * Two-column key/value grid. Rows with empty values are auto-omitted —
+ * callers list every field unconditionally and `ConfigGrid` decides what
+ * actually renders. Keeps Pitch's Configuration block clean across the
+ * wide variation in what user_selections actually contains per run.
+ */
+function ConfigGrid({
+    rows,
+    emptyMessage,
+}: {
+    rows: Array<[string, string | undefined | null]>;
+    emptyMessage?: string;
+}) {
+    const filled = rows.filter(([, v]) => v != null && v !== '');
+    if (filled.length === 0) {
+        return emptyMessage ? (
+            <p className="text-xs text-muted-foreground">{emptyMessage}</p>
+        ) : null;
+    }
+    return (
+        <div className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5 text-xs">
+            {filled.map(([k, v]) => (
+                <Fragment key={k}>
+                    <span className="text-muted-foreground">{k}</span>
+                    <span className="break-all text-right text-foreground">{v}</span>
+                </Fragment>
+            ))}
+        </div>
+    );
+}
+
+// ── Formatters for ConfigGrid rows ──────────────────────────────────────
+//
+// All return `undefined` when there's nothing meaningful to show so the
+// grid auto-omits the row. Boolean fields collapse to 'On'/'Off'; snake_case
+// strings get prettified to Title Case.
+
+function formatLabel(v: string | undefined | null): string | undefined {
+    if (!v) return undefined;
+    return v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatBool(v: boolean | undefined | null): string | undefined {
+    if (v == null) return undefined;
+    return v ? 'On' : 'Off';
+}
+
+function formatCount(n: number | undefined | null): string | undefined {
+    if (n == null || n === 0) return undefined;
+    return n.toString();
+}
+
+function formatVoice(gender: string | undefined, provider: string | undefined): string | undefined {
+    if (!gender && !provider) return undefined;
+    const parts = [gender, provider].filter(Boolean).map((p) => formatLabel(p as string));
+    return parts.join(' · ');
+}
+
+function formatHost(sel: VideoStatusUserSelections): string | undefined {
+    const generate = sel.generate_avatar;
+    const hostType = sel.host?.type;
+    if (!generate && !hostType) return 'None';
+    if (hostType === 'avatar' || generate) {
+        const id = (sel.host?.avatar as { saved_avatar_id?: string } | undefined)?.saved_avatar_id;
+        return id ? `Avatar (${id})` : 'Avatar';
+    }
+    if (hostType === 'raw') return 'Raw clips';
+    return formatLabel(hostType);
+}
+
+function formatList(arr: string[] | undefined | null): string | undefined {
+    if (!arr || arr.length === 0) return undefined;
+    return arr.join(', ');
+}
+
+function formatRoutingOverrides(o: Record<string, unknown> | null | undefined): string | undefined {
+    if (!o) return undefined;
+    const tools = (o as { tools?: Record<string, boolean | null> }).tools;
+    if (!tools) return JSON.stringify(o);
+    const flags = Object.entries(tools)
+        .filter(([, v]) => v != null)
+        .map(([k, v]) => `${k}=${v ? 'on' : 'off'}`);
+    return flags.length ? flags.join(', ') : undefined;
+}
+
+function formatVisualPreferences(
+    p: Record<string, unknown> | null | undefined
+): string | undefined {
+    if (!p) return undefined;
+    const entries = Object.entries(p).filter(([, v]) => v != null && v !== 'auto');
+    if (entries.length === 0) return undefined;
+    return entries.map(([k, v]) => `${k}=${String(v)}`).join(', ');
 }
 
 function ResearchDetail({ state }: { state: PipelineState }) {
@@ -1008,9 +1190,8 @@ function SceneDetail({
                 <div className="rounded-md border border-violet-200 bg-violet-50/60 p-3 text-xs text-violet-900">
                     <div className="mb-1 font-medium">AI-generated video shot</div>
                     <div className="text-violet-700">
-                        This shot was generated with fal.ai Veo. Cost contributes to the
-                        per-video AI video cap. Editing inside the editor re-runs the Veo
-                        call.
+                        This shot was generated with fal.ai Veo. Cost contributes to the per-video
+                        AI video cap. Editing inside the editor re-runs the Veo call.
                     </div>
                 </div>
             )}

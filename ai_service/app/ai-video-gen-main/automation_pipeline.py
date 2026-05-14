@@ -3610,26 +3610,52 @@ class VideoGenerationPipeline:
                                     words = self._load_words(Path(str(_v2_raw)))
                                 # ── Phase B v3: ALSO write narration.words.json ──
                                 # The legacy WORDS stage produces this file via
-                                # _parse_timestamps, but on Phase B that stage
-                                # is deferred (no-op). Generate it here so the
-                                # service's html-stage upload list at line ~1510
-                                # picks it up. Downstream consumers (editor,
-                                # render, FE caption rendering) read this file
-                                # by name from S3.
-                                if _v2_raw and Path(str(_v2_raw)).exists():
-                                    try:
-                                        word_outputs = self._parse_timestamps(
-                                            Path(str(_v2_raw)), run_dir
-                                        )
-                                        print(
-                                            f"   📝 v2 word timings written: "
-                                            f"{word_outputs.get('words_json')}"
-                                        )
-                                    except Exception as _wj_err:
-                                        print(
-                                            f"   ⚠️ Failed to write narration.words.json "
-                                            f"after v2 concat: {_wj_err}"
-                                        )
+                                # _parse_timestamps (a subprocess to parse_timestamps.py
+                                # which expects character-alignment or word-list shape).
+                                # The stitched narration_raw.json from _concat_master_narration
+                                # has a custom shape (metadata + word_entries + shot_offsets),
+                                # so parse_timestamps rejects it. Instead, write
+                                # narration.words.json + narration.words.csv DIRECTLY from
+                                # the stitched word_entries — same format the legacy WORDS
+                                # stage's _parse_timestamps would emit (a flat list of
+                                # `{word, start, end}` dicts).
+                                try:
+                                    _words_json_path = run_dir / "narration.words.json"
+                                    _words_csv_path = run_dir / "narration.words.csv"
+                                    _stitched_raw = json.loads(
+                                        Path(str(_v2_raw)).read_text(encoding="utf-8")
+                                    )
+                                    _word_entries = _stitched_raw.get("word_entries") or []
+                                    _flat_words = [
+                                        {
+                                            "word": w.get("word", ""),
+                                            "start": float(w.get("start") or 0.0),
+                                            "end": float(w.get("end") or 0.0),
+                                        }
+                                        for w in _word_entries
+                                        if isinstance(w, dict) and w.get("word")
+                                    ]
+                                    _words_json_path.write_text(
+                                        json.dumps(_flat_words, ensure_ascii=False),
+                                        encoding="utf-8",
+                                    )
+                                    # CSV: word,start,end header-less, same as parse_timestamps.py
+                                    _csv_lines = [f'"{w["word"]}",{w["start"]:.3f},{w["end"]:.3f}'
+                                                  for w in _flat_words]
+                                    _words_csv_path.write_text("\n".join(_csv_lines), encoding="utf-8")
+                                    word_outputs = {
+                                        "words_json": _words_json_path,
+                                        "words_csv": _words_csv_path,
+                                    }
+                                    print(
+                                        f"   📝 v2 word timings written: "
+                                        f"{_words_json_path} ({len(_flat_words)} words)"
+                                    )
+                                except Exception as _wj_err:
+                                    print(
+                                        f"   ⚠️ Failed to write narration.words.json "
+                                        f"after v2 concat: {_wj_err}"
+                                    )
                                 _v2_audio = tts_outputs.get("audio_path")
                                 if _v2_audio and Path(str(_v2_audio)).exists():
                                     try:
@@ -13786,6 +13812,21 @@ class VideoGenerationPipeline:
         max_workers = min(8, max(1, total_shots))
 
         print(f"   🎬 Generating HTML for {total_shots} shots (parallel, max {max_workers} workers)...")
+        # ── PHASE B v3 DIAG ───────────────────────────────────────────
+        # Log the type of every entry in shots so we can catch the
+        # '\'str\' object has no attribute \'get\'' bug. If any entry is
+        # not a dict, the Director (or something downstream) is emitting
+        # a non-dict shot — capture which indices and what their content is.
+        _bad_shots = [
+            (i, type(s).__name__, repr(s)[:120])
+            for i, s in enumerate(shots) if not isinstance(s, dict)
+        ]
+        if _bad_shots:
+            print(f"   🧪 [PHASE_B v3] WARNING: {len(_bad_shots)} non-dict shot(s) in plan:")
+            for i, t, r in _bad_shots:
+                print(f"      shot[{i}] is {t}: {r}")
+        else:
+            print(f"   🧪 [PHASE_B v3] all {len(shots)} shots are dict ✓")
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map: Dict[Any, int] = {}
@@ -13812,7 +13853,9 @@ class VideoGenerationPipeline:
                         total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
                         total_usage["total_tokens"] += usage.get("total_tokens", 0)
                 except Exception as e:
+                    import traceback as _tb_e
                     print(f"   ❌ Shot {shot_idx + 1} exception: {e}")
+                    print(f"      traceback:\n{_tb_e.format_exc()}")
 
         # Sort by start time
         all_entries.sort(key=lambda x: float(x.get("start", 0)))

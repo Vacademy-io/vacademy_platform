@@ -133,5 +133,6 @@ public class AnnouncementResponse {
         private Double emailClickRate;         // (emailsClicked / emailsDelivered) * 100
         private Double emailBounceRate;        // (emailsBounced / emailsSent) * 100
         private Double emailRejectRate;        // (emailsRejected / emailsSent) * 100
+        private Double emailComplaintRate;     // (emailsComplained / emailsSent) * 100
     }
 }

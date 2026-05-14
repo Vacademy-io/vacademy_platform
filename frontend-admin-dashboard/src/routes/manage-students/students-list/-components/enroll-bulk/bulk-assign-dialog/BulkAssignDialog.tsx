@@ -184,19 +184,19 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="flex h-[85vh] max-h-[85vh] w-[820px] max-w-[820px] flex-col gap-0 overflow-hidden p-0 font-normal">
+            <DialogContent className="z-[1100] flex h-[90vh] max-h-[90vh] w-[95vw] max-w-[820px] flex-col gap-0 overflow-hidden p-0 font-normal sm:h-[85vh] sm:max-h-[85vh]">
                 {/* Header */}
                 <DialogHeader>
-                    <div className="bg-primary-50 px-6 py-4">
+                    <div className="bg-primary-50 px-4 py-3 sm:px-6 sm:py-4">
                         <h2 className="text-h3 font-semibold text-primary-500">Enroll {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}</h2>
                         {/* Step progress bar */}
                         <div className="mt-3 flex items-center gap-0">
                             {STEPS.map((label, idx) => (
                                 <div key={idx} className="flex flex-1 items-center">
-                                    <div className="flex flex-col items-center">
+                                    <div className="flex min-w-0 flex-col items-center">
                                         <div
                                             className={cn(
-                                                'flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-all',
+                                                'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold transition-all sm:h-7 sm:w-7 sm:text-xs',
                                                 idx < step
                                                     ? 'bg-primary-500 text-white'
                                                     : idx === step
@@ -208,7 +208,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                                         </div>
                                         <span
                                             className={cn(
-                                                'mt-1 whitespace-nowrap text-[10px]',
+                                                'mt-1 max-w-full truncate text-center text-[9px] sm:whitespace-nowrap sm:text-[10px]',
                                                 idx === step
                                                     ? 'font-semibold text-primary-500'
                                                     : 'text-neutral-400'
@@ -272,12 +272,12 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-between border-t border-neutral-100 px-6 py-4">
+                <div className="flex items-center justify-between gap-2 border-t border-neutral-100 px-4 py-3 sm:px-6 sm:py-4">
                     <div>
                         {step > 0 && (
                             <MyButton
                                 buttonType="secondary"
-                                scale="large"
+                                scale="small"
                                 layoutVariant="default"
                                 onClick={() => setStep((s) => s - 1)}
                                 disabled={isSubmitting}
@@ -286,10 +286,10 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                             </MyButton>
                         )}
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex gap-2 sm:gap-3">
                         <MyButton
                             buttonType="secondary"
-                            scale="large"
+                            scale="small"
                             layoutVariant="default"
                             onClick={handleClose}
                             disabled={isSubmitting}
@@ -299,7 +299,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                         {step < 3 ? (
                             <MyButton
                                 buttonType="primary"
-                                scale="large"
+                                scale="small"
                                 layoutVariant="default"
                                 onClick={handleNext}
                                 disable={!canGoNext() || isSubmitting}
@@ -313,7 +313,7 @@ export const BulkAssignDialog = ({ open, onOpenChange, onSuccess, initialPackage
                         ) : (
                             <MyButton
                                 buttonType="primary"
-                                scale="large"
+                                scale="small"
                                 layoutVariant="default"
                                 onClick={handleConfirm}
                                 disable={

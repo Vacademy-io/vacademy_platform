@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.notification_service.constants.NotificationConstants;
 import vacademy.io.notification_service.features.announcements.dto.EmailConfigDTO;
 import vacademy.io.notification_service.features.notification_log.repository.EmailAddressMappingRepository;
@@ -28,6 +30,11 @@ public class EmailConfigurationService {
     private final InstituteInternalService instituteInternalService;
     private final ObjectMapper objectMapper;
     private final EmailAddressMappingRepository emailAddressMappingRepository;
+
+    // Platform-wide default sender; used as fallback when an institute has no email config.
+    // Driven by SES_SENDER_EMAIL env var. If unset, falls back to support@vacademy.io.
+    @Value("${app.ses.sender.email:support@vacademy.io}")
+    private String defaultSenderEmail;
     
     /**
      * Get available email configurations for dropdown
@@ -267,38 +274,23 @@ public class EmailConfigurationService {
     }
     
     /**
-     * Get default email configurations
+     * Default email configurations surfaced when an institute has no email config set up.
+     * The primary entry is the platform-wide SES sender (env var SES_SENDER_EMAIL), with
+     * support@vacademy.io as the ultimate fallback if the env var is unset.
      */
     private List<EmailConfigDTO> getDefaultEmailConfigurations() {
+        String senderEmail = StringUtils.hasText(defaultSenderEmail) ? defaultSenderEmail : "support@vacademy.io";
+
         List<EmailConfigDTO> configs = new ArrayList<>();
-        
-        // Marketing email
+
         configs.add(EmailConfigDTO.builder()
-            .email("info@example.com")
-            .name("Marketing Team")
-            .type("MARKETING_EMAIL")
-            .description("Marketing and promotional emails")
-            .displayText("Marketing Email")
-            .build());
-            
-        // Utility email
-        configs.add(EmailConfigDTO.builder()
-            .email("notifications@example.com")
-            .name("Notifications")
+            .email(senderEmail)
+            .name("Vacademy Support")
             .type("UTILITY_EMAIL")
-            .description("Utility and system notifications")
-            .displayText("Utility Email")
+            .description("Default platform sender — utility and system notifications")
+            .displayText("Vacademy Support (default)")
             .build());
-            
-        // Developer email
-        configs.add(EmailConfigDTO.builder()
-            .email("developer@example.com")
-            .name("Developer")
-            .type("DEVELOPER_EMAIL")
-            .description("Developer and technical notifications")
-            .displayText("Developer Email")
-            .build());
-            
+
         return configs;
     }
 }

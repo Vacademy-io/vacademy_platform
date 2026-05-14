@@ -83,24 +83,24 @@ const ManageInventoryPage = () => {
     };
 
     return (
-        <div className="container mx-auto space-y-6 py-6">
+        <div className="container mx-auto space-y-4 px-3 py-4 sm:px-4 sm:py-6 lg:space-y-6 lg:px-8">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex items-center gap-3">
-                    <div className="rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 p-2 shadow-lg">
-                        <Package className="size-6 text-white" />
+                    <div className="shrink-0 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 p-2 shadow-lg">
+                        <Package className="size-5 text-white sm:size-6" />
                     </div>
-                    <div>
-                        <h1 className="bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-3xl font-bold text-transparent dark:from-white dark:to-gray-400">
+                    <div className="min-w-0">
+                        <h1 className="truncate bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-xl font-bold text-transparent dark:from-white dark:to-gray-400 sm:text-2xl lg:text-3xl">
                             {`Manage ${getTerminology(OtherTerms.Inventory, SystemTerms.Inventory)}`}
                         </h1>
-                        <p className="text-sm text-muted-foreground">
+                        <p className="text-xs text-muted-foreground sm:text-sm">
                             {`Manage seats and capacity for your ${getTerminologyPlural(ContentTerms.Package, SystemTerms.Package).toLowerCase()} ${getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()}`}
                         </p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <Button
                         variant="outline"
                         size="sm"

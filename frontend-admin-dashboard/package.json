@@ -182,6 +182,7 @@
         "html-to-image": "^1.11.11",
         "html2canvas": "^1.4.1",
         "htmlparser2": "^10.0.0",
+        "i": "^0.3.7",
         "i18next": "^23.16.4",
         "i18next-browser-languagedetector": "6.1.4",
         "idb-keyval": "6.0.3",

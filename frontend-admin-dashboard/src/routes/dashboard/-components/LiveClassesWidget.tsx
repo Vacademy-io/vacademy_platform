@@ -1,7 +1,7 @@
 import React from 'react';
-import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { MyButton } from '@/components/design-system/button';
-import { Plus, PencilSimpleLine, DownloadSimple } from '@phosphor-icons/react';
+import { Plus, PencilSimpleLine, DownloadSimple, VideoCamera } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { useUpcomingSessions } from '@/routes/study-library/live-session/-hooks/useLiveSessions';
 import { useLiveSessionStore } from '@/routes/study-library/live-session/schedule/-store/sessionIdstore';
@@ -252,32 +252,49 @@ const LiveClassesWidget: React.FC<LiveClassesWidgetProps> = ({ instituteId }) =>
     };
 
     return (
-        <Card className="w-full bg-neutral-50 shadow-none">
-            <CardHeader className="p-3 sm:p-4">
-                <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <CardTitle className="text-sm font-semibold sm:mb-0">Live Classes</CardTitle>
+        <Card className="w-full bg-white shadow-sm">
+            <CardHeader className="p-4 pb-2">
+                <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                        <span className="flex size-7 items-center justify-center rounded-lg bg-orange-50 text-orange-600">
+                            <VideoCamera size={14} weight="duotone" />
+                        </span>
+                        <div className="min-w-0">
+                            <CardTitle className="text-sm font-semibold">Live Classes</CardTitle>
+                            <CardDescription className="line-clamp-1 text-[11px] text-neutral-500 sm:text-xs">
+                                {sessions.length > 0
+                                    ? `${sessions.length} upcoming session${sessions.length === 1 ? '' : 's'}`
+                                    : 'No upcoming sessions scheduled'}
+                            </CardDescription>
+                        </div>
+                    </div>
                     <MyButton
                         type="button"
                         scale="medium"
                         layoutVariant="default"
                         buttonType="secondary"
                         onClick={handleAdd}
-                        className="w-full px-3 py-2 text-xs sm:w-auto sm:text-sm"
+                        className="shrink-0 text-xs sm:text-sm"
                     >
-                        <Plus size={16} className="mr-1 sm:mr-2" />
-                        <span className="sm:inline">Add Live Class</span>
+                        <Plus size={14} className="mr-1" />
+                        Add
                     </MyButton>
                 </div>
             </CardHeader>
-            <div className="flex flex-col gap-2 p-3 sm:gap-4 sm:p-4 lg:flex-row lg:gap-6">
-                <div className="hidden shrink-0 items-center justify-center sm:flex sm:w-20 lg:w-auto">
-                    <img
-                        src="/yoga.png"
-                        alt="Live classes illustration"
-                        className="h-16 w-auto sm:h-20 lg:h-32"
-                    />
-                </div>
-                <div className="flex flex-1 flex-col gap-2 sm:gap-3">
+            <div className="flex flex-col gap-2 p-4 pt-2">
+                <div className="flex flex-1 flex-col gap-2">
+                    {sessionsToShow.length === 0 && (
+                        <div className="flex flex-col items-center justify-center gap-2 rounded-md border border-dashed border-neutral-200 bg-neutral-50/50 py-6 text-center">
+                            <VideoCamera
+                                size={20}
+                                weight="duotone"
+                                className="text-neutral-300"
+                            />
+                            <div className="text-[11px] text-neutral-500">
+                                No live classes scheduled yet
+                            </div>
+                        </div>
+                    )}
                     {sessionsToShow.map((session) => {
                         const time = format(
                             new Date(`${session.meeting_date}T${session.start_time}`),
@@ -286,13 +303,15 @@ const LiveClassesWidget: React.FC<LiveClassesWidgetProps> = ({ instituteId }) =>
                         return (
                             <div
                                 key={session.session_id}
-                                className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-2 sm:p-3"
+                                className="flex flex-col gap-2 rounded-lg border border-neutral-200 bg-white p-3 transition-colors hover:border-primary-200"
                             >
                                 {/* Header row with time and dropdown */}
                                 <div className="flex items-start justify-between">
                                     <div className="flex flex-col">
-                                        <span className="text-xs text-neutral-500">Upcoming</span>
-                                        <span className="text-sm font-semibold text-primary-500 sm:text-lg">
+                                        <span className="text-[10px] uppercase tracking-wide text-neutral-500">
+                                            Upcoming
+                                        </span>
+                                        <span className="text-base font-semibold text-primary-600">
                                             {time}
                                         </span>
                                     </div>

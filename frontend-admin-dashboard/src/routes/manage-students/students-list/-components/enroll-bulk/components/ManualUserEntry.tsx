@@ -287,7 +287,7 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                         </div>
 
                         {/* Core fields — always visible */}
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
                                 <Label className="mb-1 text-xs text-neutral-500">
                                     Email <span className="text-danger-500">*</span>
@@ -364,7 +364,7 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                                 <p className="mb-2 text-xs font-semibold text-neutral-400 uppercase tracking-wide">
                                     Additional Details
                                 </p>
-                                <div className="grid grid-cols-2 gap-3">
+                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     {/* Dynamic system fields */}
                                     {visibleSystemFields.map((sf) => (
                                         <div key={sf.key}>

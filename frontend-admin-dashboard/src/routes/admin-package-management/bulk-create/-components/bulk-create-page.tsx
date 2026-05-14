@@ -113,9 +113,9 @@ export function BulkCreatePage() {
     const courseCount = courses.length;
 
     return (
-        <section className="animate-fadeIn flex max-w-full flex-col gap-4 p-4">
+        <section className="animate-fadeIn flex max-w-full flex-col gap-4 p-3 sm:p-4">
             {/* Header Actions */}
-            <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 rounded-lg border border-neutral-200 bg-white p-3 shadow-sm sm:p-4 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:gap-4">
                 <div>
                     <h2 className="text-base font-semibold text-neutral-800">
                         Create Multiple {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course)}
@@ -124,38 +124,47 @@ export function BulkCreatePage() {
                         Add {getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()} quickly with global defaults and individual customization
                     </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="grid grid-cols-2 gap-2 lg:flex lg:flex-wrap lg:items-center">
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setShowSimilarPackages(true)}
-                        className="h-9"
+                        className="h-9 min-w-0 justify-center"
                     >
-                        <MagnifyingGlass className="mr-1 size-4" />
-                        Search already added {getTerminologyPlural(ContentTerms.Package, SystemTerms.Package)}
+                        <MagnifyingGlass className="mr-1 size-4 shrink-0" />
+                        <span className="truncate">
+                            Search already added {getTerminologyPlural(ContentTerms.Package, SystemTerms.Package)}
+                        </span>
                     </Button>
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={() => setShowCsvImport(true)}
-                        className="h-9"
+                        className="h-9 min-w-0 justify-center"
                     >
-                        <FileCsv className="mr-1 size-4" />
-                        Import CSV
+                        <FileCsv className="mr-1 size-4 shrink-0" />
+                        <span className="truncate">Import CSV</span>
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handleReset} className="h-9">
-                        <ArrowClockwise className="mr-1 size-4" />
-                        Reset
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleReset}
+                        className="h-9 min-w-0 justify-center"
+                    >
+                        <ArrowClockwise className="mr-1 size-4 shrink-0" />
+                        <span className="truncate">Reset</span>
                     </Button>
                     <Button
                         variant="outline"
                         size="sm"
                         onClick={handleValidate}
                         disabled={isValidating || courseCount === 0}
-                        className="h-9"
+                        className="h-9 min-w-0 justify-center"
                     >
-                        <Eye className="mr-1 size-4" />
-                        {isValidating ? 'Validating...' : 'Validate & Preview'}
+                        <Eye className="mr-1 size-4 shrink-0" />
+                        <span className="truncate">
+                            {isValidating ? 'Validating...' : 'Validate & Preview'}
+                        </span>
                     </Button>
                 </div>
             </div>
@@ -229,14 +238,14 @@ export function BulkCreatePage() {
             </div>
 
             {/* Footer Actions */}
-            <div className="sticky bottom-4 flex justify-end gap-2 rounded-lg border border-neutral-200 bg-white/95 p-4 shadow-lg backdrop-blur">
-                <span className="mr-auto text-sm text-neutral-500">
+            <div className="sticky bottom-4 flex flex-wrap items-center justify-end gap-2 rounded-lg border border-neutral-200 bg-white/95 p-3 shadow-lg backdrop-blur sm:p-4">
+                <span className="mr-auto text-xs text-neutral-500 sm:text-sm">
                     {courseCount} {courseCount !== 1 ? getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase() : getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase()} to create
                 </span>
-                <Button variant="outline" asChild>
+                <Button variant="outline" size="sm" asChild>
                     <Link to="/admin-package-management">Cancel</Link>
                 </Button>
-                <Button onClick={handleValidate} disabled={isValidating || courseCount === 0}>
+                <Button size="sm" onClick={handleValidate} disabled={isValidating || courseCount === 0}>
                     <Eye className="mr-1 size-4" />
                     {isValidating ? 'Validating...' : 'Preview & Create'}
                 </Button>

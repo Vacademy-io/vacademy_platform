@@ -124,10 +124,12 @@ export const StudentFilters = ({
 
     return (
         <div className="animate-fadeIn space-y-4">
-            {/* Top section with session selector and export buttons */}
-            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+            {/* Top section with session selector and export buttons.
+                Mobile: Session row + 2-col Export grid row.
+                lg+: All side-by-side in a single row. */}
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
                 {/* Session selector */}
-                <div className="max-w-xs flex-1">
+                <div className="min-w-0 w-full max-w-xs lg:flex-1">
                     {sessionList.length == 0 ? (
                         <AddSessionDialog
                             isAddSessionDiaogOpen={isAddSessionDiaogOpen}
@@ -170,21 +172,22 @@ export const StudentFilters = ({
                     )}
                 </div>
 
-                {/* Export buttons */}
-                <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
+                {/* Export buttons — 2-col grid on mobile with full labels, inline row on sm+ */}
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:items-center">
                     <MyButton
                         scale="medium"
                         buttonType="secondary"
                         layoutVariant="default"
                         onClick={handleExportAccountDetails}
                         className={cn(
-                            "hover:scale-102 group flex items-center gap-2 bg-gradient-to-r from-neutral-50 to-neutral-100 transition-all duration-200 hover:from-neutral-100 hover:to-neutral-200",
-                            isCompact ? "px-2 py-1 text-xs" : "px-4 py-2 text-sm"
+                            "hover:scale-102 group flex items-center justify-center gap-1.5 bg-gradient-to-r from-neutral-50 to-neutral-100 transition-all duration-200 hover:from-neutral-100 hover:to-neutral-200",
+                            isCompact ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-xs sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
                         )}
                     >
-                        <Export className={cn("transition-transform duration-200 group-hover:scale-110", isCompact ? "size-3" : "size-4")} />
-                        <span className="hidden md:inline">Export account details</span>
-                        <span className="md:hidden">Account Details</span>
+                        <Export className={cn("shrink-0 transition-transform duration-200 group-hover:scale-110", isCompact ? "size-3" : "size-3.5 sm:size-4")} />
+                        <span className="truncate sm:hidden">Account Details</span>
+                        <span className="hidden truncate sm:inline md:hidden">Account</span>
+                        <span className="hidden truncate md:inline">Export account details</span>
                     </MyButton>
                     <MyButton
                         scale="medium"
@@ -193,13 +196,14 @@ export const StudentFilters = ({
                         id="export-data"
                         onClick={handleExportClick}
                         className={cn(
-                            "hover:scale-102 group flex items-center gap-2 border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-700 transition-all duration-200 hover:from-emerald-100 hover:to-emerald-200",
-                            isCompact ? "px-2 py-1 text-xs" : "px-4 py-2 text-sm"
+                            "hover:scale-102 group flex items-center justify-center gap-1.5 border-emerald-200 bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-700 transition-all duration-200 hover:from-emerald-100 hover:to-emerald-200",
+                            isCompact ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-xs sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
                         )}
                     >
-                        <Export className={cn("transition-transform duration-200 group-hover:scale-110", isCompact ? "size-3" : "size-4")} />
-                        <span className="hidden md:inline">Export Data</span>
-                        <span className="md:hidden">Export</span>
+                        <Export className={cn("shrink-0 transition-transform duration-200 group-hover:scale-110", isCompact ? "size-3" : "size-3.5 sm:size-4")} />
+                        <span className="truncate sm:hidden">Export</span>
+                        <span className="hidden truncate sm:inline md:hidden">Export</span>
+                        <span className="hidden truncate md:inline">Export Data</span>
                     </MyButton>
                 </div>
             </div>

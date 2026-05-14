@@ -5,6 +5,7 @@ import { MyPagination } from '@/components/design-system/pagination';
 import { DashboardLoader, ErrorBoundary } from '@/components/core/dashboard-loader';
 import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { SidebarProvider } from '@/components/ui/sidebar';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Package } from '@phosphor-icons/react';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -17,6 +18,7 @@ import { PackageSessionDTO } from '../-types/package-types';
 
 export function PackageManagementSection() {
     const { setNavHeading } = useNavHeadingStore();
+    const isMobile = useIsMobile();
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [selectedPackage, setSelectedPackage] = useState<{ id: string; name: string } | null>(
         null
@@ -28,6 +30,10 @@ export function PackageManagementSection() {
     }, [setNavHeading]);
 
     useEffect(() => {
+        // On mobile the sidebar renders as a Sheet in a portal — outside `tableRef`.
+        // The Sheet handles its own backdrop dismiss, and running this handler
+        // would close it immediately on any tap inside the sheet.
+        if (isMobile) return;
         const handleClickOutside = (event: MouseEvent) => {
             if (
                 tableRef.current &&
@@ -42,7 +48,7 @@ export function PackageManagementSection() {
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [isSidebarOpen]);
+    }, [isSidebarOpen, isMobile]);
 
     const {
         columnFilters,

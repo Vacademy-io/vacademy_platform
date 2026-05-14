@@ -159,6 +159,21 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   }, [questions]);
   const attemptLogsQuery = useGetQuizSlideActivityLogs(currentUserId, currentSlideIdForAttempts);
 
+  // Attempts already consumed (server-recorded). `reAttemptCount` is the TOTAL
+  // attempt cap for this quiz (consistent with assignment-slide.tsx); when it is
+  // null, attempts are unlimited.
+  const usedAttempts = attemptLogsQuery.data?.length ?? 0;
+  const attemptsExhausted = reAttemptCount != null && usedAttempts >= reAttemptCount;
+  const attemptLogsLoaded = !attemptLogsQuery.isLoading && attemptLogsQuery.data !== undefined;
+
+  // Once logs have loaded, if the user has no attempts left, force the
+  // review screen so they can never re-enter the answer-collection UI.
+  useEffect(() => {
+    if (attemptLogsLoaded && attemptsExhausted) {
+      setShowReview(true);
+    }
+  }, [attemptLogsLoaded, attemptsExhausted]);
+
   // ✅ Helper: Restore 100% for ALL completed quizzes from localStorage
   const restoreLocalStorageCompletions = useCallback((chapterId: string) => {
     queryClient.setQueryData<Slide[]>(["slides", chapterId], (oldSlides) => {
@@ -472,14 +487,24 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
     return { earned: Math.max(0, earned), totalMarks, correct, wrong, skipped };
   };
 
-  // ✅ Only show review if we have answers (prevents "undefined" on first click)
-  if (showReview && Object.keys(answers).length > 0) {
-    // Optimistic: if the query hasn't refetched yet after this submission,
-    // ensure the current attempt is counted (+1 when logs don't include it yet).
+  // Show review whenever we have answers OR the user has exhausted attempts
+  // (so re-entering an exhausted quiz never lands them in the answer UI).
+  if (showReview && (Object.keys(answers).length > 0 || attemptsExhausted)) {
     const logsCount = attemptLogsQuery.data?.length ?? 0;
-    const totalAttempts = logsCount > 0 ? logsCount : 1;
-    // If reAttemptCount is set, check if the user has exhausted their attempts
-    const canReattempt = reAttemptCount == null || totalAttempts < reAttemptCount;
+    // Display attempt number = how many attempts have been recorded. If we just
+    // submitted but the refetch hasn't arrived, fall back to 1 so we don't show 0.
+    const rawAttemptNumber = logsCount > 0 ? logsCount : 1;
+    // Never display attemptNumber larger than the cap — protects against legacy
+    // data where the user accumulated more attempts than now allowed.
+    const displayedAttemptNumber = reAttemptCount != null
+      ? Math.min(rawAttemptNumber, reAttemptCount)
+      : rawAttemptNumber;
+    const canReattempt = reAttemptCount == null || logsCount < reAttemptCount;
+    // Logs come newest-first; show only the most recent `reAttemptCount`
+    // entries so the "Past Attempts" list never exceeds the allowed cap.
+    const displayedAttemptLogs = reAttemptCount != null && attemptLogsQuery.data
+      ? attemptLogsQuery.data.slice(0, reAttemptCount)
+      : attemptLogsQuery.data;
     return <QuizReview
       questions={questions}
       userAnswers={answers}
@@ -487,17 +512,19 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       showCorrectAnswers={showReportAndCorrectAnswers}
       passed={passed}
       passPercentage={passPercentage}
-      attemptNumber={totalAttempts}
+      attemptNumber={displayedAttemptNumber}
       maxAttempts={reAttemptCount}
       canReattempt={canReattempt}
-      attemptLogs={attemptLogsQuery.data}
+      attemptLogs={displayedAttemptLogs}
       onRestart={() => {
-        // ✅ Clear localStorage when retaking quiz
+        if (attemptsExhausted) {
+          toast.error("No attempts remaining for this quiz.");
+          return;
+        }
         const { slideId, chapterId } = getUrlParams();
         const storageKey = `quiz_answers_${slideId}_${chapterId}`;
         localStorage.removeItem(storageKey);
 
-        // Reset quiz state
         setShowReview(false);
         setCurrent(0);
         setAnswers({});
@@ -517,6 +544,11 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   };
 
   const handleQuizSubmit = async (finalAnswers: typeof answers) => {
+    if (attemptsExhausted) {
+      toast.error("No attempts remaining for this quiz.");
+      setShowReview(true);
+      return;
+    }
     setIsSubmitting(true);
     try {
       const { slideId, chapterId, moduleId, subjectId, packageSessionId } = getUrlParams();

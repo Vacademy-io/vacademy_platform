@@ -62,10 +62,10 @@ export const InventoryStatsCards = () => {
 
     if (isLoading) {
         return (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5 lg:gap-4">
                 {[1, 2, 3, 4, 5].map((i) => (
                     <Card key={i} className="overflow-hidden">
-                        <CardContent className="p-6">
+                        <CardContent className="p-3 sm:p-4 lg:p-6">
                             <Skeleton className="mb-2 h-4 w-24" />
                             <Skeleton className="mb-1 h-8 w-16" />
                             <Skeleton className="h-3 w-20" />
@@ -77,7 +77,7 @@ export const InventoryStatsCards = () => {
     }
 
     return (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5 lg:gap-4">
             {statCards.map((stat, index) => {
                 const isCritical = 'critical' in stat && stat.critical;
                 const isWarning = 'warning' in stat && stat.warning;
@@ -87,19 +87,19 @@ export const InventoryStatsCards = () => {
                         key={index}
                         className={`overflow-hidden border-0 bg-gradient-to-br shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${stat.bgGradient} ${isCritical ? 'animate-pulse ring-2 ring-red-500/50' : ''}`}
                     >
-                        <CardContent className="p-6">
-                            <div className="mb-3 flex items-center justify-between">
-                                <span className="text-sm font-medium text-muted-foreground">
+                        <CardContent className="p-3 sm:p-4 lg:p-6">
+                            <div className="mb-2 flex items-center justify-between gap-2 lg:mb-3">
+                                <span className="truncate text-xs font-medium text-muted-foreground sm:text-sm">
                                     {stat.title}
                                 </span>
                                 <div
-                                    className={`rounded-lg bg-gradient-to-br p-2 shadow-md ${stat.gradient}`}
+                                    className={`shrink-0 rounded-lg bg-gradient-to-br p-1.5 shadow-md sm:p-2 ${stat.gradient}`}
                                 >
-                                    <stat.icon className="size-4 text-white" />
+                                    <stat.icon className="size-3.5 text-white sm:size-4" />
                                 </div>
                             </div>
                             <div
-                                className={`mb-1 text-3xl font-bold ${
+                                className={`mb-1 text-xl font-bold sm:text-2xl lg:text-3xl ${
                                     isCritical
                                         ? 'text-red-600 dark:text-red-400'
                                         : isWarning
@@ -109,7 +109,7 @@ export const InventoryStatsCards = () => {
                             >
                                 {stat.value}
                             </div>
-                            <div className="text-xs text-muted-foreground">{stat.subtitle}</div>
+                            <div className="truncate text-[10px] text-muted-foreground sm:text-xs">{stat.subtitle}</div>
                         </CardContent>
                     </Card>
                 );

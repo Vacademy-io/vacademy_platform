@@ -225,7 +225,7 @@ export const Step2CourseSelector = ({
     const isDropdownLoading = isLevelsLoading || isSessionsLoading;
 
     return (
-        <div className="flex flex-col gap-4 px-6 py-5">
+        <div className="flex flex-col gap-4 px-4 py-4 sm:px-6 sm:py-5">
             {selectedPackageSessions.length > 0 && (
                 <div className="flex items-center gap-2 rounded-lg border border-primary-200 bg-primary-50 px-4 py-2 text-sm text-primary-700">
                     <span className="font-semibold">{selectedPackageSessions.length}</span>{' '}
@@ -237,8 +237,9 @@ export const Step2CourseSelector = ({
                 </div>
             )}
 
-            <div className="flex items-center gap-2">
-                <div className="relative flex-1">
+            {/* Search on its own row on mobile, inline on sm+ */}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative w-full sm:flex-1">
                     <MagnifyingGlass
                         size={15}
                         className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"
@@ -247,17 +248,19 @@ export const Step2CourseSelector = ({
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder={`Search ${coursesTerm.toLowerCase()}, ${levelsTerm.toLowerCase()}...`}
-                        className="h-9 pl-9 text-sm"
+                        className="h-9 w-full pl-9 text-sm"
                     />
                 </div>
 
+                {/* Filter dropdowns — 2-col grid below search on mobile, inline on sm+ */}
+                <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button
                             variant="outline"
                             size="sm"
                             className={cn(
-                                'h-9 gap-1.5 text-xs font-medium',
+                                'h-9 w-full justify-center gap-1.5 text-xs font-medium sm:w-auto',
                                 selectedLevelIds.length > 0 &&
                                     'border-primary-300 bg-primary-50 text-primary-700'
                             )}
@@ -313,7 +316,7 @@ export const Step2CourseSelector = ({
                             variant="outline"
                             size="sm"
                             className={cn(
-                                'h-9 gap-1.5 text-xs font-medium',
+                                'h-9 w-full justify-center gap-1.5 text-xs font-medium sm:w-auto',
                                 selectedSessionIds.length > 0 &&
                                     'border-primary-300 bg-primary-50 text-primary-700'
                             )}
@@ -362,6 +365,7 @@ export const Step2CourseSelector = ({
                         )}
                     </DropdownMenuContent>
                 </DropdownMenu>
+                </div>
             </div>
 
             {activeFilterCount > 0 && (
@@ -529,12 +533,12 @@ export const Step2CourseSelector = ({
             </div>
 
             {totalPages > 1 && (
-                <div className="flex items-center justify-between border-t border-neutral-100 pt-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100 pt-3">
                     <span className="text-xs text-neutral-400">
                         Showing {page * PAGE_SIZE + 1}–
                         {Math.min((page + 1) * PAGE_SIZE, totalElements)} of {totalElements}
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1">
                         <Button
                             variant="outline"
                             size="sm"

@@ -32,13 +32,15 @@ export const EnrollStudentsButton = ({
                 onClick={() => setOpen(true)}
                 disable={isDisabled}
                 className={cn(
-                    'group flex items-center gap-2 px-8 py-2 text-sm',
+                    'group flex items-center gap-1.5 px-3 py-1.5 text-xs sm:gap-2 sm:px-8 sm:py-2 sm:text-sm',
                     isDisabled && 'pointer-events-none opacity-55',
                     className
                 )}
             >
-                <GraduationCap className="size-4 transition-transform duration-200 group-hover:scale-110" />
-                Enroll {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
+                <GraduationCap className="size-3.5 shrink-0 transition-transform duration-200 group-hover:scale-110 sm:size-4" />
+                <span className="truncate">
+                    Enroll {getTerminology(RoleTerms.Learner, SystemTerms.Learner)}
+                </span>
             </MyButton>
 
             <BulkAssignDialog open={open} onOpenChange={setOpen} initialPackageSessionId={initialPackageSessionId} />

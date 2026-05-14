@@ -200,14 +200,15 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
         const roleKey = getActiveRoleDisplaySettingsKey();
-        const cached = getDisplaySettingsFromCache(roleKey);
-        if (cached) {
-            setRoleDisplay(cached);
-            return;
-        }
-        getDisplaySettings(roleKey)
+        // Force-refresh on mount so admin policy changes (Course Permission
+        // toggles) take effect on the next page load without waiting for
+        // the 24h localStorage TTL.
+        getDisplaySettings(roleKey, true)
             .then(setRoleDisplay)
-            .catch(() => setRoleDisplay(null));
+            .catch(() => {
+                const cached = getDisplaySettingsFromCache(roleKey);
+                setRoleDisplay(cached ?? null);
+            });
     }, []);
     const cardSettings = roleDisplay?.authoredCoursesCard;
     const allowDirectEditPublished =

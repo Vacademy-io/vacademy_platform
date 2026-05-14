@@ -1138,14 +1138,17 @@ export const CourseDetailsPage = () => {
     );
     useEffect(() => {
         const roleKeyInner = getActiveRoleDisplaySettingsKey();
-        const cached = getDisplaySettingsFromCache(roleKeyInner);
-        if (cached) {
-            setRoleDisplay(cached);
-            return;
-        }
-        getDisplaySettings(roleKeyInner)
+        // Always force-refresh on mount so admin policy changes
+        // (e.g. directEditPublishedCourse) take effect on the next page load
+        // without waiting for the 24h localStorage TTL to expire.
+        getDisplaySettings(roleKeyInner, true)
             .then(setRoleDisplay)
-            .catch(() => setRoleDisplay(null));
+            .catch(() => {
+                // On failure, fall back to whatever is cached so the page
+                // still renders something sensible.
+                const cached = getDisplaySettingsFromCache(roleKeyInner);
+                if (cached) setRoleDisplay(cached);
+            });
     }, []);
     const coursePage = roleDisplay?.coursePage;
     const allowDirectEditPublished = coursePage?.directEditPublishedCourse === true;

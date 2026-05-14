@@ -326,14 +326,15 @@ export const CourseStructureDetails = ({
         try {
             // Use getActiveRoleDisplaySettingsKey which handles ADMIN, TEACHER, and custom roles (faculty)
             const roleKeyInner = getActiveRoleDisplaySettingsKey();
-            const cached = getDisplaySettingsFromCache(roleKeyInner);
-            if (cached) {
-                setRoleDisplay(cached);
-            } else {
-                getDisplaySettings(roleKeyInner)
-                    .then(setRoleDisplay)
-                    .catch(() => setRoleDisplay(null));
-            }
+            // Force-refresh on mount so admin policy changes (Course Permission
+            // toggles) take effect on the next page load without waiting for
+            // the 24h localStorage TTL.
+            getDisplaySettings(roleKeyInner, true)
+                .then(setRoleDisplay)
+                .catch(() => {
+                    const cached = getDisplaySettingsFromCache(roleKeyInner);
+                    setRoleDisplay(cached ?? null);
+                });
         } catch {
             setRoleDisplay(null);
         }

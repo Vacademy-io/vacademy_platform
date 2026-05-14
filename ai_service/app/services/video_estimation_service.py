@@ -19,6 +19,7 @@ from typing import Optional, Tuple, List, Dict, Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from .ai_video_constants import AI_VIDEO_PER_VIDEO_COST_CAP_USD
 from .credit_service import DEFAULT_PRICING
 from .credit_rate_service import CreditRateService
 
@@ -438,7 +439,7 @@ def estimate_video_generation(
         # number across low/expected/high — variance doesn't apply here
         # since the cap is fixed.
         if ai_video_enabled and quality_tier in ("ultra", "super_ultra"):
-            _av_cap_usd = 1.50  # mirrors QUALITY_TIERS[ultra+]
+            _av_cap_usd = AI_VIDEO_PER_VIDEO_COST_CAP_USD
             rows.append({
                 "component": "AI video (worst case)",
                 "detail": (

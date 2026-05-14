@@ -530,6 +530,17 @@ _SCRIPT_RANGES: dict[str, tuple[int, int]] = {
 # ---------------------------------------------------------------------------
 # Quality tier configuration
 # ---------------------------------------------------------------------------
+# Single source of truth for the per-video Veo cost cap. Imported here
+# (rather than hardcoded) so the FastAPI pre-flight balance check in
+# `routers/external_video_generation.py` and the pipeline's runtime
+# `AiVideoCostTracker` never silently disagree on the limit.
+try:
+    from app.services.ai_video_constants import AI_VIDEO_PER_VIDEO_COST_CAP_USD
+except ImportError:
+    # Fallback when `app/` isn't on path (legacy / standalone). Keep the
+    # numeric default in lockstep with `ai_video_constants.py`.
+    AI_VIDEO_PER_VIDEO_COST_CAP_USD = 1.50
+
 QUALITY_TIERS: dict[str, dict[str, Any]] = {
     "free": {
         "script_temperature": 0.5,
@@ -693,7 +704,7 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # The eligible flag controls whether the toggle is exposed in the UI;
         # the request-time enable flag controls whether Veo actually fires.
         "ai_video_eligible": True,
-        "ai_video_per_video_cost_cap_usd": 1.50,
+        "ai_video_per_video_cost_cap_usd": AI_VIDEO_PER_VIDEO_COST_CAP_USD,
     },
     "super_ultra": {
         "script_temperature": 0.6,
@@ -747,7 +758,7 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # AI video gen (fal.ai veo3.1/lite) — ELIGIBLE on this tier (see ultra
         # for the eligible-vs-enabled distinction).
         "ai_video_eligible": True,
-        "ai_video_per_video_cost_cap_usd": 1.50,
+        "ai_video_per_video_cost_cap_usd": AI_VIDEO_PER_VIDEO_COST_CAP_USD,
     },
 }
 
@@ -2199,7 +2210,7 @@ class VideoGenerationPipeline:
                     self._ai_video_audio_run_enabled = False
                 else:
                     self._fal_veo_client = FalVeoClient(_fal_key)
-                    _cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or 1.50)
+                    _cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or AI_VIDEO_PER_VIDEO_COST_CAP_USD)
                     self._ai_video_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
                     # Credit ledger writer. Bound to (institute_id, run_name)
                     # — every Veo charge from this run lands as a
@@ -8458,7 +8469,7 @@ class VideoGenerationPipeline:
         if getattr(self, "_ai_video_run_enabled", False):
             try:
                 from director_prompts import build_ai_video_director_block
-                _av_cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or 1.50)
+                _av_cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or AI_VIDEO_PER_VIDEO_COST_CAP_USD)
                 director_system = director_system + build_ai_video_director_block(
                     enabled=True,
                     audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
@@ -12073,7 +12084,7 @@ class VideoGenerationPipeline:
             ):
                 try:
                     from shot_type_cards import build_ai_video_inline_teaching_block
-                    _av_cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or 1.50)
+                    _av_cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or AI_VIDEO_PER_VIDEO_COST_CAP_USD)
                     _av_inline_block = build_ai_video_inline_teaching_block(
                         enabled=True,
                         audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),

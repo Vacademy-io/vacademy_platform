@@ -129,9 +129,14 @@ class CreditRateService:
             },
         )
         self.db.commit()
-        _cache.invalidate()
-        # Force re-hydration so subsequent calls see the new row.
-        return self.get_effective_ratio()
+        # Populate the cache directly with the just-inserted values. We
+        # avoid `_cache.invalidate()` + a subsequent `_refresh_cache()`
+        # round-trip because a transient DB error on the SELECT (rare but
+        # possible: pool exhaustion, statement timeout) would otherwise
+        # leave callers reading the fallback rate for up to 60s — even
+        # though the admin's update is already committed.
+        _cache.set(usd_to_credits, margin_pct)
+        return usd_to_credits * (Decimal("1") + margin_pct / Decimal("100"))
 
     # ------------------------------------------------------------------
     # Internals

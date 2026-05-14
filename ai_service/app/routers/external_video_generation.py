@@ -274,24 +274,18 @@ async def generate_video_external(
     # Veo-aware pre-flight: the generic `require_credits("video", ...)` dep
     # ran above only accounts for the standard LLM/image/TTS budget. When
     # `ai_video_enabled=True` the run may also burn up to
-    # `ai_video_per_video_cost_cap_usd` (currently $1.50 on ultra+) on Veo.
-    # Reject the request now with HTTP 402 if balance can't cover the
-    # worst case — better to refuse than to start, half-charge, then
-    # circuit-break mid-run and ship a degraded video.
-    #
-    # The cap value lives in `QUALITY_TIERS` inside the hyphenated
-    # `ai-video-gen-main` package which isn't importable via dotted
-    # syntax — and pulling it in via `importlib` would import the entire
-    # pipeline (heavy). Use the hardcoded ultra/super_ultra value here;
-    # it's the single source of truth in the pipeline anyway.
+    # `AI_VIDEO_PER_VIDEO_COST_CAP_USD` on Veo. Reject the request now
+    # with HTTP 402 if balance can't cover the worst case — better to
+    # refuse than to start, half-charge, then circuit-break mid-run and
+    # ship a degraded video.
     if getattr(payload, "ai_video_enabled", False):
-        _AI_VIDEO_PER_VIDEO_COST_CAP_USD = 1.50  # mirror of QUALITY_TIERS[ultra+]
         with make_db_session() as _preflight_db:
+            from ..services.ai_video_constants import AI_VIDEO_PER_VIDEO_COST_CAP_USD
             from ..services.credit_rate_service import CreditRateService
             from ..services.credit_service import CreditService
             _ratio = CreditRateService(_preflight_db).get_effective_ratio()
             _veo_cap_credits = (
-                Decimal(str(_AI_VIDEO_PER_VIDEO_COST_CAP_USD)) * _ratio
+                Decimal(str(AI_VIDEO_PER_VIDEO_COST_CAP_USD)) * _ratio
             ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
             _balance = CreditService(_preflight_db).get_balance(institute_id)
             _current = _balance.current_balance if _balance else Decimal("0")

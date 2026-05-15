@@ -10,7 +10,6 @@ import logging
 import os
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
-from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Dict, Optional, List
 from uuid import uuid4
 
@@ -282,33 +281,27 @@ async def generate_video_external(
     _check_rate_limit(institute_id)
     _check_concurrency_limit(institute_id)
 
-    # Veo-aware pre-flight: the generic `require_credits("video", ...)` dep
-    # ran above only accounts for the standard LLM/image/TTS budget. When
-    # `ai_video_enabled=True` the run may also burn up to
-    # `AI_VIDEO_PER_VIDEO_COST_CAP_USD` on Veo. Reject the request now
-    # with HTTP 402 if balance can't cover the worst case — better to
-    # refuse than to start, half-charge, then circuit-break mid-run and
-    # ship a degraded video.
-    if getattr(payload, "ai_video_enabled", False):
-        with make_db_session() as _preflight_db:
-            from ..services.ai_video_constants import AI_VIDEO_PER_VIDEO_COST_CAP_USD
-            from ..services.credit_rate_service import CreditRateService
-            from ..services.credit_service import CreditService
-            _ratio = CreditRateService(_preflight_db).get_effective_ratio()
-            _veo_cap_credits = (
-                Decimal(str(AI_VIDEO_PER_VIDEO_COST_CAP_USD)) * _ratio
-            ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
-            _balance = CreditService(_preflight_db).get_balance(institute_id)
-            _current = _balance.current_balance if _balance else Decimal("0")
-            if _current < _veo_cap_credits:
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail=(
-                        f"AI video enabled but balance ({_current} credits) is below "
-                        f"the worst-case Veo upper bound ({_veo_cap_credits} credits). "
-                        f"Disable AI video or top up to proceed."
-                    ),
-                )
+    # Tier-aware pre-flight (2026-05 audit, supersedes the standalone Veo
+    # check). The generic `require_credits("video", ...)` dep above is a
+    # zero-balance floor (resolves to ~0.05 credits via the fallback formula)
+    # and was never gating realistic cost. This block reads `payload.quality_tier`
+    # + `payload.ai_video_enabled` after parsing and rejects HTTP 402 when
+    # balance can't cover the tier baseline + Veo cap (if enabled).
+    # See `CreditService.check_video_tier_credits` for the per-tier floors;
+    # they're derived from the breakdown in docs/AI_CREDITS_PRICING.md.
+    with make_db_session() as _preflight_db:
+        from ..services.credit_service import CreditService
+        _tier_check = CreditService(_preflight_db).check_video_tier_credits(
+            institute_id=institute_id,
+            quality_tier=getattr(payload, "quality_tier", "standard") or "standard",
+            ai_video_enabled=bool(getattr(payload, "ai_video_enabled", False)),
+            partial_run_factor=1.0,  # fresh run — full budget required
+        )
+        if not _tier_check.has_sufficient_credits:
+            raise HTTPException(
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                detail=_tier_check.message,
+            )
 
     video_id = payload.video_id or str(uuid4())
 
@@ -591,6 +584,29 @@ async def resume_video_external(
             detail=f"Video {video_id} was cancelled — start a new generation instead of resuming.",
         )
 
+    # Tier-aware pre-flight (2026-05). Resume picks up from a SCRIPT-stage
+    # checkpoint — the remaining work is the full HTML + render budget. We
+    # use partial_run_factor=0.7 (not 0.5) because the script stage is only
+    # ~5% of total cost and the HTML stage hasn't started yet.
+    # Quality tier is pulled from the video record's metadata, NOT the resume
+    # payload (which has no tier field). AI video flag also comes from metadata.
+    _vr_meta = getattr(video_record, "metadata", None) or {}
+    _user_sel = (_vr_meta.get("user_selections") if isinstance(_vr_meta, dict) else None) or {}
+    _qt = (_user_sel.get("quality_tier") or "standard").strip().lower()
+    _ai_video = bool(_user_sel.get("ai_video_enabled", False))
+    from ..services.credit_service import CreditService
+    _tier_check = CreditService(db).check_video_tier_credits(
+        institute_id=institute_id,
+        quality_tier=_qt,
+        ai_video_enabled=_ai_video,
+        partial_run_factor=0.7,
+    )
+    if not _tier_check.has_sufficient_credits:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=_tier_check.message,
+        )
+
     # Overwrite script in S3 if the user edited it
     if payload.modified_script is not None:
         s3_svc = S3Service()
@@ -750,6 +766,28 @@ async def retry_video_external(
         raise HTTPException(
             status_code=400,
             detail=f"Video {video_id} is not in a retryable state (status={video_record.status})"
+        )
+
+    # Tier-aware pre-flight (2026-05). Retry resumes from the HTML stage with
+    # most shots already cached. partial_run_factor=0.4 — typically only 1-2
+    # failed shots regenerate plus the render stage. AI video flag from
+    # original metadata (Veo cap still applies if any shot left to ship is
+    # AI_VIDEO_HERO; safer to keep the worst-case guard).
+    _vr_meta = getattr(video_record, "metadata", None) or {}
+    _user_sel = (_vr_meta.get("user_selections") if isinstance(_vr_meta, dict) else None) or {}
+    _qt = (_user_sel.get("quality_tier") or "standard").strip().lower()
+    _ai_video = bool(_user_sel.get("ai_video_enabled", False))
+    from ..services.credit_service import CreditService
+    _tier_check = CreditService(db).check_video_tier_credits(
+        institute_id=institute_id,
+        quality_tier=_qt,
+        ai_video_enabled=_ai_video,
+        partial_run_factor=0.4,
+    )
+    if not _tier_check.has_sufficient_credits:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=_tier_check.message,
         )
 
     queue: asyncio.Queue = asyncio.Queue()

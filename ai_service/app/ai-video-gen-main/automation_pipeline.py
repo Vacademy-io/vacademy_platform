@@ -7540,6 +7540,13 @@ class VideoGenerationPipeline:
             # entry animation to have settled — high false-positive rate.
             return None
 
+        # Emit the render-worker-gates banner once per run. Without this,
+        # bbox-lint silently skips when RENDER_SERVER_URL is unset and the
+        # user has no signal that Tier 2 isn't actually running. Banner is
+        # shared with vision review (same flag), so whichever gate fires
+        # first triggers it.
+        self._vision_review_emit_banner_once()
+
         # Lazy import — keeps module load fast for free-tier runs.
         try:
             from shot_screenshot_service import ShotScreenshotClient, ScreenshotClientError
@@ -7552,8 +7559,9 @@ class VideoGenerationPipeline:
             client = ShotScreenshotClient()
             self._screenshot_client = client
         if not client.is_configured:
-            # Same fail-quiet posture as vision review when the worker is
-            # unreachable — banner already explained why if it was triggered.
+            # Banner already explained why (RENDER_SERVER_URL unset). Returning
+            # None keeps the shot shipping unaffected; the banner is the only
+            # signal that bbox-lint isn't actually running.
             return None
 
         timestamps = self._bbox_lint_pick_timestamps(duration_s)
@@ -7868,34 +7876,73 @@ class VideoGenerationPipeline:
     })
 
     def _vision_review_emit_banner_once(self) -> None:
-        """Emit a once-per-run banner showing the configured state of vision
-        review. Quiet skip paths are the #1 reason 'no entries in the case
-        bank' goes undiagnosed — this banner makes the configuration visible
-        at run start so engineers can tell ENABLED-but-unreachable from
-        legitimately-disabled-by-tier from never-actually-fired.
+        """Emit a once-per-run banner showing the configured state of every
+        render-worker-dependent gate (vision review + bbox-lint).
+
+        Quiet skip paths are the #1 reason "no entries in the case bank"
+        and "Tier 1+2 gates inactive" go undiagnosed in dev/test environments.
+        This banner makes the configuration visible at run start so engineers
+        can tell ENABLED-but-unreachable from legitimately-disabled-by-tier
+        from never-actually-fired.
+
+        Called from BOTH `_lint_shot_bbox` and `_review_shot_visually` — whichever
+        gate fires first emits the banner; subsequent calls are no-ops via the
+        `_vision_review_banner_shown` flag (kept that name for backward
+        compatibility with existing log greps; it's really a "render-worker
+        gates" banner now, not vision-review-only).
         """
         if self._vision_review_banner_shown:
             return
         self._vision_review_banner_shown = True
-        tier_on = bool(self._tier_config.get("shot_vision_review"))
-        if not tier_on:
-            print(f"   🔍 Vision review: DISABLED (tier={self._quality_tier})")
+        vision_on = bool(self._tier_config.get("shot_vision_review"))
+        bbox_on = bool(self._tier_config.get("shot_bbox_check"))
+
+        # When NEITHER gate is enabled at this tier, log a single quiet line.
+        if not vision_on and not bbox_on:
+            print(f"   🔍 Render-worker gates: DISABLED at tier={self._quality_tier} (neither vision review nor bbox-lint enabled)")
             return
-        cap = self._tier_config.get("vision_review_run_cost_cap_usd", 0.15)
+
         url = os.environ.get("RENDER_SERVER_URL", "")
         key_set = bool(os.environ.get("RENDER_SERVER_KEY", ""))
+
+        # LOUD warning when the URL is unset but the tier has gates enabled.
+        # Without RENDER_SERVER_URL, every shot silently skips and the user
+        # has no idea Tier 1+2 quality checks aren't running. The previous
+        # single-line warning was easy to miss in long pipeline logs;
+        # surrounded by ▔ bars and emphatic emoji it now stands out.
         if not url:
-            print(
-                f"   🔍 Vision review: tier flag ON (tier={self._quality_tier}) but "
-                f"RENDER_SERVER_URL is UNSET — every shot will skip silently. "
-                f"Set RENDER_SERVER_URL on the AI service env to enable."
-            )
+            _enabled = []
+            if vision_on:
+                _enabled.append("vision review")
+            if bbox_on:
+                _enabled.append("bbox-lint")
+            _gates_str = " + ".join(_enabled)
+            print("")
+            print("   ▔" * 28)
+            print(f"   ⚠️  ⚠️  ⚠️   RENDER WORKER NOT CONFIGURED  ⚠️  ⚠️  ⚠️")
+            print(f"   Tier {self._quality_tier} has these gates ENABLED: {_gates_str}")
+            print(f"   But RENDER_SERVER_URL is UNSET — every shot will skip silently.")
+            print(f"   ALL post-render quality checks are inactive for this run.")
+            print(f"   FIX: set RENDER_SERVER_URL (and RENDER_SERVER_KEY) on the AI service env.")
+            print("   ▔" * 28)
+            print("")
             return
-        print(
-            f"   🔍 Vision review: ENABLED (tier={self._quality_tier}, "
-            f"model=google/gemini-2.5-pro, cap=${cap:.2f}/run, "
-            f"target={url}, key={'set' if key_set else 'UNSET'})"
-        )
+
+        # Healthy path: gates configured, render worker reachable.
+        cap = self._tier_config.get("vision_review_run_cost_cap_usd", 0.15)
+        _enabled_lines: List[str] = []
+        if vision_on:
+            _enabled_lines.append(
+                f"      • Vision review: model=google/gemini-2.5-pro, cap=${cap:.2f}/run"
+            )
+        if bbox_on:
+            _enabled_lines.append(
+                f"      • Bbox-lint: deterministic (Chromium getBoundingClientRect walk)"
+            )
+        print(f"   🔍 Render-worker gates ENABLED (tier={self._quality_tier}):")
+        for ln in _enabled_lines:
+            print(ln)
+        print(f"      target={url}, key={'set' if key_set else 'UNSET'}")
 
     def _vision_review_pick_timestamps(self, duration_s: float) -> List[float]:
         """Pick screenshot timestamps for one shot. Three frames (early/middle/exit)
@@ -13745,6 +13792,12 @@ class VideoGenerationPipeline:
                     start_time=start_time,
                     palette=palette,
                     bg_type=background_type,
+                    # Tier 3+ audit fixes — namespace span IDs by shot_idx so
+                    # multiple KINETIC_TEXT shots per video don't collide; pull
+                    # font/spacing tokens from shot_pack so typography matches
+                    # the rest of the video instead of hardcoded Montserrat 3.4rem.
+                    shot_idx=shot_idx,
+                    shot_pack=getattr(self, "_current_shot_pack", None),
                 )
                 kinetic_html = self._ensure_fonts(kinetic_html)
                 entry = {
@@ -13870,11 +13923,14 @@ class VideoGenerationPipeline:
                         f"<p style='font-family:Inter,sans-serif;font-size:1.15rem;"
                         f"color:rgba(255,255,255,0.72);line-height:1.6;'>{_sbs_desc}</p>"
                         "</div></div>"
-                        "<script>window.addEventListener('load',function(){"
-                        "if(typeof gsap!=='undefined'){"
+                        # IIFE with typeof gsap guard — shadow-DOM safe (see
+                        # SKILLS_AND_TEMPLATES_AUTHORING.md §4: there is no
+                        # shadow-scoped 'load' event, so `addEventListener('load')`
+                        # never fires when shot HTML is mounted in a shadow root).
+                        "<script>(function(){if(typeof gsap==='undefined')return;"
                         "gsap.to('#anno',{opacity:1,x:0,duration:0.55,ease:'power2.out',delay:0.15});"
                         "gsap.from('#vid-panel',{opacity:0,scale:0.96,duration:0.45,ease:'power2.out'});"
-                        "}})</script></body></html>"
+                        "})();</script></body></html>"
                     )
                     _sbs_html = self._ensure_fonts(_sbs_html)
                     if _sbs_src_url:
@@ -14046,11 +14102,15 @@ class VideoGenerationPipeline:
                             f"{_fb_text}</div>"
                             f"<div style='position:absolute;bottom:10%;left:50%;transform:translateX(-50%);"
                             f"width:6rem;height:4px;background:{_fb_accent};border-radius:2px;opacity:0;' id='fb_b'></div>"
-                            "<script>window.addEventListener('load',function(){"
-                            "if(typeof gsap!=='undefined'){"
+                            # IIFE with typeof gsap guard — shadow-DOM safe (see
+                            # SKILLS_AND_TEMPLATES_AUTHORING.md §4). The previous
+                            # `window.addEventListener('load')` wrapper would never
+                            # fire because the fallback HTML is mounted in a shadow
+                            # root, so the fade-in animations silently never ran.
+                            "<script>(function(){if(typeof gsap==='undefined')return;"
                             "gsap.to('#fb_t',{opacity:1,y:-10,duration:0.5,delay:0.1,ease:'power2.out'});"
                             "gsap.to('#fb_b',{opacity:1,duration:0.4,delay:0.4});"
-                            "}})</script></div>"
+                            "})();</script></div>"
                         )
                         _fb_html = self._ensure_fonts(_fb_html)
                         _fb_entry = {
@@ -15256,14 +15316,50 @@ class VideoGenerationPipeline:
         start_time: float,
         palette: Dict[str, Any],
         bg_type: str,
+        *,
+        shot_idx: int = 0,
+        shot_pack: Optional[Dict[str, Any]] = None,
     ) -> str:
         """100% accurate word-sync kinetic typography. Bypasses LLM entirely.
 
         Each word fades/slides in at its exact Whisper-aligned timestamp.
         Called when shot_type == 'KINETIC_TEXT' in super_ultra tier.
+
+        2026-05 audit fixes:
+        - Span IDs now namespaced by shot_idx (`kw{shot_idx}_{i}` instead of
+          `kw{i}`) so multiple KINETIC_TEXT shots in one video don't collide
+          on element IDs.
+        - Background honors `var(--brand-bg)` from shot_pack instead of
+          hardcoded `#000000`/`#ffffff` — matches the rest of the post-Tier-3
+          pipeline (KINETIC_TEXT defaults to `brand_solid` background_treatment).
+        - Font family + scale read from shot_pack tokens when available.
+        - Outer wrapper gets `id="shot-root"` so transitions can target it
+          (matches the rest of the per-shot HTML convention).
         """
-        text_color = palette.get("text", "#ffffff")
-        bg_css = "background:#000000" if bg_type == "black" else "background:#ffffff"
+        text_color = palette.get("text") or "var(--brand-text, #ffffff)"
+        # Background: prefer `var(--brand-bg)` (CSS var set by the harness
+        # from style_guide.palette.background). Fall back to the old hardcoded
+        # mapping only when bg_type is explicit AND no brand-bg can resolve.
+        # `var(--brand-bg)` resolves to the institute's brand color at render
+        # time; using literal hex would have created the "6 different bgs in
+        # 8 shots" bug Tier 3.2 fixes elsewhere.
+        _bg_hardcoded = "#000000" if (bg_type or "").lower() == "black" else "#ffffff"
+        bg_css = f"background:var(--brand-bg, {_bg_hardcoded})"
+
+        # Typography from shot_pack when available, otherwise the legacy
+        # hardcoded values. Keeps cross-shot type-rhythm consistent on the
+        # rare KINETIC_TEXT shots within a video.
+        sp = shot_pack or {}
+        _fonts = sp.get("font_family") or {}
+        _font_family = _fonts.get("heading") or "Montserrat"
+        # h2-tier font scale: at landscape that's `clamp(2rem, min(6vw, 14vh), 10rem)`
+        # — comfortably larger than the previous fixed 3.4rem on big canvases,
+        # but clamps tight on portrait so words don't overflow.
+        _font_scale = sp.get("font_scale") or {}
+        _font_size = _font_scale.get("h2") or "3.4rem"
+        _spacing = sp.get("spacing") or {}
+        _safe = _spacing.get("safe_area") or "6%"
+
         spans: List[str] = []
         triggers: List[str] = []
         for i, w in enumerate(words_in_shot):
@@ -15271,15 +15367,22 @@ class VideoGenerationPipeline:
             if not word:
                 continue
             delay = round(max(0.0, float(w["start"]) - start_time), 3)
+            # Shot-namespaced ID — `kw{shot_idx}_{i}` prevents collisions when
+            # the same video has more than one KINETIC_TEXT shot (super_ultra
+            # allows 2 per video per the Director schema).
+            wid = f"kw{shot_idx}_{i}"
             spans.append(
-                f'<span id="kw{i}" style="opacity:0;display:inline-block;margin:0 6px">{word}</span>'
+                f'<span id="{wid}" style="opacity:0;display:inline-block;margin:0 6px">{word}</span>'
             )
             triggers.append(
-                f'gsap.fromTo("#kw{i}", {{opacity:0,y:20}}, '
+                f'gsap.fromTo("#{wid}", {{opacity:0,y:20}}, '
                 f'{{opacity:1,y:0,duration:0.2,delay:{delay},ease:"power2.out"}});'
             )
         if not spans:
-            return f'<div style="width:100%;height:100%;{bg_css}"></div>'
+            return (
+                f'<div id="shot-root" style="position:relative;width:100%;'
+                f'height:100%;{bg_css};overflow:hidden;"></div>'
+            )
         # Belt + braces against "STARTSHERE"-class word collisions. The margins
         # on each inline-block span give visual rhythm; the &nbsp; text node
         # between them guarantees a real (non-collapsible) whitespace character
@@ -15289,15 +15392,19 @@ class VideoGenerationPipeline:
         spans_html = "&nbsp;".join(spans)
         triggers_js = "\n".join(triggers)
         return (
-            f'<div style="width:100%;height:100%;display:flex;align-items:center;'
-            f'justify-content:center;{bg_css};padding:80px">'
-            f'<div style="font-size:3.4rem;font-family:\'Montserrat\',sans-serif;'
-            f'font-weight:700;line-height:1.9;text-align:center;'
-            f'color:{text_color};max-width:1400px">'
+            f'<div id="shot-root" style="position:relative;width:100%;height:100%;'
+            f'display:flex;align-items:center;justify-content:center;{bg_css};'
+            f'padding:{_safe};overflow:hidden;">'
+            f'<div style="font-size:{_font_size};'
+            f"font-family:'{_font_family}',sans-serif;"
+            f'font-weight:700;line-height:1.4;text-align:center;'
+            f'color:{text_color};max-width:88%;">'
             f'{spans_html}'
             f'</div>'
             f'</div>'
-            f'<script>\n{triggers_js}\n</script>'
+            f'<script>(function(){{if(typeof gsap===\'undefined\')return;\n'
+            f'{triggers_js}\n'
+            f'}})();</script>'
         )
 
     @staticmethod
@@ -15940,9 +16047,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             f"style='position:absolute; inset:0; background:#000000; overflow:hidden;'>{video_tag}</div>"
             f"{slots_html}"
             "</div>"
-            "<script>window.addEventListener('load',function(){"
-            f"if(typeof gsap!=='undefined'){{{anim_js}}}"
-            "})</script>"
+            # IIFE with typeof gsap guard — shadow-DOM safe (see
+            # SKILLS_AND_TEMPLATES_AUTHORING.md §4). Equally valid in a
+            # full document context, so this is a safe upgrade for the
+            # source-clip composite (which may be rendered either way
+            # depending on the SOURCE_CLIP pipeline path).
+            "<script>(function(){if(typeof gsap==='undefined')return;"
+            f"{anim_js}"
+            "})();</script>"
             "</body></html>"
         )
         return self._ensure_fonts(html_doc)

@@ -715,3 +715,186 @@ On a re-run of the Krazy Kreators 30s portrait payload, all of the following sho
 - Audio: single voice, master TTS only, no avatar-baked echo.
 - Body-of-video frames the user wrote as "text only" render as pure typography.
 - Background + clothing consistent across host shots (identity + brand fidelity).
+
+---
+
+## 16. Post-generation gate chain (final shape after the May 2026 audit)
+
+The pipeline runs four post-render checks per shot, ordered cheapest → most expensive. Each gate produces a corrective regen when triggered and ships-original-on-regression (no infinite retries). The full chain in [`automation_pipeline.py:_shot_task`](../../ai_service/app/ai-video-gen-main/automation_pipeline.py):
+
+```
+shot LLM HTML
+   ↓
+skill composer
+   ↓
+sanitize_html_content
+   ↓
+_validate_shot_animation_density        — regex, ~1ms
+   • min GSAP tween count (per-tier `min_animated_elements`)
+   • Director sync_point honor (±0.2s)
+   • vertical/rotated typography anti-pattern
+   • NEW (2026-05): back-half motion (delay ≥ 0.55 × duration for shots ≥3s)
+   ↓ optional regen, ship-original-on-regression
+_lint_shot_bbox                         — deterministic Chromium, ~600ms
+   • getBoundingClientRect() walk inside the shot's shadow root
+   • catches text/media crossing the canvas edge (TEXT_CLIPPED)
+   • NEW gate (Tier 2, 2026-05) — closes the LLM-rubric blind spot
+   ↓ optional regen with "demote font tier" directive
+_lint_shot_brand_asset                  — regex, ~1ms (only for required shots)
+   • for intro/outro/product_proof shots when reference assets are uploaded
+   • asserts at least one `<img data-img-source="reference" ...>` present
+   • NEW gate (Tier 3, 2026-05)
+   ↓ optional regen with concrete embed example
+_review_shot_visually                   — vision LLM, ~5s
+   • rubric v3 (see §17 below)
+   ↓ optional regen, ship-original-on-regression
+_ensure_fonts → entry
+```
+
+### 16.1 Skip conditions per gate
+
+| Gate | Skip when |
+|---|---|
+| density validator | `shot_animation_validator` tier flag off (premium and below); shot_type ∈ {KINETIC_TEXT, KINETIC_TITLE}; shot duration < 3s |
+| bbox-lint | `shot_bbox_check` tier flag off (premium and below); shot_type ∈ {SOURCE_CLIP, IMAGE_CLIP, AI_VIDEO_HERO, KINETIC_TEXT}; shot duration < 1.5s; render-worker unreachable (silent fall-through) |
+| brand-asset | no `_reference_context.embeddable_images`; shot not in intro / outro / `role:"product_proof"`; shot_type not in `_BRAND_ASSET_HOSTABLE_SHOT_TYPES` |
+| vision review | `shot_vision_review` tier flag off; shot_type ∈ `_VISION_REVIEW_SKIP_SHOT_TYPES`; shot duration < 1.5s; per-run cost cap exceeded; render-worker unreachable |
+
+### 16.2 Tier matrix (May 2026 deployed state)
+
+| Tier | density validator | bbox-lint | brand-asset | vision review |
+|---|---|---|---|---|
+| free | — | — | — | — |
+| standard | — | — | ✓ | ✓ |
+| premium | — | — | ✓ | ✓ |
+| ultra | ✓ (min_anim 4) | ✓ | ✓ | ✓ |
+| super_ultra | ✓ (min_anim 6) | ✓ | ✓ | ✓ |
+
+---
+
+## 17. Rubric v3 changes (2026-05)
+
+The frozen `SYSTEM_PROMPT` constant in [shot_visual_reviewer.py](../../ai_service/app/ai-video-gen-main/shot_visual_reviewer.py) bumped `PROMPT_VERSION` from `"v2"` → `"v3"` after the Vacademy×Edzumo audit (`vid_1778774930857_w8cwa1y`). DB rows in `vision_review_cases` carry this version so historical hit-rate comparisons survive the rubric change.
+
+### 17.1 `TEXT_CLIPPED` — promoted from host-only to top-level
+
+In v2, `TEXT_CLIPPED` lived inside the **HOST-SHOT MODE** branch. Non-host shots had no canvas-bounds rule. The audited run had a non-host KINETIC_TITLE whose "THE ULTIMATE" headline ran past the left edge — v2 had no rule to flag it.
+
+v3 makes `TEXT_CLIPPED` a top-level checklist item (section 1c) that applies to **every shot**:
+
+> A text element is clipped if ANY rendered glyph's bounding box extends outside the visible canvas at ANY of the supplied timestamps. Specifically: (a) the first character of a word whose left edge is at x<0; (b) the last character of a word whose right edge is at x>canvas_w; (c) any character whose top/bottom touches y=0 or y=canvas_h. Severity 3, auto-regen with "demote font tier" suggestion.
+
+### 17.2 `WHITESPACE_COLLISION` — new severity-3 issue code
+
+Catches the "STARTSHERE" / "hands-onpractice" pattern where adjacent inline-block spans collapse the inter-word whitespace. The reviewer compares the **rendered text** in the screenshot against the **narration excerpt** supplied in the user prompt — if "STARTS HERE" rendered as one token, it fires sev-3 with a `&nbsp;` insertion suggestion.
+
+### 17.3 `BG_DISCONTINUITY` — new severity-2 issue code (cross-shot)
+
+Fires **only when a `prior_shot_screenshot` is supplied** to `review_shot()`. The reviewer compares the current shot's dominant background hue/treatment against the prior shot's; sharp differences (e.g. cream → black → peach within one video) get flagged at severity 2. **Logged but never triggers a regen** — single-shot regen can't fix a cross-shot issue. The Director's `background_treatment` schema field (Tier 3) is the upstream commitment this rule grades against.
+
+### 17.4 `prior_shot_screenshot` wiring
+
+`review_shot()` gains an optional `prior_shot_screenshot: Optional[bytes] = None` kwarg. When provided, the multimodal user message prepends a clearly-labeled `PRIOR SHOT REFERENCE` block ahead of the current shot's screenshots, with explicit text guarding against the model reviewing the prior shot itself.
+
+Call-site state: `automation_pipeline.py:_review_shot_visually` maintains a per-run `self._review_thumbnails: Dict[int, bytes]` keyed by shot_idx. After each successful first-pass review, the **mid-frame** screenshot is cached. Shot N's review fetches `_review_thumbnails.get(shot_idx - 1)` — best-effort under parallel shot processing (returns None when prior shot hasn't reviewed yet; user prompt then explicitly tells the model to SKIP rubric section 10).
+
+---
+
+## 18. Tier 2 — Deterministic post-render bbox-lint (shipped 2026-05)
+
+The probabilistic vision reviewer will always miss some overflows; v3's tightened `TEXT_CLIPPED` improves recall but isn't deterministic. The bbox-lint is the **only non-probabilistic** check for canvas-bounds violations.
+
+### 18.1 Render-worker endpoint
+
+`POST /bbox-check` on the render worker. Same `X-Render-Key` auth + Chromium pool as `/screenshot`. Request shape:
+
+```json
+{
+  "html": "<style>…</style><div id='shot-root'>…</div>",
+  "width": 1920, "height": 1080,
+  "timestamps": [t_mid, t_late],
+  "background": "#f5f0e8"
+}
+```
+
+Response shape:
+
+```jsonc
+{
+  "ok": false,
+  "violations": [
+    {"t": 2.5, "selector": "#title", "rect": {"l": -92, "t": 80, "r": 1180, "b": 200},
+     "text": "THE ULTIMATE", "is_media": false}
+  ],
+  "ms": 580
+}
+```
+
+### 18.2 Walker semantics
+
+Inside the shadow root attached to the host with `[id="bbox-check-shot"]`:
+
+- Skip `SCRIPT`/`STYLE`/`LINK`/`META`/`HEAD`.
+- Skip elements with `display:none`, `visibility:hidden`, or `opacity < 0.05` at this timestamp (avoids false positives on mid-tween fade-ins).
+- Skip elements with zero width/height.
+- Only flag elements that carry **leaf-level text** (text node with no text-bearing descendants) OR are media (`IMG`/`SVG`/`CANVAS`/`VIDEO`). Wrapper divs with text-bearing children are dedup-skipped.
+- 1-pixel tolerance on each canvas edge handles sub-pixel rendering / antialiasing.
+
+### 18.3 Timestamp selection
+
+Two-frame coverage per `_bbox_lint_pick_timestamps`:
+- `t_mid = max(0.6, min(dur*0.5, dur - 0.4))` — after typical entry tweens settle
+- `t_late = max(t_mid + 0.2, dur - 0.25)` — near steady-state before any exit
+
+### 18.4 Corrective regen directive
+
+When violations fire, the LLM gets concrete element selectors + bounding rects + canvas dims + 4 acknowledged escape routes (demote font tier / line break / `max-width:88% word-break:keep-all` / constrain media width-height). Ship-original-on-regression policy mirrors the density validator.
+
+### 18.5 Cost / latency
+
+- Render-worker call: ~600ms p95, infra-fixed (same Chromium pool as `/screenshot`)
+- Corrective regen: ~$0.04 at Gemini 3.1 Pro per fired shot, ~30% rate expected = ~$0.012 expected per shot
+- Per-run cost cap: shared with vision review (`vision_review_run_cost_cap_usd` tier setting)
+
+---
+
+## 19. Cost surface delta + credit ledger integration (2026-05)
+
+The May audit added several cost lines. Per the existing `TokenUsageService.record_usage_and_deduct_credits` pattern, all new LLM calls (bbox-lint regen, brand-asset regen, vision review with prior_thumb) accumulate into the per-shot `usage` dict and land in `credit_transactions` as `USAGE_DEDUCTION` rows tagged `request_type="video"`. **No new request_type was introduced** — analytics by-request-type bucketing stays comparable across rubric versions.
+
+### 19.1 Estimated delta per ultra video (8 shots)
+
+| Source | Per shot | Per video |
+|---|---|---|
+| System prompt growth (~1400 input tokens — CORE_PREAMBLE additions, OUTPUT FORMAT, TEXT BOUND BOX, BACKGROUND CONTRACT, branded easings) | +$0.0035 | +4 credits |
+| Continuity brief in user prompt (~250 tokens) | +$0.0006 | +0.7 credits |
+| Vision review prior_thumb PNG (added once per non-first shot) | +$0.0008 | +5.6 credits (7 shots) |
+| Bbox-lint regen (~30% fire rate) | $0.04 × 30% | +14 credits |
+| Brand-asset regen (~10% miss × 2 required shots) | — | +1.2 credits |
+| Second-beat motion regen (~15% fire rate) | $0.04 × 15% | +7 credits |
+| **TOTAL** | | **~+32 credits** |
+
+Super_ultra (more aggressive checks, longer prompts, higher regen rates): **~+45 credits**.
+
+### 19.2 Pre-flight check (`require_credits("video", estimated_tokens=…)`)
+
+Bumped at three router call sites in [`external_video_generation.py`](../../ai_service/app/routers/external_video_generation.py):
+- `generate_video_external`: 5_000 → **60_000** tokens
+- `resume_video_external`: 3_000 → **30_000** tokens
+- `retry_video_external`: 3_000 → **30_000** tokens
+
+Note: pre-flight is still a **floor** check (the rate-based fallback resolves to <1 credit even at 60K tokens because `video.token_rate=0.00001` and `min_charge=0.05`). The real-cost USD pricing path lives in `calculate_credits` and only fires when a `model` parameter is passed — not via the dep. Tier-aware pre-flight that reads `payload.quality_tier` and scales the estimate appropriately is a tracked follow-up.
+
+The actual cost-tracking happens at **per-stage deduction** (`TokenUsageService.record_usage_and_deduct_credits` after each pipeline stage completes), which already reads real token counts via OpenRouter response usage. Refund-on-failure (`refund_video_credits`) is the safety net when balance is exhausted mid-run.
+
+### 19.3 What needs no code change
+
+- The existing usage dict accumulation in [`_lint_shot_bbox`](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) and [`_lint_shot_brand_asset`](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) already feeds new regen tokens into the per-stage deduction.
+- The vision reviewer's `prior_shot_screenshot` image tokens are returned in the OpenRouter usage dict alongside the regular image tokens — already counted.
+- `batch_id=video_id` on every deduction means refunds remain atomic per video.
+
+### 19.4 What WAS updated
+
+- `external_video_generation.py` — pre-flight bumps at three call sites.
+- `credit_service.py` — comment on `DEFAULT_PRICING["video"]` noting the new cost-surface drivers (no logic change).
+- `docs/AI_CREDITS_PRICING.md` — per-tier estimated-credits table refreshed.

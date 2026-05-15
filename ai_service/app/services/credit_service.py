@@ -12,7 +12,7 @@ This service handles:
 import logging
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional, List
+from typing import Optional, List, Dict
 from uuid import uuid4
 
 from sqlalchemy import text
@@ -593,6 +593,115 @@ class CreditService:
     # ========================================================================
     # Credit Check (Pre-flight)
     # ========================================================================
+
+    # Tier-aware pre-flight estimates for the video pipeline (2026-05 audit).
+    # Each value is the **conservative floor** covering typical cost + ~10-15%
+    # headroom, derived from the per-tier breakdown in AI_CREDITS_PRICING.md.
+    # Real per-stage deductions track actual OpenRouter token counts via
+    # TokenUsageService; this is the upfront gate that catches institutes
+    # whose balance can't realistically support the chosen tier.
+    #
+    # `partial_run_factor` scales the floor for resume/retry endpoints (where
+    # checkpoints mean only a fraction of the work remains).
+    _VIDEO_TIER_FLOOR_CREDITS: Dict[str, Decimal] = {
+        "free":        Decimal("5"),
+        "standard":    Decimal("30"),
+        "premium":     Decimal("80"),
+        "ultra":       Decimal("300"),
+        "super_ultra": Decimal("380"),
+    }
+
+    def check_video_tier_credits(
+        self,
+        institute_id: str,
+        quality_tier: str,
+        ai_video_enabled: bool = False,
+        partial_run_factor: float = 1.0,
+    ) -> CreditCheckResponse:
+        """Tier-aware pre-flight credit check for the video pipeline.
+
+        Returns a CreditCheckResponse with `estimated_cost` set to the per-tier
+        typical+headroom floor (NOT actual cost — actual cost lands in
+        credit_transactions stage-by-stage via TokenUsageService).
+
+        Caller raises HTTP 402 when `has_sufficient_credits` is False.
+
+        - `quality_tier`: one of free/standard/premium/ultra/super_ultra.
+          Unknown tier falls back to the "standard" floor (defensive).
+        - `ai_video_enabled`: when True, adds the worst-case Veo cap
+          (currently 225 credits at $1.50 cap × 150-credit ratio) so a user
+          with marginal balance can't enable Veo and then circuit-break
+          mid-run. Subsumes the previous standalone Veo-aware pre-flight.
+        - `partial_run_factor`: 1.0 for fresh generation; 0.5 for resume/retry
+          where most shots are already cached. Lets the same gate apply at
+          all three router entry points without over-rejecting partial runs.
+        """
+        balance = self.get_balance(institute_id)
+        if not balance:
+            balance = self.create_initial_credits(institute_id)
+        current = balance.current_balance
+
+        tier_key = (quality_tier or "standard").strip().lower()
+        floor = self._VIDEO_TIER_FLOOR_CREDITS.get(
+            tier_key, self._VIDEO_TIER_FLOOR_CREDITS["standard"]
+        )
+        # partial_run_factor scales by the fraction of work remaining.
+        try:
+            factor = Decimal(str(max(0.1, min(1.0, float(partial_run_factor)))))
+        except (TypeError, ValueError):
+            factor = Decimal("1.0")
+        estimated_cost = (floor * factor).quantize(
+            Decimal("0.0001"), rounding=ROUND_HALF_UP
+        )
+
+        # AI video (Veo) adds worst-case cap on top, regardless of partial-run
+        # factor — even on resume, the Veo cap is the same hard ceiling.
+        veo_cap_credits = Decimal("0")
+        if ai_video_enabled:
+            try:
+                from .ai_video_constants import AI_VIDEO_PER_VIDEO_COST_CAP_USD
+                ratio = self._effective_usd_to_credit_ratio()
+                veo_cap_credits = (
+                    Decimal(str(AI_VIDEO_PER_VIDEO_COST_CAP_USD)) * ratio
+                ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+                estimated_cost = (estimated_cost + veo_cap_credits).quantize(
+                    Decimal("0.0001"), rounding=ROUND_HALF_UP
+                )
+            except Exception as exc:
+                # Defensive: if the Veo cap import fails, fall back to a
+                # hardcoded 225-credit guard so we still gate something.
+                logger.warning(f"check_video_tier_credits: Veo cap lookup failed ({exc}); using 225-credit fallback")
+                veo_cap_credits = Decimal("225")
+                estimated_cost = (estimated_cost + veo_cap_credits).quantize(
+                    Decimal("0.0001"), rounding=ROUND_HALF_UP
+                )
+
+        has_sufficient = current >= estimated_cost
+        balance_after = current - estimated_cost
+
+        if has_sufficient:
+            message = (
+                f"Sufficient credits for {tier_key} tier"
+                f"{' + AI video' if ai_video_enabled else ''}. "
+                f"Estimated floor: {estimated_cost} credits."
+            )
+        else:
+            short_by = estimated_cost - current
+            message = (
+                f"Insufficient credits for {tier_key} tier"
+                f"{' + AI video (worst-case Veo cap included)' if ai_video_enabled else ''}. "
+                f"Need at least {estimated_cost} credits (you have {current}, short by {short_by}). "
+                f"Real cost is tracked per-stage via TokenUsageService — this is the upfront floor "
+                f"to keep your run from circuit-breaking mid-render."
+            )
+
+        return CreditCheckResponse(
+            has_sufficient_credits=has_sufficient,
+            current_balance=current,
+            estimated_cost=estimated_cost,
+            balance_after=balance_after,
+            message=message,
+        )
 
     def check_credits(self, request: CreditCheckRequest) -> CreditCheckResponse:
         """Check if institute has sufficient credits for an operation."""

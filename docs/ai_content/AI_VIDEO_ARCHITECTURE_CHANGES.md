@@ -347,3 +347,86 @@ Documented for the next engineer:
 ---
 
 **Maintainers**: when adding a new audio source (e.g. source-clip native VO, uploaded video native audio, music-driven moments), the new field should set `_audio_policy=intrinsic_only` on the timeline entry — `collect_intrinsic_audio_ranges` already future-proofs against this without code changes. When adding a new fail mode in the orchestrator, return a populated `AiVideoShotResult.error` rather than raising — every failure must produce a shippable shot via fallback. When changing the cost cap, update the `ai_video_per_video_cost_cap_usd` value in `QUALITY_TIERS` for ultra and super_ultra — no other place hardcodes it.
+
+---
+
+# May 2026 audit — post-generation gate chain + Director-level lifts
+
+**Status**: shipped 2026-05.
+**Audience**: engineers maintaining the per-shot quality gates, Director prompt schema, or credit-cost surface.
+**Companion**: [VISION_REVIEWER_PLAN.md §16-§19](./VISION_REVIEWER_PLAN.md) for the rubric-v3 + bbox-lint deep dive.
+
+The audit was driven by `vid_1778774930857_w8cwa1y` (Vacademy×Edzumo client-onboarding announcement, 30s landscape ultra). Frame-by-frame review identified a class of defects the existing checks (animation density validator + vision reviewer v2) silently shipped. None of the failures were Gemini's fault — they came from gaps in the prompts, schema, fallback path, and rubric. Four tiers of fix shipped:
+
+## Tier 1 — Surgical prompt / schema / fallback fixes (Day 1–3)
+
+| Fix | What | File |
+|---|---|---|
+| 1.1 / 1.2 | Append `OUTPUT FORMAT` (strict JSON envelope) + `TEXT BOUND BOX` (per-orientation char/line caps) to per-shot system prompt | [shot_type_cards.py](../../ai_service/app/ai-video-gen-main/shot_type_cards.py) `build_per_shot_system_prompt` |
+| 1.3 | Lower landscape `font_scale.display` 24rem→12rem; `h1` 16rem→8rem (left portrait unchanged) | [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) `_build_shot_pack` |
+| 1.4 | Whitespace-safe accent-word rule: forbid bare `<span color>`; require `&nbsp;` before any colored span. **Added to BOTH `CORE_PREAMBLE` (lower tiers) and `CORE_PREAMBLE_ASPIRATIONAL` (ultra+).** | [shot_type_cards.py](../../ai_service/app/ai-video-gen-main/shot_type_cards.py) |
+| 1.4 (pipeline) | `_build_kinetic_text_html` defensive `&nbsp;` join between word spans | [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) `_build_kinetic_text_html` |
+| 1.5 | Fallback card reskin: inherit `shot_pack.palette` instead of hardcoded charcoal; safe-contrast text-color computation gated on hex availability | [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) (inline fallback in `_shot_task`) |
+| 1.6 | Vision reviewer rubric **v2→v3**: promote `TEXT_CLIPPED` from host-only to top-level; add `WHITESPACE_COLLISION` (sev 3) + `BG_DISCONTINUITY` (sev 2, cross-shot) | [shot_visual_reviewer.py](../../ai_service/app/ai-video-gen-main/shot_visual_reviewer.py) |
+| 1.7 | `review_shot` accepts `prior_shot_screenshot`; pipeline maintains `_review_thumbnails` cache keyed by shot_idx; mid-frame cached for shot N+1's BG_DISCONTINUITY check | [shot_visual_reviewer.py](../../ai_service/app/ai-video-gen-main/shot_visual_reviewer.py) + [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) `_review_shot_visually` |
+
+## Tier 2 — Deterministic post-render bbox-lint (the LLM-rubric closer)
+
+The probabilistic vision reviewer will always miss some overflows. Tier 2 ships a `getBoundingClientRect()` walk that catches what the LLM doesn't.
+
+| Component | File |
+|---|---|
+| Render-worker `POST /bbox-check` endpoint | [render_worker/main.py](../../ai_service/render_worker/main.py) |
+| `ScreenshotWorker.bbox_check_shot()` — reuses the `/screenshot` harness/dispatcher; runs JS walker inside the shadow root | [render_worker/screenshot_worker.py](../../ai_service/render_worker/screenshot_worker.py) |
+| `ShotScreenshotClient.check_shot_bbox()` HTTP client + `BboxViolation` dataclass | [shot_screenshot_service.py](../../ai_service/app/ai-video-gen-main/shot_screenshot_service.py) |
+| `_lint_shot_bbox()` pipeline helper (regen-once-then-ship-original, same shape as density validator) | [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) |
+| Tier flag `shot_bbox_check: True` on `ultra` + `super_ultra` (premium opt-in / off by default) | [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) `QUALITY_TIERS` |
+| Wired between density validator and vision reviewer in `_shot_task` | [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) `_shot_task` |
+
+Deep dive in [VISION_REVIEWER_PLAN.md §18](./VISION_REVIEWER_PLAN.md).
+
+## Tier 3 — Director-level lifts (pacing + bg continuity + brand-asset + back-half motion)
+
+| Fix | What | File |
+|---|---|---|
+| 3.1 | **PACING PROFILE**: hook=15% × duration, body=10-13% avg, close=17% × duration. Replaces "2-5s per shot" rule. Worked examples for 30s + 45s. | [director_prompts.py](../../ai_service/app/ai-video-gen-main/director_prompts.py) |
+| 3.2 | Per-shot **`background_treatment`** schema field (`brand_solid` / `brand_textured` / `brand_gradient` / `media_hero`) with at-most-2-per-video cross-shot contract. Lazy inheritance from `shot_type` via `_SHOT_TYPE_BG_TREATMENT_DEFAULT` when Director omits the field. Per-shot template gains `Background treatment: {background_treatment}` line + CORE_PREAMBLE teaching rule. | [director_prompts.py](../../ai_service/app/ai-video-gen-main/director_prompts.py) + [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) `_run_director` + [shot_type_cards.py](../../ai_service/app/ai-video-gen-main/shot_type_cards.py) `CORE_PREAMBLE`/`CORE_PREAMBLE_ASPIRATIONAL` + [prompts.py](../../ai_service/app/ai-video-gen-main/prompts.py) `PER_SHOT_USER_PROMPT_TEMPLATE` |
+| 3.3 | Brand-asset enforcement: Director rule that intro/outro/`role:"product_proof"` shots use asset-hostable shot_types. Post-render regex assertion in `_lint_shot_brand_asset` with one corrective regen. | [director_prompts.py](../../ai_service/app/ai-video-gen-main/director_prompts.py) + [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) |
+| 3.4 | Second-beat motion: validator check that shots ≥3s have at least one tween with `delay >= 0.55 × duration`; corrective regen prompts with 4 concrete GSAP idioms; preamble rule (both `CORE_PREAMBLE` and `CORE_PREAMBLE_ASPIRATIONAL`) teaches the pattern with examples | [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) `_validate_shot_animation_density` + [shot_type_cards.py](../../ai_service/app/ai-video-gen-main/shot_type_cards.py) |
+
+## Tier 4 (partial) — Continuity brief + style ceiling + mask transitions
+
+| Fix | What | File |
+|---|---|---|
+| L1 — Continuity Brief | `_build_continuity_brief(shots, shot_idx, recurring_motifs)` pure helper builds a ≤300-token cross-shot context block (PRIOR SHOT + NEXT SHOT + RECURRING MOTIFS) from Director-plan fields. Wired into per-shot user prompt. The single biggest fix for the "stateless LLM" gap. | [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) |
+| L1 schema | Director plan top-level `recurring_motifs: [{description, screen_position, when_visible}]` field with prompt rule + lazy-default normalization in `_run_director` | [director_prompts.py](../../ai_service/app/ai-video-gen-main/director_prompts.py) + [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) |
+| 4.1 | `CORE_PREAMBLE_ASPIRATIONAL` gains: **3D PERSPECTIVE LAYERS** (`perspective:1200px` + `translateZ` parallax), **SVG FILTERS** (inline motion-blur / glow `<filter>` defs), **BRANDED EASING VOCABULARY** (look up `shot_pack.ease.snappy` and inline the resolved value — not a literal JS path) | [shot_type_cards.py](../../ai_service/app/ai-video-gen-main/shot_type_cards.py) |
+| 4.2 | 4 new mask/clip-path transitions in `TRANSITION_CSS_BLOCKS`: `circle_iris`, `diagonal_wipe`, `hexagon_iris`, `blinds_horizontal`. All target `#shot-root` (shadow-DOM safe). `blinds_horizontal` uses `clip-path:inset()` (curtains parting from horizontal center) — chosen over a 12-point polygon because the latter would have been self-intersecting and rendered unpredictably across browsers. Wired into `_KNOWN_TRANSITIONS` allow-list + Director's TRANSITION_IN options. | [prompts.py](../../ai_service/app/ai-video-gen-main/prompts.py) + [transition_picker.py](../../ai_service/app/ai-video-gen-main/transition_picker.py) + [director_prompts.py](../../ai_service/app/ai-video-gen-main/director_prompts.py) |
+
+### Deferred from Tier 4 (separate scoping)
+
+- **L4 polish pass** (draft → critique → refine on super_ultra) — needs cost monitoring + A/B before promotion.
+- **L5 render fidelity bump** to 1920×1080 @ 30fps/60fps — render-worker infra change.
+- **L2 + L6 brand kit per institute** — schema + admin UI + scrape integration; ~2-sprint follow-up.
+- **Match cuts** (Director schema `match_anchor` + picker logic) — wants brand-kit landed first.
+- **Lottie hero shots** — needs lottie-web in the render harness + new shot type + curated Lottie pack.
+- **Multi-device choreography** — depends on brand-kit / UI ingestion.
+
+## Bugs caught + fixed inside this audit cycle
+
+Internal review of the Tier 1–4 changes themselves caught 5 deeper bugs that would have shipped:
+
+1. **`_SHOT_TYPE_BG_TREATMENT_DEFAULT`** had a phantom `STAT_HERO` key (no such shot type in `SHOT_TYPE_CARDS`) and missed two real types (`IMAGE_SPLIT`, `ARTICLE_FOCUS`). Real shot types now mapped; phantom removed.
+2. **Fallback card** had a dead `_fb_brand.get("text_hex")` reference — `_extract_brand_brief()` doesn't return that key. Cleaned, with a forward-compat comment.
+3. **CORE_PREAMBLE coverage gap**: WHITESPACE-SAFE / BACKGROUND CONTRACT / SECOND-BEAT MOTION rules were added only to `CORE_PREAMBLE_ASPIRATIONAL`. Lower tiers (standard/premium) saw the user-prompt `Background treatment:` line with no teaching. Backported the three foundational rules to `CORE_PREAMBLE` too.
+4. **Branded-easing rule misreadable as JS**: original text said "`ease: shot_pack.ease.snappy`" — LLM could literally copy that, producing a JS ReferenceError. Rewrote to clarify it's a LOOKUP key; resolved value must be inlined as a literal string.
+5. **`blinds_horizontal` self-intersecting polygon**: original 12-point polygon had degenerate edges and rendered unpredictably (browser uses non-zero winding rule on self-intersecting paths). Replaced with clean `clip-path:inset(50% 0% 50% 0%)` → `inset(0% 0% 0% 0%)` animation (curtains parting from horizontal center).
+
+## Cost surface delta
+
+Per ultra video (8 shots): **~+32 credits**. Per super_ultra: **~+45 credits**. Sources broken out in [VISION_REVIEWER_PLAN.md §19](./VISION_REVIEWER_PLAN.md). Updates landed in:
+- [external_video_generation.py](../../ai_service/app/routers/external_video_generation.py) — pre-flight `estimated_tokens` bumped at 3 call sites (5000→60000 main; 3000→30000 resume/retry)
+- [credit_service.py](../../ai_service/app/services/credit_service.py) — comment on `DEFAULT_PRICING["video"]` noting the new cost-surface drivers
+- [docs/AI_CREDITS_PRICING.md](../AI_CREDITS_PRICING.md) — per-tier estimated-credits table refreshed
+
+Per-stage deduction is automatic — every new LLM call (bbox-lint regen, brand-asset regen, vision review with prior_thumb) accumulates into the per-shot `usage` dict and lands in `credit_transactions` via the existing `TokenUsageService.record_usage_and_deduct_credits` flow. No new request_type was introduced — analytics bucketing stays comparable.

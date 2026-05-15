@@ -18,6 +18,32 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         @Query("SELECT ei.inviteCode FROM UserPlan up JOIN up.enrollInvite ei WHERE up.id = :userPlanId")
         Optional<String> findInviteCodeByUserPlanId(@Param("userPlanId") String userPlanId);
 
+        /**
+         * Used by {@code PackageSessionScheduler.emitMembershipExpiryReminders}
+         * to find plans whose access is about to expire so the
+         * MEMBERSHIP_EXPIRY workflow trigger can be fired. Filters:
+         *   • status = 'ACTIVE'         — active plans only
+         *   • end_date IS NOT NULL      — skip lifetime plans (validity=null)
+         *   • end_date > :now           — not already expired
+         *   • end_date <= :cutoff       — within the reminder window
+         * Dedup (have we already notified this plan?) is handled at job time
+         * by querying {@code workflow_execution.idempotency_key} — we do NOT
+         * stamp a flag on the user_plan row.
+         * Returns plans with their EnrollInvite eagerly fetched because the
+         * job needs the institute_id off it to route the trigger correctly.
+         */
+        @Query("""
+                SELECT up FROM UserPlan up
+                LEFT JOIN FETCH up.enrollInvite ei
+                WHERE up.status = 'ACTIVE'
+                  AND up.endDate IS NOT NULL
+                  AND up.endDate > :now
+                  AND up.endDate <= :cutoff
+                """)
+        List<UserPlan> findActivePlansExpiringSoon(
+                @Param("now") java.util.Date now,
+                @Param("cutoff") java.util.Date cutoff);
+
         @Query(value = """
                             SELECT DISTINCT up FROM UserPlan up
                             JOIN FETCH up.enrollInvite ei

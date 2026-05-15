@@ -15,12 +15,15 @@ import {
 } from '@phosphor-icons/react';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { OverViewData, OverviewDetailsType } from './overview';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { EditStudentDetails } from './EditStudentDetails';
 import { useStudentCredentialsStore } from '@/stores/students/students-list/useStudentCredentialsStore';
 import { useGetStudentDetails } from '@/services/get-student-details';
+import { getUserPlans, type UserPlan } from '@/services/user-plan';
+import { getInstituteId } from '@/constants/helper';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { StudentTable } from '@/types/student-table-types';
 import { getFieldsForLocation, type FieldForLocation } from '@/lib/custom-fields/utils';
@@ -34,13 +37,25 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
     const { selectedStudent } = useStudentSidebar();
 
     const [overviewData, setOverviewData] = useState<OverviewDetailsType[] | null>(null);
-    const [daysUntilExpiry, setDaysUntilExpiry] = useState<number>(0);
     const [copiedField, setCopiedField] = useState<string>('');
     const [customFields, setCustomFields] = useState<FieldForLocation[]>([]);
     const [fieldGroups, setFieldGroups] = useState<FieldGroup[]>([]);
     const [tncFileUrl, setTncFileUrl] = useState<string | null>(null);
     const userId = isSubmissionTab ? selectedStudent?.id : selectedStudent?.user_id;
     const { data: studentDetails, isLoading, isError, error } = useGetStudentDetails(userId || '');
+
+    // Fetch all ACTIVE plans for this user; render one Session Expiry card per plan
+    // that has a real expiry date set. Empty array → no cards (e.g., buy-only books).
+    const instituteIdForPlans = getInstituteId();
+    const { data: userPlansResponse } = useQuery({
+        queryKey: ['STUDENT_OVERVIEW_USER_PLANS', userId, instituteIdForPlans],
+        queryFn: () => getUserPlans(1, 50, ['ACTIVE'], userId || '', instituteIdForPlans || ''),
+        enabled: !!userId && !!instituteIdForPlans,
+        staleTime: 60_000,
+    });
+    const expiringPlans: UserPlan[] = (userPlansResponse?.content || []).filter(
+        (plan) => plan.end_date != null
+    );
 
     const { getDetailsFromPackageSessionId, instituteDetails } = useInstituteDetailsStore();
     const { getCredentials } = useStudentCredentialsStore();
@@ -181,22 +196,6 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
             })
         );
 
-        // Calculate days until expiry
-        if (selectedStudent?.expiry_date) {
-            const expiryDate = new Date(selectedStudent.expiry_date);
-            const currentDate = new Date();
-
-            // Calculate the difference in milliseconds
-            const diffTime = expiryDate.getTime() - currentDate.getTime();
-
-            // Convert to days and round down
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-            // Set the days until expiry (0 if negative)
-            setDaysUntilExpiry(diffDays > 0 ? diffDays : 0);
-        } else {
-            setDaysUntilExpiry(0);
-        }
     }, [selectedStudent, instituteDetails, password, studentDetails]);
 
     if (isLoading) {
@@ -215,52 +214,72 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
                 <EditStudentDetails />
             </div>
 
-            {/* Compact Session Expiry Card */}
-            <div className="rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-neutral-50/30 p-3 transition-all duration-200 hover:border-primary-200/50 hover:shadow-md">
-                <div className="mb-2 flex items-center gap-2.5">
-                    <div className="rounded-md bg-gradient-to-br from-primary-50 to-primary-100 p-1.5">
-                        <Clock className="size-4 text-primary-600" />
-                    </div>
-                    <div className="flex-1">
-                        <h4 className="mb-0.5 text-xs font-medium text-neutral-700">
-                            Session Expiry
-                        </h4>
-                        <div className="flex items-center gap-1.5">
-                            <span
-                                className={`text-base font-bold ${
-                                    daysUntilExpiry >= 180
-                                    ? 'text-success-600'
-                                    : daysUntilExpiry >= 30
-                                        ? 'text-warning-600'
-                                        : 'text-danger-600'
-                                    }`}
-                            >
-                                {daysUntilExpiry}
-                            </span>
-                            <span className="text-xs text-neutral-500">days</span>
-                        </div>
-                    </div>
-                    <TrendUp
-                        className={`size-3.5 ${
-                            daysUntilExpiry >= 180
+            {/* Session Expiry cards — one per active plan with a non-null end_date.
+                Empty list (e.g., user only owns one-time-purchase books) → nothing renders. */}
+            {expiringPlans
+                .slice()
+                .sort((a, b) => {
+                    const ad = a.end_date ? new Date(a.end_date).getTime() : Infinity;
+                    const bd = b.end_date ? new Date(b.end_date).getTime() : Infinity;
+                    return ad - bd;
+                })
+                .map((plan) => {
+                    const expiryMs = plan.end_date ? new Date(plan.end_date).getTime() : null;
+                    const diffMs = expiryMs != null ? expiryMs - Date.now() : 0;
+                    const daysLeft = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+                    const label = plan.enroll_invite?.name?.trim() || 'Session';
+                    const colorClass =
+                        daysLeft >= 180
+                            ? 'text-success-600'
+                            : daysLeft >= 30
+                              ? 'text-warning-600'
+                              : 'text-danger-600';
+                    const trendColor =
+                        daysLeft >= 180
                             ? 'text-success-500'
-                            : daysUntilExpiry >= 30
-                                ? 'text-warning-500'
-                                : 'text-danger-500'
-                            }`}
-                    />
-                </div>
-                <div className="relative">
-                    <ProgressBar progress={daysUntilExpiry} />
-                    <div className="mt-1 text-center text-[10px] leading-tight text-neutral-500">
-                        {daysUntilExpiry >= 180
+                            : daysLeft >= 30
+                              ? 'text-warning-500'
+                              : 'text-danger-500';
+                    const status =
+                        daysLeft >= 180
                             ? 'Active session'
-                            : daysUntilExpiry >= 30
-                                ? 'Renewal due soon'
-                                : 'Urgent renewal required'}
-                    </div>
-                </div>
-            </div>
+                            : daysLeft >= 30
+                              ? 'Renewal due soon'
+                              : 'Urgent renewal required';
+                    return (
+                        <div
+                            key={plan.id}
+                            className="rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-neutral-50/30 p-3 transition-all duration-200 hover:border-primary-200/50 hover:shadow-md"
+                        >
+                            <div className="mb-2 flex items-center gap-2.5">
+                                <div className="rounded-md bg-gradient-to-br from-primary-50 to-primary-100 p-1.5">
+                                    <Clock className="size-4 text-primary-600" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <h4
+                                        className="mb-0.5 text-xs font-medium text-neutral-700 truncate"
+                                        title={label}
+                                    >
+                                        {label}
+                                    </h4>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className={`text-base font-bold ${colorClass}`}>
+                                            {daysLeft}
+                                        </span>
+                                        <span className="text-xs text-neutral-500">days</span>
+                                    </div>
+                                </div>
+                                <TrendUp className={`size-3.5 ${trendColor}`} />
+                            </div>
+                            <div className="relative">
+                                <ProgressBar progress={daysLeft} />
+                                <div className="mt-1 text-center text-[10px] leading-tight text-neutral-500">
+                                    {status}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
 
             {/* Compact overview sections */}
             <div className="space-y-2.5">

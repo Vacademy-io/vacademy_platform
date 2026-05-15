@@ -44,6 +44,9 @@ import org.springframework.util.StringUtils;
 @RequiredArgsConstructor
 public class CourseService {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(CourseService.class);
+
     private final PackageRepository packageRepository;
     private final LevelService levelService;
     private final PackageSessionService packageSessionService;
@@ -57,6 +60,7 @@ public class CourseService {
     private final PackageSessionLearnerInvitationToPaymentOptionRepository packageSessionLearnerInvitationToPaymentOptionRepository;
     private final vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository enrollInviteRepository;
     private final DefaultEnrollInviteService defaultEnrollInviteService;
+    private final vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
 
     @Transactional
     public String addCourse(AddCourseDTO addCourseDTO, CustomUserDetails user, String instituteId) {
@@ -87,6 +91,28 @@ public class CourseService {
 
         // Optionally create subgroup package sessions and map parent/children.
         handleSubgroups(savedPackage, addCourseDTO, instituteId, user);
+
+        // Fire COURSE_CREATED workflow trigger so admin-team recipes can react
+        // (e.g. notify the teaching team that a new course is published).
+        // Only fires for genuinely new courses, not updates. Wrapped so a
+        // workflow failure can't undo the course creation.
+        if (Boolean.TRUE.equals(addCourseDTO.getNewCourse())
+                && instituteId != null && !instituteId.isBlank()) {
+            try {
+                java.util.Map<String, Object> ctx = new java.util.HashMap<>();
+                ctx.put("packageId", savedPackage.getId());
+                ctx.put("packageName", savedPackage.getPackageName());
+                ctx.put("createdByUserId", addCourseDTO.getCreatedByUserId());
+                workflowTriggerService.handleTriggerEvents(
+                        vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.COURSE_CREATED.name(),
+                        savedPackage.getId(),
+                        instituteId,
+                        ctx);
+            } catch (Exception wfe) {
+                log.warn("Failed to trigger COURSE_CREATED for package {}: {}",
+                        savedPackage.getId(), wfe.getMessage());
+            }
+        }
 
         return savedPackage.getId();
     }

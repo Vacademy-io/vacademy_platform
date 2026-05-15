@@ -22,8 +22,12 @@ import IntegrationSettings from '../-components/IntegrationSettings';
 import DoubtManagementSettings from '../-components/DoubtManagementSettings';
 import LiveSessionSettings from '../-components/LiveSessionSettings';
 import YoutubeIntegrationSettings from '../-components/YoutubeIntegrationSettings';
+import { AutomationSettings } from '../-components/Automations';
 
 export const getAvailableSettingsTabs = () => {
+    // Entries are sorted A-Z by display label (`value`) at the end so the
+    // sidebar renders in alphabetical order. Authoring order here is
+    // irrelevant — add new entries anywhere.
     return [
         {
             tab: SettingsTabs.Tab,
@@ -49,6 +53,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Notification,
             value: 'Notification Settings',
             component: NotificationSettings,
+        },
+        {
+            tab: SettingsTabs.Automations,
+            value: 'Automations',
+            component: AutomationSettings,
         },
         {
             tab: SettingsTabs.Payment,
@@ -140,5 +149,5 @@ export const getAvailableSettingsTabs = () => {
             value: 'YouTube Integration',
             component: YoutubeIntegrationSettings,
         },
-    ];
+    ].sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 };

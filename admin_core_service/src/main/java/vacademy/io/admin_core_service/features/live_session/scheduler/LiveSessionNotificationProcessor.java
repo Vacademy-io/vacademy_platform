@@ -75,6 +75,17 @@ public class LiveSessionNotificationProcessor {
      */
     private static final int LIVE_SESSION_END_LOOKBACK_MINUTES = 5;
 
+    /**
+     * Same semantics as {@link #LIVE_SESSION_END_LOOKBACK_MINUTES} but for the
+     * LIVE_SESSION_START dispatch — fires when a schedule's start time crosses
+     * into the window. The cadence MUST match the Quartz tick (5 min). The
+     * idempotency strategy for LIVE_SESSION_START triggers is EVENT_BASED
+     * (see {@code WorkflowBuilderService.isPeriodicScanTrigger}), so the
+     * unique index on {@code workflow_execution.idempotency_key} provides
+     * cross-replica dedup as a backstop.
+     */
+    private static final int LIVE_SESSION_START_LOOKBACK_MINUTES = 5;
+
 
     @Transactional
     public void processDueNotifications() {
@@ -84,6 +95,17 @@ public class LiveSessionNotificationProcessor {
         LocalDateTime windowEnd = now.plusMinutes(5);
         System.out.println("current time (UTC): " + now);
         System.out.println("Current time on server is "+now);
+
+        // Dispatch LIVE_SESSION_START workflow trigger for any class whose
+        // start time crossed into the look-back window. Folded into this
+        // processor (instead of a separate scheduler) so a single Quartz tick
+        // handles all live-session periodic work. Wrapped so a workflow
+        // failure can't poison the END dispatch or reminder dispatch below.
+        try {
+            dispatchStartedLiveSessionWorkflows();
+        } catch (Exception e) {
+            System.out.println("LIVE_SESSION_START dispatch failed (continuing): " + e.getMessage());
+        }
 
         // Dispatch LIVE_SESSION_END workflow trigger for any class whose end fell
         // in the look-back window. Folded into this processor (instead of a
@@ -185,6 +207,46 @@ public class LiveSessionNotificationProcessor {
             } catch (Exception ex) {
                 scheduleNotificationRepository.releaseClaim(sn.getId(), NotificationStatusEnum.PENDING.name());
                 System.out.println("Skip failure tracking per requirements; keep PENDING to retry next run"+ex);
+            }
+        }
+    }
+
+    /**
+     * Fires the LIVE_SESSION_START workflow trigger for every schedule whose
+     * start (meeting_date + start_time, in session timezone) crossed into the
+     * look-back window. Sibling of {@link #dispatchEndedLiveSessionWorkflows()}
+     * with identical dedup semantics — see that method's Javadoc for the
+     * EVENT_BASED idempotency strategy.
+     */
+    private void dispatchStartedLiveSessionWorkflows() {
+        List<SessionSchedule> started = sessionScheduleRepository.findStartedInLastMinutes(LIVE_SESSION_START_LOOKBACK_MINUTES);
+        if (started == null || started.isEmpty()) return;
+        System.out.println("LIVE_SESSION_START dispatch: " + started.size() + " schedule(s) started in last "
+                + LIVE_SESSION_START_LOOKBACK_MINUTES + " minutes");
+
+        for (SessionSchedule schedule : started) {
+            try {
+                Optional<LiveSession> sessionOpt = liveSessionRepository.findById(schedule.getSessionId());
+                if (sessionOpt.isEmpty()) continue;
+                LiveSession session = sessionOpt.get();
+
+                Map<String, Object> ctx = new HashMap<>();
+                ctx.put("liveSession", session);
+                ctx.put("sessionId", session.getId());
+                ctx.put("scheduleId", schedule.getId());
+                ctx.put("instituteId", session.getInstituteId());
+                ctx.put("sessionTitle", session.getTitle());
+                ctx.put("meetingDate", schedule.getMeetingDate());
+                ctx.put("startTime", schedule.getStartTime());
+
+                workflowTriggerService.handleTriggerEvents(
+                        WorkflowTriggerEvent.LIVE_SESSION_START.name(),
+                        schedule.getId(),
+                        session.getInstituteId(),
+                        ctx);
+            } catch (Exception e) {
+                System.out.println("LIVE_SESSION_START dispatch skipped scheduleId="
+                        + schedule.getId() + " due to: " + e.getMessage());
             }
         }
     }

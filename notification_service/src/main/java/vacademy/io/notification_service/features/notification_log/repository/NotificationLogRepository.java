@@ -578,4 +578,176 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
     List<NotificationLog> searchConversations(
             @Param("channelIds") List<String> senderBusinessChannelIds,
             @Param("query") String query);
+
+    // ==================== NOTIFICATION HUB METHODS ====================
+
+    /**
+     * Count outbound EMAILs in window for an institute. Scoped via the institute's configured
+     * from-addresses (sender_business_channel_id IN ...).
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM notification_log
+            WHERE notification_type = 'EMAIL'
+              AND sender_business_channel_id IN (:fromAddresses)
+              AND notification_date >= CAST(:since AS TIMESTAMP)
+            """, nativeQuery = true)
+    long countEmailSent(@Param("fromAddresses") List<String> fromAddresses,
+                       @Param("since") String since);
+
+    /**
+     * Count EMAIL_EVENTs by event name within window for an institute. Joins each event to
+     * its parent EMAIL log via `source = parent.id`, then scopes by the institute's
+     * configured from-addresses on the parent.
+     *
+     * The body prefix matches strings produced in EmailEventService.createEventDetailsBody:
+     * "Email Event: DELIVERY\\n...", "Email Event: OPEN\\n...", etc. Pass the uppercase
+     * event name (DELIVERY / OPEN / CLICK / BOUNCE / COMPLAINT / SEND / REJECT).
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM notification_log ev
+            INNER JOIN notification_log orig ON orig.id = ev.source
+            WHERE ev.notification_type = 'EMAIL_EVENT'
+              AND ev.body LIKE CONCAT('Email Event: ', :eventName, '%')
+              AND orig.notification_type = 'EMAIL'
+              AND orig.sender_business_channel_id IN (:fromAddresses)
+              AND ev.notification_date >= CAST(:since AS TIMESTAMP)
+            """, nativeQuery = true)
+    long countEmailEvent(@Param("fromAddresses") List<String> fromAddresses,
+                        @Param("eventName") String eventName,
+                        @Param("since") String since);
+
+    /**
+     * Count INBOUND_EMAILs (learner replies) in window for an institute.
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM notification_log
+            WHERE notification_type = 'INBOUND_EMAIL'
+              AND sender_business_channel_id IN (:fromAddresses)
+              AND notification_date >= CAST(:since AS TIMESTAMP)
+            """, nativeQuery = true)
+    long countInboundEmail(@Param("fromAddresses") List<String> fromAddresses,
+                          @Param("since") String since);
+
+    /**
+     * Count WhatsApp messages of a given type in window for an institute.
+     * type = 'WHATSAPP_MESSAGE_OUTGOING' or 'WHATSAPP_MESSAGE_INCOMING'.
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM notification_log
+            WHERE notification_type = :type
+              AND sender_business_channel_id IN (:channelIds)
+              AND notification_date >= CAST(:since AS TIMESTAMP)
+            """, nativeQuery = true)
+    long countWhatsAppByType(@Param("channelIds") List<String> channelIds,
+                            @Param("type") String type,
+                            @Param("since") String since);
+
+    /**
+     * Recent incoming activity for the hub feed: WHATSAPP_MESSAGE_INCOMING + INBOUND_EMAIL
+     * across an institute's WhatsApp channels and email addresses, newest first.
+     */
+    @Query(value = """
+            SELECT * FROM notification_log
+            WHERE sender_business_channel_id IN (:channelIds)
+              AND notification_type IN ('WHATSAPP_MESSAGE_INCOMING', 'INBOUND_EMAIL')
+            ORDER BY notification_date DESC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<NotificationLog> findRecentIncomingForInstitute(
+            @Param("channelIds") List<String> channelIds,
+            @Param("limit") int limit,
+            @Param("offset") int offset);
+
+    // ==================== EMAIL INBOX METHODS ====================
+    //
+    // The hub UI lets admins narrow the inbox by:
+    //   - direction → controlled by :types ('EMAIL' | 'INBOUND_EMAIL' | both)
+    //   - which institute sender → controlled by :fromAddresses (single address or all configured)
+    //
+    // Both filters collapse into list-membership predicates so a single query shape serves
+    // every combination. Keep the queries parameterized — don't add new variants per filter.
+
+    /**
+     * One row per counterparty email (the institute's audience), latest message first.
+     * :fromAddresses is the institute-side address scope (single or all configured senders).
+     * :types is {@code ['EMAIL']}, {@code ['INBOUND_EMAIL']}, or both.
+     */
+    @Query(value = """
+            SELECT * FROM (
+                SELECT DISTINCT ON (nl.channel_id) nl.*
+                FROM notification_log nl
+                WHERE nl.sender_business_channel_id IN (:fromAddresses)
+                  AND nl.notification_type IN (:types)
+                ORDER BY nl.channel_id, nl.notification_date DESC
+            ) conversations
+            ORDER BY conversations.notification_date DESC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<NotificationLog> findEmailConversationsForInbox(
+            @Param("fromAddresses") List<String> fromAddresses,
+            @Param("types") List<String> types,
+            @Param("limit") int limit,
+            @Param("offset") int offset);
+
+    /**
+     * Messages for one counterparty email, scoped + filtered.
+     * Cursor-paginated (newest first).
+     */
+    @Query(value = """
+            SELECT * FROM notification_log
+            WHERE channel_id = :email
+              AND sender_business_channel_id IN (:fromAddresses)
+              AND notification_type IN (:types)
+              AND (:cursor IS NULL OR notification_date < CAST(:cursor AS TIMESTAMP))
+            ORDER BY notification_date DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<NotificationLog> findEmailMessagesForConversation(
+            @Param("email") String email,
+            @Param("fromAddresses") List<String> fromAddresses,
+            @Param("types") List<String> types,
+            @Param("cursor") String cursor,
+            @Param("limit") int limit);
+
+    /**
+     * Batch unread counts for email conversations: number of INBOUND_EMAIL rows newer than
+     * the latest OUTBOUND EMAIL row to the same counterparty. Mirrors WhatsApp behavior.
+     * Not affected by the direction filter — unread is intrinsically about inbound vs outbound.
+     */
+    @Query(value = """
+            SELECT sub.channel_id, COUNT(*) as unread_count
+            FROM notification_log sub
+            WHERE sub.channel_id IN (:emails)
+              AND sub.notification_type = 'INBOUND_EMAIL'
+              AND sub.notification_date > (
+                SELECT COALESCE(MAX(nl2.notification_date), CAST('1970-01-01' AS TIMESTAMP))
+                FROM notification_log nl2
+                WHERE nl2.channel_id = sub.channel_id
+                  AND nl2.notification_type = 'EMAIL'
+              )
+            GROUP BY sub.channel_id
+            """, nativeQuery = true)
+    List<Object[]> batchCountUnreadEmailMessages(@Param("emails") List<String> emails);
+
+    /**
+     * Search email conversations by counterparty address or message body, scoped + filtered.
+     */
+    @Query(value = """
+            SELECT * FROM (
+                SELECT DISTINCT ON (nl.channel_id) nl.*
+                FROM notification_log nl
+                WHERE nl.sender_business_channel_id IN (:fromAddresses)
+                  AND nl.notification_type IN (:types)
+                  AND (nl.channel_id ILIKE :query OR COALESCE(nl.body, '') ILIKE :query)
+                ORDER BY nl.channel_id, nl.notification_date DESC
+            ) conversations
+            ORDER BY conversations.notification_date DESC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<NotificationLog> searchEmailConversations(
+            @Param("fromAddresses") List<String> fromAddresses,
+            @Param("types") List<String> types,
+            @Param("query") String query,
+            @Param("limit") int limit,
+            @Param("offset") int offset);
 }

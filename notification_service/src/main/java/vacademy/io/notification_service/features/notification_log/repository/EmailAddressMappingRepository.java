@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.notification_service.features.notification_log.entity.EmailAddressMapping;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface EmailAddressMappingRepository extends JpaRepository<EmailAddressMapping, String> {
@@ -14,6 +15,11 @@ public interface EmailAddressMappingRepository extends JpaRepository<EmailAddres
     Optional<EmailAddressMapping> findByEmailAddressAndIsActiveTrue(String emailAddress);
 
     Optional<EmailAddressMapping> findByEmailAddressIgnoreCaseAndIsActiveTrue(String emailAddress);
+
+    /** Active inbound-enabled addresses for an institute. Used to scope email inbox + stats. */
+    List<EmailAddressMapping> findAllByInstituteIdAndIsActiveTrue(String instituteId);
+
+    boolean existsByInstituteIdAndIsActiveTrue(String instituteId);
 
     @Modifying
     @Transactional

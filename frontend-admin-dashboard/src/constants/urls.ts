@@ -461,6 +461,12 @@ export const CHATBOT_FLOW_BASE = `${NOTIFICATION_SERVICE_BASE}/chatbot-flow`;
 // WhatsApp Inbox
 export const WHATSAPP_INBOX_BASE = `${NOTIFICATION_SERVICE_BASE}/inbox`;
 
+// Notification Hub (overview + recent incoming activity)
+export const NOTIFICATION_HUB_BASE = `${BASE_URL}/notification-service/v1/hub`;
+
+// Email Inbox (conversations / messages / search / reply / status)
+export const EMAIL_INBOX_BASE = `${BASE_URL}/notification-service/v1/email-inbox`;
+
 // WhatsApp Template Manager
 export const WHATSAPP_TEMPLATE_BASE = `${NOTIFICATION_SERVICE_BASE}/whatsapp-templates`;
 

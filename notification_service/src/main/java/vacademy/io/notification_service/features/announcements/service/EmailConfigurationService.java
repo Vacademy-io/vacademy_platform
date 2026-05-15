@@ -37,6 +37,45 @@ public class EmailConfigurationService {
     private String defaultSenderEmail;
     
     /**
+     * Return only the from-addresses an institute has explicitly configured in
+     * institute.setting.EMAIL_SETTING.data (lowercased + deduped). The platform default
+     * fallback is NOT included — callers that need "all senders including default"
+     * should use {@link #getEmailConfigurations(String)} or
+     * {@code EmailService.listInstituteEmailSenders}.
+     *
+     * Used by the Notification Hub to scope per-institute email stats safely.
+     */
+    public List<String> getInstituteConfiguredFromAddresses(String instituteId) {
+        try {
+            var institute = instituteInternalService.getInstituteByInstituteId(instituteId);
+            if (institute == null) {
+                // Likely cause: admin.core.service.baseurl / HMAC creds mismatch.
+                // Kept at WARN since this is a genuinely actionable error in any environment.
+                log.warn("getInstituteConfiguredFromAddresses: institute lookup returned NULL for id={}",
+                        instituteId);
+                return List.of();
+            }
+            if (institute.getSetting() == null) {
+                log.debug("getInstituteConfiguredFromAddresses: institute {} has setting=null (no EMAIL_SETTING configured)",
+                        instituteId);
+                return List.of();
+            }
+            List<String> result = parseInstituteEmailSettings(institute.getSetting()).stream()
+                    .map(EmailConfigDTO::getEmail)
+                    .filter(e -> e != null && !e.isBlank())
+                    .map(e -> e.toLowerCase().trim())
+                    .distinct()
+                    .toList();
+            log.debug("getInstituteConfiguredFromAddresses: institute={} resolved {} from-address(es)",
+                    instituteId, result.size());
+            return result;
+        } catch (Exception e) {
+            log.warn("Failed to read configured from-addresses for institute {}: {}", instituteId, e.getMessage(), e);
+            return List.of();
+        }
+    }
+
+    /**
      * Get available email configurations for dropdown
      */
     public List<EmailConfigDTO> getEmailConfigurations(String instituteId) {

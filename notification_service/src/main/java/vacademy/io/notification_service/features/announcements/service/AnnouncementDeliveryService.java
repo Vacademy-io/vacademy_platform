@@ -229,20 +229,24 @@ public class AnnouncementDeliveryService {
             int batchSuccess = 0;
             int batchFailed = 0;
             
+            // Resolve the institute-side from-address once per batch (used for unsubscribe checks
+            // AND as sender_business_channel_id on notification_log rows for institute-scoped queries).
+            String resolvedFromAddress = determineFromAddress(fromEmail, announcement.getInstituteId(), resolvedEmailType);
+
             for (RecipientMessage message : batch) {
             try {
                 message.setMediumType(MediumType.EMAIL);
-                
-                String userEmail = forceToEmail != null && !forceToEmail.isBlank() 
-                    ? forceToEmail 
-                    : (userEmailMap.containsKey(message.getUserId()) 
-                        ? userEmailMap.get(message.getUserId()).getEmail() 
+
+                String userEmail = forceToEmail != null && !forceToEmail.isBlank()
+                    ? forceToEmail
+                    : (userEmailMap.containsKey(message.getUserId())
+                        ? userEmailMap.get(message.getUserId()).getEmail()
                         : null);
-                
+
                 if (userEmail != null) {
                 String resolvedUsername = resolveUsername(message, userEmailMap);
-                String fromForPreference = determineFromAddress(fromEmail, announcement.getInstituteId(), resolvedEmailType);
-                        
+                String fromForPreference = resolvedFromAddress;
+
                         // Check unsubscribe preferences
                     if (fromForPreference != null &&
                             userAnnouncementPreferenceService.isEmailSenderUnsubscribed(
@@ -251,7 +255,7 @@ public class AnnouncementDeliveryService {
                         message.setStatus(MessageStatus.FAILED);
                         message.setErrorMessage("User unsubscribed from emails sent from " + fromForPreference + " (" + resolvedEmailType + ")");
                         recipientMessageRepository.save(message);
-                        createEmailNotificationLog(announcement, message, userEmail, "FAILED", message.getErrorMessage());
+                        createEmailNotificationLog(announcement, message, userEmail, "FAILED", message.getErrorMessage(), resolvedFromAddress);
                             log.debug("Skipping email delivery to user {} (message {}) due to unsubscribe preference",
                                     resolvedUsername, message.getId());
                         continue;
@@ -293,15 +297,15 @@ public class AnnouncementDeliveryService {
                     // Create email-specific notification log entry
                         log.trace("Creating EMAIL notification log for announcement: {}, user: {}", 
                             announcement.getId(), message.getUserId());
-                    createEmailNotificationLog(announcement, message, userEmail, "SUCCESS", null);
-                    
+                    createEmailNotificationLog(announcement, message, userEmail, "SUCCESS", null, resolvedFromAddress);
+
                         batchSuccess++;
-                    
+
                 } else {
                         batchFailed++;
                     message.setStatus(MessageStatus.FAILED);
                     message.setErrorMessage("User email not found");
-                    createEmailNotificationLog(announcement, message, "unknown@email.com", "FAILED", "User email not found");
+                    createEmailNotificationLog(announcement, message, "unknown@email.com", "FAILED", "User email not found", resolvedFromAddress);
                 }
                 
                 recipientMessageRepository.save(message);
@@ -321,7 +325,7 @@ public class AnnouncementDeliveryService {
                     message.setErrorMessage(detailed);
                 }
                 recipientMessageRepository.save(message);
-                createEmailNotificationLog(announcement, message, "error@email.com", "FAILED", detailed);
+                createEmailNotificationLog(announcement, message, "error@email.com", "FAILED", detailed, resolvedFromAddress);
             }
         }
             
@@ -554,8 +558,8 @@ public class AnnouncementDeliveryService {
     }
     
     // Enhanced method for email-specific logging
-    private void createEmailNotificationLog(Announcement announcement, RecipientMessage message, 
-                                          String userEmail, String status, String errorMessage) {
+    private void createEmailNotificationLog(Announcement announcement, RecipientMessage message,
+                                          String userEmail, String status, String errorMessage, String fromAddress) {
         try {
             NotificationLog notificationLog = new NotificationLog();
             notificationLog.setNotificationType("EMAIL");
@@ -564,16 +568,23 @@ public class AnnouncementDeliveryService {
             notificationLog.setSource("announcement-service");
             notificationLog.setSourceId(announcement.getId());
             notificationLog.setUserId(message.getUserId()); // Keep user ID for reference
+            // Institute-side address (the sender). Lets us scope inbox/stats by institute
+            // via the institute's configured from-addresses. Normalize "Display Name <email>" → email
+            // so it matches the list from EmailConfigurationService.getInstituteConfiguredFromAddresses.
+            String normalizedFrom = EmailService.normalizeFromAddress(fromAddress);
+            if (normalizedFrom != null) {
+                notificationLog.setSenderBusinessChannelId(normalizedFrom);
+            }
             notificationLog.setNotificationDate(LocalDateTime.now());
-            
-            log.info("Saving EMAIL notification log: sourceId={}, channelId={}, userId={}", 
+
+            log.info("Saving EMAIL notification log: sourceId={}, channelId={}, userId={}",
                 notificationLog.getSourceId(), notificationLog.getChannelId(), notificationLog.getUserId());
-            
+
             notificationLogRepository.save(notificationLog);
-            
+
             log.info("Successfully saved EMAIL notification log with ID: {}", notificationLog.getId());
         } catch (Exception e) {
-            log.error("Failed to create EMAIL notification log for announcement: {}, user: {}, email: {}", 
+            log.error("Failed to create EMAIL notification log for announcement: {}, user: {}, email: {}",
                 announcement.getId(), message.getUserId(), userEmail, e);
             throw e; // Re-throw to be caught by the calling method
         }

@@ -310,7 +310,13 @@ public class LiveSessionProviderController {
         String joinUrl = bbbMeetingManager.buildJoinUrlForUser(
                 providerMeetingId, fullName, user.getUserId(), role, instituteId, schedule.getBbbServerId());
 
-        // Mark attendance with join timestamp
+        // Mark attendance with join timestamp.
+        // Note: LIVE_SESSION_START is NOT emitted from here. It's dispatched
+        // by LiveSessionNotificationProcessor's periodic scan when the
+        // schedule's start_time falls in the look-back window — same pattern
+        // as LIVE_SESSION_END. That avoids the join-time race (multiple
+        // concurrent first-joins all seeing count=0) and keeps lifecycle
+        // emissions in one place.
         markBbbAttendance(schedule.getSessionId(), scheduleId, user.getUserId(), fullName, role, providerMeetingId);
 
         return ResponseEntity.ok(Map.of(

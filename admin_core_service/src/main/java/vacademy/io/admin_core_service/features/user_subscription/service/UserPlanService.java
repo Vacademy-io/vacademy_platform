@@ -110,6 +110,9 @@ public class UserPlanService {
     @Autowired
     private vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository paymentPlanRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
+
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
             AppliedCouponDiscount appliedCouponDiscount,
@@ -250,6 +253,35 @@ public class UserPlanService {
         logger.debug("Saving UserPlan with details: {}", userPlan);
         UserPlan saved = userPlanRepository.save(userPlan);
         logger.info("UserPlan created with ID={}", saved.getId());
+
+        // If a prior plan was detected and we stacked onto it, this is a
+        // re-enrolment — fire the LEARNER_RE_ENROLLMENT trigger so the admin
+        // team can welcome them back / send onboarding refresh / etc.
+        // Distinct from LEARNER_BATCH_ENROLLMENT (which fires for the very
+        // first enrolment via StudentRegistrationManager).
+        if (existingPlan.isPresent() && enrollInvite != null
+                && enrollInvite.getInstituteId() != null
+                && !enrollInvite.getInstituteId().isBlank()) {
+            try {
+                Map<String, Object> ctx = new HashMap<>();
+                ctx.put("userPlanId", saved.getId());
+                ctx.put("previousUserPlanId", existingPlan.get().getId());
+                ctx.put("userId", userId);
+                ctx.put("enrollInviteId", enrollInvite.getId());
+                ctx.put("paymentPlanId", paymentPlan != null ? paymentPlan.getId() : null);
+                ctx.put("startDate", saved.getStartDate() != null ? saved.getStartDate().toString() : null);
+                ctx.put("endDate", saved.getEndDate() != null ? saved.getEndDate().toString() : null);
+                workflowTriggerService.handleTriggerEvents(
+                        vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.LEARNER_RE_ENROLLMENT.name(),
+                        enrollInvite.getId(),
+                        enrollInvite.getInstituteId(),
+                        ctx);
+            } catch (Exception wfe) {
+                logger.warn("Failed to trigger LEARNER_RE_ENROLLMENT for plan {}: {}",
+                        saved.getId(), wfe.getMessage());
+            }
+        }
+
         return saved;
     }
 
@@ -899,6 +931,34 @@ public class UserPlanService {
 
         userPlan.setStatus(force ? UserPlanStatusEnum.TERMINATED.name() : UserPlanStatusEnum.CANCELED.name());
         userPlanRepository.save(userPlan);
+
+        // Fire the matching workflow trigger so admin/learner workflows can react
+        // (welcome-back nudge on CANCEL, access-revoked email on TERMINATED, etc.).
+        // Wrapped so a workflow failure can't undo the cancel. Institute is read
+        // off the joined EnrollInvite — plans without one are skipped because we
+        // can't route the trigger.
+        try {
+            String workflowInstituteId = userPlan.getEnrollInvite() != null
+                    ? userPlan.getEnrollInvite().getInstituteId() : null;
+            if (workflowInstituteId != null && !workflowInstituteId.isBlank()) {
+                Map<String, Object> ctx = new HashMap<>();
+                ctx.put("userPlanId", userPlan.getId());
+                ctx.put("userId", userPlan.getUserId());
+                ctx.put("enrollInviteId", userPlan.getEnrollInviteId());
+                ctx.put("paymentPlanId", userPlan.getPaymentPlanId());
+                ctx.put("endDate", userPlan.getEndDate() != null ? userPlan.getEndDate().toString() : null);
+                String triggerName = force
+                        ? vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.SUBSCRIPTION_TERMINATED.name()
+                        : vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.SUBSCRIPTION_CANCELLED.name();
+                String eventId = userPlan.getEnrollInviteId() != null
+                        ? userPlan.getEnrollInviteId() : workflowInstituteId;
+                workflowTriggerService.handleTriggerEvents(triggerName, eventId, workflowInstituteId, ctx);
+            }
+        } catch (Exception wfe) {
+            logger.warn("Failed to trigger {} workflow for plan {}: {}",
+                    force ? "SUBSCRIPTION_TERMINATED" : "SUBSCRIPTION_CANCELLED",
+                    userPlanId, wfe.getMessage());
+        }
 
         if (!force) {
             logger.info("UserPlan ID: {} marked as CANCELED", userPlanId);

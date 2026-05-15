@@ -47,6 +47,8 @@ import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollIn
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.auth.repository.UserRoleRepository;
 
 @Slf4j
 @Service
@@ -73,6 +75,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository liveSessionLogsRepository;
     private final vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository instituteStudentRepository;
     private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
+    private final UserRoleRepository userRoleRepository;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -121,6 +124,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return fetchBatchAttendanceReport(params);
             case "fetch_live_session_attendance":
                 return fetchLiveSessionAttendance(params);
+            case "fetch_institute_admin_emails":
+                return fetchInstituteAdminEmails(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -1650,6 +1655,74 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             return Map.of("expiringMemberships", expiringList, "daysUntilExpiry", finalDaysUntilExpiry);
         } catch (Exception e) {
             log.error("Error in fetchExpiringMemberships", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    /**
+     * Returns the institute's team contacts (admins / teachers / etc.) as a
+     * List of Maps with at least {@code email} and {@code fullName}, so a
+     * SEND_EMAIL workflow node can iterate over them and notify the team.
+     *
+     * Params:
+     *   instituteId (required)
+     *   roles       (optional CSV or List, default "ADMIN,TEACHER")
+     *
+     * Result key: {@code adminContacts} — a list of Maps with
+     *   userId, email, fullName, mobileNumber, role
+     * deduplicated by userId (a user with two roles appears once with both
+     * role names joined).
+     *
+     * Powers the Settings → Automations "Admin & Team Reports" recipes — the
+     * only way to send to staff today, since SendEmailNodeHandler rejects
+     * static email strings (every item in {@code on} must be a Map with an
+     * email field).
+     */
+    private Map<String, Object> fetchInstituteAdminEmails(Map<String, Object> params) {
+        try {
+            String instituteId = (String) params.get("instituteId");
+            if (instituteId == null || instituteId.isBlank()) {
+                return Map.of("error", "instituteId is required");
+            }
+
+            List<String> roles;
+            Object rolesParam = params.get("roles");
+            if (rolesParam instanceof List<?> list) {
+                roles = list.stream().map(String::valueOf).collect(Collectors.toList());
+            } else if (rolesParam instanceof String s && !s.isBlank()) {
+                roles = Arrays.stream(s.split(",")).map(String::trim)
+                        .filter(r -> !r.isEmpty()).collect(Collectors.toList());
+            } else {
+                roles = List.of("ADMIN", "TEACHER");
+            }
+
+            // Aggregate across roles, dedupe by user.id, collect their role names.
+            Map<String, Map<String, Object>> byUserId = new LinkedHashMap<>();
+            for (String roleName : roles) {
+                List<User> users = userRoleRepository.findUsersByInstituteIdAndRoleName(instituteId, roleName);
+                for (User u : users) {
+                    if (u.getEmail() == null || u.getEmail().isBlank()) continue;
+                    Map<String, Object> existing = byUserId.get(u.getId());
+                    if (existing == null) {
+                        Map<String, Object> entry = new LinkedHashMap<>();
+                        entry.put("userId", u.getId());
+                        entry.put("email", u.getEmail());
+                        entry.put("fullName", u.getFullName() != null ? u.getFullName() : "");
+                        entry.put("mobileNumber", u.getMobileNumber() != null ? u.getMobileNumber() : "");
+                        entry.put("role", roleName);
+                        byUserId.put(u.getId(), entry);
+                    } else {
+                        existing.put("role", existing.get("role") + "," + roleName);
+                    }
+                }
+            }
+
+            return Map.of(
+                    "adminContacts", new ArrayList<>(byUserId.values()),
+                    "totalAdmins", byUserId.size(),
+                    "rolesFetched", roles);
+        } catch (Exception e) {
+            log.error("Error in fetchInstituteAdminEmails", e);
             return Map.of("error", e.getMessage());
         }
     }

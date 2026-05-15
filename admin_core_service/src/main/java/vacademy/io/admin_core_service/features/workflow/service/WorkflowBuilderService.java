@@ -438,6 +438,13 @@ public class WorkflowBuilderService {
      */
     private static boolean isPeriodicScanTrigger(String eventName) {
         if (eventName == null) return false;
-        return "LIVE_SESSION_END".equals(eventName);
+        // These events are emitted by periodic Quartz scans (not one-shot
+        // request handlers), so they need EVENT_BASED idempotency to dedup
+        // cross-replica fires for the same eventId.
+        //   - LIVE_SESSION_START / LIVE_SESSION_END  → LiveSessionNotificationProcessor
+        //   - MEMBERSHIP_EXPIRY                       → PackageSessionScheduler.emitMembershipExpiryReminders
+        return "LIVE_SESSION_END".equals(eventName)
+                || "LIVE_SESSION_START".equals(eventName)
+                || "MEMBERSHIP_EXPIRY".equals(eventName);
     }
 }

@@ -461,6 +461,29 @@ public class PaymentLogService {
                 log.info("Invoice generated successfully for payment log ID: {}", paymentLog.getId());
             }
 
+            // Trigger PAYMENT_SUCCESS workflow — symmetric to the PAYMENT_FAILED
+            // emission below. eventId mirrors enrollInviteId (workflows configured
+            // with event_applied_type=ENROLL_INVITE match here). Wrapped in try
+            // so workflow failures don't roll back the successful payment.
+            try {
+                UserPlan paidPlan = paymentLog.getUserPlan();
+                Map<String, Object> successCtx = new HashMap<>();
+                successCtx.put("paymentLog", paymentLog);
+                successCtx.put("userId", paymentLog.getUserId());
+                successCtx.put("userPlanId", paidPlan.getId());
+                successCtx.put("amount", paymentLog.getPaymentAmount());
+                successCtx.put("vendor", paymentLog.getVendor());
+                successCtx.put("enrollInviteId", paidPlan.getEnrollInviteId());
+                String successEventId = paidPlan.getEnrollInviteId() != null
+                        ? paidPlan.getEnrollInviteId()
+                        : instituteId;
+                workflowTriggerService.handleTriggerEvents(
+                        vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent.PAYMENT_SUCCESS.name(),
+                        successEventId, instituteId, successCtx);
+            } catch (Exception wfe) {
+                log.warn("Failed to trigger PAYMENT_SUCCESS workflow", wfe);
+            }
+
             // Applicant sync: only when paying user is an applicant
             // (audience_response.student_user_id + applicant_id).
             // Avoids expensive applicant_stage JSON query on every payment.

@@ -47,6 +47,8 @@ import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollIn
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.entity.User;
+import vacademy.io.common.auth.repository.UserRoleRepository;
 
 @Slf4j
 @Service
@@ -73,6 +75,7 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository liveSessionLogsRepository;
     private final vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository instituteStudentRepository;
     private final vacademy.io.admin_core_service.features.institute.repository.InstituteRepository instituteRepository;
+    private final UserRoleRepository userRoleRepository;
 
     @Override
     public Map<String, Object> execute(String prebuiltKey, Map<String, Object> params) {
@@ -121,6 +124,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return fetchBatchAttendanceReport(params);
             case "fetch_live_session_attendance":
                 return fetchLiveSessionAttendance(params);
+            case "fetch_institute_admin_emails":
+                return fetchInstituteAdminEmails(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -1384,15 +1389,40 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 studentRows.addAll(ssigmRepo.findStudentContactsByUserIds(individualUserIds));
             }
 
-            // 3. Build the set of userIds marked PRESENT for this schedule.
+            // 3. Build the set of userIds marked PRESENT for this schedule, plus
+            //    capture each present user's log so we can expose joinTime and
+            //    attendance percentage on the per-student row.
             Set<String> presentUserIds = new HashSet<>();
+            Map<String, vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs> logByUserId = new HashMap<>();
             List<vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs> logs =
                     liveSessionLogsRepository.findAllAttendanceByScheduleId(scheduleId);
             for (var l : logs) {
                 if ("PRESENT".equalsIgnoreCase(l.getStatus()) && l.getUserSourceId() != null) {
                     presentUserIds.add(l.getUserSourceId());
+                    // Keep the log with the longest stay if the user appears multiple times
+                    // (rejoins). Always pick the entry with greatest providerTotalDurationMinutes.
+                    var existing = logByUserId.get(l.getUserSourceId());
+                    if (existing == null
+                            || (l.getProviderTotalDurationMinutes() != null
+                                && (existing.getProviderTotalDurationMinutes() == null
+                                    || l.getProviderTotalDurationMinutes() > existing.getProviderTotalDurationMinutes()))) {
+                        logByUserId.put(l.getUserSourceId(), l);
+                    }
                 }
             }
+
+            // SessionSchedule does not store a planned duration (only startTime + a
+            // late-entry cutoff). The most reliable proxy for "intended class length"
+            // is the longest stay among present attendees — typically that's a learner
+            // who stayed for the full session. We use it as the denominator for the
+            // attendance percentage, capped at 100 so transient over-runs (e.g. a host
+            // who started early) don't push values past 100.
+            final int sessionDurationMinutes = logByUserId.values().stream()
+                    .map(vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs::getProviderTotalDurationMinutes)
+                    .filter(java.util.Objects::nonNull)
+                    .mapToInt(Integer::intValue)
+                    .max()
+                    .orElse(0);
 
             // 4. Fan out into present/absent lists, deduping users that appear in both
             //    a batch and an individual entry.
@@ -1435,6 +1465,82 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 row.put("sessionId", sessionId);
                 row.put("scheduleId", scheduleId);
 
+                // Attach per-student attendance metrics for present learners. The
+                // raw fields are set as 0/empty when data is missing — those keys
+                // exist on every row so old templates that reference them don't
+                // render literal {{joinTime}}. Templates that want a clean "no data"
+                // experience should use {{attendanceBlockHtml}} instead, which is
+                // the empty string when join time is null in the LiveSessionLogs row.
+                String joinTimeStr = "";
+                int attendedMins = 0;
+                int attendancePct = 0;
+                boolean hasAttendanceData = false;
+                if (isPresent) {
+                    var lg = logByUserId.get(userId);
+                    if (lg != null && lg.getProviderJoinTime() != null && !lg.getProviderJoinTime().isBlank()) {
+                        // providerJoinTime is an ISO-8601 string from Zoho/etc. Try parsing
+                        // as OffsetDateTime first (handles "+05:30"), then LocalDateTime as
+                        // fallback. If both fail, render the raw value rather than blank.
+                        try {
+                            joinTimeStr = java.time.OffsetDateTime.parse(lg.getProviderJoinTime())
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"));
+                        } catch (Exception ex1) {
+                            try {
+                                joinTimeStr = java.time.LocalDateTime.parse(lg.getProviderJoinTime())
+                                        .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"));
+                            } catch (Exception ex2) {
+                                joinTimeStr = lg.getProviderJoinTime();
+                            }
+                        }
+                        if (lg.getProviderTotalDurationMinutes() != null) {
+                            attendedMins = lg.getProviderTotalDurationMinutes();
+                        }
+                        if (sessionDurationMinutes > 0 && attendedMins > 0) {
+                            attendancePct = (int) Math.round(
+                                    Math.min(100.0, (attendedMins * 100.0) / sessionDurationMinutes));
+                        }
+                        // We have at least a join time — render the attendance block.
+                        // Per-row metrics like duration / percentage may still be 0 if
+                        // the provider hasn't synced them yet, but the join time alone
+                        // is meaningful enough to show.
+                        hasAttendanceData = true;
+                    }
+                }
+
+                // Pre-rendered HTML snippet for the attendance summary box. Templates
+                // that want to omit the section entirely when sync data isn't available
+                // should use {{attendanceBlockHtml}} (this string) instead of
+                // hardcoding the box themselves.
+                String attendanceBlockHtml = "";
+                if (hasAttendanceData) {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("<div style=\"background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;")
+                      .append("padding:14px 18px;margin:18px 0\">")
+                      .append("<p style=\"margin:0 0 8px 0;color:#166534;font-weight:600;font-size:14px\">")
+                      .append("Your attendance</p>");
+                    sb.append("<p style=\"margin:4px 0;color:#1e293b;font-size:14px\">")
+                      .append("<strong>Joined at:</strong> ").append(joinTimeStr).append("</p>");
+                    if (attendedMins > 0 && sessionDurationMinutes > 0) {
+                        sb.append("<p style=\"margin:4px 0;color:#1e293b;font-size:14px\">")
+                          .append("<strong>Time in class:</strong> ").append(attendedMins)
+                          .append(" min of ").append(sessionDurationMinutes).append(" min</p>");
+                    }
+                    if (attendancePct > 0) {
+                        sb.append("<p style=\"margin:4px 0;color:#1e293b;font-size:14px\">")
+                          .append("<strong>Attendance:</strong> ")
+                          .append("<span style=\"color:#16a34a;font-weight:600\">")
+                          .append(attendancePct).append("%</span></p>");
+                    }
+                    sb.append("</div>");
+                    attendanceBlockHtml = sb.toString();
+                }
+
+                row.put("joinTime", joinTimeStr);
+                row.put("attendedMinutes", attendedMins);
+                row.put("attendancePercentage", attendancePct);
+                row.put("sessionDurationMinutes", sessionDurationMinutes);
+                row.put("attendanceBlockHtml", attendanceBlockHtml);
+
                 if (isPresent) presentStudents.add(row);
                 else absentStudents.add(row);
             }
@@ -1448,6 +1554,9 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             result.put("instituteName", instituteName);
             result.put("meetingDate", meetingDateStr);
             result.put("startTime", startTimeStr);
+            // Estimated duration of the live class — derived from the longest attendee.
+            // Useful for top-level templates that want to show "Class duration: 60 min".
+            result.put("sessionDurationMinutes", sessionDurationMinutes);
             return result;
         } catch (Exception e) {
             log.error("Error in fetchLiveSessionAttendance", e);
@@ -1546,6 +1655,74 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             return Map.of("expiringMemberships", expiringList, "daysUntilExpiry", finalDaysUntilExpiry);
         } catch (Exception e) {
             log.error("Error in fetchExpiringMemberships", e);
+            return Map.of("error", e.getMessage());
+        }
+    }
+
+    /**
+     * Returns the institute's team contacts (admins / teachers / etc.) as a
+     * List of Maps with at least {@code email} and {@code fullName}, so a
+     * SEND_EMAIL workflow node can iterate over them and notify the team.
+     *
+     * Params:
+     *   instituteId (required)
+     *   roles       (optional CSV or List, default "ADMIN,TEACHER")
+     *
+     * Result key: {@code adminContacts} — a list of Maps with
+     *   userId, email, fullName, mobileNumber, role
+     * deduplicated by userId (a user with two roles appears once with both
+     * role names joined).
+     *
+     * Powers the Settings → Automations "Admin & Team Reports" recipes — the
+     * only way to send to staff today, since SendEmailNodeHandler rejects
+     * static email strings (every item in {@code on} must be a Map with an
+     * email field).
+     */
+    private Map<String, Object> fetchInstituteAdminEmails(Map<String, Object> params) {
+        try {
+            String instituteId = (String) params.get("instituteId");
+            if (instituteId == null || instituteId.isBlank()) {
+                return Map.of("error", "instituteId is required");
+            }
+
+            List<String> roles;
+            Object rolesParam = params.get("roles");
+            if (rolesParam instanceof List<?> list) {
+                roles = list.stream().map(String::valueOf).collect(Collectors.toList());
+            } else if (rolesParam instanceof String s && !s.isBlank()) {
+                roles = Arrays.stream(s.split(",")).map(String::trim)
+                        .filter(r -> !r.isEmpty()).collect(Collectors.toList());
+            } else {
+                roles = List.of("ADMIN", "TEACHER");
+            }
+
+            // Aggregate across roles, dedupe by user.id, collect their role names.
+            Map<String, Map<String, Object>> byUserId = new LinkedHashMap<>();
+            for (String roleName : roles) {
+                List<User> users = userRoleRepository.findUsersByInstituteIdAndRoleName(instituteId, roleName);
+                for (User u : users) {
+                    if (u.getEmail() == null || u.getEmail().isBlank()) continue;
+                    Map<String, Object> existing = byUserId.get(u.getId());
+                    if (existing == null) {
+                        Map<String, Object> entry = new LinkedHashMap<>();
+                        entry.put("userId", u.getId());
+                        entry.put("email", u.getEmail());
+                        entry.put("fullName", u.getFullName() != null ? u.getFullName() : "");
+                        entry.put("mobileNumber", u.getMobileNumber() != null ? u.getMobileNumber() : "");
+                        entry.put("role", roleName);
+                        byUserId.put(u.getId(), entry);
+                    } else {
+                        existing.put("role", existing.get("role") + "," + roleName);
+                    }
+                }
+            }
+
+            return Map.of(
+                    "adminContacts", new ArrayList<>(byUserId.values()),
+                    "totalAdmins", byUserId.size(),
+                    "rolesFetched", roles);
+        } catch (Exception e) {
+            log.error("Error in fetchInstituteAdminEmails", e);
             return Map.of("error", e.getMessage());
         }
     }

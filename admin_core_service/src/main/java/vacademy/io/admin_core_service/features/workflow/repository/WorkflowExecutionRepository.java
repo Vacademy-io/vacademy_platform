@@ -22,6 +22,25 @@ public interface WorkflowExecutionRepository extends JpaRepository<WorkflowExecu
 
         boolean existsByIdempotencyKey(String idempotencyKey);
 
+        /**
+         * Pattern-match against {@code idempotency_key} to dedup re-emission
+         * of the same event (eventId is encoded inside the key by
+         * {@code EventBasedKeyGenerator} as
+         * {@code trigger_<triggerId>_eventType_<eventName>_eventId_<eventId>},
+         * not stored as its own column). Used by
+         * {@code PackageSessionScheduler.emitMembershipExpiryReminders} to
+         * skip plans it has already notified about. Pattern e.g.
+         * {@code "%eventType_MEMBERSHIP_EXPIRY_eventId_<userPlanId>%"}. The
+         * {@code since} filter scopes to recent rows so a long-ago execution
+         * for the same id (e.g. a re-purchased plan) doesn't permanently
+         * suppress new reminders.
+         */
+        @Query("SELECT COUNT(we) FROM WorkflowExecution we " +
+                        "WHERE we.idempotencyKey LIKE :keyPattern " +
+                        "  AND we.createdAt >= :since")
+        long countByIdempotencyKeyLikeSince(@Param("keyPattern") String keyPattern,
+                        @Param("since") Instant since);
+
         @Query("SELECT we FROM WorkflowExecution we WHERE we.idempotencyKey = :idempotencyKey AND we.status IN :statuses")
         Optional<WorkflowExecution> findByIdempotencyKeyAndStatusIn(@Param("idempotencyKey") String idempotencyKey,
                         @Param("statuses") List<WorkflowExecutionStatus> statuses);

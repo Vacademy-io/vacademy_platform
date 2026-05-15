@@ -2340,11 +2340,38 @@ class VideoGenerationService:
                                         settings = get_settings()
                                         bucket = settings.aws_bucket_name or settings.aws_s3_public_bucket
                                         base_url = f"https://{bucket}.s3.amazonaws.com/ai-videos/{video_id}/{file_key}/"
-                                    
+
+                                    # Phase B: for per_shot_tts, store an ordered shot→mp3 map in s3_urls
+                                    # instead of just the directory URL. The editor reads this to render
+                                    # per-shot audio clips on the timeline (aligned to shot boundaries)
+                                    # rather than one continuous waveform of the concat master. Other
+                                    # directory uploads (generated_images, etc.) keep the directory-URL
+                                    # convention. Per-shot mp3 filenames are `shot_NNN.mp3` (3-digit
+                                    # zero-padded) — see _synthesize_voice_per_shot in automation_pipeline.
+                                    s3_url_value: Any = base_url
+                                    if file_key == "per_shot_tts":
+                                        _shot_audio_map: Dict[str, str] = {}
+                                        for _u in s3_urls:
+                                            _m = re.search(r'/(shot_\d{3})\.mp3(?:\?|$)', _u)
+                                            if _m:
+                                                _shot_audio_map[_m.group(1)] = _u
+                                        if _shot_audio_map:
+                                            # Sort by shot id for stable JSON ordering in the DB column.
+                                            s3_url_value = dict(sorted(_shot_audio_map.items()))
+                                            logger.info(
+                                                f"[VideoGenService] per_shot_tts: built shot→mp3 map "
+                                                f"({len(s3_url_value)} shots) for s3_urls"
+                                            )
+                                        else:
+                                            logger.warning(
+                                                f"[VideoGenService] per_shot_tts: no shot_NNN.mp3 files matched "
+                                                f"in {len(s3_urls)} uploaded URLs — falling back to directory URL"
+                                            )
+
                                     file_id = f"{video_id}-{file_key}"
                                     uploaded_files[file_key] = {
                                         "file_id": file_id,
-                                        "s3_url": base_url,  # Base directory URL
+                                        "s3_url": s3_url_value,  # Directory URL OR per_shot_tts shot→mp3 dict
                                         "files": s3_urls  # List of individual file URLs
                                     }
                                     logger.info(f"[VideoGenService] Uploaded {len(s3_urls)} files in {file_key} directory")

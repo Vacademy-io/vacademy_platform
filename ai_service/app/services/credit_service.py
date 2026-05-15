@@ -94,6 +94,19 @@ DEFAULT_PRICING = {
     "evaluation": {"base_cost": Decimal("0.10"), "token_rate": Decimal("0.000015"), "min_charge": Decimal("0.10"), "unit": "tokens"},
     "embedding": {"base_cost": Decimal("0.01"), "token_rate": Decimal("0.000002"), "min_charge": Decimal("0.01"), "unit": "tokens"},
     "image": {"base_cost": Decimal("0.30"), "token_rate": Decimal("0"), "min_charge": Decimal("0.30"), "unit": "none"},
+    # Video pricing reads actual model USD via the real-cost path in
+    # calculate_credits (line 854-865) when the per-shot HTML LLM call lands
+    # in deduct_credits with prompt_tokens + completion_tokens > 0 — the
+    # token_rate / base_cost below are FALLBACK numbers only.
+    # Real per-video cost since the May 2026 audit shipped is dominated by:
+    #   • Per-shot HTML LLM calls (8-12 shots × ~30K input + ~10K output)
+    #   • Post-render regens (bbox-lint ~30%, second-beat ~15%, brand-asset
+    #     ~10% on intro/outro) — each adds one extra LLM call
+    #   • Vision review (8 calls × ~$0.014/shot at Gemini 2.5 Pro)
+    #   • Vision review now also pays for a prior-shot reference thumbnail
+    #     (~+$0.001/call) on every non-first shot
+    # Typical ultra video: ~290 credits; super_ultra: ~360 credits.
+    # See AI_CREDITS_PRICING.md for the customer-facing breakdown.
     "video": {"base_cost": Decimal("0.05"), "token_rate": Decimal("0.00001"), "min_charge": Decimal("0.05"), "unit": "tokens"},
     # Reels-from-long-video /preview gate. One Haiku-class LLM call per
     # picked candidate (~2k tokens round-trip — 1.5k prompt + 0.5k completion).

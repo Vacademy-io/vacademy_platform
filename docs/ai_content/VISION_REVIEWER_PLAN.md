@@ -1,9 +1,15 @@
-# Vision Reviewer — Implementation Plan
+# Vision Reviewer — Implementation Plan + Operational Notes
 
-**Status**: Planning. Not yet implemented.
+**Status**: **Shipped.** Phases 1–6 deployed Apr–May 2026. Rubric v3 (2026-05) + deterministic bbox-lint (Tier 2, 2026-05) extend the reviewer per the May 2026 audit; details inline below.
 **Owner**: Pipeline team.
-**Audience**: Engineers picking up the implementation.
+**Audience**: Engineers maintaining or extending the per-shot quality gates.
 **Companion**: [AI_VIDEO_GENERATION.md](./AI_VIDEO_GENERATION.md) (esp. §3.8 — animation density validator, which this builds on).
+
+> **2026-05 audit cycle additions** (jump points):
+> - **§16 — Post-generation gate chain (final shape)** — the four gates that fire per shot in production today, in order.
+> - **§17 — Rubric v3 changes** — `TEXT_CLIPPED` promoted from host-only to top-level; `WHITESPACE_COLLISION` + `BG_DISCONTINUITY` added; `prior_shot_screenshot` wired for cross-shot continuity.
+> - **§18 — Tier 2 deterministic bbox-lint** — the `getBoundingClientRect()` check that closes the loop the probabilistic vision reviewer can't.
+> - **§19 — Cost surface delta** — what the May audit added per ultra video (~+32 credits) and where it lands in the credit ledger.
 
 ---
 

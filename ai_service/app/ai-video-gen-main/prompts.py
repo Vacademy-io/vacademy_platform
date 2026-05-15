@@ -707,7 +707,7 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     "   `<img class='generated-image' data-img-prompt='description' data-img-source='stock' data-stock-provider='pexels' src='placeholder.png' />`\n"
     "   - `data-img-source='stock'` **(PREFERRED)**: Real-world stock photography. Use for: nature, cities, classrooms, labs,\n"
     "     people, landscapes, food, animals, buildings, historical sites, sports, technology, medical, space, weather.\n"
-    "   - `data-img-source='generate'`: AI-generated image (bytedance-seed/seedream-4.5). Use ONLY for: custom illustrations,\n"
+    "   - `data-img-source='generate'`: AI-generated image (recraft/recraft-v4.1). Use ONLY for: custom illustrations,\n"
     "     cutout objects (`data-cutout`), fantasy/fictional scenes, very specific compositions, stylized art.\n"
     "   - `data-stock-provider` (optional): `'pexels'` for cinematic real-world photos/footage (nature, cities, people,\n"
     "     lifestyle, drone, sports, food). `'pixabay'` for illustrations, vectors, diagrams, cartoon/educational imagery,\n"
@@ -1698,6 +1698,7 @@ PER_SHOT_USER_PROMPT_TEMPLATE = """SHOT #{shot_index} of {total_shots} | {shot_t
 - Animation: {animation_strategy}
 - Complexity: {complexity_level}
 - Entrance transition: {transition_in}
+- Background treatment: {background_treatment} (honor this — see core preamble rule)
 
 **WRAPPER ENTRANCE ANIMATION**:
 The shot's outermost `<div>` MUST have `id="shot-root"` and `style="position:relative;width:100%;height:100%;overflow:hidden"`.
@@ -1786,6 +1787,40 @@ TRANSITION_CSS_BLOCKS: dict = {
         "gsap.to(ov,{opacity:0,duration:0.32,delay:0.18,ease:'power2.in',"
         "onComplete:function(){if(ov&&ov.remove)ov.remove();}});"
         "})();"
+    ),
+    # ── Tier 4 4.2 — Mask / clip-path branded reveals (2026-05) ──
+    # All four animate `clip-path` on `#shot-root`. Compatible with the
+    # renderer's shadow-DOM scoping because they target #shot-root directly
+    # (no document.body / parentElement walks). Use a 0.5s duration baseline
+    # to feel deliberate without slowing pace.
+    "circle_iris": (
+        "gsap.set('#shot-root',{clipPath:'circle(0% at 50% 50%)'});"
+        "gsap.to('#shot-root',{clipPath:'circle(120% at 50% 50%)',"
+        "duration:0.55,ease:'power3.inOut'});"
+    ),
+    "diagonal_wipe": (
+        "gsap.set('#shot-root',{clipPath:'polygon(0% 0%, 0% 0%, 0% 0%, 0% 100%)'});"
+        "gsap.to('#shot-root',{clipPath:'polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%)',"
+        "duration:0.55,ease:'power3.out'});"
+    ),
+    "hexagon_iris": (
+        "gsap.set('#shot-root',"
+        "{clipPath:'polygon(50% 50%, 50% 50%, 50% 50%, 50% 50%, 50% 50%, 50% 50%)'});"
+        "gsap.to('#shot-root',"
+        "{clipPath:'polygon(50% -50%, 130% 0%, 130% 100%, 50% 150%, -30% 100%, -30% 0%)',"
+        "duration:0.55,ease:'power3.inOut'});"
+    ),
+    # blinds_horizontal: curtains-parting effect via clip-path:inset() from a
+    # zero-height horizontal band at the center, expanding outward to full
+    # canvas. The earlier multi-band polygon was self-intersecting (12 points
+    # with degenerate edges) and rendered unpredictably across browsers; this
+    # inset() animation is one CSS rectangle interpolating to another and
+    # behaves identically in Chromium / WebKit / Gecko. Pairs well after
+    # KINETIC_TITLE → next act intro.
+    "blinds_horizontal": (
+        "gsap.set('#shot-root',{clipPath:'inset(50% 0% 50% 0%)'});"
+        "gsap.to('#shot-root',{clipPath:'inset(0% 0% 0% 0%)',"
+        "duration:0.55,ease:'power3.inOut'});"
     ),
 }
 

@@ -40,7 +40,21 @@ CORE_PREAMBLE = (
     "Individual foreground subjects can ADDITIONALLY get a slow Ken Burns if they're photos.\n"
     "- **NO APP-LIKE CARDS** — no glassmorphism, no card grids, no mobile-UI feel.\n"
     "- **NO setTimeout** — renderer seeks `gsap.globalTimeline` frame-by-frame. "
-    "Use `gsap.to('#el', {delay:1.4})` or `gsap.delayedCall(1.4, fn)` — setTimeout never fires.\n\n"
+    "Use `gsap.to('#el', {delay:1.4})` or `gsap.delayedCall(1.4, fn)` — setTimeout never fires.\n"
+    "- **BACKGROUND TREATMENT** — the Director plan supplies a `background_treatment` field per shot. "
+    "Honor it; never invent a hand-picked background hex. Accepted values: `brand_solid` (flat "
+    "`var(--brand-bg)`), `brand_textured` (var(--brand-bg) + `.halftone` overlay), `brand_gradient` "
+    "(linear-gradient from var(--brand-bg) to 6% darker), `media_hero` (the media itself fills the "
+    "canvas — no separate bg layer). Use the named token, never `#fff`/`#000`/literal hex.\n"
+    "- **WHITESPACE-SAFE ACCENT WORDS** — when applying a different color to a word mid-phrase, "
+    "the space BEFORE the colored span often gets eaten by CSS (`display:inline-block` collapses "
+    "leading whitespace; adjacent inline-block spans collapse). ALWAYS insert `&nbsp;` explicitly:\n"
+    "    `STARTS&nbsp;<span style=\"color:var(--brand-accent)\">HERE</span>` ✓\n"
+    "    `STARTS <span style=\"color:var(--brand-accent)\">HERE</span>` ✗ (renders as STARTSHERE)\n"
+    "  Without `&nbsp;`, two words get jammed together as a single token — a recurring shipping bug.\n"
+    "- **SECOND-BEAT MOTION** — shots ≥3s should have at least one GSAP tween with "
+    "`delay >= 0.55 × shot_duration` (something happens in the back half, not just an entry "
+    "animation). Otherwise the shot fades in then sits — reads as a still frame.\n\n"
 
     "**PROFESSIONAL CSS UTILITIES (pre-built, use freely)**:\n"
     "- `.halftone` — CSS dot texture overlay (dark dots on current bg)\n"
@@ -294,7 +308,29 @@ CORE_PREAMBLE_ASPIRATIONAL = (
     "- **NARRATION SYNC** — animate to the word timings provided. Reveals should land on emphasis words, "
     "not on round-number delays.\n"
     "- **LEGIBILITY** — display text remains readable: enough contrast vs. background, body and labels "
-    "never below ~0.95rem for landscape / ~1.1rem for portrait.\n\n"
+    "never below ~0.95rem for landscape / ~1.1rem for portrait.\n"
+    "- **BACKGROUND CONTRACT** — the Director plan supplies a `background_treatment` field for "
+    "every shot. Honor it; never invent your own background:\n"
+    "    `brand_solid`    → `<div id='shot-root' style='background:var(--brand-bg);...'>`. Nothing else.\n"
+    "    `brand_textured` → solid `var(--brand-bg)` plus the `.halftone` (or `.halftone-light` on "
+    "dark bg) overlay class as a separate position:absolute layer behind hero content.\n"
+    "    `brand_gradient` → `background:linear-gradient(135deg, var(--brand-bg) 0%, "
+    "color-mix(in srgb, var(--brand-bg) 94%, #000) 100%);` (6% darker stop).\n"
+    "    `media_hero`     → the visible media (stock video / hero image / SVG illustration) is the "
+    "background. Use the asset to fill the canvas; no separate brand-bg layer.\n"
+    "  NEVER use hand-picked hex (`#fff`, `#000`, `#0a0e27`, etc.) as a shot background. The "
+    "`var(--brand-bg)` CSS variable resolves to the institute's brand color — using literal hex "
+    "produces the 'six different backgrounds in one video' bug we just spent a sprint fixing.\n"
+    "- **WHITESPACE-SAFE ACCENT WORDS** — when applying a different color to a word mid-phrase, the "
+    "space BEFORE the colored span often gets eaten by CSS (adjacent inline-block spans collapse; "
+    "`display:inline-block` kills the leading whitespace). Always insert `&nbsp;` explicitly at the "
+    "boundary, like:\n"
+    "    `STARTS&nbsp;<span style=\"color:var(--brand-accent)\">HERE</span>` ✓\n"
+    "    `STARTS <span style=\"color:var(--brand-accent)\">HERE</span>` ✗ (may render as STARTSHERE)\n"
+    "    `<span>STARTS</span><span style=\"color:...\">HERE</span>` ✗ (definitely STARTSHERE)\n"
+    "  Same rule applies BEFORE any colored span, inline-block, or word-wipe element that holds a "
+    "single word. For word-wipe motion, each `<div style='overflow:hidden'>` wrapper should hold "
+    "the whole word plus any trailing `&nbsp;` it needs.\n\n"
 
     "**WHAT TO PURSUE (aspirational, not prescriptive)**:\n"
     "- Distinctive composition: hero asymmetry, layered SVG illustration, large-scale type, deliberate "
@@ -305,6 +341,15 @@ CORE_PREAMBLE_ASPIRATIONAL = (
     "secondary subject, slow rotation or opacity pulse on a background pattern, glow pulse on a hero "
     "element. One `.stage-drift` tween is NOT enough on its own — design at least three independent "
     "loops on different DOM layers so no part of the frame is ever fully still.\n"
+    "- **Second-beat motion (back-half life)**: every shot ≥3s MUST include at least one tween that "
+    "fires in the back half — i.e. a GSAP tween with `delay >= 0.55 × shot_duration`. The 'fade in "
+    "then sit' pattern (every animation at delay ≤ 0.6s, then the canvas stares at the viewer for 2s) "
+    "makes shots feel like still frames — a recurring symptom in the v2026-05 audit. Add a delayed "
+    "secondary reveal, an accent bar that slides in late, a number that rolls, a label that "
+    "cross-fades to a follow-up label, a background watermark that scales in. Pull the delay from "
+    "the WORD TIMINGS table where possible — back-half beats should land on an emphasis word, not "
+    "on a round number like 2.0s. The animation density validator enforces this; shots that fail "
+    "trigger a corrective regen.\n"
     "- Built UI over photographed UI: when the narration depicts a digital interaction (phone, app, "
     "chat, browser, code editor, dashboard, document), CONSTRUCT the interface in HTML/CSS — frame, "
     "status bar, header, message bubbles, metadata strips — so every element can animate to narration. "
@@ -315,7 +360,28 @@ CORE_PREAMBLE_ASPIRATIONAL = (
     "rule is a default, not a ceiling.\n"
     "- Effects judged by impact: shadows, gradients, blur, glassmorphism are ALLOWED when they serve "
     "the composition (depth, focus, mood, separation). Avoid them when they're decorative noise. "
-    "Default = no effect; override with intent.\n\n"
+    "Default = no effect; override with intent.\n"
+    "- **3D PERSPECTIVE LAYERS** — for parallax depth, declare `style='perspective:1200px'` on the "
+    "shot's outermost wrapper, then use `transform:translateZ(-Npx)` on background layers and "
+    "`transform:translateZ(+Npx)` on hero layers. Combined with the `.stage-drift` x/y tween, you get "
+    "true parallax (closer layers move faster) without per-element animation. Use sparingly — heavy "
+    "z-translation on >3 layers gets visually noisy. Card flips with `rotateY()` are a separate "
+    "valid use case for hard cuts between sub-compositions inside one shot.\n"
+    "- **SVG FILTERS (premium polish)** — beyond the pre-registered `roughen` filter, you can define "
+    "and use `motion-blur`, `glow`, and `displace` filters inline in `<defs>`:\n"
+    "    `<filter id='hero-blur'><feGaussianBlur stdDeviation='0 4'/></filter>` (anisotropic motion blur on x-axis)\n"
+    "    `<filter id='hero-glow'><feGaussianBlur stdDeviation='6'/><feMerge><feMergeNode/><feMergeNode in='SourceGraphic'/></feMerge></filter>`\n"
+    "  Apply via `filter='url(#hero-blur)'` on the relevant `<g>` or `<text>`. Reserve motion-blur "
+    "for fast-moving hero elements (whip-pan reveals, slam-in titles) where the blur sells the speed.\n"
+    "- **BRANDED EASING VOCABULARY** — the shot_pack (supplied to you as JSON in the user prompt) "
+    "carries named eases at `shot_pack.ease.entry`, `.exit`, `.emphasis`, `.snappy`, `.settle`. "
+    "These are LOOKUP KEYS — read the resolved value from the shot_pack JSON and INLINE it in your "
+    "GSAP. Example: if the shot_pack shows `ease: { snappy: 'expo.out', entry: 'power3.out' }`, "
+    "write `gsap.to('#el', {opacity:1, duration:0.4, ease:'expo.out'})` — i.e. the literal "
+    "string `'expo.out'`. NEVER write `ease: shot_pack.ease.snappy` literally in JS — "
+    "`shot_pack` isn't a runtime variable; it's a Python-side construct. Picking eases from this "
+    "vocabulary instead of ad-hoc `power2.out` keeps the video's motion language consistent — what "
+    "makes the result feel 'designed' rather than 'generated'.\n\n"
 
     "**MULTI-ACT STRUCTURE FOR LONG SHOTS**:\n"
     "If your shot's duration is ≥12s AND the narration crosses two or more distinct sentences/ideas, "
@@ -1245,7 +1311,7 @@ SHOT_TYPE_CARDS: Dict[str, Dict[str, Any]] = {
         "guidelines": [
             "BACKGROUND: Use `<div class='svg-canvas'>` — cream #f5f0e8 with grid. Never a dark background.",
             "TYPOGRAPHY: Bebas Neue or Impact, 7-10rem. All caps. Lots of whitespace.",
-            "ACCENT WORD: The last word or key word gets `color:var(--brand-accent)`. All others use `var(--brand-primary)`.",
+            "ACCENT WORD: The last word or key word gets `color:var(--brand-accent)`. All others use `var(--brand-primary)`. CRITICAL: when the accent word is NOT on its own flexbox line, insert `&nbsp;` before the colored span — `STARTS&nbsp;<span style='color:var(--brand-accent)'>HERE</span>` — otherwise adjacent inline-blocks collapse the whitespace and the words render as one (`STARTSHERE`). The word-wipe template below works because each word is its own flexbox child with `gap:0.3em`; if you deviate from that, you own the spacing.",
             "WORD-WIPE PATTERN: Wrap each word in `<div style='overflow:hidden'><span id='kw-N' style='display:inline-block;transform:translateY(100%)'>WORD</span></div>`. Animate: `gsap.to('#kw-N', {y:'0%', duration:0.4, delay:N*0.15, ease:'power3.out'});`.",
             "SECTION BADGE: `<div style='overflow:hidden;display:inline-block'><div id='badge' style='background:var(--brand-accent);transform:translateX(-110%)'>1. THE PASS</div></div>` + `gsap.to('#badge',{x:'0%',duration:0.45,ease:'expo.out'});`.",
             "KEEP IT MINIMAL: one phrase, 2-5 words. No body text, no diagrams, no images.",
@@ -1884,7 +1950,70 @@ def build_per_shot_system_prompt(
     parts.append(principles)
     parts.append(do_not)
 
+    # TEXT BOUND BOX — per-line character caps. LLMs respect lookup tables more
+    # reliably than they respect CSS-clamp arithmetic; spelling out the cap per
+    # tier kills the "headline runs off canvas" failure mode (e.g. shot 2 of
+    # vid_1778774930857_w8cwa1y where "THE ULTIMATE ECOSYSTEM." clipped at
+    # left edge because h1 resolved to ~1500px on a 1280px canvas).
+    parts.append(_build_text_bound_box_block(width, height))
+
+    # OUTPUT FORMAT — strict JSON envelope. Three JSON parse failures on shots
+    # 2/3/4 of the same run were caused by the per-shot prompt never asserting
+    # the envelope at all (Director prompt does; per-shot didn't).
+    parts.append(OUTPUT_FORMAT_BLOCK)
+
     return "\n".join(parts)
+
+
+def _build_text_bound_box_block(width: int, height: int) -> str:
+    """Per-line character caps the LLM must respect for the current canvas.
+
+    Lookup table > formula: LLMs handle "max 14 chars/line at display tier"
+    more reliably than "0.55 × font-px × chars < 92% × canvas_w". Values are
+    calibrated against the Bebas Neue / Inter cap-height ratios at the new
+    font_scale ceilings (display 12rem, h1 8rem on landscape).
+    """
+    if width < height:
+        table = (
+            "   Portrait 9:16 1080×1920\n"
+            "   ─────────────────────────\n"
+            "   display tier   →   8 chars/line max\n"
+            "   h1 tier        →  13 chars/line max\n"
+            "   h2 tier        →  20 chars/line max\n"
+            "   body tier      →  40 chars/line max\n"
+        )
+    else:
+        table = (
+            "   Landscape 16:9 1920×1080\n"
+            "   ─────────────────────────\n"
+            "   display tier   →  14 chars/line max\n"
+            "   h1 tier        →  22 chars/line max\n"
+            "   h2 tier        →  34 chars/line max\n"
+            "   body tier      →  62 chars/line max\n"
+        )
+    return (
+        "**TEXT BOUND BOX (per-line character caps — non-negotiable)**:\n"
+        f"Canvas is {width}×{height}. For text inside the safe area (4% inset both axes),\n"
+        "use these MAX characters per LINE at each font tier:\n\n"
+        f"{table}\n"
+        "If your copy exceeds the cap at the chosen tier:\n"
+        "  1. Break into multiple lines (each line still under the cap), OR\n"
+        "  2. Demote one tier (display → h1 → h2), OR\n"
+        "  3. Shorten the copy to the essential 2–4 words.\n"
+        "Glyph clipping at the canvas edge is a SHIPPING-BLOCKING error — the\n"
+        "post-render bbox lint will flag it and force a regen.\n\n"
+    )
+
+
+OUTPUT_FORMAT_BLOCK = (
+    "**OUTPUT FORMAT (non-negotiable)**:\n"
+    "- Respond with EXACTLY one raw JSON object.\n"
+    "- First character must be `{`. Last character must be `}`.\n"
+    "- No markdown fences, no code fences, no preamble or postamble.\n"
+    "- Inside JSON string values, escape `//` as `\\/\\/` if needed; never emit\n"
+    "  raw `//` comments — they will be interpreted as comment delimiters and\n"
+    "  break the parser.\n"
+)
 
 
 def build_ai_video_inline_teaching_block(

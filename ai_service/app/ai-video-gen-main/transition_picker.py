@@ -31,10 +31,16 @@ _KNOWN_TRANSITIONS = {
     "zoom_out",
     "wipe_right",
     "dissolve_up",
-    # New entries (added in this change):
     "whip_pan",
     "zoom_through",
     "vignette_fade",
+    # Tier 4 4.2 — mask / clip-path branded reveals (2026-05).
+    # SVG clip-path animations targeting #shot-root. Branded personality vs
+    # the generic fade. See TRANSITION_CSS_BLOCKS in prompts.py for the GSAP.
+    "circle_iris",       # circular reveal expanding from center
+    "diagonal_wipe",     # diagonal stripe wipe in brand-accent direction
+    "hexagon_iris",      # hexagonal iris (sharper than circle, distinctive)
+    "blinds_horizontal", # horizontal blinds reveal — works well after KINETIC_TITLE
 }
 
 # Map shot_type → visual family. When two adjacent shots are in different

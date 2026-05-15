@@ -256,7 +256,18 @@ async def generate_video_external(
     payload: VideoGenerationRequest,
     target_stage: str = "HTML",
     institute_id: str = Depends(get_institute_from_api_key),
-    _credits_check=Depends(require_credits("video", estimated_tokens=5000)),
+    # Pre-flight check raised 5_000 → 60_000 tokens (2026-05) after the May
+    # audit added several post-render gates (bbox-lint regen, brand-asset
+    # regen, second-beat motion regen) plus larger system prompts (continuity
+    # brief, OUTPUT FORMAT, TEXT BOUND BOX, background contract). A typical
+    # ultra video now consumes ~250K-300K total tokens — 60K is a conservative
+    # PRE-flight floor that catches obviously-bankrupt institutes without
+    # blocking edge-case short videos. The real spend tracking happens
+    # stage-by-stage via TokenUsageService.record_usage_and_deduct_credits;
+    # refund-on-failure (TokenUsageService.refund_video_credits) is the safety
+    # net for mid-run depletion. Tier-aware pre-flight (read payload.quality_tier
+    # and scale) is a tracked follow-up.
+    _credits_check=Depends(require_credits("video", estimated_tokens=60000)),
 ) -> StreamingResponse:
     """
     Generate AI video.
@@ -550,7 +561,11 @@ async def resume_video_external(
     video_id: str,
     payload: ResumeRequest,
     institute_id: str = Depends(get_institute_from_api_key),
-    _credits_check=Depends(require_credits("video", estimated_tokens=3000)),
+    # Resume picks up from a checkpoint so remaining work is a fraction of
+    # a full run, but the per-shot LLM calls + post-render gates still apply
+    # to every shot yet to ship. 3_000 → 30_000 tokens (2026-05 audit) for
+    # the same reason as the main generate dep above.
+    _credits_check=Depends(require_credits("video", estimated_tokens=30000)),
     db: Session = Depends(db_dependency),
 ) -> StreamingResponse:
     """
@@ -711,7 +726,11 @@ async def resume_video_external(
 async def retry_video_external(
     video_id: str,
     institute_id: str = Depends(get_institute_from_api_key),
-    _credits_check=Depends(require_credits("video", estimated_tokens=3000)),
+    # Retry resumes from HTML stage with most shots cached — only failed shots
+    # are regenerated. 3_000 → 30_000 tokens (2026-05 audit). Same rationale
+    # as the resume dep: per-shot post-render gates apply to every shot that
+    # needs regeneration.
+    _credits_check=Depends(require_credits("video", estimated_tokens=30000)),
     db: Session = Depends(db_dependency),
 ) -> StreamingResponse:
     """

@@ -676,6 +676,12 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "director_few_shot": True,
         "shot_animation_validator": True,
         "min_animated_elements": 4,  # ultra: looser than super_ultra's 6
+        # Deterministic post-render bounding-box lint (Tier 2, 2026-05). Walks
+        # the rendered shadow DOM and reports text/media that crosses the
+        # canvas edge — the only non-probabilistic check for the TEXT_CLIPPED
+        # class. Closes the loop the LLM vision reviewer leaves open (see
+        # vid_1778774930857_w8cwa1y audit: clipped headline silently shipped).
+        "shot_bbox_check": True,
         "shot_pack_enabled": True,
         "shot_templates_enabled": True,
         # Skill library (number_counter, typewriter_text, ring_progress, ...) is
@@ -746,6 +752,8 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "motion_density_enforcement": True,
         "director_motion_bias": True,
         "min_animated_elements": 6,
+        # See ultra tier comment — same deterministic bbox lint enabled here.
+        "shot_bbox_check": True,
         "sound_enabled": True,
         "sound_max_cues_per_shot": 3,
         "sound_max_cues_per_video": 40,
@@ -2093,6 +2101,14 @@ class VideoGenerationPipeline:
         self._vision_review_ship_original: int = 0
         self._vision_review_issue_codes: Dict[str, int] = {}
         self._vision_review_skipped_count: int = 0  # all-cause skips (tier off, worker down, deterministic shot type, ...)
+        # Prior-shot thumbnail cache for BG_DISCONTINUITY check (rubric v3, 2026-05).
+        # Keyed by shot_idx; stores the mid-frame PNG bytes of each reviewed shot.
+        # Best-effort under parallel shot processing — if shot N-1 hasn't reviewed
+        # yet when shot N enters review, the cross-shot check is silently skipped
+        # via the `has_prior_shot_reference=False` path. Plain dict is GIL-safe
+        # for single-key get/set; if we ever serialize this across processes the
+        # access pattern will need a lock.
+        self._review_thumbnails: Dict[int, bytes] = {}
         # Banner is emitted once per run on first call to _review_shot_visually
         # so engineers can tell at a glance whether the feature is active and
         # whether the render worker is reachable. Without this, every silent
@@ -6971,9 +6987,15 @@ class VideoGenerationPipeline:
                 "micro":   "clamp(0.9rem, min(2.4vw, 2vh), 1.5rem)",
             }
         else:
+            # Landscape ceilings tightened 2026-05 after vid_1778774930857_w8cwa1y
+            # audit. Old display/h1 caps (24rem/16rem) let h1 resolve to ~1500px
+            # wide for a 12-character line on a 1280px render canvas — text
+            # clipped at edges. New caps keep headlines proportional; the
+            # TEXT BOUND BOX table in build_per_shot_system_prompt is the
+            # paired contract that tells the LLM what line lengths are safe.
             font_scale = {
-                "display": "clamp(4rem, min(18vw, 32vh), 24rem)",
-                "h1":      "clamp(3rem, min(10vw, 22vh), 16rem)",
+                "display": "clamp(4rem, min(14vw, 22vh), 12rem)",
+                "h1":      "clamp(2.8rem, min(9vw, 14vh), 8rem)",
                 "h2":      "clamp(2rem, min(6vw, 14vh), 10rem)",
                 "body":    "clamp(1.2rem, min(2.4vw, 4.4vh), 2.4rem)",
                 "caption": "clamp(0.95rem, min(1.8vw, 3.4vh), 1.8rem)",
@@ -7043,6 +7065,633 @@ class VideoGenerationPipeline:
             "id_prefix": "s{shot_idx}_",  # Shot code replaces {shot_idx} at inject time
         }
 
+    @staticmethod
+    def _build_continuity_brief(
+        shots: List[Dict[str, Any]],
+        shot_idx: int,
+        recurring_motifs: Optional[List[Dict[str, Any]]] = None,
+    ) -> str:
+        """Build a cross-shot continuity brief for the per-shot LLM (Tier 4 L1 fix).
+
+        The per-shot LLM is stateless — each shot is a fresh call with no
+        memory of the prior or next shot. This block injects a small text
+        summary (≤300 tokens) so the LLM can:
+          1. Match the prior shot's background_treatment / palette posture.
+          2. Land in an exit pose the next shot can pick up from.
+          3. Honor `recurring_motifs` declared at the Director plan level so
+             brand elements (logo, watermark, accent bars) appear at consistent
+             screen positions across the timeline.
+
+        Pure function. Uses only Director-plan fields we already have — no
+        rendering pass, no extra LLM call. Returns "" when the video has
+        only one shot.
+        """
+        if not shots or shot_idx < 0 or shot_idx >= len(shots) or len(shots) <= 1:
+            return ""
+
+        lines: List[str] = [
+            "**CROSS-SHOT CONTINUITY BRIEF** — read once, then design with this in mind.",
+        ]
+
+        # ── PRIOR SHOT — what this shot must continue from ──
+        if shot_idx > 0:
+            prior = shots[shot_idx - 1] or {}
+            prior_type = (prior.get("shot_type") or "").upper() or "?"
+            prior_bg = prior.get("background_treatment") or "brand_solid"
+            prior_visual = (prior.get("visual_description") or "").strip()
+            if len(prior_visual) > 120:
+                prior_visual = prior_visual[:120].rsplit(" ", 1)[0] + "…"
+
+            # End pose heuristic — Director plan doesn't have a structured
+            # end_pose field, so synthesize from the most informative bit
+            # available: last text_element > last animation_strategy beat >
+            # tail of narration_excerpt. This is approximate; the goal is
+            # "enough hint to design a graceful continuation", not "exact
+            # pixel state at last frame".
+            end_pose = ""
+            _texts = prior.get("text_elements")
+            if isinstance(_texts, list) and _texts:
+                end_pose = str(_texts[-1])
+            if not end_pose:
+                _anim = (prior.get("animation_strategy") or "").strip()
+                if "," in _anim:
+                    end_pose = _anim.rsplit(",", 1)[-1].strip()
+                elif _anim:
+                    end_pose = _anim
+            if not end_pose:
+                _narr = (prior.get("narration_excerpt") or "").strip()
+                _tail = " ".join(_narr.split()[-6:])
+                if _tail:
+                    end_pose = f"…{_tail}"
+            if len(end_pose) > 100:
+                end_pose = end_pose[:100].rsplit(" ", 1)[0] + "…"
+
+            lines += [
+                "",
+                f"PRIOR SHOT (shot {shot_idx}):",
+                f"  - type: {prior_type}",
+                f"  - background_treatment: {prior_bg}",
+            ]
+            if prior_visual:
+                lines.append(f"  - visual: {prior_visual}")
+            if end_pose:
+                lines.append(f"  - end pose: {end_pose}")
+            lines.append(
+                "  Match prior's `background_treatment` (≤2 distinct per video) and pick up "
+                "visually where it left off."
+            )
+
+        # ── NEXT SHOT INTENT — what this shot must lead into ──
+        if shot_idx < len(shots) - 1:
+            nxt = shots[shot_idx + 1] or {}
+            next_type = (nxt.get("shot_type") or "").upper() or "?"
+
+            opens_with = ""
+            _texts_n = nxt.get("text_elements")
+            if isinstance(_texts_n, list) and _texts_n:
+                opens_with = str(_texts_n[0])
+            if not opens_with:
+                _anim_n = (nxt.get("animation_strategy") or "").strip()
+                if "," in _anim_n:
+                    opens_with = _anim_n.split(",", 1)[0].strip()
+                elif _anim_n:
+                    opens_with = _anim_n
+            if not opens_with:
+                _narr_n = (nxt.get("narration_excerpt") or "").strip()
+                _head = " ".join(_narr_n.split()[:6])
+                if _head:
+                    opens_with = _head + "…"
+            if len(opens_with) > 100:
+                opens_with = opens_with[:100].rsplit(" ", 1)[0] + "…"
+
+            lines += [
+                "",
+                f"NEXT SHOT (shot {shot_idx + 2}):",
+                f"  - type: {next_type}",
+            ]
+            if opens_with:
+                lines.append(f"  - opens with: {opens_with}")
+            lines.append(
+                "  Land in an exit pose this next shot can pick up from cleanly — don't end on "
+                "screen-full of unrelated content that has to be wiped away."
+            )
+
+        # ── RECURRING MOTIFS — brand elements at consistent screen positions ──
+        if recurring_motifs:
+            applicable: List[str] = []
+            current_bg = shots[shot_idx].get("background_treatment", "")
+            for m in recurring_motifs[:5]:  # cap to avoid token bloat
+                if not isinstance(m, dict):
+                    continue
+                when = (m.get("when_visible") or "").lower()
+                # Cheap conditional skip: motifs declared off media_hero shots
+                if "except media_hero" in when and current_bg == "media_hero":
+                    continue
+                desc = (m.get("description") or "").strip()
+                pos = (m.get("screen_position") or "").strip()
+                if not (desc or pos):
+                    continue
+                line = f"  - {desc}"
+                if pos:
+                    line += f" — position: {pos}"
+                applicable.append(line)
+            if applicable:
+                lines += [
+                    "",
+                    "RECURRING MOTIFS (must appear at consistent screen positions across shots):",
+                    *applicable,
+                    "  Place these at their declared positions; never reinvent where the logo sits.",
+                ]
+
+        return "\n".join(lines)
+
+    # Shot types where bbox-lint is not useful or not actionable:
+    #   SOURCE_CLIP / IMAGE_CLIP / AI_VIDEO_HERO — no LLM HTML to regen.
+    #   KINETIC_TEXT — pipeline-built from word timings, no LLM HTML to regen.
+    _BBOX_LINT_SKIP_SHOT_TYPES = frozenset({
+        "SOURCE_CLIP", "IMAGE_CLIP", "AI_VIDEO_HERO", "KINETIC_TEXT",
+    })
+
+    # Lazy-inheritance defaults for the per-shot `background_treatment` field
+    # (Tier 3, 2026-05). Used by _run_director when the Director omits the
+    # field — conservative shot-type-derived mapping so cross-shot continuity
+    # is preserved without forcing the Director to set it on every shot.
+    # Media-hero shot types map to `media_hero` (the media IS the background);
+    # all others map to flat / textured / gradient brand-bg by content density.
+    _SHOT_TYPE_BG_TREATMENT_DEFAULT = {
+        # Media-hero: the visible media fills the canvas. Covers every
+        # shot_type from SHOT_TYPE_CARDS where stock/AI/source media is
+        # the dominant background, plus split-screen and cutout assets.
+        "VIDEO_HERO":       "media_hero",
+        "IMAGE_HERO":       "media_hero",
+        "IMAGE_SPLIT":      "media_hero",
+        "IMAGE_CLIP":       "media_hero",
+        "SOURCE_CLIP":      "media_hero",
+        "AI_VIDEO_HERO":    "media_hero",
+        "ANIMATED_ASSET":   "media_hero",   # cutouts on a bg the LLM chooses; treat as hero
+        # Brand-textured: data-rich shots benefit from halftone/dotgrid overlay.
+        "DATA_STORY":       "brand_textured",
+        "PROCESS_STEPS":    "brand_textured",
+        "INFOGRAPHIC_SVG":  "brand_textured",
+        "EQUATION_BUILD":   "brand_textured",
+        "ANNOTATION_MAP":   "brand_textured",
+        "TEXT_DIAGRAM":     "brand_textured",
+        "ARTICLE_FOCUS":    "brand_textured",
+        # Brand-gradient: world-changes-around-the-subject pattern.
+        "PRODUCT_HERO":     "brand_gradient",
+        # Brand-solid: flat brand bg for typography / device chrome / connective.
+        "KINETIC_TITLE":    "brand_solid",
+        "KINETIC_TEXT":     "brand_solid",
+        "LOWER_THIRD":      "brand_solid",
+        "DEVICE_MOCKUP":    "brand_solid",
+    }
+
+    def _bbox_lint_pick_timestamps(self, duration_s: float) -> List[float]:
+        """Pick timestamps for the deterministic bbox lint.
+
+        Two-frame coverage: mid-shot (after entry animations settle) and near-
+        end (catches text that settled to a position that overflows). Single
+        timestamp would miss the steady-state-then-overflow case where a slow
+        Ken Burns push moves text past the edge at t≈0.9*dur but it was inside
+        at t≈0.5*dur. Three timestamps would catch more but is 50% more cost
+        for diminishing returns at this rubric level.
+        """
+        dur = max(1.0, float(duration_s))
+        # Early-mid: after typical entry tweens (delay ≤ 0.8s, duration ≤ 1.0s).
+        t_mid = max(0.6, min(dur * 0.5, dur - 0.4))
+        # Near-end: before any transition-out tween (renderer applies those to
+        # #shot-root, not to in-shot elements, so this is normally safe).
+        t_late = max(t_mid + 0.2, dur - 0.25)
+        return [round(t_mid, 2), round(t_late, 2)]
+
+    def _build_bbox_corrective_prompt(
+        self,
+        violations: List[Dict[str, Any]],
+        canvas_w: int,
+        canvas_h: int,
+    ) -> str:
+        """Compose the corrective user message for a bbox-lint-driven regen.
+
+        The regen LLM gets the exact selectors + text + bounding rects + canvas
+        size. The directive is intentionally concrete (demote tier / break /
+        max-width) so the LLM has 3 acknowledged escapes rather than freewheeling.
+        """
+        lines = [
+            "Your previous shot HTML had text/media that OVERFLOWED the canvas. This is a "
+            "deterministic check from a headless-Chromium bounding-box walk — not a vision-model "
+            "interpretation. Every element listed below had a `getBoundingClientRect()` that crossed "
+            f"the canvas edge (canvas is strictly {canvas_w}×{canvas_h}, 0-indexed, no overflow tolerated).",
+            "",
+            "Offending elements:",
+        ]
+        for v in violations[:6]:
+            r = v.get("rect") or {}
+            sel = str(v.get("selector") or "?")
+            txt = str(v.get("text") or "")
+            t = float(v.get("t") or 0)
+            kind = "media" if v.get("is_media") else "text"
+            txt_preview = f' "{txt[:50]}{"…" if len(txt) > 50 else ""}"' if txt else ""
+            lines.append(
+                f"  - [{kind}] {sel}{txt_preview} at t={t:.2f}s — "
+                f"rect=(l={r.get('l', '?'):.0f}, t={r.get('t', '?'):.0f}, "
+                f"r={r.get('r', '?'):.0f}, b={r.get('b', '?'):.0f})"
+            )
+        lines += [
+            "",
+            "Fix the overflow by applying ONE OR MORE of these techniques:",
+            "  1. Demote the font tier by one level (display → h1 → h2 → body) on the overflowing element.",
+            "  2. Break the headline into two lines: change `white-space:nowrap` to allow wrap, OR insert a `<br>` at a natural break.",
+            "  3. Add `max-width:88%; word-break:keep-all; hyphens:none` to the container so long words shrink in scale before they clip.",
+            "  4. If the element is a media element (img/svg), constrain `width` and `height` so the bounding rect stays inside the canvas.",
+            "",
+            "Keep the same shot_pack tokens, the same animation_strategy, and the same narration sync. "
+            "Return only the JSON shot object.",
+        ]
+        return "\n".join(lines)
+
+    # Shot types that CAN host a reference asset embed via <img data-img-source="reference">.
+    # Text-only shot types are excluded — they're not designed to render <img>.
+    _BRAND_ASSET_HOSTABLE_SHOT_TYPES = frozenset({
+        "VIDEO_HERO", "IMAGE_HERO", "IMAGE_SPLIT", "IMAGE_CLIP",
+        "PRODUCT_HERO", "ANIMATED_ASSET", "ANNOTATION_MAP",
+        "INFOGRAPHIC_SVG", "DEVICE_MOCKUP",
+    })
+
+    def _shot_requires_brand_asset(
+        self,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        total_shots: int,
+    ) -> bool:
+        """Return True when this shot is required to embed a user-uploaded
+        reference asset (logo, product photo, brand mark).
+
+        Required when (a) the run has reference assets AND (b) this is the
+        intro (shot 0) OR the close (last shot) OR a shot tagged
+        `role:"product_proof"`. Text-only shot types are skipped because they
+        can't host an `<img>` element.
+        """
+        # No reference assets uploaded? Nothing to enforce.
+        _ref_ctx = getattr(self, "_reference_context", None)
+        _ref_images: List[Any] = []
+        if isinstance(_ref_ctx, dict):
+            _ref_images = _ref_ctx.get("embeddable_images") or []
+        if not _ref_images:
+            return False
+
+        shot_type = (shot.get("shot_type") or shot.get("type") or "").upper()
+        if shot_type not in self._BRAND_ASSET_HOSTABLE_SHOT_TYPES:
+            return False
+
+        # Role-based requirement: intro, outro, or product_proof.
+        role = (shot.get("role") or "").strip().lower()
+        if role == "product_proof":
+            return True
+        if shot_idx == 0:
+            return True
+        if total_shots > 0 and shot_idx == total_shots - 1:
+            return True
+        return False
+
+    @staticmethod
+    def _html_has_reference_asset_embed(html: str) -> bool:
+        """Regex check for at least one `<img data-img-source="reference"...>` tag.
+
+        Tolerates single OR double quotes around the attribute value to match
+        the prompt's permissive examples; matches with arbitrary leading
+        attributes inside the `<img>` tag so attribute order doesn't matter.
+        """
+        if not html:
+            return False
+        # `<img ... data-img-source="reference" ...>` or `data-img-source='reference'`
+        return bool(re.search(
+            r"""<img\b[^>]*\bdata-img-source\s*=\s*["']\s*reference\s*["'][^>]*>""",
+            html,
+            re.IGNORECASE,
+        ))
+
+    def _lint_shot_brand_asset(
+        self,
+        *,
+        html: str,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        total_shots: int,
+        start_time: float,
+        end_time: float,
+        system_prompt: str,
+        user_prompt: str,
+        last_raw_response: str,
+        usage: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Post-render assertion: when this shot is required to embed a
+        user-uploaded reference asset (intro / outro / product_proof) and the
+        rendered HTML doesn't contain `<img data-img-source="reference" ...>`,
+        fire ONE corrective regen with concrete embed guidance.
+
+        Returns a telemetry record dict with optional `regen_html`, or None
+        when no enforcement is required for this shot.
+
+        Mirrors the shape of `_lint_shot_bbox` so call-site telemetry stays
+        consistent: pre-state captured in record; ship-original-on-regression
+        policy; regen via the same chat-history pattern as the density and
+        bbox lints.
+        """
+        if not self._shot_requires_brand_asset(shot, shot_idx, total_shots):
+            return None
+
+        if self._html_has_reference_asset_embed(html):
+            print(f"   🏷️  Shot {shot_idx + 1}: brand-asset embed PRESENT (required shot)")
+            return {
+                "shipped": "original",
+                "had_embed_pre": True,
+                "had_embed_post": True,
+                "regen_html": None,
+            }
+
+        # Required but missing — fire one corrective regen.
+        # Build a directive that points the LLM at the BRAND ANCHOR block
+        # already in the prompt history.
+        _ref_ctx = getattr(self, "_reference_context", None) or {}
+        _embeds = _ref_ctx.get("embeddable_images") or []
+        _example_url = ""
+        if _embeds:
+            _first = _embeds[0]
+            if isinstance(_first, dict):
+                _example_url = (_first.get("s3_url") or _first.get("url") or "").strip()
+
+        _role_label = "intro" if shot_idx == 0 else ("close" if shot_idx == total_shots - 1 else "product_proof")
+        print(
+            f"   🏷️  Shot {shot_idx + 1} ({_role_label}): brand-asset embed MISSING — firing corrective regen"
+        )
+
+        corrective_lines = [
+            f"This shot is the {_role_label} of the video and MUST embed at least one user-provided "
+            "brand/reference asset. Your previous output did NOT include any "
+            "`<img data-img-source=\"reference\" ...>` tag.",
+            "",
+            "The user uploaded brand assets — they were surfaced earlier in this prompt under the "
+            "🏷️ BRAND ANCHOR block. Embed at least one of them like this:",
+            "",
+            (
+                f'  <img data-img-source="reference" data-reference-url="{_example_url}" '
+                f'data-img-prompt="<short alt>" src="placeholder.png" />'
+                if _example_url else
+                '  <img data-img-source="reference" data-reference-url="<url from BRAND ANCHOR>" '
+                'data-img-prompt="<short alt>" src="placeholder.png" />'
+            ),
+            "",
+            "The `src=\"placeholder.png\"` is REQUIRED — the pipeline rewrites it to the actual "
+            "asset URL after generation. Place the brand image in the composition where it serves "
+            "the narrative — for intros, a hero placement; for closes, near a CTA / outro card.",
+            "Keep the same shot_pack tokens, narration sync, and animation_strategy. Return only "
+            "the JSON shot object.",
+        ]
+        corrective = "\n".join(corrective_lines)
+
+        record: Dict[str, Any] = {
+            "shipped": "original",
+            "had_embed_pre": False,
+            "had_embed_post": False,
+            "role_label": _role_label,
+            "regen_html": None,
+        }
+
+        try:
+            raw2, usage2 = self.html_client.chat(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                    {"role": "assistant", "content": (last_raw_response or "")[:4000]},
+                    {"role": "user", "content": corrective},
+                ],
+                temperature=0.4,
+                max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+            )
+        except Exception as exc:
+            print(f"   ⚠️ Shot {shot_idx + 1} brand-asset regen failed ({exc}) — shipping original")
+            record["regen_error"] = str(exc)
+            return record
+
+        data2 = _extract_json_blob(raw2)
+        html2 = (data2 or {}).get("html", "")
+        if usage2:
+            usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)
+            usage["completion_tokens"] = usage.get("completion_tokens", 0) + usage2.get("completion_tokens", 0)
+            usage["total_tokens"] = usage.get("total_tokens", 0) + usage2.get("total_tokens", 0)
+
+        if not html2:
+            record["regen_error"] = "regen returned empty html"
+            return record
+
+        candidate = self._sanitize_html_content(html2)
+        _duration_s = max(0.5, end_time - start_time)
+        candidate = self._clamp_entry_animations(candidate, _duration_s)
+        record["regen_html_attempt"] = candidate
+
+        if self._html_has_reference_asset_embed(candidate):
+            record["regen_html"] = candidate
+            record["had_embed_post"] = True
+            record["shipped"] = "regen"
+            print(f"   ✅ Shot {shot_idx + 1} brand-asset regen PASSED — shipping regen")
+        else:
+            record["shipped"] = "original"
+            record["reason"] = "regen still missing reference embed — reverting"
+            print(f"   ⏪ Shot {shot_idx + 1} brand-asset regen NO BETTER — shipping original")
+
+        return record
+
+    def _lint_shot_bbox(
+        self,
+        *,
+        html: str,
+        shot: Dict[str, Any],
+        shot_idx: int,
+        start_time: float,
+        end_time: float,
+        system_prompt: str,
+        user_prompt: str,
+        last_raw_response: str,
+        usage: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Deterministic post-render overflow check.
+
+        Fires AFTER the regex density validator (cheap) but BEFORE the LLM
+        vision review (expensive). Walks the rendered shadow DOM via the render
+        worker's POST /bbox-check; if any visible text or media element crosses
+        the canvas edge, fires ONE corrective regen and re-lints. Ship-original-
+        on-regression policy mirrors the density validator.
+
+        Returns a telemetry record dict (with optional `regen_html` for the
+        caller to substitute), or None when the lint was skipped.
+
+        Never raises — every failure path returns None (skip) so the shot ships.
+        """
+        if not self._tier_config.get("shot_bbox_check"):
+            return None
+
+        shot_type = (shot.get("shot_type") or shot.get("type") or "").upper()
+        if shot_type in self._BBOX_LINT_SKIP_SHOT_TYPES:
+            return None
+
+        duration_s = float(end_time - start_time)
+        if duration_s < 1.5:
+            # Mirrors vision-review skip; sub-1.5s shots are too short for the
+            # entry animation to have settled — high false-positive rate.
+            return None
+
+        # Lazy import — keeps module load fast for free-tier runs.
+        try:
+            from shot_screenshot_service import ShotScreenshotClient, ScreenshotClientError
+        except ImportError as exc:
+            print(f"   ⚠️ Shot {shot_idx + 1}: bbox-lint SKIPPED — screenshot module not importable: {exc}")
+            return None
+
+        client = getattr(self, "_screenshot_client", None)
+        if client is None:
+            client = ShotScreenshotClient()
+            self._screenshot_client = client
+        if not client.is_configured:
+            # Same fail-quiet posture as vision review when the worker is
+            # unreachable — banner already explained why if it was triggered.
+            return None
+
+        timestamps = self._bbox_lint_pick_timestamps(duration_s)
+        canvas_w = int(getattr(self, "video_width", 1920))
+        canvas_h = int(getattr(self, "video_height", 1080))
+        bg = str(
+            shot.get("background")
+            or shot.get("bg")
+            or ((getattr(self, "_current_style_guide", None) or {}).get("palette") or {}).get("background")
+            or "#0a0e27"
+        )
+
+        try:
+            violations = client.check_shot_bbox(
+                html=html,
+                width=canvas_w,
+                height=canvas_h,
+                timestamps=timestamps,
+                background=bg,
+            )
+        except ScreenshotClientError as exc:
+            print(f"   ⚠️ Shot {shot_idx + 1}: bbox-lint SKIPPED — render worker /bbox-check failed: {exc}")
+            return None
+
+        record: Dict[str, Any] = {
+            "shipped": "original",
+            "pre_violations": [
+                {
+                    "t": v.t, "selector": v.selector, "rect": dict(v.rect),
+                    "text": v.text, "is_media": v.is_media,
+                }
+                for v in violations
+            ],
+            "canvas_w": canvas_w,
+            "canvas_h": canvas_h,
+            "timestamps": list(timestamps),
+            "regen_html": None,
+        }
+
+        if not violations:
+            # Pass — shot fits the canvas. Most common path; print only when verbose.
+            print(f"   📐 Shot {shot_idx + 1}: bbox-lint PASSED ({len(timestamps)} timestamps clean)")
+            return record
+
+        # Build the corrective directive with concrete selector + rect info.
+        _codes = ",".join(v.selector for v in violations[:3])
+        print(
+            f"   📐 Shot {shot_idx + 1}: bbox-lint FOUND {len(violations)} overflow(s) "
+            f"[{_codes}{'…' if len(violations) > 3 else ''}] — firing corrective regen"
+        )
+
+        corrective = self._build_bbox_corrective_prompt(
+            record["pre_violations"], canvas_w, canvas_h,
+        )
+
+        # On regression we ship original by leaving record["regen_html"]=None;
+        # the caller substitutes html only when regen_html is set, so the
+        # original is implicitly preserved without an explicit snapshot.
+        try:
+            raw2, usage2 = self.html_client.chat(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                    {"role": "assistant", "content": (last_raw_response or "")[:4000]},
+                    {"role": "user", "content": corrective},
+                ],
+                temperature=0.4,
+                max_tokens=self._tier_config.get("per_shot_max_tokens", 16000),
+            )
+        except Exception as exc:
+            print(f"   ⚠️ Shot {shot_idx + 1} bbox-lint regen failed ({exc}) — shipping original")
+            record["regen_error"] = str(exc)
+            return record
+
+        data2 = _extract_json_blob(raw2)
+        html2 = (data2 or {}).get("html", "")
+        if usage2:
+            usage["prompt_tokens"] = usage.get("prompt_tokens", 0) + usage2.get("prompt_tokens", 0)
+            usage["completion_tokens"] = usage.get("completion_tokens", 0) + usage2.get("completion_tokens", 0)
+            usage["total_tokens"] = usage.get("total_tokens", 0) + usage2.get("total_tokens", 0)
+
+        if not html2:
+            record["regen_error"] = "regen returned empty html"
+            return record
+
+        candidate = self._sanitize_html_content(html2)
+        candidate = self._clamp_entry_animations(candidate, duration_s)
+        record["regen_html_attempt"] = candidate
+
+        # Re-lint the regen candidate. Three outcomes — match density validator
+        # semantics so the call-site telemetry shape is consistent.
+        try:
+            violations2 = client.check_shot_bbox(
+                html=candidate,
+                width=canvas_w,
+                height=canvas_h,
+                timestamps=timestamps,
+                background=bg,
+            )
+        except ScreenshotClientError as exc:
+            print(f"   ⚠️ Shot {shot_idx + 1} bbox-lint regen re-check failed ({exc}) — shipping original")
+            record["regen_error"] = f"regen re-check failed: {exc}"
+            return record
+
+        record["post_violations"] = [
+            {
+                "t": v.t, "selector": v.selector, "rect": dict(v.rect),
+                "text": v.text, "is_media": v.is_media,
+            }
+            for v in violations2
+        ]
+
+        if not violations2:
+            record["regen_html"] = candidate
+            record["shipped"] = "regen"
+            print(f"   ✅ Shot {shot_idx + 1} bbox-lint regen PASSED — shipping regen")
+        elif len(violations2) >= len(violations):
+            record["shipped"] = "original"
+            record["reason"] = (
+                f"regen had {len(violations2)} violations vs {len(violations)} original — reverting"
+            )
+            print(
+                f"   ⏪ Shot {shot_idx + 1} bbox-lint regen NO BETTER "
+                f"({len(violations)} → {len(violations2)}) — shipping original"
+            )
+        else:
+            record["regen_html"] = candidate
+            record["shipped"] = "regen"
+            record["reason"] = (
+                f"regen reduced violations {len(violations)} → {len(violations2)} — best attempt shipped"
+            )
+            print(
+                f"   ⚠️ Shot {shot_idx + 1} bbox-lint regen IMPROVED "
+                f"({len(violations)} → {len(violations2)}) — shipping best attempt"
+            )
+
+        return record
+
     def _validate_shot_animation_density(
         self,
         html: str,
@@ -7104,6 +7753,40 @@ class VideoGenerationPipeline:
         # flag it even if the min threshold is low.
         if tween_count == 0 and "animation" not in html.lower():
             issues.append("no GSAP animations or CSS @keyframes found at all")
+
+        # ── Second-beat motion (Tier 3, 2026-05) ──
+        # Every shot ≥3s should have at least one tween firing in the back half
+        # (delay ≥ 0.55 × duration). Without this, shots fade in then sit —
+        # canvas reads as a still frame for the latter half. This was the
+        # recurring "feels like a slideshow" symptom in the May 2026 audit.
+        #
+        # We reuse the delay_pattern from the sync_point block above when it's
+        # already computed; otherwise recompute. Lenient on short shots (entry-
+        # only motion is fine when the shot itself is short).
+        _shot_duration_s = end_time - start_time
+        if _shot_duration_s >= 3.0:
+            try:
+                _delay_pattern = re.compile(r"delay\s*:\s*([0-9]*\.?[0-9]+)")
+                _all_delays = [float(m) for m in _delay_pattern.findall(html)]
+            except (re.error, ValueError):
+                _all_delays = []
+            _back_half_threshold = 0.55 * _shot_duration_s
+            _max_delay = max(_all_delays) if _all_delays else 0.0
+            # Allow a tween that fires before the threshold IF it has a very
+            # long duration that EXTENDS into the back half — e.g. a
+            # `delay:0.5, duration:5.0` Ken Burns starts early but covers the
+            # whole shot. Currently the cheapest proxy is "any delay+duration
+            # sum crosses the threshold"; we don't parse durations here to keep
+            # this regex-only, so we accept this as a known false-positive:
+            # the corrective regen prompt explicitly mentions "delayed reveals
+            # OR motion that crosses into the back half" so a Ken Burns shot
+            # can satisfy it by adding any cheap late tween.
+            if _max_delay < _back_half_threshold:
+                issues.append(
+                    f"no back-half motion (max GSAP delay {_max_delay:.2f}s < "
+                    f"{_back_half_threshold:.2f}s = 0.55 × {_shot_duration_s:.1f}s shot duration) — "
+                    f"add at least one tween that fires in the back half so the shot doesn't stare"
+                )
 
         # ── Anti-pattern checks (Track C) ──
         # Cheap planner models (gemini-flash variants) occasionally ignore
@@ -7328,6 +8011,12 @@ class VideoGenerationPipeline:
         # Resolve the actual brand palette (hex values) — shot_pack stores
         # CSS var refs which the vision model can't compare against pixels.
         _palette = (getattr(self, "_current_style_guide", None) or {}).get("palette") or {}
+
+        # BG_DISCONTINUITY (rubric v3) reads against the prior shot's mid-frame.
+        # Best-effort lookup — missing key (parallel shot order, first shot,
+        # prior shot skipped review) silently degrades to "no cross-shot check".
+        _prior_thumb = self._review_thumbnails.get(shot_idx - 1)
+
         review = review_shot(
             screenshots=screenshots_pre,
             shot=shot,
@@ -7336,8 +8025,18 @@ class VideoGenerationPipeline:
             timestamps=[float(t) for t in timestamps],
             host_meta=host_meta,
             palette=_palette,
+            prior_shot_screenshot=_prior_thumb,
             llm_chat=self.html_client.chat,
         )
+
+        # Cache this shot's mid-frame so the next shot can BG_DISCONTINUITY-check
+        # against it. The middle screenshot is the representative thumbnail —
+        # entry transitions are mid-flight at frame 0; exit overlays may dominate
+        # frame N-1. We store regardless of pass/fail so the cache stays warm
+        # even for shots that errored out of full review.
+        if screenshots_pre:
+            _mid_idx = len(screenshots_pre) // 2
+            self._review_thumbnails[shot_idx] = screenshots_pre[_mid_idx]
 
         # Tally cost on the run-level accumulator regardless of outcome.
         self._vision_review_run_cost_usd = (
@@ -7454,8 +8153,15 @@ class VideoGenerationPipeline:
                             timestamps=[float(t) for t in timestamps],
                             host_meta=host_meta,
                             palette=_palette,
+                            prior_shot_screenshot=_prior_thumb,
                             llm_chat=self.html_client.chat,
                         )
+                        # If regen ships, overwrite the cached thumbnail with
+                        # the post-regen mid-frame so the next shot's
+                        # BG_DISCONTINUITY check reads against what actually
+                        # shipped — not the rejected first-pass HTML.
+                        if screenshots_post:
+                            self._review_thumbnails[shot_idx] = screenshots_post[len(screenshots_post) // 2]
                         self._vision_review_run_cost_usd += float(review2.get("cost_usd") or 0.0)
                         record["issues_post"] = list(review2.get("issues") or [])
                         record["severity_max_post"] = int(review2.get("severity_max") or 0)
@@ -9107,6 +9813,27 @@ class VideoGenerationPipeline:
             shot.setdefault("complexity_level", "moderate")
             shot.setdefault("overlay", False)
             shot.setdefault("start_word", "")
+            # Lazy inheritance for background_treatment (Tier 3, 2026-05).
+            # Cross-shot continuity contract — Director-set value wins, falls
+            # back to a shot-type-derived default. Without this, per-shot LLMs
+            # invent their own backgrounds and the result is 6 different
+            # palettes in 8 shots (see vid_1778774930857_w8cwa1y audit).
+            _existing_bg = (shot.get("background_treatment") or "").strip().lower()
+            _valid_bg = {"brand_solid", "brand_textured", "brand_gradient", "media_hero"}
+            if _existing_bg not in _valid_bg:
+                _st = (shot.get("shot_type") or "").upper()
+                shot["background_treatment"] = self._SHOT_TYPE_BG_TREATMENT_DEFAULT.get(_st, "brand_solid")
+            else:
+                shot["background_treatment"] = _existing_bg
+
+        # Normalize the top-level recurring_motifs envelope field (Tier 4 L1).
+        # Coerce non-list / non-dict items to empty so downstream consumers
+        # (the per-shot continuity brief builder) can trust the shape.
+        _rm = director_plan.get("recurring_motifs")
+        if not isinstance(_rm, list):
+            director_plan["recurring_motifs"] = []
+        else:
+            director_plan["recurring_motifs"] = [m for m in _rm if isinstance(m, dict)]
 
         # Validate timeline coverage: shots should be sequential and cover full duration
         non_overlay = [s for s in shots if not s.get("overlay")]
@@ -12294,6 +13021,10 @@ class VideoGenerationPipeline:
                 complexity_level=shot.get("complexity_level", "moderate"),
                 transition_in=transition_in,
                 transition_css_block=transition_css_block,
+                # Director-set per-shot bg treatment (Tier 3, 2026-05). Falls
+                # back to brand_solid if Director omitted it AND lazy-inheritance
+                # didn't set one (defensive default for non-Director paths).
+                background_treatment=shot.get("background_treatment", "brand_solid"),
                 image_prompt_line=image_prompt_line,
                 video_query_line=video_query_line,
                 director_notes=director_notes,
@@ -12347,6 +13078,20 @@ class VideoGenerationPipeline:
             )
             if _shot_vp_block:
                 user_prompt = user_prompt + _shot_vp_block
+
+            # ── Cross-shot CONTINUITY BRIEF (Tier 4 L1, 2026-05) ──
+            # The per-shot LLM is stateless. Without this block, every shot
+            # reinvents brand placement, background treatment, exit pose →
+            # the "6 different backgrounds in 8 shots" symptom from the
+            # vid_1778774930857_w8cwa1y audit. Built from Director-plan fields
+            # we already have (no extra LLM call, no extra screenshot).
+            _continuity_brief = self._build_continuity_brief(
+                shots=shots,
+                shot_idx=shot_idx,
+                recurring_motifs=director_plan.get("recurring_motifs") or [],
+            )
+            if _continuity_brief:
+                user_prompt = user_prompt + "\n\n" + _continuity_brief
 
             # ── Named-entity / web-search / article-screenshot hints ──
             # Gate on shot type — text-heavy shots don't use embedded media so
@@ -13236,24 +13981,48 @@ class VideoGenerationPipeline:
                             _fb_brand = self._extract_brand_brief()
                         except Exception:
                             _fb_brand = {"bg_hex": None, "accent_hex": None, "font_family": None, "raw_brief": ""}
-                        _fb_bg = _fb_brand.get("bg_hex") or "#0D0D0D"
-                        _fb_accent = (
-                            _fb_brand.get("accent_hex")
-                            or (palette or {}).get("accent")
-                            or "#C9A84C"
-                        )
-                        _fb_font = _fb_brand.get("font_family") or "Inter"
-                        # Auto-invert text colour against bg luminance (#XXXXXX).
-                        try:
-                            _hex = _fb_bg.lstrip("#")
-                            _lum = (
-                                int(_hex[0:2], 16) * 299
-                                + int(_hex[2:4], 16) * 587
-                                + int(_hex[4:6], 16) * 114
-                            ) / 1000
-                            _fb_text_color = "#FFFFFF" if _lum < 128 else "#0D0D0D"
-                        except Exception:
-                            _fb_text_color = "#FFFFFF"
+                        # Layered palette inheritance — brand_brief > shot_pack.palette >
+                        # CSS-var-with-hex-fallback. Previously defaulted to charcoal
+                        # #0D0D0D / gold #C9A84C regardless of the run's brand — yielded
+                        # visually jarring fallback shots mid-stream of e.g. cream-bg
+                        # videos (see vid_1778774930857_w8cwa1y shot 3). Now the fallback
+                        # inherits the run's actual palette so it visually continues with
+                        # neighboring shots instead of breaking the eye.
+                        _palette = palette or {}
+                        _sp_pack = getattr(self, "_current_shot_pack", None) or {}
+                        _sp_fonts = _sp_pack.get("font_family") or {}
+                        _fb_bg = _fb_brand.get("bg_hex") or _palette.get("background") or "var(--brand-bg, #f5f0e8)"
+                        _fb_accent = _fb_brand.get("accent_hex") or _palette.get("accent") or "var(--brand-accent, #FF7A1A)"
+                        _fb_font = _fb_brand.get("font_family") or _sp_fonts.get("body") or "Inter"
+                        # Foreground priority: brand_brief.text_hex > palette.text >
+                        # luminance-inverted from a hex bg > CSS var with safe-contrast
+                        # hex fallback. Inversion only fires when we have a hex bg —
+                        # if bg is a `var(...)` reference, fall through to the var.
+                        # NOTE: `_extract_brand_brief()` returns only bg_hex/accent_hex/font_family/raw_brief
+                        # — no `text_hex` today. If a future change adds it, swap in `_fb_brand.get("text_hex") or`
+                        # here. For now, palette.text is the only explicit-text source.
+                        _explicit_text = _palette.get("text")
+                        if _explicit_text:
+                            _fb_text_color = _explicit_text
+                        else:
+                            _hex_bg = _fb_brand.get("bg_hex")
+                            if not _hex_bg:
+                                _pbg = _palette.get("background")
+                                if isinstance(_pbg, str) and _pbg.startswith("#"):
+                                    _hex_bg = _pbg
+                            if _hex_bg:
+                                try:
+                                    _hex = _hex_bg.lstrip("#")
+                                    _lum = (
+                                        int(_hex[0:2], 16) * 299
+                                        + int(_hex[2:4], 16) * 587
+                                        + int(_hex[4:6], 16) * 114
+                                    ) / 1000
+                                    _fb_text_color = "#FFFFFF" if _lum < 128 else "#0D0D0D"
+                                except Exception:
+                                    _fb_text_color = "var(--brand-text, #2a1a0a)"
+                            else:
+                                _fb_text_color = "var(--brand-text, #2a1a0a)"
 
                         # Multi-source text — never empty.
                         _text_elems = shot.get("text_elements") or []
@@ -13478,6 +14247,22 @@ class VideoGenerationPipeline:
                             "containing text. Stage labels, badges, headlines, callouts — "
                             "all horizontal."
                         )
+                    # Tailored fix for the back-half-motion check — concrete
+                    # GSAP idioms beat abstract "add more motion" guidance.
+                    if any("back-half motion" in i for i in issues):
+                        corrective_parts.append(
+                            "BACK-HALF MOTION: at least ONE GSAP tween MUST fire in the second half of the "
+                            "shot (delay ≥ 0.55 × shot_duration). Add ONE of these idioms that lands "
+                            "naturally in the back half:\n"
+                            "  - A delayed accent reveal: `gsap.to('#accent-bar', {scaleX:1, duration:0.45, "
+                            "delay: <0.6-0.8 × shot_duration>, ease:'expo.out'});`\n"
+                            "  - A number/text crossfade: `gsap.to('#label-a', {opacity:0, duration:0.3, "
+                            "delay: <0.6 × shot_duration>});` paired with `#label-b` fading in.\n"
+                            "  - A background-layer scale-in: `gsap.fromTo('#bg-mark', {scale:0.6, opacity:0}, "
+                            "{scale:1, opacity:1, duration:1.5, delay: <0.55 × shot_duration>});`\n"
+                            "  - A slow-roll counter, watermark crossfade, secondary subject breathing yoyo.\n"
+                            "Anchor the delay on a WORD TIMINGS emphasis word when one falls in the back half."
+                        )
                     corrective_parts.append("Keep the same shot pack tokens. Return only the JSON shot object.")
                     corrective = "\n".join(corrective_parts)
                     # Snapshot the pre-regen HTML so we can revert if regen
@@ -13553,11 +14338,54 @@ class VideoGenerationPipeline:
                 if issues:
                     _validator_record_for_entry = _validator_record
 
+            # ── Deterministic post-render bbox lint (Tier 2, 2026-05) ──
+            # Walks the rendered shadow DOM via the render worker's /bbox-check
+            # and reports text/media that crosses the canvas edge. This is the
+            # ONLY non-probabilistic check for TEXT_CLIPPED — the LLM vision
+            # reviewer can fail to flag clipped headlines (see
+            # vid_1778774930857_w8cwa1y audit). Fires BEFORE the vision review
+            # so a corrective regen lands before we pay for vision tokens on a
+            # broken layout.
+            _bbox_lint_record: Optional[Dict[str, Any]] = self._lint_shot_bbox(
+                html=html,
+                shot=shot,
+                shot_idx=shot_idx,
+                start_time=start_time,
+                end_time=end_time,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                last_raw_response=raw,
+                usage=usage,
+            )
+            if _bbox_lint_record and _bbox_lint_record.get("regen_html"):
+                html = _bbox_lint_record["regen_html"]
+
+            # ── Brand-asset enforcement (Tier 3, 2026-05) ──
+            # When reference assets are present AND this is the intro / outro /
+            # product_proof shot, the HTML MUST embed at least one
+            # <img data-img-source="reference">. Cheap regex check + one
+            # corrective regen. No-op (returns None) on shots that aren't
+            # required to embed, or runs without uploaded assets.
+            _brand_asset_record: Optional[Dict[str, Any]] = self._lint_shot_brand_asset(
+                html=html,
+                shot=shot,
+                shot_idx=shot_idx,
+                total_shots=total_shots,
+                start_time=start_time,
+                end_time=end_time,
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                last_raw_response=raw,
+                usage=usage,
+            )
+            if _brand_asset_record and _brand_asset_record.get("regen_html"):
+                html = _brand_asset_record["regen_html"]
+
             # ── Vision reviewer — sees the rendered frame ──
             # Catches defects the regex validator can't (legibility, face
             # overlap, palette violation, sync drift). Fires AFTER the density
-            # validator so cheap regex catches dead-air shots before we pay
-            # for screenshots. May trigger one corrective regen with a
+            # validator and bbox lint so cheap regex + deterministic checks
+            # land first. May trigger one corrective regen with a
             # ship-original-on-regression policy. Persists every flagged shot
             # to vision_review_cases for prompt-tuning analysis.
             _vision_review_record: Optional[Dict[str, Any]] = self._review_shot_visually(
@@ -14452,7 +15280,13 @@ class VideoGenerationPipeline:
             )
         if not spans:
             return f'<div style="width:100%;height:100%;{bg_css}"></div>'
-        spans_html = "".join(spans)
+        # Belt + braces against "STARTSHERE"-class word collisions. The margins
+        # on each inline-block span give visual rhythm; the &nbsp; text node
+        # between them guarantees a real (non-collapsible) whitespace character
+        # so margin-override or `white-space:normal` clashes can't smash words
+        # together. Symptom seen in vid_1778774930857_w8cwa1y: orange accent
+        # word jammed against the preceding word as a single token.
+        spans_html = "&nbsp;".join(spans)
         triggers_js = "\n".join(triggers)
         return (
             f'<div style="width:100%;height:100%;display:flex;align-items:center;'
@@ -17298,14 +18132,14 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         height: Optional[int] = None,
         reference_image_url: Optional[str] = None,
     ) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
-        """Generate image via OpenRouter (bytedance-seed/seedream-4.5).
+        """Generate image via OpenRouter (recraft/recraft-v4.1).
 
         Returns (image_bytes, usage_metadata). 429 raises _ImageGenRateLimitError
         so the executor thread is freed and the main thread handles requeue.
         5xx/network errors retry with jittered backoff.
 
         When `reference_image_url` is provided, the call uses the multimodal
-        content-array shape (text part + image_url part) so Seedream can do
+        content-array shape (text part + image_url part) so the model can do
         image-to-image conditioning — used by the subject continuity flow to
         keep recurring characters/products visually consistent across shots.
         """
@@ -17320,7 +18154,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             print(f"    ⚠️ No OpenRouter API key for image gen. Cannot generate: {prompt[:50]}...")
             return None, None
 
-        # Seedream doesn't accept a structured aspect-ratio param — hint textually.
+        # Recraft (like Seedream before it) doesn't accept a structured
+        # aspect-ratio param via OpenRouter — hint textually.
         if width < height:
             aspect_hint = "9:16 vertical framing"
         elif width > height:
@@ -17341,7 +18176,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         #   - text-only (default): `content` is a plain string.
         #   - multimodal (image-to-image): `content` is an array of parts,
         #     including a single `image_url` part referencing the subject's
-        #     prior generated image. Seedream uses it as the visual reference
+        #     prior generated image. The model uses it as the visual reference
         #     so the subject (character, product, etc.) looks consistent.
         if reference_image_url:
             i2i_prompt = (
@@ -17357,7 +18192,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             content = full_prompt
 
         payload = {
-            "model": "bytedance-seed/seedream-4.5",
+            "model": "recraft/recraft-v4.1",
             "messages": [{"role": "user", "content": content}],
             "modalities": ["image"],
         }
@@ -17391,10 +18226,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         try:
                             return base64.b64decode(b64), usage_metadata
                         except (ValueError, base64.binascii.Error) as e:
-                            print(f"    ⚠️  Could not decode image from Seedream response: {e}")
+                            print(f"    ⚠️  Could not decode image from Recraft response: {e}")
                             return None, None
 
-                print(f"    ⚠️  Seedream response had no image payload for '{prompt[:50]}...'")
+                print(f"    ⚠️  Recraft response had no image payload for '{prompt[:50]}...'")
                 return None, None
 
             except urllib.error.HTTPError as e:
@@ -17406,29 +18241,29 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             retry_after = float(raw_hdr) + 1
                         except ValueError:
                             pass
-                    print(f"    ⚠️  Seedream 429 for '{prompt[:40]}...' — signalling rate-limit "
+                    print(f"    ⚠️  Recraft 429 for '{prompt[:40]}...' — signalling rate-limit "
                           f"(retry-after {retry_after:.0f}s)")
                     raise _ImageGenRateLimitError(retry_after)
 
                 if e.code >= 500:
                     if attempt < max_retries - 1:
                         wait = (2.0 ** attempt) * _random.uniform(0.8, 1.4)
-                        print(f"    ⚠️  Seedream HTTP {e.code} (attempt {attempt+1}/{max_retries}) "
+                        print(f"    ⚠️  Recraft HTTP {e.code} (attempt {attempt+1}/{max_retries}) "
                               f"for '{prompt[:40]}...'. Retrying in {wait:.1f}s...")
                         time.sleep(wait)
                         continue
-                print(f"    ❌ Seedream image HTTP {e.code} for '{prompt[:50]}...': {e}")
+                print(f"    ❌ Recraft image HTTP {e.code} for '{prompt[:50]}...': {e}")
                 return None, None
 
             except Exception as e:
                 if attempt < max_retries - 1:
                     wait = (1.5 ** attempt) * _random.uniform(0.5, 1.5)
-                    print(f"    ⚠️  Seedream image attempt {attempt+1}/{max_retries} failed "
+                    print(f"    ⚠️  Recraft image attempt {attempt+1}/{max_retries} failed "
                           f"for '{prompt[:40]}...': {e}. Retrying in {wait:.1f}s...")
                     print(f"    📋 {_tb.format_exc()[:200]}")
                     time.sleep(wait)
                     continue
-                print(f"    ❌ Seedream image failed after {max_retries} attempts: "
+                print(f"    ❌ Recraft image failed after {max_retries} attempts: "
                       f"{_tb.format_exc()[:400]}")
                 return None, None
 
@@ -18514,12 +19349,16 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # Mark started so we don't double-trigger inside the same run().
         self._thumbnails_started = True
 
-        # The brand palette is intentionally NOT forwarded to the thumbnail
-        # generator — Seedream renders hex codes as text labels on the image
-        # ("#FF6B00" came back as a visible chip). Brand color binding lives
-        # entirely in the FE overlay (heading font, palette accent, watermark)
-        # so it always reflects the currently-active brand kit rather than
-        # whatever was active at gen time.
+        # Brand color — passed as a soft hint to the thumbnail generator,
+        # which translates the hex into a descriptive color family name
+        # before composing the Recraft prompt. We deliberately do NOT pass
+        # the whole palette: image models tend to render hex strings as
+        # text labels on the image, and over-constraining the palette hurts
+        # engagement. Engagement is the priority; brand binding is a hint.
+        _style = getattr(self, "_current_style_config", None) or {}
+        _brand_color_hex = _style.get("primary_color") if isinstance(_style, dict) else None
+        if not isinstance(_brand_color_hex, str) or not _brand_color_hex.strip():
+            _brand_color_hex = None
 
         # Use the script_client for the small headline LLM call — same model
         # the script/director uses, so token usage is accounted for cleanly.
@@ -18558,6 +19397,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     director_plan=director_plan,
                     orientation=_orientation,
                     subjects_list=[],
+                    brand_color_hex=_brand_color_hex,
                     llm_chat=_llm_chat,
                 )
 

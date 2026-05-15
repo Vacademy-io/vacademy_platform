@@ -19,11 +19,20 @@ from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
-# Bumped from "v1" → "v2" because (a) the default model changed to
-# Gemini 2.5 Pro and (b) a TEXT_WRAP_BREAK rubric item was added. Rows in
-# vision_review_cases carry this version so engineers can compare hit rates
-# across rubric revisions.
-PROMPT_VERSION = "v2"
+# v2 → v3 (2026-05) after the Vacademy×Edzumo audit
+# (vid_1778774930857_w8cwa1y). Three rubric changes:
+#   1. TEXT_CLIPPED promoted from host-only (section 1c was hidden inside HOST
+#      MODE) to a top-level rule that fires for every shot — the audited run had
+#      a non-host KINETIC_TITLE shot whose headline ran past the canvas edge and
+#      the v2 rubric had no rule to flag it.
+#   2. NEW: WHITESPACE_COLLISION (sev 3) — catches "STARTSHERE" / "hands-onpractice"
+#      where a color-accent span swallowed the leading space.
+#   3. NEW: BG_DISCONTINUITY (sev 2) — fires only when a prior-shot reference
+#      screenshot is supplied. Catches the "6 different backgrounds in 8 shots"
+#      symptom the audited run had (cream → black → peach within one video).
+# Rows in vision_review_cases carry this version so engineers can compare hit
+# rates across rubric revisions.
+PROMPT_VERSION = "v3"
 
 # Cost per million tokens. Defaults match OpenRouter's published rates for
 # google/gemini-2.5-pro; bump if the rate card changes. Used only for
@@ -36,7 +45,9 @@ _DEFAULT_OUTPUT_COST_PER_M = 5.00   # USD per 1M output tokens
 ISSUE_CODES = frozenset({
     # Generic
     "LEGIBILITY",
-    "TEXT_WRAP_BREAK",       # NEW v2 — word splits mid-token, or single word wraps across two lines
+    "TEXT_WRAP_BREAK",       # v2 — word splits mid-token, or single word wraps across two lines
+    "TEXT_CLIPPED",          # v3 — promoted from host-only: any glyph past the canvas edge
+    "WHITESPACE_COLLISION",  # NEW v3 — adjacent words read as one ("STARTSHERE", "hands-onpractice")
     "HIERARCHY",
     "PALETTE",
     "FRAMING",
@@ -45,10 +56,10 @@ ISSUE_CODES = frozenset({
     "RESIDUAL",
     "IRRELEVANT_MEDIA",
     "SYNC_DRIFT",
+    "BG_DISCONTINUITY",      # NEW v3 — bg/treatment differs sharply from prior shot (cross-shot)
     # Host-specific
     "HOST_FACE_COUNT",
     "TEXT_ON_FACE",
-    "TEXT_CLIPPED",
     "HOST_LAYOUT_MISMATCH",
     "HOST_IDENTITY_DRIFT",
 })
@@ -82,6 +93,33 @@ CHECKLIST (apply in order):
        "Add max-width:88% and word-break:keep-all to the headline container."
        "Reduce font-size from Xrem to Yrem so the headline fits on one line."
        "Add hyphens:none to prevent the renderer from breaking 'PHOTOSYNTHESIS' across lines."
+
+1c. TEXT_CLIPPED  (canvas-bounds violation — applies to EVERY shot, not just host)
+   - A text element is clipped when ANY rendered glyph's bounding box extends
+     outside the visible canvas at ANY of the supplied timestamps. Specifically:
+       (a) The first character of a word whose left edge is at x<0 (e.g. "T" of
+           "THE ULTIMATE" runs past the left edge — the leftmost glyph is cut).
+       (b) The last character of a word whose right edge is at x>canvas_w.
+       (c) Any character whose top/bottom touches y=0 or y=canvas_h.
+   - Do NOT excuse this as "stylistic crop" or "intentional bleed" — for an AI
+     explainer pipeline it is a shipping-blocking layout failure. Severity 3.
+   - Suggestion field MUST recommend a concrete fix: demote the font tier
+     (display → h1 → h2), add `max-width:92%` to the headline container, or
+     break the line.
+
+1d. WHITESPACE_COLLISION  (compare rendered text to narration)
+   - Two visually-distinct words read as one because the space between them is
+     missing or has collapsed. Examples we have seen ship:
+       "STARTSHERE" (should be "STARTS HERE")
+       "hands-onpractice" (should be "hands-on practice")
+   - Compare the rendered text in the screenshot against the NARRATION excerpt
+     supplied in the user prompt. If the narration says "STARTS HERE" but the
+     screenshot reads "STARTSHERE" as one token, flag (severity 3, code
+     WHITESPACE_COLLISION).
+   - Suggestion: "Insert &nbsp; before the colored accent span" or "remove
+     display:inline-block from the accent word; use a regular span with color
+     only" — the underlying CSS bug is adjacent inline-block spans collapsing
+     the inter-word whitespace.
 
 2. HIERARCHY
    - The eye should land on the most important element first.
@@ -123,13 +161,26 @@ CHECKLIST (apply in order):
    - Flag (severity 2) if the visual is fully static at the sync timestamp, or if the wrong
      element is animating. Code: SYNC_DRIFT.
 
+10. BG_DISCONTINUITY  (cross-shot — applies ONLY when a PRIOR SHOT REFERENCE is supplied)
+   - If the user message contains a "PRIOR SHOT REFERENCE" screenshot BEFORE the current
+     shot's screenshots, compare the dominant background hue/treatment.
+   - Flag (severity 2, code BG_DISCONTINUITY) if the current shot uses a sharply different
+     background treatment than the prior shot — e.g. prior shot was a cream-bg motion-graphics
+     composition, current shot is on a pure-black or pure-white background, or vice versa.
+   - Two media_hero shots in a row (both VIDEO_HERO with stock footage) are NOT a violation —
+     it's expected that stock-footage shots have their own backgrounds.
+   - This is severity 2 only, never 3 — single-shot regen can't fix a cross-shot issue.
+     Logged so we know the BG drift is occurring; treated as advisory for now.
+   - When no PRIOR SHOT REFERENCE is supplied (first shot, or feature off), SKIP this check
+     entirely — do not invent a violation.
+
 HOST-SHOT MODE — applies only when host_present=true in the user prompt
    - The shot must contain EXACTLY ONE human face — the on-screen host.
    - Flag (severity 3, code HOST_FACE_COUNT) if you see TWO+ faces (e.g. host plus a stock-photo
      headshot inside an overlay card) or ZERO faces.
    - Flag (severity 3, code TEXT_ON_FACE) if any overlay text intersects the bounding box of the
      host's face/torso (lips, eyes, neck, chest).
-   - Flag (severity 3, code TEXT_CLIPPED) if any text is clipped at any canvas edge.
+   - (TEXT_CLIPPED is covered by section 1c above — applies to host shots and non-host shots alike.)
    - Flag (severity 3, code HOST_LAYOUT_MISMATCH) if host is on the wrong side of the canvas
      for the supplied host_layout (e.g. layout='free_right' means host expected on left half).
    - Flag (severity 2, code HOST_IDENTITY_DRIFT) if the host's apparent age/ethnicity/face structure
@@ -138,9 +189,10 @@ HOST-SHOT MODE — applies only when host_present=true in the user prompt
 USER-AUTHORED 'TEXT ONLY' MODE — applies only when user_authored_no_imagery=true
    - Flag (severity 3, code IRRELEVANT_MEDIA) if any image, photograph, or human figure appears.
 
-ISSUE CODES (use ONLY these, exact spelling): LEGIBILITY, TEXT_WRAP_BREAK, HIERARCHY, PALETTE,
-FRAMING, LAYOUT, NO_MOTION, RESIDUAL, IRRELEVANT_MEDIA, SYNC_DRIFT, HOST_FACE_COUNT, TEXT_ON_FACE,
-TEXT_CLIPPED, HOST_LAYOUT_MISMATCH, HOST_IDENTITY_DRIFT.
+ISSUE CODES (use ONLY these, exact spelling): LEGIBILITY, TEXT_WRAP_BREAK, TEXT_CLIPPED,
+WHITESPACE_COLLISION, HIERARCHY, PALETTE, FRAMING, LAYOUT, NO_MOTION, RESIDUAL,
+IRRELEVANT_MEDIA, SYNC_DRIFT, BG_DISCONTINUITY, HOST_FACE_COUNT, TEXT_ON_FACE,
+HOST_LAYOUT_MISMATCH, HOST_IDENTITY_DRIFT.
 
 OUTPUT — return ONLY a JSON object, no markdown fences, no commentary:
 {{
@@ -171,6 +223,7 @@ def _build_user_prompt(
     host_meta: Optional[Dict[str, Any]],
     timestamps: List[float],
     palette: Optional[Dict[str, Any]] = None,
+    has_prior_shot_reference: bool = False,
 ) -> str:
     # Brand palette comes from the run's style_guide (hex values), NOT from
     # shot_pack — shot_pack stores CSS var references (`var(--brand-primary)`),
@@ -229,6 +282,21 @@ def _build_user_prompt(
             "",
             "USER-AUTHORED MODE",
             "- user_authored_no_imagery: true (NO images/photos/people allowed in this frame)",
+        ]
+
+    if has_prior_shot_reference:
+        parts += [
+            "",
+            "CROSS-SHOT CONTEXT",
+            "- A PRIOR SHOT REFERENCE screenshot will be supplied BEFORE the current-shot screenshots.",
+            "- Apply rubric section 10 (BG_DISCONTINUITY) using the prior shot as the reference.",
+            "- Do NOT review the prior shot itself — only use it to judge background continuity.",
+        ]
+    else:
+        parts += [
+            "",
+            "CROSS-SHOT CONTEXT",
+            "- No prior-shot reference supplied. SKIP rubric section 10 (BG_DISCONTINUITY).",
         ]
 
     parts += [
@@ -317,6 +385,7 @@ def review_shot(
     llm_chat: Callable[..., Any],
     host_meta: Optional[Dict[str, Any]] = None,
     palette: Optional[Dict[str, Any]] = None,
+    prior_shot_screenshot: Optional[bytes] = None,  # v3 — for BG_DISCONTINUITY
     model: str = "google/gemini-2.5-pro",
     # Pro on OpenRouter consumes tokens on internal reasoning before emitting
     # JSON. With a verbose rubric, 1200 was occasionally truncated. Output
@@ -351,10 +420,31 @@ def review_shot(
         host_meta=host_meta,
         timestamps=list(timestamps),
         palette=palette,
+        has_prior_shot_reference=bool(prior_shot_screenshot),
     )
 
-    # Build a multimodal user message: text part + N image parts (in order).
+    # Build a multimodal user message. When a prior-shot screenshot is supplied,
+    # it's inserted FIRST under a "PRIOR SHOT REFERENCE" label so the model can
+    # apply the BG_DISCONTINUITY check (rubric section 10) against it. The
+    # current shot's screenshots follow, labeled so the model never confuses
+    # them with the prior reference.
     user_content: List[Dict[str, Any]] = [{"type": "text", "text": user_text}]
+    if prior_shot_screenshot:
+        user_content.append({
+            "type": "text",
+            "text": (
+                "PRIOR SHOT REFERENCE (use only for BG_DISCONTINUITY check — "
+                "do NOT review this shot, do NOT flag any issues on this image):"
+            ),
+        })
+        user_content.append({
+            "type": "image_url",
+            "image_url": {"url": _png_to_data_url(prior_shot_screenshot)},
+        })
+        user_content.append({
+            "type": "text",
+            "text": "CURRENT SHOT (this is the shot to review — screenshots follow):",
+        })
     for png in screenshots:
         user_content.append({
             "type": "image_url",

@@ -4,7 +4,7 @@ Schemas for AI Video Generation API.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Dict, Any, List, Literal, Union
+from typing import Optional, Dict, Any, List, Literal
 from pydantic import BaseModel, Field, model_validator
 
 _log = logging.getLogger(__name__)
@@ -543,14 +543,20 @@ class VideoStatusResponse(BaseModel):
     status: str
     content_type: str = Field(default="VIDEO", description="Content type: VIDEO, QUIZ, STORYBOOK, etc.")
     file_ids: Dict[str, Optional[str]]
-    # Values are USUALLY a single URL string (one S3 object per stage). The
-    # `per_shot_tts` key is the exception — its value is a dict mapping
-    # `shot_NNN` → mp3 URL (Phase B per-shot TTS, 2026-05). Without `dict`
-    # in the Union, every status/history call for a video with per-shot TTS
-    # bombs with a pydantic ValidationError (HTTP 500) — confirmed in prod
-    # log 2026-05-15. Union allows both shapes; downstream callers should
-    # `isinstance(v, dict)` when they expect per-shot drilldown.
-    s3_urls: Dict[str, Optional[Union[str, Dict[str, str]]]]
+    # Values are USUALLY a single URL string (one S3 object per stage). Some
+    # keys carry richer shapes that we MUST not reject at the schema layer:
+    #   • `per_shot_tts`: dict mapping `shot_NNN` → mp3 URL (Phase B
+    #     per-shot TTS, 2026-05).
+    #   • Future v3 keys (shot_plan checkpoint metadata, brand kit refs,
+    #     etc.) may carry nested dict / list shapes.
+    # The previous tighter type `Optional[Union[str, Dict[str, str]]]`
+    # bombed history/status endpoints with HTTP 500 whenever Pydantic
+    # couldn't validate against the str variant first. `Any` makes the
+    # value schema permissive — clients still get the right shape on the
+    # wire, the API just stops failing on additive backend changes.
+    # Downstream readers should `isinstance(v, str)` / `isinstance(v, dict)`
+    # when they expect a specific shape.
+    s3_urls: Dict[str, Any]
     prompt: Optional[str]
     language: str
     error_message: Optional[str]

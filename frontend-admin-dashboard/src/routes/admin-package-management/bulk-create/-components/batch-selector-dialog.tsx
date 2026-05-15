@@ -18,6 +18,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
 import { Plus } from '@phosphor-icons/react';
 import { BatchConfig, LevelOption, SessionOption, PaymentType } from '../-types/bulk-create-types';
 import { toast } from 'sonner';
@@ -68,6 +69,7 @@ export function BatchSelectorDialog({
     const [paymentType, setPaymentType] = useState<PaymentType>('FREE');
     const [price, setPrice] = useState<string>('');
     const [validityDays, setValidityDays] = useState<string>('');
+    const [isValidityApplicable, setIsValidityApplicable] = useState<boolean>(true);
     const [currency, setCurrency] = useState<string>('INR');
 
     const handleCreateLevel = async () => {
@@ -132,7 +134,13 @@ export function BatchSelectorDialog({
             payment_config: {
                 payment_type: paymentType,
                 price: price ? Number(price) : undefined,
-                validity_in_days: validityDays ? Number(validityDays) : undefined,
+                is_validity_applicable: isValidityApplicable,
+                validity_in_days:
+                    paymentType === 'ONE_TIME' && !isValidityApplicable
+                        ? null
+                        : validityDays
+                          ? Number(validityDays)
+                          : undefined,
                 currency: currency,
             },
         };
@@ -159,6 +167,7 @@ export function BatchSelectorDialog({
         setPaymentType('FREE');
         setPrice('');
         setValidityDays('');
+        setIsValidityApplicable(true);
         setCurrency('INR');
     };
 
@@ -326,17 +335,38 @@ export function BatchSelectorDialog({
                                         className="h-9 text-sm"
                                     />
                                 </div>
-                                <div className="space-y-2">
-                                    <Label className="text-sm">Validity (Days)</Label>
-                                    <Input
-                                        type="number"
-                                        placeholder="e.g., 365"
-                                        value={validityDays}
-                                        onChange={(e) => setValidityDays(e.target.value)}
-                                        className="h-9 text-sm"
+                                {(paymentType === 'SUBSCRIPTION' || isValidityApplicable) && (
+                                    <div className="space-y-2">
+                                        <Label className="text-sm">Validity (Days)</Label>
+                                        <Input
+                                            type="number"
+                                            placeholder="e.g., 365"
+                                            value={validityDays}
+                                            onChange={(e) => setValidityDays(e.target.value)}
+                                            className="h-9 text-sm"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Set Validity toggle (one-time only) */}
+                            {paymentType === 'ONE_TIME' && (
+                                <div className="flex items-center justify-between rounded-lg border p-3">
+                                    <div>
+                                        <Label className="text-sm font-medium">Set validity</Label>
+                                        <p className="text-xs text-neutral-500">
+                                            Turn off for one-time purchases that don&apos;t expire
+                                        </p>
+                                    </div>
+                                    <Switch
+                                        checked={isValidityApplicable}
+                                        onCheckedChange={(checked) => {
+                                            setIsValidityApplicable(checked);
+                                            if (!checked) setValidityDays('');
+                                        }}
                                     />
                                 </div>
-                            </div>
+                            )}
                         </>
                     )}
 

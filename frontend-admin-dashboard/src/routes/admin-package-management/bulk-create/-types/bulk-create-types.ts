@@ -23,7 +23,8 @@ export interface PaymentConfig {
     price?: number;
     elevated_price?: number;
     currency?: string;
-    validity_in_days?: number;
+    validity_in_days?: number | null;
+    is_validity_applicable?: boolean;
     payment_option_name?: string;
     plan_name?: string;
     require_approval?: boolean;

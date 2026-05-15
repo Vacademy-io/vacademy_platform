@@ -311,24 +311,30 @@ def _hex_to_color_name(hex_value: str) -> Optional[str]:
 def build_recraft_thumbnail_prompt(
     *,
     intent: str,
-    headline: str,
+    headline: HeadlinePackage,
     hero_subject_label: Optional[str],
     visual_style: Optional[str],
     brand_color_hex: Optional[str] = None,
 ) -> str:
     """Compose a Recraft prompt for a single thumbnail with text baked in.
 
-    Recraft (unlike Seedream) renders typography reliably, so the headline
-    goes directly into the prompt with explicit type-styling guidance. The
-    brand color is fed as a descriptive color name rather than a hex code
-    (image models treat hex as text to render).
+    `headline` is a structured package with `primary` (largest), optional
+    `secondary` (second line, smaller), optional `tagline` (small badge in a
+    contrasting visual treatment), and optional `accent_word` (one word from
+    primary/secondary to color-emphasize).
+
+    Recraft (unlike Seedream) renders typography reliably, so we feed
+    explicit per-tier type directives and trust it to lay out the hierarchy.
 
     Design contract:
       1. Recraft is responsible for BOTH the photograph AND the typography.
          There's no FE overlay — what the model renders is what ships.
-      2. The headline is the only text in the image. Everything else (UI
-         chrome, captions, hex codes, watermarks) is explicitly forbidden.
-      3. Brand color is a SOFT cue — use if it serves engagement, ignore
+      2. Only the package's text appears in the image. Everything else
+         (UI chrome, captions, hex codes, watermarks) is explicitly banned.
+      3. Subject sits in one third of the frame; text occupies the opposite
+         portion. They share the frame side-by-side, NOT stacked on top of
+         each other (which is what produced the uniform single-line look).
+      4. Brand color is a SOFT cue — use if it serves engagement, ignore
          if a different palette would click better.
     """
     intent = normalize_intent(intent)
@@ -359,58 +365,109 @@ def build_recraft_thumbnail_prompt(
                 f"{color_name}. "
             )
 
-    # Escape any double quotes in the headline so the embedded "..." string
-    # doesn't break the prompt format.
-    safe_headline = (headline or "").replace('"', '').strip()
+    # Sanitize all package fields before injecting into the prompt.
+    def _safe(v: Any) -> str:
+        return (v or "").replace('"', '').strip() if isinstance(v, str) else ""
+
+    primary = _safe(headline.get("primary"))
+    secondary = _safe(headline.get("secondary"))
+    tagline = _safe(headline.get("tagline"))
+    accent_word = _safe(headline.get("accent_word"))
+    # Accent word must appear inside primary or secondary; if not, drop it
+    # so we don't tell Recraft to color a word that isn't present.
+    if accent_word and accent_word.lower() not in f"{primary} {secondary}".lower():
+        accent_word = ""
+
+    # Build the typography directive block — one tier line per non-empty
+    # field so Recraft has explicit hierarchy guidance.
+    tier_lines: List[str] = []
+    if primary:
+        tier_lines.append(
+            f"TIER 1 (largest, dominant headline): the words \"{primary}\". "
+            "Render OVERSIZED, occupying ~25-35% of the frame height. "
+            f"{type_style}."
+        )
+    if secondary:
+        tier_lines.append(
+            f"TIER 2 (smaller, immediately below TIER 1, same font family but "
+            f"~50-65% of TIER 1's height): the words \"{secondary}\". "
+            "Same alignment as TIER 1, slightly tighter weight okay."
+        )
+    if tagline:
+        tier_lines.append(
+            f"TIER 3 (SMALL contrasting badge / chip / callout in a different "
+            f"visual treatment from TIER 1+2 — e.g. a speech-bubble shape, a "
+            f"solid-color label tag, or an underline-style banner): the words "
+            f"\"{tagline}\". Place it in a different corner or zone from the "
+            "main headline so it reads as a separate visual element."
+        )
+    if accent_word:
+        tier_lines.append(
+            f"ACCENT: render the word \"{accent_word}\" inside TIER 1 or TIER 2 "
+            "in a vivid accent color (electric yellow, hot orange, lime, cyan, "
+            "or a saturated brand-aligned hue) instead of white. Same font and "
+            "weight as its tier; just a color swap on that one word."
+        )
+    typography_block = " ".join(tier_lines)
+
+    # All text that should appear in the image (used to forbid extras).
+    all_text_quoted = " / ".join(
+        f"\"{t}\"" for t in (primary, secondary, tagline) if t
+    )
 
     return (
-        # 1. The job — designed to compel a click on a video feed.
-        # Note: we deliberately avoid naming any video platform (YouTube,
-        # TikTok, etc.) in the prompt — image models render those names as
-        # literal logos in the frame.
+        # 1. The job.
         "Create a high-impact viral video thumbnail designed to compel a click. "
         "This is for a top-tier creator's feed, not a stock-photo ad. "
-        # 2. The subject — mandatory focal point. Empty scenery is the #1
-        # failure mode of cheap auto-generated thumbnails, so we ban it
-        # explicitly and steer toward a face-with-emotion default.
-        "MANDATORY: the frame MUST have a clear FOCAL SUBJECT — strongly "
-        "prefer a single human subject with a vivid facial expression "
-        "(surprise, intensity, awe, fear, joy, focus) front-and-center. "
-        "If a person isn't possible, use a dramatic close-up of a hero "
-        "object or location detail. NEVER an empty landscape or wide "
-        "scenery shot — the eye must lock onto one subject instantly. "
-        # 3. The text. Quoted so Recraft treats it literally.
-        f"Render this exact headline as the only text in the image: \"{safe_headline}\". "
-        f"Typography directive: {type_style}. "
-        "The headline must be OVERSIZED — large enough to read at "
-        "thumbnail size on a phone, occupying at least 30-50% of the frame "
-        "height. Perfectly spelled, crisp, with strong stroke or outline "
-        "for separation from the background. "
-        "No other words, captions, logos, watermarks, hashtags, platform "
-        "branding, UI chrome, browser frames, or signage anywhere in the image. "
-        # 4. The picture style + intent mood.
+        # 2. The mandatory subject + side-composition rule.
+        "MANDATORY composition: the frame is split into a SUBJECT ZONE and a "
+        "TEXT ZONE, side by side. The SUBJECT ZONE (one third or one half of "
+        "the frame, your choice of left or right) contains a single clear "
+        "focal subject — strongly prefer a human face with a vivid expression "
+        "(surprise, intensity, awe, focus, fear, joy) framed close enough to "
+        "see emotion. If a person genuinely isn't possible, use a dramatic "
+        "close-up of a hero object, prop, or storytelling element. NEVER an "
+        "empty landscape or wide scenery shot. The TEXT ZONE occupies the "
+        "remainder of the frame and holds the typography — subject and text "
+        "do NOT stack on top of each other; they coexist side by side. "
+        # 3. Typography hierarchy — the structural change vs the previous
+        # uniform single-line look.
+        f"{typography_block} "
+        "All tiers must be perfectly spelled and crisp. Use a strong stroke, "
+        "outline, or contrasting backdrop band so every tier reads cleanly "
+        "against the background. "
+        f"The ONLY text in the image is: {all_text_quoted}. No other words, "
+        "captions, logos, watermarks, hashtags, platform branding, UI chrome, "
+        "browser frames, or signage anywhere in the image. "
+        # 4. Picture style + intent mood.
         f"Photographic style: {style_hint}. Mood: {visual_mood}. "
         f"{subject_clause}"
-        # 5. Composition rules borrowed from top YT thumbnails.
-        "Composition rules: (a) one undeniable focal point that grabs the "
-        "eye in under 0.5 seconds; (b) high saturation and strong contrast "
-        "— skies are vibrant, shadows are deep; (c) dramatic side or rim "
-        "lighting, not flat front lighting; (d) shallow depth of field so "
-        "the subject pops; (e) the headline and subject occupy DIFFERENT "
-        "zones of the frame so neither obscures the other. "
-        # 6. Brand binding (soft).
+        # 5. Storytelling props — invited but not required.
+        "Welcome storytelling elements that reinforce the headline: hand-drawn "
+        "circles or arrows over a chart, chains around a prop, a speech bubble "
+        "near the subject, a torn-paper banner, or a small annotation. Use "
+        "sparingly — one props element max — and only if it amplifies the hook. "
+        # 6. Composition rules.
+        "Composition rules: (a) one undeniable focal point in the SUBJECT ZONE "
+        "that grabs the eye in under 0.5 seconds; (b) high saturation, strong "
+        "contrast, deep shadows, vibrant highlights; (c) dramatic side or rim "
+        "lighting on the subject, not flat front lighting; (d) shallow depth "
+        "of field so the subject pops; (e) the TEXT ZONE has a calmer or "
+        "darkened backdrop so the typography reads cleanly. "
+        # 7. Brand binding (soft).
         f"{brand_clause}"
-        # 7. Anti-patterns — the failure modes we've seen in practice.
-        "AVOID at all costs: empty wide landscapes with no subject; thin "
-        "tall serif fonts; small text; cluttered overlays; generic stock-"
-        "photo blandness; muted desaturated palettes; type that competes "
-        "with itself in shape; soft-pastel marketing-brochure energy. "
-        # 8. Quality bar.
+        # 8. Anti-patterns.
+        "AVOID at all costs: subject and text stacked on top of each other; "
+        "single line of uniform-sized text spanning the full width; empty "
+        "wide landscapes with no subject; thin tall serif fonts; small text; "
+        "cluttered overlays; generic stock-photo blandness; muted desaturated "
+        "palettes; soft-pastel marketing-brochure energy. "
+        # 9. Quality bar.
         "This thumbnail should look like the best-performing thumbnail on a "
         "successful creator's channel — emotion-forward, visually loud, "
-        "instantly clickable. Sharp focus throughout. The headline and the "
-        "image must feel like they were designed together by a single art "
-        "director."
+        "instantly clickable, with text laid out in a clear hierarchy. Sharp "
+        "focus throughout. The headline tiers and the image must feel like "
+        "they were designed together by a single art director."
     )
 
 
@@ -419,32 +476,50 @@ def build_recraft_thumbnail_prompt(
 # ---------------------------------------------------------------------------
 
 _HEADLINE_SYSTEM_PROMPT = (
-    "You write thumbnail headlines for the world's top YouTube creators. "
-    "Given a video's title, narration excerpt, and intent, you return ONE "
-    "single headline engineered for maximum click-through. "
+    "You write thumbnail headline PACKAGES for the world's top YouTube "
+    "creators. Given a video's title, narration excerpt, and intent, you "
+    "return a structured text package engineered for maximum click-through. "
     "\n\n"
-    "RULES:\n"
-    "1. Write like a top creator (MrBeast, Veritasium, Cleo Abram, Marques "
-    "Brownlee, Casey Neistat), NOT like a marketing copywriter. The "
-    "headline must feel like a story hook, not a slogan.\n"
-    "2. Use ONE of these proven patterns: stakes ('I LOST EVERYTHING'), "
-    "specificity ('$2M IN 24 HOURS'), contradiction ('CHEAPER THAN APPLE'), "
-    "revelation ('WHAT THEY HID'), curiosity gap ('THIS BREAKS PHYSICS'), "
-    "or transformation ('30 DAYS LATER').\n"
-    "3. BANNED patterns: generic CTAs ('Buy Now', 'Watch Now', 'Click "
-    "Here', 'Secure Yours Today'); dictionary titles ('Understanding X', "
-    "'Introduction to X'); soft promises ('A Better Way to X'); "
-    "instructional phrasing without stakes ('How to Do X' unless wrapped "
-    "in drama like 'How I Survived X').\n"
-    "4. Stay within the intent's word cap.\n"
-    "5. ALL CAPS is allowed and often best. No trailing punctuation. "
-    "No quotes around the headline.\n"
-    "6. Be true to the video — don't invent claims the narration won't "
-    "back up. But pick the DRAMATIC angle in the narration, not the "
-    "neutral summary.\n"
+    "OUTPUT SHAPE (return JSON, no markdown fences, no commentary):\n"
+    "{\n"
+    "  \"primary\": \"...\",        // Line 1, BIGGEST text. 1-3 words. "
+    "Carries the punch.\n"
+    "  \"secondary\": \"...\",      // Line 2, smaller text below the "
+    "primary. 1-3 words. May be empty (\"\").\n"
+    "  \"tagline\": \"...\",        // Optional small badge / chip text in "
+    "a different visual treatment. ≤4 words. May be empty.\n"
+    "  \"accent_word\": \"...\"    // Optional ONE word lifted from "
+    "primary or secondary to be color-emphasized. May be empty.\n"
+    "}\n"
     "\n"
-    "Return JSON only: {\"headline\": \"...\"}. No markdown fences. No "
-    "commentary."
+    "WRITING RULES:\n"
+    "1. Write like a top creator (MrBeast, Veritasium, Cleo Abram, Marques "
+    "Brownlee, Casey Neistat). Not a marketing copywriter. The package "
+    "must feel like a story hook, not a slogan.\n"
+    "2. Two-line hierarchy is the default: a SHORT loud primary plus a "
+    "smaller secondary that completes the thought. Example: "
+    "primary='5M BOUGHT', secondary='Views'. The combined read should be "
+    "complete and clear.\n"
+    "3. Use ONE of these proven patterns in the combined read: stakes "
+    "('I LOST EVERYTHING'), specificity ('$2M IN 24 HOURS'), contradiction "
+    "('CHEAPER THAN APPLE'), revelation ('WHAT THEY HID'), curiosity gap "
+    "('THIS BREAKS PHYSICS'), transformation ('30 DAYS LATER'), or "
+    "comparison ('BOT vs REAL').\n"
+    "4. The optional `tagline` is a small contrasting label — think a "
+    "speech bubble ('Trust us'), a category chip ('BOT vs REAL'), or a "
+    "callout ('LIVE NOW'). Use it when it ADDS information; otherwise "
+    "leave it empty.\n"
+    "5. The `accent_word` is one word from primary or secondary that "
+    "deserves a colored highlight (the most provocative noun or number). "
+    "Leave empty if no single word stands out.\n"
+    "6. BANNED patterns: generic CTAs ('Buy Now', 'Watch Now', 'Secure "
+    "Yours Today'); dictionary titles ('Understanding X', 'Introduction "
+    "to X'); soft promises ('A Better Way to X'); instructional phrasing "
+    "without stakes ('How to Do X' unless wrapped in drama).\n"
+    "7. ALL CAPS is allowed and often best for primary. No trailing "
+    "punctuation. No quotes inside any field.\n"
+    "8. Be true to the video — don't invent claims the narration won't "
+    "back up. But pick the DRAMATIC angle, not the neutral summary."
 )
 
 
@@ -462,20 +537,27 @@ def _build_headline_user_prompt(
     return (
         f"Video title: {title}\n"
         f"Intent: {intent}\n"
-        f"Hard cap: {max_words} words.\n"
+        f"Combined-read word cap (primary + secondary): {max_words} words.\n"
         f"Intent-specific brief: {headline_brief}\n"
         + (f"\nNarration sample (use this to find the most dramatic angle):\n{excerpt}\n" if excerpt else "")
         + "\n"
         + "Pick the SINGLE most dramatic moment, contradiction, stake, or "
         + "revelation from the narration above — not a neutral summary of "
-        + "the topic. Write the headline as if you were the creator's "
-        + "thumbnail strategist trying to win the next 10M views. "
-        + "Return JSON: {\"headline\": \"...\"}"
+        + "the topic. Write the package as if you were the creator's "
+        + "thumbnail strategist trying to win the next 10M views.\n"
+        + "\n"
+        + "Return JSON with the exact shape from the system prompt: "
+        + "{\"primary\": \"...\", \"secondary\": \"...\", \"tagline\": "
+        + "\"...\", \"accent_word\": \"...\"}. Empty strings are valid for "
+        + "secondary / tagline / accent_word."
     )
 
 
-def _coerce_headline(raw: str, max_words: int) -> str:
-    s = (raw or "").strip().strip('"').strip("'")
+def _coerce_text(raw: Any, max_words: int) -> str:
+    """Clean LLM-returned text into a renderable string with a word cap."""
+    if not isinstance(raw, str):
+        return ""
+    s = raw.strip().strip('"').strip("'")
     s = re.sub(r"\s+", " ", s)
     s = re.sub(r"[.!?]+$", "", s)
     if not s:
@@ -486,14 +568,54 @@ def _coerce_headline(raw: str, max_words: int) -> str:
     return " ".join(words)
 
 
+class HeadlinePackage(Dict[str, str]):
+    """Typed shape of the structured headline output.
+
+    Subclasses Dict[str, str] so the package can be passed straight through
+    JSONB persistence without conversion. Keys: primary, secondary, tagline,
+    accent_word. All values are plain strings (empty string when unused).
+    """
+    pass
+
+
+def _empty_package(primary_fallback: str) -> HeadlinePackage:
+    pkg: HeadlinePackage = HeadlinePackage()
+    pkg["primary"] = primary_fallback
+    pkg["secondary"] = ""
+    pkg["tagline"] = ""
+    pkg["accent_word"] = ""
+    return pkg
+
+
+def package_to_flat_headline(pkg: HeadlinePackage) -> str:
+    """Collapse a structured package to the single string we persist.
+
+    Used as the `headline` field on the thumbnail option dict for back-compat
+    with anywhere the FE still reads a single headline string. Recraft itself
+    receives the structured fields separately (see build_recraft_thumbnail_prompt).
+    """
+    parts: List[str] = []
+    p = pkg.get("primary", "").strip()
+    s = pkg.get("secondary", "").strip()
+    t = pkg.get("tagline", "").strip()
+    if p:
+        parts.append(p)
+    if s:
+        parts.append(s)
+    flat = "\n".join(parts)
+    if t and t.lower() not in flat.lower():
+        flat = f"{flat}\n— {t}" if flat else t
+    return flat or "Watch this"
+
+
 def generate_thumbnail_headline(
     *,
     llm_chat: Optional[Callable[..., Tuple[str, Dict[str, Any]]]],
     title: str,
     intent: str,
     narration_hint: Optional[str] = None,
-) -> Tuple[str, Dict[str, Any]]:
-    """Return (single headline, usage dict).
+) -> Tuple[HeadlinePackage, Dict[str, Any]]:
+    """Return (headline package, usage dict).
 
     Soft-fails: if `llm_chat` is None or the call raises/parses badly, falls
     back to a deterministic truncation of the title so the pipeline always
@@ -505,10 +627,21 @@ def generate_thumbnail_headline(
     brief = preset["headline_brief"]
 
     safe_title = (title or "").strip() or "Watch this"
-    fallback = _coerce_headline(safe_title, max_words) or "Watch this"
+    # Primary fallback: first ~2 words of the title (so it has size hierarchy
+    # potential); leaves secondary/tagline empty.
+    fallback_primary = _coerce_text(safe_title, min(max_words, 3)) or "Watch this"
+    fallback_pkg = _empty_package(fallback_primary)
+    if max_words > 3:
+        # Push remaining words into secondary so the two-line layout still
+        # has something to lay out, even without an LLM.
+        words = safe_title.split()
+        if len(words) > 3:
+            secondary_words = words[3:max_words]
+            if secondary_words:
+                fallback_pkg["secondary"] = _coerce_text(" ".join(secondary_words), max_words - 3)
 
     if llm_chat is None:
-        return fallback, {}
+        return fallback_pkg, {}
 
     try:
         raw, usage = llm_chat(
@@ -528,23 +661,45 @@ def generate_thumbnail_headline(
             # Higher temperature so the model takes more dramatic angles
             # rather than safe, marketing-copy phrasings.
             temperature=0.95,
-            max_tokens=200,
+            max_tokens=300,
         )
     except Exception as e:
         print(f"   ⚠️ Headline LLM failed: {e} — using deterministic fallback")
-        return fallback, {}
+        return fallback_pkg, {}
 
     parsed = _parse_headline_json(raw)
     if not parsed:
-        return fallback, usage or {}
+        return fallback_pkg, usage or {}
 
-    cleaned = _coerce_headline(parsed, max_words)
-    if not cleaned:
-        return fallback, usage or {}
-    return cleaned, usage or {}
+    # Apply intent word caps. The combined `primary + secondary` should fit
+    # within `max_words`; tagline gets its own small cap; accent_word is one word.
+    primary = _coerce_text(parsed.get("primary"), max_words)
+    if not primary:
+        return fallback_pkg, usage or {}
+    remaining_for_secondary = max(0, max_words - len(primary.split()))
+    secondary = _coerce_text(parsed.get("secondary"), remaining_for_secondary) if remaining_for_secondary else ""
+    tagline = _coerce_text(parsed.get("tagline"), 4)
+    accent_word = _coerce_text(parsed.get("accent_word"), 1)
+
+    # Accent word must actually appear in primary or secondary (case-insensitive).
+    combined_lower = f"{primary} {secondary}".lower()
+    if accent_word and accent_word.lower() not in combined_lower:
+        accent_word = ""
+
+    pkg: HeadlinePackage = HeadlinePackage()
+    pkg["primary"] = primary
+    pkg["secondary"] = secondary
+    pkg["tagline"] = tagline
+    pkg["accent_word"] = accent_word
+    return pkg, usage or {}
 
 
-def _parse_headline_json(raw: str) -> Optional[str]:
+def _parse_headline_json(raw: str) -> Optional[Dict[str, Any]]:
+    """Parse the LLM response into a dict with primary/secondary/tagline/accent_word.
+
+    Also accepts the legacy `{"headline": "..."}` shape — splits it into
+    primary on the first half + secondary on the rest as a graceful fallback.
+    """
     if not raw:
         return None
     text = raw.strip()
@@ -561,10 +716,18 @@ def _parse_headline_json(raw: str) -> Optional[str]:
             obj = json.loads(m.group(0))
         except Exception:
             return None
-    if isinstance(obj, dict):
-        h = obj.get("headline") or obj.get("title") or obj.get("text")
-        if isinstance(h, str):
-            return h
-    if isinstance(obj, str):
+    if not isinstance(obj, dict):
+        return None
+    if "primary" in obj:
         return obj
+    legacy = obj.get("headline") or obj.get("title") or obj.get("text")
+    if isinstance(legacy, str) and legacy.strip():
+        words = legacy.strip().split()
+        cut = max(1, len(words) // 2)
+        return {
+            "primary": " ".join(words[:cut]),
+            "secondary": " ".join(words[cut:]),
+            "tagline": "",
+            "accent_word": "",
+        }
     return None

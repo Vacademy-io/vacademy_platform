@@ -277,23 +277,25 @@ def run(
         # will strip any text-cue language before it reaches the model.
         hero_label = _pick_hero_subject_label(director_plan or {}, subjects_list or [])
 
-        # Headline — single LLM-generated YouTube-style line, tuned per intent.
-        # If the LLM is unavailable, falls back to a truncated title.
+        # Headline package — structured (primary / secondary / tagline /
+        # accent_word) so Recraft can render multi-tier text with size
+        # hierarchy and an accent-colored word, matching the look of top
+        # creator thumbnails (vs the old uniform single-line output).
         narration_hint = None
         if script_plan:
             narration_hint = (script_plan.get("script") or script_plan.get("key_takeaway") or None)
 
-        headline, _hl_usage = tp.generate_thumbnail_headline(
+        headline_pkg, _hl_usage = tp.generate_thumbnail_headline(
             llm_chat=llm_chat,
             title=title or "Watch this",
             intent=intent,
             narration_hint=narration_hint,
         )
 
-        # Build the single Recraft prompt with the headline baked in.
+        # Build the Recraft prompt with the structured headline baked in.
         prompt = tp.build_recraft_thumbnail_prompt(
             intent=intent,
-            headline=headline,
+            headline=headline_pkg,
             hero_subject_label=hero_label,
             visual_style=visual_style,
             brand_color_hex=brand_color_hex,
@@ -330,7 +332,15 @@ def run(
         option = {
             "id": option_id,
             "image_url": url,
-            "headline": headline,
+            # Flat headline string for back-compat (anything still reading a
+            # single .headline field gets the human-readable collapse of the
+            # structured package).
+            "headline": tp.package_to_flat_headline(headline_pkg),
+            # Full structured package — primary / secondary / tagline /
+            # accent_word — so the FE could later render its own overlay
+            # variant if we ever revisit the "no-bake" path, and so debug
+            # tools can see what we asked Recraft to render.
+            "headline_package": dict(headline_pkg),
             # `baked` means: text is already inside the image, FE must not
             # overlay anything. Legacy `bottom_band` / `top_left` / `center`
             # / `none` values continue to render the old overlay path.

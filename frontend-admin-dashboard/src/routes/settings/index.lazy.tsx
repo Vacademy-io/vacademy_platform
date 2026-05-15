@@ -19,7 +19,7 @@ const SafeRouteSearch = () => {
         return SettingsRoute.useSearch() as { selectedTab?: string };
     } catch (error) {
         // Return a default object if the hook fails
-        return { selectedTab: SettingsTabs.Tab };
+        return { selectedTab: SettingsTabs.RoleDisplay };
     }
 };
 

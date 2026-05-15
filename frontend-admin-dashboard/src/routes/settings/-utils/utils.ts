@@ -2,7 +2,6 @@ import { SettingsTabs } from '../-constants/terms';
 import PaymentSettings from '../-components/Payment/PaymentSettings';
 import ReferralSettings from '../-components/Referral/ReferralSettings';
 import CourseSettings from '../-components/Course/CourseSettings';
-import TabSettings from '../-components/Tab/TabSettings';
 import NamingSettings from '../-components/NamingSettings';
 import NotificationSettings from '../-components/Notification/NotificationSettings';
 import RoleDisplaySettingsMain from '../-components/RoleDisplay/RoleDisplaySettingsMain';
@@ -25,11 +24,6 @@ import YoutubeIntegrationSettings from '../-components/YoutubeIntegrationSetting
 
 export const getAvailableSettingsTabs = () => {
     return [
-        {
-            tab: SettingsTabs.Tab,
-            value: 'Tab Settings',
-            component: TabSettings,
-        },
         {
             tab: SettingsTabs.RoleDisplay,
             value: 'Display Settings',

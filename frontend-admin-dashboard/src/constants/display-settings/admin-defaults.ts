@@ -7,7 +7,7 @@ import type {
 } from '@/types/display-settings';
 
 // Sub-items that should default to hidden. Admins can opt them in via display settings.
-const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>(['suborg-teams']);
+const SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set<string>(['suborg-teams', 'notification-hub']);
 
 function mapSidebarToConfig(menu: SidebarItemsType[]): SidebarTabConfig[] {
     return menu.map((item, index) => ({

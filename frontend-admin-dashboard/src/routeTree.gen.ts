@@ -12,6 +12,7 @@ import { createFileRoute } from "@tanstack/react-router"
 
 import { Route as rootRouteImport } from "./routes/__root"
 import { Route as LockedFeatureRouteImport } from "./routes/locked-feature"
+import { Route as ErrorPageRouteImport } from "./routes/error-page"
 import { Route as AgentChatRouteImport } from "./routes/agent-chat"
 import { Route as VimIndexRouteImport } from "./routes/vim/index"
 import { Route as VideoApiStudioIndexRouteImport } from "./routes/video-api-studio/index"
@@ -89,6 +90,7 @@ import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/eval
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
 import { Route as CommunityQuestionPaperIndexRouteImport } from "./routes/community/question-paper/index"
 import { Route as CommunicationWhatsappTemplatesIndexRouteImport } from "./routes/communication/whatsapp-templates/index"
+import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/communication/notification-hub/index"
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
@@ -197,6 +199,11 @@ const ExploreAiLazyRoute = ExploreAiLazyRouteImport.update({
 const LockedFeatureRoute = LockedFeatureRouteImport.update({
   id: "/locked-feature",
   path: "/locked-feature",
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ErrorPageRoute = ErrorPageRouteImport.update({
+  id: "/error-page",
+  path: "/error-page",
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentChatRoute = AgentChatRouteImport.update({
@@ -776,6 +783,16 @@ const CommunicationWhatsappTemplatesIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/communication/whatsapp-templates/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const CommunicationNotificationHubIndexRoute =
+  CommunicationNotificationHubIndexRouteImport.update({
+    id: "/communication/notification-hub/",
+    path: "/communication/notification-hub/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/communication/notification-hub/index.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -1420,6 +1437,7 @@ const AssessmentAssessmentListAssessmentDetailsAssessmentIdExamTypeAssesssmentTy
 
 export interface FileRoutesByFullPath {
   "/agent-chat": typeof AgentChatRoute
+  "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
@@ -1488,6 +1506,7 @@ export interface FileRoutesByFullPath {
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
+  "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
@@ -1581,6 +1600,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   "/agent-chat": typeof AgentChatRoute
+  "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
@@ -1648,6 +1668,7 @@ export interface FileRoutesByTo {
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox": typeof CommunicationInboxIndexRoute
+  "/communication/notification-hub": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId": typeof ContentContentIdIndexRoute
@@ -1742,6 +1763,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   "/agent-chat": typeof AgentChatRoute
+  "/error-page": typeof ErrorPageRoute
   "/locked-feature": typeof LockedFeatureRoute
   "/explore-ai": typeof ExploreAiLazyRoute
   "/landing": typeof LandingLazyRoute
@@ -1810,6 +1832,7 @@ export interface FileRoutesById {
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
+  "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
@@ -1905,6 +1928,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | "/agent-chat"
+    | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
     | "/landing"
@@ -1973,6 +1997,7 @@ export interface FileRouteTypes {
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
+    | "/communication/notification-hub/"
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
@@ -2066,6 +2091,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | "/agent-chat"
+    | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
     | "/landing"
@@ -2133,6 +2159,7 @@ export interface FileRouteTypes {
     | "/automation/chatbot-flows"
     | "/certificate-generation/student-data"
     | "/communication/inbox"
+    | "/communication/notification-hub"
     | "/communication/whatsapp-templates"
     | "/community/question-paper"
     | "/content/$contentId"
@@ -2226,6 +2253,7 @@ export interface FileRouteTypes {
   id:
     | "__root__"
     | "/agent-chat"
+    | "/error-page"
     | "/locked-feature"
     | "/explore-ai"
     | "/landing"
@@ -2294,6 +2322,7 @@ export interface FileRouteTypes {
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
+    | "/communication/notification-hub/"
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
@@ -2388,6 +2417,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AgentChatRoute: typeof AgentChatRoute
+  ErrorPageRoute: typeof ErrorPageRoute
   LockedFeatureRoute: typeof LockedFeatureRoute
   ExploreAiLazyRoute: typeof ExploreAiLazyRoute
   LandingLazyRoute: typeof LandingLazyRoute
@@ -2455,6 +2485,7 @@ export interface RootRouteChildren {
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
   CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
+  CommunicationNotificationHubIndexRoute: typeof CommunicationNotificationHubIndexRoute
   CommunicationWhatsappTemplatesIndexRoute: typeof CommunicationWhatsappTemplatesIndexRoute
   CommunityQuestionPaperIndexRoute: typeof CommunityQuestionPaperIndexRoute
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
@@ -2582,6 +2613,13 @@ declare module "@tanstack/react-router" {
       path: "/locked-feature"
       fullPath: "/locked-feature"
       preLoaderRoute: typeof LockedFeatureRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/error-page": {
+      id: "/error-page"
+      path: "/error-page"
+      fullPath: "/error-page"
+      preLoaderRoute: typeof ErrorPageRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/agent-chat": {
@@ -3121,6 +3159,13 @@ declare module "@tanstack/react-router" {
       path: "/communication/whatsapp-templates"
       fullPath: "/communication/whatsapp-templates/"
       preLoaderRoute: typeof CommunicationWhatsappTemplatesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/communication/notification-hub/": {
+      id: "/communication/notification-hub/"
+      path: "/communication/notification-hub"
+      fullPath: "/communication/notification-hub/"
+      preLoaderRoute: typeof CommunicationNotificationHubIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/communication/inbox/": {
@@ -3678,6 +3723,7 @@ const LearnerInsightsLazyRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   AgentChatRoute: AgentChatRoute,
+  ErrorPageRoute: ErrorPageRoute,
   LockedFeatureRoute: LockedFeatureRoute,
   ExploreAiLazyRoute: ExploreAiLazyRoute,
   LandingLazyRoute: LandingLazyRoute,
@@ -3748,6 +3794,8 @@ const rootRouteChildren: RootRouteChildren = {
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
   CommunicationInboxIndexRoute: CommunicationInboxIndexRoute,
+  CommunicationNotificationHubIndexRoute:
+    CommunicationNotificationHubIndexRoute,
   CommunicationWhatsappTemplatesIndexRoute:
     CommunicationWhatsappTemplatesIndexRoute,
   CommunityQuestionPaperIndexRoute: CommunityQuestionPaperIndexRoute,

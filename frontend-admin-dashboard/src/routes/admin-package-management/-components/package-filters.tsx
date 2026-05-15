@@ -1,5 +1,6 @@
 import { MyButton } from '@/components/design-system/button';
 import { Funnel, X, ArrowsDownUp, Plus, Tag } from '@phosphor-icons/react';
+import { useCourseSettings } from '@/hooks/useCourseSettings';
 import { StudentSearchBox } from '@/components/common/student-search-box';
 import { FilterChips } from '@/components/design-system/chips';
 import { useMemo, useState, useEffect } from 'react';
@@ -63,6 +64,8 @@ export const PackageFilters = ({
     onSort,
 }: PackageFiltersProps) => {
     const { isCompact } = useCompactMode();
+    const { settings: courseSettings } = useCourseSettings();
+    const offerPricingEnabled = courseSettings?.offerPricing?.enabled === true;
     const [localFilters, setLocalFilters] = useState<Record<string, FilterOption[]>>({});
 
     useEffect(() => {
@@ -132,17 +135,19 @@ export const PackageFilters = ({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    <Link to="/admin-package-management/offers">
-                        <MyButton
-                            buttonType="secondary"
-                            scale="small"
-                            layoutVariant="default"
-                            className="flex items-center gap-1.5"
-                        >
-                            <Tag className="size-4" />
-                            Apply Offer Price
-                        </MyButton>
-                    </Link>
+                    {offerPricingEnabled && (
+                        <Link to="/admin-package-management/offers">
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                layoutVariant="default"
+                                className="flex items-center gap-1.5"
+                            >
+                                <Tag className="size-4" />
+                                Apply Offer Price
+                            </MyButton>
+                        </Link>
+                    )}
                     <Link to="/admin-package-management/bulk-create">
                         <MyButton
                             buttonType="primary"

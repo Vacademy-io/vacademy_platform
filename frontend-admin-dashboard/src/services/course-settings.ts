@@ -301,5 +301,8 @@ export const mergeWithDefaults = (settings: Partial<CourseSettingsData>): Course
             ...settings.dripConditions,
             conditions: settings.dripConditions?.conditions || [],
         },
+        offerPricing: {
+            enabled: settings.offerPricing?.enabled ?? false,
+        },
     };
 };

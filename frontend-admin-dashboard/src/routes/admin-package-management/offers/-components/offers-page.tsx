@@ -37,6 +37,7 @@ import {
 } from '@/services/markdown-offers';
 import { ApplyOfferDialog } from './apply-offer-dialog';
 import { OfferResultsDialog } from './offer-results-dialog';
+import { useCourseSettings } from '@/hooks/useCourseSettings';
 
 const PAGE_SIZE = 20;
 const STATUS_OPTIONS = [
@@ -47,6 +48,8 @@ const STATUS_OPTIONS = [
 
 export const OffersPage = () => {
     const queryClient = useQueryClient();
+    const { settings: courseSettings, loading: courseSettingsLoading } = useCourseSettings();
+    const offerPricingEnabled = courseSettings?.offerPricing?.enabled === true;
 
     const [searchInput, setSearchInput] = useState('');
     const [searchFilter, setSearchFilter] = useState('');
@@ -190,6 +193,33 @@ export const OffersPage = () => {
 
     const totalElements = packageData?.total_elements ?? 0;
     const totalPages = packageData?.total_pages ?? 0;
+
+    if (!courseSettingsLoading && !offerPricingEnabled) {
+        return (
+            <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
+                <Tag className="size-10 text-neutral-300" />
+                <h1 className="text-h3 font-semibold text-neutral-700">
+                    Offer pricing is disabled
+                </h1>
+                <p className="max-w-md text-sm text-neutral-500">
+                    Enable offer pricing in Course Settings to let admins set an offer price
+                    below the MRP on individual {packageTermLower}.
+                </p>
+                <div className="mt-2 flex gap-2">
+                    <Link to="/settings" search={{ selectedTab: 'course' }}>
+                        <MyButton buttonType="primary" scale="small" layoutVariant="default">
+                            Open Course Settings
+                        </MyButton>
+                    </Link>
+                    <Link to="/admin-package-management">
+                        <MyButton buttonType="secondary" scale="small" layoutVariant="default">
+                            Back
+                        </MyButton>
+                    </Link>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4 p-4">

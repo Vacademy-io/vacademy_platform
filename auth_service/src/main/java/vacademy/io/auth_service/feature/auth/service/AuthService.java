@@ -1,5 +1,6 @@
 package vacademy.io.auth_service.feature.auth.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
@@ -36,6 +37,7 @@ import java.util.Optional;
 import java.util.Set;
 
 @Service
+@Slf4j
 public class AuthService {
     @Autowired
     UserRepository userRepository;
@@ -490,10 +492,20 @@ public class AuthService {
             user = userRepository.save(user);
         }
         if (sendWelcomeMail) {
-            if (isAlreadyPresent) {
-                sendLearnerEnrollmentExistingUserEmail(user, instituteId, userRoleSet, overrideLoginUrl);
-            } else {
-                sendLearnerEnrollmentNewUserEmail(user, instituteId, userRoleSet, overrideLoginUrl);
+            // Welcome email is a side-effect: its failure must NEVER roll back the
+            // user creation. The enclosing @Transactional would otherwise mark the
+            // transaction rollback-only on any thrown exception, deleting the new
+            // user (and on the existing-user branch, undoing any patched fields /
+            // newly assigned roles). Catch everything here and log instead.
+            try {
+                if (isAlreadyPresent) {
+                    sendLearnerEnrollmentExistingUserEmail(user, instituteId, userRoleSet, overrideLoginUrl);
+                } else {
+                    sendLearnerEnrollmentNewUserEmail(user, instituteId, userRoleSet, overrideLoginUrl);
+                }
+            } catch (Exception e) {
+                log.error("Welcome email failed for userId={}, instituteId={}: {}",
+                        user.getId(), instituteId, e.getMessage(), e);
             }
         }
         return user;
@@ -507,6 +519,19 @@ public class AuthService {
     }
 
     public void sendLearnerEnrollmentNewUserEmail(User user, String instituteId, Set<UserRole> roles, String overrideLoginUrl) {
+        if (user == null) {
+            log.warn("sendLearnerEnrollmentNewUserEmail called with null user; skipping send.");
+            return;
+        }
+        // For phone-only institutes (USER_IDENTIFIER=PHONE) the learner may have
+        // no email on record. Don't attempt the email send; the unified pipeline
+        // would receive recipient.email=null and either fail or silently drop it.
+        // TODO: add SMS/WhatsApp credential delivery for phone-only learners.
+        if (!StringUtils.hasText(user.getEmail())) {
+            log.warn("Skipping new-learner welcome email for userId={} (no email on file).",
+                    user.getId());
+            return;
+        }
         InstituteInfoDTO instituteInfoDTO = null;
         boolean isLearner = false;
         if (roles != null) {
@@ -554,8 +579,18 @@ public class AuthService {
     }
 
     public void sendLearnerEnrollmentExistingUserEmail(User user, String instituteId, Set<UserRole> roles, String overrideLoginUrl) {
-        if (user == null || user.getEmail() == null) {
-            throw new IllegalArgumentException("User or user email must not be null");
+        if (user == null) {
+            log.warn("sendLearnerEnrollmentExistingUserEmail called with null user; skipping send.");
+            return;
+        }
+        // Same rationale as the new-user path: phone-identifier institutes may
+        // have learners with no email — skip instead of throwing so the caller's
+        // transaction is not marked rollback-only.
+        // TODO: add SMS/WhatsApp credential delivery for phone-only learners.
+        if (!StringUtils.hasText(user.getEmail())) {
+            log.warn("Skipping existing-learner welcome email for userId={} (no email on file).",
+                    user.getId());
+            return;
         }
         InstituteInfoDTO instituteInfoDTO = null;
         boolean isLearner = false;

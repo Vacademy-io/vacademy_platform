@@ -2,8 +2,7 @@ import { useState, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { MyButton } from '@/components/design-system/button';
-import { X, MagnifyingGlass, Upload, UserPlus } from '@phosphor-icons/react';
+import { X, MagnifyingGlass, Upload, UserPlus, PencilSimple } from '@phosphor-icons/react';
 import { useAutosuggestUsers } from '../../../../-hooks/useAutosuggestUsers';
 import {
     AutosuggestUser,
@@ -32,7 +31,28 @@ export const Step1LearnerSelector = ({
 }: Props) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [mode, setMode] = useState<LearnerSourceMode>('manual');
+    const [editingIndex, setEditingIndex] = useState<number | null>(null);
     const searchRef = useRef<HTMLInputElement>(null);
+
+    const editingRow =
+        editingIndex !== null && selectedLearners[editingIndex]?.type === 'new'
+            ? (selectedLearners[editingIndex] as { type: 'new'; newUser: NewUserRow }).newUser
+            : undefined;
+
+    const startEditing = (idx: number) => {
+        setEditingIndex(idx);
+        setMode('manual');
+    };
+
+    const handleEditSave = (updated: NewUserRow) => {
+        if (editingIndex === null) return;
+        const next = [...selectedLearners];
+        next[editingIndex] = { type: 'new', newUser: updated };
+        onSelectedLearnersChange(next);
+        setEditingIndex(null);
+    };
+
+    const handleEditCancel = () => setEditingIndex(null);
 
     const { data: suggestedUsers, isFetching } = useAutosuggestUsers({
         instituteId,
@@ -81,29 +101,64 @@ export const Step1LearnerSelector = ({
                         {selectedLearners.length} learner{selectedLearners.length !== 1 ? 's' : ''} selected
                     </p>
                     <div className="flex flex-wrap gap-2">
-                        {selectedLearners.map((l, idx) => (
-                            <div
-                                key={idx}
-                                className="flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs text-primary-700"
-                            >
-                                <div>
-                                    <span className="font-medium">{getLearnerLabel(l)}</span>
-                                    <span className="ml-1 text-primary-400">{getLearnerSub(l)}</span>
-                                </div>
-                                <button
-                                    onClick={() => removeLearner(idx)}
-                                    className="ml-1 rounded-full text-primary-400 hover:text-primary-700"
+                        {selectedLearners.map((l, idx) => {
+                            const isBeingEdited = editingIndex === idx;
+                            return (
+                                <div
+                                    key={idx}
+                                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
+                                        isBeingEdited
+                                            ? 'border-warning-400 bg-warning-50 text-warning-700'
+                                            : 'border-primary-200 bg-primary-50 text-primary-700'
+                                    }`}
                                 >
-                                    <X size={12} weight="bold" />
-                                </button>
-                            </div>
-                        ))}
+                                    <div>
+                                        <span className="font-medium">{getLearnerLabel(l)}</span>
+                                        <span className={`ml-1 ${isBeingEdited ? 'text-warning-500' : 'text-primary-400'}`}>
+                                            {isBeingEdited ? '(editing…)' : getLearnerSub(l)}
+                                        </span>
+                                    </div>
+                                    {l.type === 'new' && !isBeingEdited && (
+                                        <button
+                                            onClick={() => startEditing(idx)}
+                                            className="ml-1 rounded-full text-primary-400 hover:text-primary-700"
+                                            title="Edit"
+                                        >
+                                            <PencilSimple size={12} weight="bold" />
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={() => {
+                                            if (isBeingEdited) setEditingIndex(null);
+                                            removeLearner(idx);
+                                        }}
+                                        className={`ml-1 rounded-full ${
+                                            isBeingEdited
+                                                ? 'text-warning-500 hover:text-warning-700'
+                                                : 'text-primary-400 hover:text-primary-700'
+                                        }`}
+                                        title="Remove"
+                                    >
+                                        <X size={12} weight="bold" />
+                                    </button>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
 
             {/* Source mode tabs — 2x2 grid on mobile, single row on sm+ */}
-            <Tabs value={mode} onValueChange={(v) => setMode(v as LearnerSourceMode)}>
+            <Tabs
+                value={mode}
+                onValueChange={(v) => {
+                    const next = v as LearnerSourceMode;
+                    if (editingIndex !== null && next !== 'manual') {
+                        setEditingIndex(null);
+                    }
+                    setMode(next);
+                }}
+            >
                 <TabsList className="grid h-auto w-full grid-cols-2 gap-1 sm:flex sm:h-9 sm:gap-0">
                     <TabsTrigger value="search" className="min-w-0 justify-center text-xs sm:flex-1 sm:text-sm">
                         <MagnifyingGlass size={14} className="mr-1.5 shrink-0" />
@@ -204,7 +259,12 @@ export const Step1LearnerSelector = ({
 
                 {/* TAB: Manual entry */}
                 <TabsContent value="manual" className="mt-4">
-                    <ManualUserEntry onAdd={addNewUsers} />
+                    <ManualUserEntry
+                        onAdd={addNewUsers}
+                        editingRow={editingRow}
+                        onEditSave={handleEditSave}
+                        onEditCancel={handleEditCancel}
+                    />
                 </TabsContent>
             </Tabs>
         </div>

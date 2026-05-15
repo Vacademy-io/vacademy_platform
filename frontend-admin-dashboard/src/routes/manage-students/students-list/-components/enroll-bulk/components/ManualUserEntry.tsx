@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import PhoneInput from 'react-phone-input-2';
@@ -9,13 +9,17 @@ import { NewUserRow, CustomFieldValue } from '../../../-types/bulk-assign-types'
 import {
     getCustomFieldSettingsFromCache,
     CustomField,
-    SystemField,
 } from '@/services/custom-field-settings';
+import { useUserIdentifierSetting } from '@/services/user-identifier-setting';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface Props {
     onAdd: (rows: NewUserRow[]) => void;
+    /** When provided, renders a single pre-filled row in edit mode. */
+    editingRow?: NewUserRow;
+    onEditSave?: (row: NewUserRow) => void;
+    onEditCancel?: () => void;
 }
 
 // Internal row state (extends NewUserRow with a custom_fields Record for easy editing)
@@ -66,6 +70,63 @@ const emptyRow = (): EditableRow => ({
     custom_fields: {},
     expanded: false,
 });
+
+const rowFromNewUser = (u: NewUserRow): EditableRow => {
+    const cf: Record<string, string> = {};
+    for (const v of u.custom_field_values || []) cf[v.custom_field_id] = v.value;
+    return {
+        email: u.email || '',
+        full_name: u.full_name || '',
+        mobile_number: u.mobile_number || '',
+        username: u.username || '',
+        password: u.password || '',
+        gender: u.gender || '',
+        date_of_birth: u.date_of_birth || '',
+        address_line: u.address_line || '',
+        city: u.city || '',
+        region: u.region || '',
+        pin_code: u.pin_code || '',
+        fathers_name: u.fathers_name || '',
+        mothers_name: u.mothers_name || '',
+        parents_mobile_number: u.parents_mobile_number || '',
+        parents_email: u.parents_email || '',
+        parents_to_mother_mobile_number: u.parents_to_mother_mobile_number || '',
+        parents_to_mother_email: u.parents_to_mother_email || '',
+        linked_institute_name: u.linked_institute_name || '',
+        custom_fields: cf,
+        expanded: true,
+    };
+};
+
+const editableRowToNewUser = (r: EditableRow): NewUserRow => {
+    const cfValues: CustomFieldValue[] = [];
+    for (const [cfId, val] of Object.entries(r.custom_fields)) {
+        if (val?.trim()) {
+            cfValues.push({ custom_field_id: cfId, value: val.trim() });
+        }
+    }
+    return {
+        email: r.email.trim(),
+        full_name: r.full_name.trim(),
+        mobile_number: r.mobile_number?.trim() || undefined,
+        username: r.username?.trim() || undefined,
+        password: r.password?.trim() || undefined,
+        gender: r.gender?.trim() || undefined,
+        date_of_birth: r.date_of_birth?.trim() || undefined,
+        address_line: r.address_line?.trim() || undefined,
+        city: r.city?.trim() || undefined,
+        region: r.region?.trim() || undefined,
+        pin_code: r.pin_code?.trim() || undefined,
+        fathers_name: r.fathers_name?.trim() || undefined,
+        mothers_name: r.mothers_name?.trim() || undefined,
+        parents_mobile_number: r.parents_mobile_number?.trim() || undefined,
+        parents_email: r.parents_email?.trim() || undefined,
+        parents_to_mother_mobile_number: r.parents_to_mother_mobile_number?.trim() || undefined,
+        parents_to_mother_email: r.parents_to_mother_email?.trim() || undefined,
+        linked_institute_name: r.linked_institute_name?.trim() || undefined,
+        custom_field_values: cfValues.length > 0 ? cfValues : undefined,
+    };
+};
 
 // Map system field key → EditableRow field key + input type
 const SYSTEM_FIELD_MAP: Record<
@@ -132,10 +193,23 @@ interface VisibleSystemField {
     placeholder: string;
 }
 
-export const ManualUserEntry = ({ onAdd }: Props) => {
+export const ManualUserEntry = ({ onAdd, editingRow, onEditSave, onEditCancel }: Props) => {
     const learnerTerm = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
-    const [rows, setRows] = useState<EditableRow[]>([emptyRow()]);
+    const isEditMode = !!editingRow;
+    const { data: userIdentifier } = useUserIdentifierSetting();
+    const phoneRequired = userIdentifier === 'PHONE';
+
+    const [rows, setRows] = useState<EditableRow[]>(() =>
+        editingRow ? [rowFromNewUser(editingRow)] : [emptyRow()],
+    );
     const [submitted, setSubmitted] = useState(false);
+
+    // Reset form whenever edit target changes — entering edit (load row),
+    // switching edit target (reload row), or exiting edit (back to empty add).
+    useEffect(() => {
+        setRows(editingRow ? [rowFromNewUser(editingRow)] : [emptyRow()]);
+        setSubmitted(false);
+    }, [editingRow]);
 
     // ─── Compute dynamic fields from institute settings ────
     const { visibleSystemFields, enrollmentCustomFields } = useMemo(() => {
@@ -201,50 +275,33 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
     const removeRow = (idx: number) =>
         setRows((prev) => (prev.length === 1 ? prev : prev.filter((_, i) => i !== idx)));
 
-    const validate = (row: EditableRow) => row.email.trim() && row.full_name.trim();
+    const validate = (row: EditableRow) => {
+        if (!row.full_name.trim()) return false;
+        if (phoneRequired) {
+            return !!row.mobile_number?.trim();
+        }
+        return !!row.email.trim();
+    };
 
     const handleAdd = () => {
         setSubmitted(true);
         const valid = rows.filter(validate);
         if (valid.length === 0) return;
 
-        onAdd(
-            valid.map((r): NewUserRow => {
-                // Build custom field values
-                const cfValues: CustomFieldValue[] = [];
-                for (const [cfId, val] of Object.entries(r.custom_fields)) {
-                    if (val?.trim()) {
-                        cfValues.push({ custom_field_id: cfId, value: val.trim() });
-                    }
-                }
-
-                return {
-                    email: r.email.trim(),
-                    full_name: r.full_name.trim(),
-                    mobile_number: r.mobile_number?.trim() || undefined,
-                    username: r.username?.trim() || undefined,
-                    password: r.password?.trim() || undefined,
-                    gender: r.gender?.trim() || undefined,
-                    date_of_birth: r.date_of_birth?.trim() || undefined,
-                    address_line: r.address_line?.trim() || undefined,
-                    city: r.city?.trim() || undefined,
-                    region: r.region?.trim() || undefined,
-                    pin_code: r.pin_code?.trim() || undefined,
-                    fathers_name: r.fathers_name?.trim() || undefined,
-                    mothers_name: r.mothers_name?.trim() || undefined,
-                    parents_mobile_number: r.parents_mobile_number?.trim() || undefined,
-                    parents_email: r.parents_email?.trim() || undefined,
-                    parents_to_mother_mobile_number:
-                        r.parents_to_mother_mobile_number?.trim() || undefined,
-                    parents_to_mother_email: r.parents_to_mother_email?.trim() || undefined,
-                    linked_institute_name: r.linked_institute_name?.trim() || undefined,
-                    custom_field_values: cfValues.length > 0 ? cfValues : undefined,
-                };
-            })
-        );
+        onAdd(valid.map(editableRowToNewUser));
         setRows([emptyRow()]);
         setSubmitted(false);
     };
+
+    const handleEditSave = () => {
+        setSubmitted(true);
+        const row = rows[0];
+        if (!row || !validate(row)) return;
+        onEditSave?.(editableRowToNewUser(row));
+    };
+
+    const emailLabel = phoneRequired ? 'Email (optional)' : 'Email';
+    const mobileLabel = phoneRequired ? 'Mobile' : 'Mobile (optional)';
 
     return (
         <div className="flex flex-col gap-4">
@@ -256,7 +313,7 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                     >
                         <div className="mb-2 flex items-center justify-between">
                             <span className="text-xs font-semibold text-neutral-500">
-                                {learnerTerm} #{idx + 1}
+                                {isEditMode ? `Edit ${learnerTerm}` : `${learnerTerm} #${idx + 1}`}
                             </span>
                             <div className="flex items-center gap-2">
                                 {hasExtraFields && (
@@ -275,7 +332,7 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                                         )}
                                     </button>
                                 )}
-                                {rows.length > 1 && (
+                                {!isEditMode && rows.length > 1 && (
                                     <button
                                         onClick={() => removeRow(idx)}
                                         className="text-neutral-400 hover:text-danger-500 transition-colors"
@@ -290,7 +347,8 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div>
                                 <Label className="mb-1 text-xs text-neutral-500">
-                                    Email <span className="text-danger-500">*</span>
+                                    {emailLabel}
+                                    {!phoneRequired && <span className="text-danger-500"> *</span>}
                                 </Label>
                                 <Input
                                     type="email"
@@ -298,7 +356,7 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                                     value={row.email}
                                     onChange={(e) => update(idx, 'email', e.target.value)}
                                     className={
-                                        submitted && !row.email.trim()
+                                        submitted && !phoneRequired && !row.email.trim()
                                             ? 'border-danger-400'
                                             : ''
                                     }
@@ -321,7 +379,8 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                             </div>
                             <div>
                                 <Label className="mb-1 text-xs text-neutral-500">
-                                    Mobile (optional)
+                                    {mobileLabel}
+                                    {phoneRequired && <span className="text-danger-500"> *</span>}
                                 </Label>
                                 <PhoneInput
                                     country="in"
@@ -331,7 +390,11 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                                     onChange={(value) =>
                                         update(idx, 'mobile_number', value)
                                     }
-                                    inputClass="!w-full h-7"
+                                    inputClass={`!w-full h-7 ${
+                                        submitted && phoneRequired && !row.mobile_number?.trim()
+                                            ? '!border-danger-400'
+                                            : ''
+                                    }`}
                                     inputProps={{ name: `mobile_number_${idx}` }}
                                 />
                             </div>
@@ -441,25 +504,46 @@ export const ManualUserEntry = ({ onAdd }: Props) => {
                 ))}
             </div>
 
-            <div className="flex items-center gap-3">
-                <button
-                    onClick={addRow}
-                    className="flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-800 transition-colors"
-                >
-                    <Plus size={14} />
-                    Add another learner
-                </button>
-                <div className="flex-1" />
-                <MyButton
-                    buttonType="primary"
-                    scale="medium"
-                    layoutVariant="default"
-                    onClick={handleAdd}
-                >
-                    Add {rows.filter(validate).length} learner
-                    {rows.filter(validate).length !== 1 ? 's' : ''}
-                </MyButton>
-            </div>
+            {isEditMode ? (
+                <div className="flex items-center justify-end gap-2">
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        layoutVariant="default"
+                        onClick={onEditCancel}
+                    >
+                        Cancel
+                    </MyButton>
+                    <MyButton
+                        buttonType="primary"
+                        scale="medium"
+                        layoutVariant="default"
+                        onClick={handleEditSave}
+                    >
+                        Save changes
+                    </MyButton>
+                </div>
+            ) : (
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={addRow}
+                        className="flex items-center gap-1.5 text-sm font-medium text-primary-600 hover:text-primary-800 transition-colors"
+                    >
+                        <Plus size={14} />
+                        Add another learner
+                    </button>
+                    <div className="flex-1" />
+                    <MyButton
+                        buttonType="primary"
+                        scale="medium"
+                        layoutVariant="default"
+                        onClick={handleAdd}
+                    >
+                        Add {rows.filter(validate).length} learner
+                        {rows.filter(validate).length !== 1 ? 's' : ''}
+                    </MyButton>
+                </div>
+            )}
         </div>
     );
 };

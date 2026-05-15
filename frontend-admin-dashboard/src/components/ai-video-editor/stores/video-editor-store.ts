@@ -400,6 +400,11 @@ export interface VideoEditorState {
      *  a second regenerate while the first is in flight. */
     regeneratingSentenceId: string | null;
 
+    /** Shot idx currently being re-narrated via `/shot/regenerate` (v3) (or
+     *  null when idle). Sentence and shot regen share the same audio file
+     *  so the store enforces a single in-flight regen across both units. */
+    regeneratingShotIdx: number | null;
+
     /** Per-entry "natural" animation duration (seconds) — the duration the HTML
      *  animations were originally designed for. Snapshotted at load time and used
      *  by `fitAnimationsToDuration` to compute the correct timeScale ratio.
@@ -544,6 +549,25 @@ export interface VideoEditorState {
     silenceSentence: (sentenceId: string) => Promise<{ ok: boolean; error?: string }>;
 
     /**
+     * Re-narrate one shot (v3 editor unit) via `/shot/regenerate`. Mirrors
+     * `regenerateSentence` but operates on `meta.shots[]`:
+     *   - meta.shots[i] replaced with the new clip
+     *   - all later shots' start_time shifted by duration_delta
+     *   - all entries whose time range starts at/after the splice boundary
+     *     shifted by duration_delta
+     *   - meta.total_duration bumped
+     *   - audioUrl pointed at the new spliced MP3
+     *
+     * Refuses (ok:false) when the target shot is `audio_policy:
+     * 'intrinsic_only'` — those carry their own audio (source clip /
+     * Veo audio) and have no master-narration slot to replace.
+     */
+    regenerateShot: (
+        shotIdx: number,
+        newText: string
+    ) => Promise<{ ok: boolean; error?: string }>;
+
+    /**
      * Generate a new HTML shot to fill `[gapStart, gapEnd]` on the
      * timeline. Server uses the narration in that range as the LLM's
      * primary script and combines it with the optional `userHint` for
@@ -620,6 +644,7 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     future: [],
     isSaving: false,
     regeneratingSentenceId: null,
+    regeneratingShotIdx: null,
     insertingGapKey: null,
     naturalDurations: {},
 
@@ -1577,6 +1602,119 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 ),
             },
         }));
+        return { ok: true };
+    },
+
+    regenerateShot: async (shotIdx, newText) => {
+        const { videoId, apiKey, regeneratingShotIdx, regeneratingSentenceId, meta } = get();
+        // Sentence- and shot-regen share the same master audio, so only one
+        // in-flight at a time across both units.
+        if (regeneratingShotIdx != null || regeneratingSentenceId != null) {
+            return { ok: false, error: 'Another regen is already in flight' };
+        }
+        if (!videoId || !apiKey) {
+            return { ok: false, error: 'Video not initialized' };
+        }
+        const shots = meta.shots ?? [];
+        const targetIdx = shots.findIndex((s) => s.shot_idx === shotIdx);
+        if (targetIdx === -1) {
+            return { ok: false, error: `Shot ${shotIdx} not found` };
+        }
+        const target = shots[targetIdx];
+        if (!target) {
+            return { ok: false, error: `Shot ${shotIdx} not found` };
+        }
+        if (target.audio_policy === 'intrinsic_only') {
+            return {
+                ok: false,
+                error:
+                    'This shot carries intrinsic audio (source clip / Veo) — ' +
+                    'there is no narration to re-narrate.',
+            };
+        }
+        const trimmed = newText.trim();
+        if (!trimmed) {
+            return { ok: false, error: 'Text cannot be empty' };
+        }
+        if (trimmed === target.text.trim()) {
+            return { ok: false, error: 'Text unchanged — nothing to re-narrate' };
+        }
+
+        set({ regeneratingShotIdx: shotIdx });
+        const { apiRegenerateShot } = await import('../utils/sentence-api');
+        const result = await apiRegenerateShot(videoId, apiKey, shotIdx, trimmed);
+
+        if (!result.ok) {
+            set({ regeneratingShotIdx: null });
+            return { ok: false, error: result.error };
+        }
+
+        const { shot: updatedShot, duration_delta, new_global_audio_url } = result.data;
+        set((s) => {
+            // Boundary semantics (must match the server's regenerate_shot):
+            //   - SHOT ripple: list-position. Every shot after `targetIdx` shifts
+            //     by `duration_delta`. The edited shot's start_time stays put
+            //     (only its duration / end changes).
+            //   - SENTENCE ripple: time-based against `oldStart`. Sentences sit
+            //     inside the master audio at their absolute time — anything at
+            //     or after the edited shot's start ripples.
+            //   - ENTRY ripple: time-based against `oldEnd` (NOT oldStart).
+            //     In v3 each shot maps 1:1 to an entry — using oldStart would
+            //     shift the EDITED entry's inTime too, which moves the shot
+            //     forward in time and breaks render alignment. Using oldEnd:
+            //       • edited entry: inTime < oldEnd → not shifted; exitTime
+            //         == oldEnd → shifted to new end. ✓
+            //       • next entries: inTime ≥ oldEnd → shifted. ✓
+            //       • watermark overlays (inTime=0): not shifted; exitTime
+            //         spans full timeline → shifted. ✓
+            const oldStart = target.start_time;
+            const oldEnd = target.start_time + target.duration;
+            const epsilon = 1e-3;
+            const updatedShots = (s.meta.shots ?? []).map((sh, i) => {
+                if (i === targetIdx) return updatedShot;
+                if (i > targetIdx) {
+                    return { ...sh, start_time: sh.start_time + duration_delta };
+                }
+                return sh;
+            });
+            // meta.sentences[] (if present) is downstream-derived from the
+            // same audio file; ripple it too so legacy-sentence consumers
+            // stay coherent until the next timeline refetch.
+            const updatedSentences = (s.meta.sentences ?? []).map((sent) => {
+                if (sent.start_time >= oldStart - epsilon) {
+                    return { ...sent, start_time: sent.start_time + duration_delta };
+                }
+                return sent;
+            });
+            const updatedEntries = s.entries.map((e) => {
+                const next = { ...e };
+                let mutated = false;
+                if (e.inTime != null && e.inTime >= oldEnd - epsilon) {
+                    next.inTime = e.inTime + duration_delta;
+                    mutated = true;
+                }
+                if (e.exitTime != null && e.exitTime >= oldEnd - epsilon) {
+                    next.exitTime = e.exitTime + duration_delta;
+                    mutated = true;
+                }
+                return mutated ? next : e;
+            });
+            const newTotal =
+                s.meta.total_duration != null
+                    ? Math.max(0, s.meta.total_duration + duration_delta)
+                    : s.meta.total_duration;
+            return {
+                regeneratingShotIdx: null,
+                audioUrl: new_global_audio_url || s.audioUrl,
+                meta: {
+                    ...s.meta,
+                    shots: updatedShots,
+                    sentences: updatedSentences,
+                    total_duration: newTotal,
+                },
+                entries: updatedEntries,
+            };
+        });
         return { ok: true };
     },
 

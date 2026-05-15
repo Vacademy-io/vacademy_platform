@@ -430,3 +430,133 @@ Per ultra video (8 shots): **~+32 credits**. Per super_ultra: **~+45 credits**. 
 - [docs/AI_CREDITS_PRICING.md](../AI_CREDITS_PRICING.md) — per-tier estimated-credits table refreshed
 
 Per-stage deduction is automatic — every new LLM call (bbox-lint regen, brand-asset regen, vision review with prior_thumb) accumulates into the per-shot `usage` dict and lands in `credit_transactions` via the existing `TokenUsageService.record_usage_and_deduct_credits` flow. No new request_type was introduced — analytics bucketing stays comparable.
+
+---
+
+# Pipeline Reorder v3 — ShotPlanner-first architecture
+
+**Status**: backend wiring shipped 2026-05-15 behind `PIPELINE_VERSION=v3` flag (also per-tier `pipeline_version: "v3"`). v2 remains the default; v3 is opt-in for shadow testing before promotion.
+**Audience**: engineers maintaining the AI video pipeline, the editor's audio surface, or anything that reads `timeline.meta.sentences[]`.
+**Origin**: user-requested architectural reorder — see [plan-to-make-the-tranquil-engelbart.md](../../../../Users/shreyashjain/.claude/plans/plan-to-make-the-tranquil-engelbart.md) for the full design rationale.
+
+## 1. The problem with v2 ordering
+
+v2 runs LLM calls in the wrong order: **BeatPlanner → ScriptGenerator → Director → per-shot HTML**. Three LLM hops play telephone before any visual planning happens, and the Director (which knows about shots) ends up *slicing* a pre-written monolithic script rather than *authoring* shot-owned narration. Three concrete consequences:
+
+1. **Telephone-game drift.** Each hop loses intent. The Director sees what survived the ScriptGenerator's interpretation of beats — the original prompt's nuances (uploads, AI-video flags, configs) are 2 hops away.
+2. **Free/standard fork.** `use_director` is unset on those tiers, so they skip the Director entirely and run a monolithic-only path. Two pipelines to maintain, two surfaces to debug.
+3. **Editor can't edit shots.** Audio is one monolithic `narration.mp3` mapped to client-derived sentence clips. The user wants: each shot owns its audio; editing a shot re-narrates only that shot; shots with intrinsic audio have no narration text.
+
+## 2. v3 — what's new
+
+```
+PROMPT + CONFIGS + UPLOADS + TIER
+        │
+        ▼
+   ShotPlanner   ──►  shot_plan.json (shots[] with narration_brief, audio_policy,
+        │                              background_treatment, transition_in,
+        │                              recurring_motifs, intent_role, etc.)
+        │                              ONE LLM call — sees everything.
+        ▼
+  NarrationWriter ──►  shot_plan.json updated (shots[i].narration_text filled)
+        │                              ONE LLM call. Single coherent narrator.
+        ▼
+  Per-shot TTS   ──►  per_shot_tts/shot_NNN.{mp3, json, txt}
+        │             narration.mp3 (concat) + narration_raw.json
+        ▼
+  Per-shot HTML  ──►  HTML/CSS/GSAP + post-render gates (bbox-lint,
+        │             vision review v3, brand-asset, density)
+        ▼
+     Render     ──►  final.mp4 (master narration muted in intrinsic_only windows)
+```
+
+Two LLM planning calls (~$0.06–$0.10) replace v2's three (~$0.08–$0.16). The savings compound at scale and apply uniformly across all tiers — free/standard get the same architectural benefits as ultra.
+
+## 3. New modules
+
+| File | Purpose | Lines |
+|---|---|---|
+| [shot_planner.py](../../ai_service/app/ai-video-gen-main/shot_planner.py) | ShotPlanner — replaces Director's planning role. System prompt absorbs BeatPlanner duty (intent_role enum, pacing profile, max-shot-count). Emits `shots[]` with per-shot `narration_brief` + `audio_policy` + `background_treatment` + `transition_in` + visual fields. Plan-level `recurring_motifs[]`. Standalone, network-free (injected `llm_chat` callable). | ~750 |
+| [narration_writer.py](../../ai_service/app/ai-video-gen-main/narration_writer.py) | NarrationWriter — reads ShotPlanner output, authors per-shot `narration_text` in one coherent LLM call. Enforces `audio_policy=intrinsic_only ⇒ narration_text=""`. Single narrator voice across all shots; word count budgeted at 150 wpm × `duration_estimate_s` per shot. | ~320 |
+
+## 4. Modified modules
+
+| Module | Changes |
+|---|---|
+| [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) | Added 7 v3 helper methods on `VideoGenerationPipeline` (`_pipeline_v3_enabled`, `_v3_aspect_label`, `_v3_collect_reference_assets`, `_v3_source_clip_available`, `_v3_article_screenshots`, `_v3_write_derived_script_artifacts`, `_run_v3_shot_planning`). Script stage gains a v3 dispatch block right after the target-duration pre-parse — on success, populates `script_plan` from ShotPlanner+NarrationWriter, persists `shot_plan.json` + derived `script.txt`, and short-circuits the v2 BeatPlanner + `_draft_script` + reviews + bridge. The `_v2_tts_deferred` gate is extended with a `_v3_in_play` branch so per-shot TTS runs inside the html stage on v3 the same way it does on v2. The html stage's Director branch checks `self._v3_shot_plan` (and `shot_plan.json` on disk for resume parity) and uses it directly when present — `_run_director` is skipped entirely. AudioPolicyPlanner runs as a defensive normalizer in v3 (`audio_policy` already set per shot by ShotPlanner). `_write_timeline` populates `meta.shots[]` from the active shot plan. |
+| [sentence_clip_service.py](../../ai_service/app/services/sentence_clip_service.py) | Added `regenerate_shot()` method, `ShotRegenerateResult` class, `_patch_shot`/`_extract_shots`/`_versioned_shot_clip_key`/`_sync_shot_plan_after_regen` helpers, plus module-level `_find_shot_by_idx` + `_ripple_shots` mirroring the existing sentence equivalents. Shares all the render/S3/TTS plumbing with the sentence path. |
+| [external_video_generation.py](../../ai_service/app/routers/external_video_generation.py) | New `POST /external/video/v1/shot/regenerate` endpoint + `ShotClipDto` / `RegenerateShotRequest` / `RegenerateShotResponse` schemas. Refuses (400) when the target shot is `intrinsic_only` or the video has no `meta.shots[]` yet. |
+| [types.ts](../../frontend-admin-dashboard/src/components/ai-video-player/types.ts) | New `ShotClip` interface. `TimelineMeta.shots?: ShotClip[]` added; `sentences?` marked `@deprecated`. |
+| [sentence-api.ts](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/sentence-api.ts) | New `apiRegenerateShot()` helper + `RegenerateShotResponse` type. Mirrors `apiRegenerateSentence` shape so editor migration is a drop-in. |
+
+## 5. Behavioral guarantees
+
+- **v3 is OFF by default.** Without `PIPELINE_VERSION=v3` (env) or per-tier `pipeline_version: "v3"`, the pipeline runs the existing v2 path unchanged. No production behavior change at this commit.
+- **v3 failure falls back to v2.** ShotPlanner or NarrationWriter raising any exception logs and falls through to the v2 path. No run is sacrificed to the new path while it's bedding in.
+- **`meta.shots[]` is built for both v2 and v3 timelines.** `_write_timeline` reads from `self._v3_shot_plan` first, then `shot_plan.json` on disk, then `director_plan.json`. So a v2 ultra-tier video also gets `meta.shots[]` — the editor's shot-mode works for any video with a Director plan.
+- **Sentence clips remain readable.** `meta.sentences[]` is left intact for backward compatibility; the editor MAY prefer `meta.shots[]` when present but doesn't have to.
+- **Resume parity.** A v3 run that crashes mid-html picks up where it left off via `shot_plan.json` on disk; the html stage detects it and uses it directly.
+- **Intrinsic-only shots are unwriteable through `/shot/regenerate`.** Source-clip speaker / Veo audio cannot be re-narrated through this endpoint — that's by design. Edit the underlying source asset instead.
+
+## 6. Audio-policy unification
+
+v3 doesn't need `_mix_audio_with_source_clips` (the fade-ordering function that landed in the recent CRITICAL bug fix). Source-clip audio in v3 flows through the same `intrinsic_only` audio policy as AI_VIDEO_HERO+audio:
+
+- ShotPlanner emits `audio_policy=intrinsic_only` on SOURCE_CLIP shots (per the system-prompt rule for source clips with meaningful audible moments).
+- AudioPolicyPlanner normalizes (defensive) and honors run-level `mute_tts_on_source_clips`.
+- Master narration is silenced in those windows (existing `mute_master_narration_for_intrinsic_shots` path).
+- Render-stage `<video>` element plays unmuted → source audio rides the browser-captured channel.
+
+One audio primitive, same code path, no parallel muting logic. v2's `_mix_audio_with_source_clips` stays in the file (still used on v2 runs) but is dead code on v3.
+
+## 7. Tier unification (not yet shipped — planned)
+
+The plan calls for unifying `QUALITY_TIERS` so all five tiers (`free`, `standard`, `premium`, `ultra`, `super_ultra`) run the v3 path; differences become **knobs** (model picks, post-render gate flags) not separate code paths. This is gated on v3 first proving stable in shadow runs. Once unified:
+
+- `free` / `standard` get the same ShotPlanner + NarrationWriter + per-shot TTS + per-shot HTML flow as `ultra`.
+- They differ only by `shot_planner_model` (Gemini 3 Flash vs Pro), `shot_bbox_check` (off vs on), `vision_review_enabled`, `ai_video_eligible`, etc.
+- `beat_planner.py` + `default_shot_mapper.py` become dead code and are deleted.
+
+This is tracked as a Phase 5 follow-up in the plan; not in this PR.
+
+## 8. Editor frontend follow-up
+
+The `ShotClip` types + `apiRegenerateShot` helper are in place. The PropertiesPanel UI rework — switching from sentence-clip editing to shot-clip editing rows with re-narrate buttons + intrinsic-audio badges — is the next FE work item. Tracked as Phase 4 in the plan.
+
+## 9. Cost surface
+
+Planning LLM cost on v3:
+
+| Run profile | v2 | v3 | Delta |
+|---|---|---|---|
+| `free` / `standard` (no Director, monolithic script) | ~$0.02–0.04 | ~$0.05–0.08 (ShotPlanner+NarrationWriter on Flash) | **+ ~$0.03**, but with shot planning + per-shot TTS + editor-ready meta.shots[] which v2 free/standard never had |
+| `premium` / `ultra` (BeatPlanner + Script + Director) | ~$0.08–0.16 | ~$0.06–0.10 | **− 25-35%** |
+| `super_ultra` | ~$0.12–0.20 | ~$0.08–0.14 | **− 30-35%** |
+
+v3 is cheaper for any tier that already runs Director; slightly more expensive for tiers that didn't (but those gain a full Director pipeline they previously lacked).
+
+## 10. What stays
+
+- All post-render quality gates (`_lint_shot_bbox`, `_lint_shot_brand_asset`, `_validate_shot_animation_density`, `_review_shot_visually` v3 rubric) — they operate on per-shot HTML output and are unaffected.
+- `AiVideoCostTracker`, fal Veo client, audio mute helpers, AudioPolicyPlanner (demoted to defensive normalizer in v3).
+- Per-shot TTS infrastructure (`_synthesize_voice_per_shot`, `_concat_master_narration`, `_synthesize_voice_for_shot`). v3 feeds these `shot.narration_text` directly — same default `narration_key="narration_text"` that already worked on v2.
+- `_reconcile_shot_timings_after_tts` — still corrects shot timings from actual MP3 durations after per-shot TTS.
+- The existing sentence-clip editor flow (`/sentence/regenerate`, `apiRegenerateSentence`). Both editor units coexist; the editor picks whichever matches the timeline.
+
+## 11. Files reference
+
+### Added
+- [app/ai-video-gen-main/shot_planner.py](../../ai_service/app/ai-video-gen-main/shot_planner.py)
+- [app/ai-video-gen-main/narration_writer.py](../../ai_service/app/ai-video-gen-main/narration_writer.py)
+
+### Modified
+- [app/ai-video-gen-main/automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) — `_pipeline_v3_enabled` + 6 v3 helpers, script-stage dispatch, TTS-defer gate, html-stage Director-skip, `_write_timeline` `meta.shots[]`
+- [app/services/sentence_clip_service.py](../../ai_service/app/services/sentence_clip_service.py) — `regenerate_shot()` + `ShotRegenerateResult` + helpers
+- [app/routers/external_video_generation.py](../../ai_service/app/routers/external_video_generation.py) — `POST /shot/regenerate` + DTOs
+- [frontend-admin-dashboard/src/components/ai-video-player/types.ts](../../frontend-admin-dashboard/src/components/ai-video-player/types.ts) — `ShotClip` type
+- [frontend-admin-dashboard/src/components/ai-video-editor/utils/sentence-api.ts](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/sentence-api.ts) — `apiRegenerateShot()` helper
+
+### Pending (next session)
+- `PropertiesPanel.tsx` — shot-based editing UI (rows with re-narrate + intrinsic-audio badges)
+- Persist `shot_plan.json` in the html-stage S3 upload bundle
+- Tier unification + `beat_planner.py`/`default_shot_mapper.py` deletion (after v3 soaks in shadow)

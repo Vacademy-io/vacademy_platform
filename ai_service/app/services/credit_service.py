@@ -594,21 +594,31 @@ class CreditService:
     # Credit Check (Pre-flight)
     # ========================================================================
 
-    # Tier-aware pre-flight estimates for the video pipeline (2026-05 audit).
-    # Each value is the **conservative floor** covering typical cost + ~10-15%
-    # headroom, derived from the per-tier breakdown in AI_CREDITS_PRICING.md.
-    # Real per-stage deductions track actual OpenRouter token counts via
-    # TokenUsageService; this is the upfront gate that catches institutes
-    # whose balance can't realistically support the chosen tier.
+    # Tier-aware pre-flight estimates for the video pipeline (recalibrated
+    # 2026-05-15 against live stage data). Original floors (300/380 for
+    # ultra/super_ultra) were calibrated against the worst-case Gemini 3.1 Pro
+    # pricing — but production ultra runs use Gemini 3 Flash, which deducts
+    # ~7-15 credits for a typical 60s video (observed: 7.22 cr on a 10-shot
+    # Labour Link run, 56s narration, 313K tokens). Those original floors
+    # would have blocked users with 50-200 credits who could complete an
+    # ultra run 5-10× over — paternalistic and wrong.
+    #
+    # The floor's job is to catch truly-bankrupt institutes and provide a
+    # ~30% headroom over typical cost, NOT to reserve the worst-case maximum.
+    # Mid-run depletion is handled by refund-on-failure (TokenUsageService.
+    # refund_video_credits), and per-stage deduction tracks reality via
+    # actual OpenRouter token counts. Institutes choosing the more expensive
+    # Pro model for HTML gen will spend more — they should have a sufficient
+    # balance, but we don't punish the Flash majority for that minority case.
     #
     # `partial_run_factor` scales the floor for resume/retry endpoints (where
     # checkpoints mean only a fraction of the work remains).
     _VIDEO_TIER_FLOOR_CREDITS: Dict[str, Decimal] = {
         "free":        Decimal("5"),
-        "standard":    Decimal("30"),
-        "premium":     Decimal("80"),
-        "ultra":       Decimal("300"),
-        "super_ultra": Decimal("380"),
+        "standard":    Decimal("10"),
+        "premium":     Decimal("20"),
+        "ultra":       Decimal("30"),
+        "super_ultra": Decimal("50"),
     }
 
     def check_video_tier_credits(

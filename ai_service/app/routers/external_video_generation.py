@@ -1531,6 +1531,143 @@ async def regenerate_sentence_external(
     )
 
 
+class ShotClipDto(BaseModel):
+    """One entry in `timeline.meta.shots[]` — the v3 editor unit.
+
+    Mirrors `ShotClip` in the FE types. `audio_url` / `audio_words_url` /
+    `audio_script_url` are None for `audio_policy=intrinsic_only` shots
+    (those carry intrinsic audio — source clip or Veo audio — and have no
+    per-shot master narration mp3)."""
+    id: str
+    shot_idx: int
+    shot_type: str
+    text: str
+    audio_url: Optional[str] = None
+    audio_words_url: Optional[str] = None
+    audio_script_url: Optional[str] = None
+    audio_duration_s: float
+    audio_skipped: bool = False
+    audio_policy: str = "narration_only"
+    start_time: float
+    duration: float
+    intent_role: str = ""
+    narration_brief: str = ""
+    words: List[SentenceWordDto] = []
+
+
+class RegenerateShotRequest(BaseModel):
+    video_id: str
+    shot_idx: int = Field(
+        ..., description="Zero-based shot index, matches `shot_idx` in meta.shots[]",
+    )
+    new_text: str
+    voice_overrides: Optional[VoiceOverrides] = None
+    crossfade_ms: int = Field(
+        default=50, ge=0, le=2000,
+        description="Crossfade duration at each splice join.",
+    )
+    head_pad_ms: int = Field(
+        default=40, ge=0, le=500,
+        description="Shifts the splice boundary later by this many ms.",
+    )
+
+
+class RegenerateShotResponse(BaseModel):
+    video_id: str
+    shot: ShotClipDto
+    duration_delta: float = Field(
+        ..., description="new clip duration − old; ripple downstream shot start_times by this",
+    )
+    new_global_audio_url: str
+    new_global_duration: float
+    timeline_url: str
+
+
+@router.post(
+    "/shot/regenerate",
+    response_model=RegenerateShotResponse,
+    summary="Re-narrate one shot and splice it into the global audio (External, v3)",
+)
+async def regenerate_shot_external(
+    payload: RegenerateShotRequest,
+    service: VideoGenerationService = Depends(get_video_service),
+    db: Session = Depends(db_dependency),
+    institute_id: str = Depends(get_institute_from_api_key),
+) -> RegenerateShotResponse:
+    """
+    Re-narrate a single shot's audio. Mirrors `/sentence/regenerate` but
+    operates on `meta.shots[]` (the v3 editor unit) instead of
+    `meta.sentences[]`.
+
+    Flow on the server:
+      1. TTS the new text in the same voice → fresh per-shot MP3.
+      2. Render worker splices the clip into the global narration.mp3
+         with crossfading on both joins.
+      3. Every later shot in `meta.shots[]` and every later entry has its
+         time shifted by the duration delta (ripple).
+      4. `shot_plan.json` (v3 source of truth) is updated to match,
+         best-effort.
+      5. Patched timeline JSON re-uploaded; video record's audio URL points
+         at the new spliced MP3.
+
+    Refuses to re-narrate shots with `audio_policy=intrinsic_only` (source
+    clip speaker, Veo audio) — those have no master-narration slot. To
+    change their audio, edit the underlying source asset.
+
+    Errors:
+      - 400 — request body invalid, shot not found, video has no
+              meta.shots[] yet (pre-v3 video), or shot is intrinsic_only.
+      - 503 — render server not configured.
+      - 500 — TTS / splice / S3 failure.
+
+    Authentication: Requires 'X-Institute-Key' header.
+    """
+    from ..config import get_settings
+    from ..services.render_service import RenderService
+    from ..services.sentence_clip_service import SentenceClipService
+
+    settings = get_settings()
+    if not settings.render_server_url:
+        raise HTTPException(
+            status_code=503,
+            detail="Render server not configured. Set RENDER_SERVER_URL.",
+        )
+
+    svc = SentenceClipService(
+        s3_service=service.s3_service,
+        render_service=RenderService(
+            render_server_url=settings.render_server_url,
+            render_key=settings.render_server_key,
+        ),
+        repository=service.repository,
+        video_gen_root=service.video_gen_root,
+    )
+    overrides = payload.voice_overrides.dict(exclude_none=True) if payload.voice_overrides else None
+
+    try:
+        result = svc.regenerate_shot(
+            video_id=payload.video_id,
+            shot_idx=payload.shot_idx,
+            new_text=payload.new_text,
+            voice_overrides=overrides,
+            crossfade_ms=payload.crossfade_ms,
+            head_pad_ms=payload.head_pad_ms,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate shot: {exc}")
+
+    return RegenerateShotResponse(
+        video_id=result.video_id,
+        shot=ShotClipDto(**result.shot),
+        duration_delta=result.duration_delta,
+        new_global_audio_url=result.new_global_audio_url,
+        new_global_duration=result.new_global_duration,
+        timeline_url=result.timeline_url,
+    )
+
+
 class SilenceSentenceRequest(BaseModel):
     video_id: str
     sentence_id: str

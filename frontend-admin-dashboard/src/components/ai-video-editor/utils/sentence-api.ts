@@ -15,7 +15,7 @@
  *     timestamps, return the new sentence + duration delta.
  */
 
-import { Entry, SentenceClip } from '@/components/ai-video-player/types';
+import { Entry, SentenceClip, ShotClip } from '@/components/ai-video-player/types';
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -153,6 +153,61 @@ export async function apiInsertShot(
         });
         if (!res.ok) return { ok: false, error: await readError(res) };
         const data = (await res.json()) as InsertShotResponse;
+        return { ok: true, data };
+    } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Shot-level audio editing (v3 pipeline)
+//
+// Mirrors the sentence-level helpers above but targets `meta.shots[]` —
+// the v3 editor unit. ShotClip-based videos prefer these calls; legacy
+// sentence-based videos continue to use `apiRegenerateSentence`.
+// ─────────────────────────────────────────────────────────────────────
+
+export interface RegenerateShotResponse {
+    video_id: string;
+    shot: ShotClip;
+    /** new clip duration − old clip duration; ripple downstream shot start_times by this. */
+    duration_delta: number;
+    new_global_audio_url: string;
+    new_global_duration: number;
+    timeline_url: string;
+}
+
+/**
+ * Re-narrate one shot using the same voice the video was originally
+ * generated with. Returns the updated shot plus the duration delta — the
+ * caller is responsible for rippling `meta.shots[]` and `entries[]` by
+ * `duration_delta` (the server has already done the same to the persisted
+ * timeline JSON).
+ *
+ * Refuses (HTTP 400) when:
+ *   - the shot is `audio_policy: 'intrinsic_only'` (source-clip speaker /
+ *     Veo audio): nothing to re-narrate.
+ *   - the video has no `meta.shots[]` yet (pre-v3 timeline). Caller should
+ *     fall back to `apiRegenerateSentence` for those videos.
+ */
+export async function apiRegenerateShot(
+    videoId: string,
+    apiKey: string,
+    shotIdx: number,
+    newText: string
+): Promise<ApiResult<RegenerateShotResponse>> {
+    try {
+        const res = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/shot/regenerate`, {
+            method: 'POST',
+            headers: headers(apiKey),
+            body: JSON.stringify({
+                video_id: videoId,
+                shot_idx: shotIdx,
+                new_text: newText,
+            }),
+        });
+        if (!res.ok) return { ok: false, error: await readError(res) };
+        const data = (await res.json()) as RegenerateShotResponse;
         return { ok: true, data };
     } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };

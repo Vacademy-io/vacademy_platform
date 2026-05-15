@@ -177,7 +177,22 @@ export interface TimelineMeta {
     // a sentence and re-narrate just that clip. The global narration.mp3
     // remains the authoritative source the player uses for playback;
     // sentences[] is an editing-side index into that file.
+    //
+    // @deprecated — superseded by `shots` on v3-pipeline videos. Sentence
+    // clips remain readable for legacy timelines; new editor work should
+    // target `meta.shots[]`.
     sentences?: SentenceClip[];
+
+    // Per-shot editor unit (v3 pipeline). Populated by `_write_timeline`
+    // from the persisted shot_plan.json (ShotPlanner output) or, on legacy
+    // runs, from director_plan.json. Each entry corresponds 1:1 to a shot
+    // in the pipeline — editing here re-narrates that exact shot via the
+    // `/external/video/v1/shot/regenerate` endpoint.
+    //
+    // When BOTH `shots` and `sentences` are present, the editor SHOULD
+    // prefer `shots` (the v3 source of truth); `sentences` is left readable
+    // for backward compatibility but not edited.
+    shots?: ShotClip[];
 }
 
 /**
@@ -188,6 +203,8 @@ export interface TimelineMeta {
  * stand-alone clip used by the editor for re-narration. `words` are the
  * per-sentence word timestamps with times REBASED to the clip's start
  * (0..duration) so they can be consumed without knowing start_time.
+ *
+ * @deprecated — superseded by `ShotClip` on v3-pipeline videos.
  */
 export interface SentenceClip {
     id: string;
@@ -195,6 +212,42 @@ export interface SentenceClip {
     audio_url: string;
     start_time: number;
     duration: number;
+    words: WordTimestamp[];
+}
+
+/**
+ * One per-shot audio clip stored under TimelineMeta.shots[] (v3 pipeline).
+ *
+ * Mirrors `SentenceClip` but at the SHOT granularity — the same unit the
+ * Director / ShotPlanner planned, the same unit per-shot TTS produced, the
+ * same unit the editor re-narrates.
+ *
+ * - `audio_url` / `audio_words_url` / `audio_script_url` are `null` for
+ *   shots with `audio_policy === 'intrinsic_only'` (SOURCE_CLIP speaker,
+ *   AI_VIDEO_HERO + Veo audio) — those carry intrinsic audio and have no
+ *   per-shot master narration MP3.
+ * - `start_time` is the shot's start on the absolute video timeline (already
+ *   offset by `meta.content_starts_at` like chapters/glossary/questions).
+ * - `words` are per-shot, time-rebased to the shot's start so they can be
+ *   consumed without knowing start_time.
+ * - `narration_brief` is the ShotPlanner's per-shot intent (1-2 sentences)
+ *   surfaced so the editor can show it as a hint while editing.
+ */
+export interface ShotClip {
+    id: string;
+    shot_idx: number;
+    shot_type: string;
+    text: string;
+    audio_url: string | null;
+    audio_words_url: string | null;
+    audio_script_url: string | null;
+    audio_duration_s: number;
+    audio_skipped: boolean;
+    audio_policy: 'narration_only' | 'intrinsic_only';
+    start_time: number;
+    duration: number;
+    intent_role: string;
+    narration_brief: string;
     words: WordTimestamp[];
 }
 

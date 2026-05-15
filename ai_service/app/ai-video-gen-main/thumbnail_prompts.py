@@ -34,114 +34,150 @@ KNOWN_INTENTS = {
 }
 
 
-# Style cues per intent. Each entry pairs a visual mood with headline style
-# guidance so Recraft can render both the photograph and the typography in
-# matching register. The `headline_brief` is what we ask the LLM to write —
-# tuned for YouTube click-through, not literal video titles.
+# Style cues per intent. Tuned to high-CTR YouTube thumbnail conventions:
+#   - Visual: a clear focal SUBJECT (face/person preferred when plausible,
+#     else dramatic hero object) — never empty scenery.
+#   - Type: heavy condensed sans-serif by default, oversized, with a clear
+#     color accent on the most important word. Avoid thin serifs entirely —
+#     they look stock-photo-ad-y at thumbnail scale.
+#   - Headline: written like a top creator, not a marketing copywriter.
+#     Concrete examples per intent guide the LLM away from generic CTAs.
 INTENT_PRESETS: Dict[str, Dict[str, Any]] = {
     "ad": {
         "visual_mood": (
-            "premium product photography energy, dramatic studio lighting, "
-            "saturated brand-forward palette, bold and confident"
+            "a person interacting with the product, strong facial expression "
+            "(surprise / delight / focus), dramatic studio or location lighting, "
+            "vibrant saturated palette. The person's face is in the frame "
+            "and gives the thumbnail its energy"
         ),
         "type_style": (
-            "heavy condensed sans-serif in pure white or hot accent color, "
-            "tightly tracked, all caps, sharp drop shadow for contrast"
+            "ultra-heavy condensed sans-serif (Impact / Bebas Neue / Anton style), "
+            "all caps, very tight letter spacing, oversized so it fills 35-50% of "
+            "the frame height, pure white with a black or hot-color stroke. "
+            "ONE word painted in an accent color for emphasis"
         ),
         "headline_brief": (
-            "Punchy benefit promise that triggers desire (4 words max). "
-            "Think product hero — what makes someone click."
+            "Write like MrBeast / Marques Brownlee promo copy — a punchy benefit "
+            "or contradiction that triggers desire (4 words max, ALL CAPS okay). "
+            "GOOD: 'WAY BETTER THAN APPLE', '$50 vs $5000 KIT'. "
+            "BAD: 'Buy Now', 'Best Value Today', 'Save 10% Today'."
         ),
         "max_words": 4,
     },
     "explainer": {
         "visual_mood": (
-            "clean editorial portrait or single-subject photograph, "
-            "soft directional light, generous breathing room, intelligent and curious"
+            "a person making a strong, curious or 'aha' facial expression, "
+            "with a clear visual metaphor for the concept beside them. "
+            "Soft dramatic light, clean backdrop, the face anchors the frame"
         ),
         "type_style": (
-            "bold modern sans-serif, slightly oversized, mixed case for "
-            "readability, with strong contrast against the backdrop"
+            "heavy condensed sans-serif, all caps or mixed-case bold, oversized, "
+            "white with a colored stroke. ONE key noun painted in a punchy "
+            "accent color (yellow, cyan, hot pink, lime)"
         ),
         "headline_brief": (
-            "Topic phrased as a curiosity hook (5 words max). "
-            "Promise the insight without giving the answer away."
+            "Write a curiosity-gap headline (5 words max). Tease the surprising "
+            "finding without spoiling it. "
+            "GOOD: 'THIS BREAKS PHYSICS', 'YOUR BRAIN IS LYING', "
+            "'WHY OCEANS ARE BLUE'. "
+            "BAD: 'Understanding Quantum Mechanics', 'How Things Work', "
+            "'An Intro To X'."
         ),
         "max_words": 5,
     },
     "tutorial": {
         "visual_mood": (
-            "hands-on workspace photograph, top-down or 3/4 angle, "
-            "natural light, practical and instructive feel"
+            "a person mid-action (focused / triumphant) with the workspace / "
+            "tool / result clearly in frame. 3/4 angle, natural light, the "
+            "creator's hands or face visible. Optional progress markers or arrows"
         ),
         "type_style": (
-            "chunky sans-serif, friendly weight, mixed case, often with a "
-            "subtle highlight bar behind the title"
+            "chunky heavy sans-serif, all caps or sentence case bold, oversized, "
+            "white on a contrasting color band or stroke. ONE number or key "
+            "word painted in an accent color"
         ),
         "headline_brief": (
-            "Imperative how-to phrase or numbered hook (5 words max). "
-            "'How to X', 'X Step by Step', 'X in 5 Minutes' — make it feel "
-            "achievable and concrete."
+            "Write a results-forward or stakes-forward tutorial hook (5 words max). "
+            "Numbers and time-bounds work. "
+            "GOOD: 'I TRIED THIS FOR 30 DAYS', 'FIX IT IN 60 SECONDS', "
+            "'STOP DOING THIS WRONG'. "
+            "BAD: 'How To Do X', 'A Beginner's Guide', 'Tutorial: X'."
         ),
         "max_words": 5,
     },
     "announcement": {
         "visual_mood": (
-            "celebratory hero shot, warm key light, optional confetti or "
-            "halo lighting, optimistic and momentous"
+            "the subject of the announcement front-and-center with a strong "
+            "emotional expression (excitement, awe). Warm key light, halo, "
+            "a hint of confetti or motion. No empty scenery"
         ),
         "type_style": (
-            "bold display serif or condensed sans-serif, large and centered, "
-            "title-case, with a vibrant accent color"
+            "very heavy display sans-serif, all caps, massive scale, "
+            "white with a vibrant accent color (red, yellow, cyan) on the "
+            "key word or as a background band"
         ),
         "headline_brief": (
-            "Big-news event phrase (3 words max). 'Finally Here', "
-            "'Major Update', 'It's Live' — short and electrifying."
+            "Write an electrifying event reveal (3 words max). All caps okay. "
+            "GOOD: 'IT'S FINALLY HERE', 'EVERYTHING JUST CHANGED', "
+            "'WE DID IT'. "
+            "BAD: 'New Product Launch', 'Major Update', 'We Are Live'."
         ),
         "max_words": 3,
     },
     "news_recap": {
         "visual_mood": (
-            "documentary photograph of the relevant subject or scene, "
-            "photojournalistic clarity, natural lighting, grounded credibility"
+            "a dramatic moment from the story — the protagonist's face mid-reaction, "
+            "the location at its most charged, a specific telling detail. "
+            "Photojournalistic clarity, natural lighting, but always with a "
+            "clear focal subject. NEVER empty scenery"
         ),
         "type_style": (
-            "compressed bold sans-serif news headline style, "
-            "white on a strong accent color band (red/yellow/black)"
+            "ultra-condensed news-display sans-serif (Impact / Anton style), "
+            "all caps, oversized, white with a heavy black stroke OR white on a "
+            "blood-red / hot-yellow color band. ONE key word in an accent color"
         ),
         "headline_brief": (
-            "Sharp news headline with implication (6 words max). "
-            "Stakes-forward — what changed, why it matters."
+            "Write a news hook with stakes or revelation (6 words max). "
+            "GOOD: 'THE FARM SCAM EXPOSED', 'EVERYTHING WAS A LIE', "
+            "'$2 BILLION VANISHED'. "
+            "BAD: 'Latest News On X', 'Reform Announcement', 'Update On X'."
         ),
         "max_words": 6,
     },
     "story": {
         "visual_mood": (
-            "cinematic environmental shot, atmospheric haze, shallow focus, "
-            "evocative natural lighting, emotionally resonant"
+            "the protagonist's face in close-up with raw emotion (grief, "
+            "determination, joy), or a single charged object that anchors the "
+            "story. Cinematic shallow focus, atmospheric light. Subject-forward"
         ),
         "type_style": (
-            "elegant serif or refined sans-serif, smaller and lower in the "
-            "frame, italics permitted, subtle gradient or glow for legibility"
+            "bold condensed sans-serif (Oswald / Bebas style), oversized, "
+            "white with subtle color tint or glow, all caps or title case. "
+            "Tighter spacing, lower in the frame so the face dominates"
         ),
         "headline_brief": (
-            "Evocative short phrase that hints at the journey (4 words max). "
-            "Mystery and emotion over explanation."
+            "Write an emotional one-line hook (4 words max). "
+            "GOOD: 'I LOST EVERYTHING', 'SHE NEVER CAME BACK', "
+            "'THE LAST RIDE'. "
+            "BAD: 'A Personal Journey', 'My Story', 'Things I Learned'."
         ),
         "max_words": 4,
     },
     "trailer": {
         "visual_mood": (
-            "dramatic environmental hero shot, deep contrast, strong rim light, "
-            "heroic low-angle framing, premiere-quality charge"
+            "the hero / subject in a heroic low-angle close-up, dramatic rim "
+            "light, deep contrast. Subject's face or signature object fills "
+            "the frame. Movie-poster intensity"
         ),
         "type_style": (
-            "very heavy display sans-serif, massive scale, all caps, "
-            "with a sharp inner stroke or glow effect"
+            "very heavy display sans-serif (Impact / Bebas style), MASSIVE scale, "
+            "all caps, white with a strong stroke or chrome / gold gradient. "
+            "Treat it like a film title — the heaviest text style of any intent"
         ),
         "headline_brief": (
-            "Trailer-style title (3 words max). All caps. "
-            "Maximum impact, minimum words."
+            "Write a movie-trailer title (3 words max, ALL CAPS). "
+            "GOOD: 'THE COMEBACK', 'NO TURNING BACK', 'GAME OVER'. "
+            "BAD: 'My New Series', 'Coming Soon', 'Watch Now'."
         ),
         "max_words": 3,
     },
@@ -328,33 +364,53 @@ def build_recraft_thumbnail_prompt(
     safe_headline = (headline or "").replace('"', '').strip()
 
     return (
-        # 1. The job. Be specific: this is a thumbnail, not a still.
+        # 1. The job — designed to compel a click on a video feed.
         # Note: we deliberately avoid naming any video platform (YouTube,
         # TikTok, etc.) in the prompt — image models render those names as
         # literal logos in the frame.
-        "Create a high-impact editorial video thumbnail designed to compel a "
-        "click on a streaming-platform feed. The image must combine a striking "
-        "photographic background with one bold typographic headline rendered "
-        "directly inside the image. "
-        # 2. The text. Quoted so Recraft treats it literally.
+        "Create a high-impact viral video thumbnail designed to compel a click. "
+        "This is for a top-tier creator's feed, not a stock-photo ad. "
+        # 2. The subject — mandatory focal point. Empty scenery is the #1
+        # failure mode of cheap auto-generated thumbnails, so we ban it
+        # explicitly and steer toward a face-with-emotion default.
+        "MANDATORY: the frame MUST have a clear FOCAL SUBJECT — strongly "
+        "prefer a single human subject with a vivid facial expression "
+        "(surprise, intensity, awe, fear, joy, focus) front-and-center. "
+        "If a person isn't possible, use a dramatic close-up of a hero "
+        "object or location detail. NEVER an empty landscape or wide "
+        "scenery shot — the eye must lock onto one subject instantly. "
+        # 3. The text. Quoted so Recraft treats it literally.
         f"Render this exact headline as the only text in the image: \"{safe_headline}\". "
-        f"Typography style: {type_style}. "
-        "The text must be perfectly spelled, sharp, and the strongest read at "
-        "thumbnail size. No other words, captions, logos, watermarks, hashtags, "
-        "platform branding, UI chrome, browser frames, or signage anywhere in "
-        "the image. "
-        # 3. The picture.
-        f"Photographic backdrop style: {style_hint}. Mood: {visual_mood}. "
+        f"Typography directive: {type_style}. "
+        "The headline must be OVERSIZED — large enough to read at "
+        "thumbnail size on a phone, occupying at least 30-50% of the frame "
+        "height. Perfectly spelled, crisp, with strong stroke or outline "
+        "for separation from the background. "
+        "No other words, captions, logos, watermarks, hashtags, platform "
+        "branding, UI chrome, browser frames, or signage anywhere in the image. "
+        # 4. The picture style + intent mood.
+        f"Photographic style: {style_hint}. Mood: {visual_mood}. "
         f"{subject_clause}"
-        "Composition: one clear focal point, strong visual hierarchy, dramatic "
-        "lighting, saturated colors, generous contrast between subject and text. "
-        # 4. Brand binding (soft).
+        # 5. Composition rules borrowed from top YT thumbnails.
+        "Composition rules: (a) one undeniable focal point that grabs the "
+        "eye in under 0.5 seconds; (b) high saturation and strong contrast "
+        "— skies are vibrant, shadows are deep; (c) dramatic side or rim "
+        "lighting, not flat front lighting; (d) shallow depth of field so "
+        "the subject pops; (e) the headline and subject occupy DIFFERENT "
+        "zones of the frame so neither obscures the other. "
+        # 6. Brand binding (soft).
         f"{brand_clause}"
-        # 5. Quality bar.
-        "Premium editorial production value — the visual energy of a top creator's "
-        "best-performing thumbnail, not a generic stock image. No clutter, no "
-        "doodles, no random graphic overlays. Sharp focus. The headline and the "
-        "image must feel like they were designed together."
+        # 7. Anti-patterns — the failure modes we've seen in practice.
+        "AVOID at all costs: empty wide landscapes with no subject; thin "
+        "tall serif fonts; small text; cluttered overlays; generic stock-"
+        "photo blandness; muted desaturated palettes; type that competes "
+        "with itself in shape; soft-pastel marketing-brochure energy. "
+        # 8. Quality bar.
+        "This thumbnail should look like the best-performing thumbnail on a "
+        "successful creator's channel — emotion-forward, visually loud, "
+        "instantly clickable. Sharp focus throughout. The headline and the "
+        "image must feel like they were designed together by a single art "
+        "director."
     )
 
 
@@ -363,13 +419,32 @@ def build_recraft_thumbnail_prompt(
 # ---------------------------------------------------------------------------
 
 _HEADLINE_SYSTEM_PROMPT = (
-    "You write YouTube thumbnail headlines for high click-through. Given a "
-    "video's title, narration excerpt, and intent, you return ONE single "
-    "headline tuned for the intent's brief. The headline must be punchy, "
-    "specific, and create a curiosity gap — never a literal video-title "
-    "restatement. Stay within the word cap. No trailing punctuation. No "
-    "quotes around the headline. Return JSON only: {\"headline\": \"...\"}. "
-    "No markdown fences. No commentary."
+    "You write thumbnail headlines for the world's top YouTube creators. "
+    "Given a video's title, narration excerpt, and intent, you return ONE "
+    "single headline engineered for maximum click-through. "
+    "\n\n"
+    "RULES:\n"
+    "1. Write like a top creator (MrBeast, Veritasium, Cleo Abram, Marques "
+    "Brownlee, Casey Neistat), NOT like a marketing copywriter. The "
+    "headline must feel like a story hook, not a slogan.\n"
+    "2. Use ONE of these proven patterns: stakes ('I LOST EVERYTHING'), "
+    "specificity ('$2M IN 24 HOURS'), contradiction ('CHEAPER THAN APPLE'), "
+    "revelation ('WHAT THEY HID'), curiosity gap ('THIS BREAKS PHYSICS'), "
+    "or transformation ('30 DAYS LATER').\n"
+    "3. BANNED patterns: generic CTAs ('Buy Now', 'Watch Now', 'Click "
+    "Here', 'Secure Yours Today'); dictionary titles ('Understanding X', "
+    "'Introduction to X'); soft promises ('A Better Way to X'); "
+    "instructional phrasing without stakes ('How to Do X' unless wrapped "
+    "in drama like 'How I Survived X').\n"
+    "4. Stay within the intent's word cap.\n"
+    "5. ALL CAPS is allowed and often best. No trailing punctuation. "
+    "No quotes around the headline.\n"
+    "6. Be true to the video — don't invent claims the narration won't "
+    "back up. But pick the DRAMATIC angle in the narration, not the "
+    "neutral summary.\n"
+    "\n"
+    "Return JSON only: {\"headline\": \"...\"}. No markdown fences. No "
+    "commentary."
 )
 
 
@@ -382,18 +457,20 @@ def _build_headline_user_prompt(
     narration_hint: Optional[str],
 ) -> str:
     excerpt = (narration_hint or "").strip()
-    if len(excerpt) > 360:
-        excerpt = excerpt[:357] + "..."
+    if len(excerpt) > 480:
+        excerpt = excerpt[:477] + "..."
     return (
         f"Video title: {title}\n"
         f"Intent: {intent}\n"
-        f"Headline brief: {headline_brief}\n"
         f"Hard cap: {max_words} words.\n"
-        + (f"Narration sample: {excerpt}\n" if excerpt else "")
+        f"Intent-specific brief: {headline_brief}\n"
+        + (f"\nNarration sample (use this to find the most dramatic angle):\n{excerpt}\n" if excerpt else "")
         + "\n"
-        + "Write ONE headline (no alternates). It must read like the title of "
-        + "a video a YouTube viewer would click instantly. Avoid clickbait "
-        + "lies — keep it true to the video. Return JSON: {\"headline\": \"...\"}"
+        + "Pick the SINGLE most dramatic moment, contradiction, stake, or "
+        + "revelation from the narration above — not a neutral summary of "
+        + "the topic. Write the headline as if you were the creator's "
+        + "thumbnail strategist trying to win the next 10M views. "
+        + "Return JSON: {\"headline\": \"...\"}"
     )
 
 
@@ -448,7 +525,9 @@ def generate_thumbnail_headline(
                     ),
                 },
             ],
-            temperature=0.7,
+            # Higher temperature so the model takes more dramatic angles
+            # rather than safe, marketing-copy phrasings.
+            temperature=0.95,
             max_tokens=200,
         )
     except Exception as e:

@@ -110,6 +110,43 @@ class SentenceRegenerateResult:
         }
 
 
+class ShotRegenerateResult:
+    """Outcome of a regenerate_shot call.
+
+    Mirrors `SentenceRegenerateResult` — shot-shaped instead of sentence-shaped.
+    `shot` carries the updated `meta.shots[]` entry (id, text, audio_url,
+    audio_words_url, audio_duration_s, start_time, duration, words).
+    `duration_delta` is what the editor ripples downstream shots' start_time by;
+    we've already applied it to the persisted timeline here.
+    """
+
+    def __init__(
+        self,
+        video_id: str,
+        shot: Dict[str, Any],
+        duration_delta: float,
+        new_global_audio_url: str,
+        new_global_duration: float,
+        timeline_url: str,
+    ) -> None:
+        self.video_id = video_id
+        self.shot = shot
+        self.duration_delta = duration_delta
+        self.new_global_audio_url = new_global_audio_url
+        self.new_global_duration = new_global_duration
+        self.timeline_url = timeline_url
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "video_id": self.video_id,
+            "shot": self.shot,
+            "duration_delta": self.duration_delta,
+            "new_global_audio_url": self.new_global_audio_url,
+            "new_global_duration": self.new_global_duration,
+            "timeline_url": self.timeline_url,
+        }
+
+
 class ShotInsertResult:
     """Outcome of an insert_shot call.
 
@@ -393,6 +430,299 @@ class SentenceClipService:
             new_global_duration=new_global_duration,
             timeline_url=timeline_url,
         )
+
+    # ------------------------------------------------------------------
+    # Shot-level regen (v3 editor) — same mechanics as regenerate_sentence
+    # but operates on meta.shots[] keyed by shot_idx. Used by the editor's
+    # per-shot "re-narrate this shot" button.
+    # ------------------------------------------------------------------
+
+    def regenerate_shot(
+        self,
+        video_id: str,
+        shot_idx: int,
+        new_text: str,
+        *,
+        voice_overrides: Optional[Dict[str, Any]] = None,
+        crossfade_ms: int = 50,
+        head_pad_ms: int = 40,
+    ) -> ShotRegenerateResult:
+        """Re-narrate one shot's audio.
+
+        Mirrors `regenerate_sentence` but uses `meta.shots[]` as the editor
+        unit. The shot's time range on the master narration is replaced with
+        a fresh TTS of `new_text`, the audio is spliced via the render
+        worker with crossfading, and `meta.shots[shot_idx]` is patched +
+        downstream shots' `start_time` rippled by the duration delta.
+
+        Refuses to re-narrate `audio_policy=intrinsic_only` shots — those
+        carry intrinsic audio (source clip speaker, Veo audio) and have no
+        master-narration slot to replace.
+
+        Raises ValueError when the video / shot isn't found, when
+        meta.shots[] hasn't been built yet (not a v3-pipeline video), or
+        when the target shot is intrinsic_only. Other failures
+        (TTS / splice / S3) bubble up as RuntimeError.
+        """
+        new_text = (new_text or "").strip()
+        if not new_text:
+            raise ValueError("new_text is required")
+
+        record = self.repository.get_by_video_id(video_id)
+        if record is None:
+            raise ValueError(f"video {video_id} not found")
+        s3_urls = dict(record.s3_urls or {})
+        if not s3_urls.get("audio") or not s3_urls.get("timeline"):
+            raise ValueError(
+                "video is missing audio/timeline S3 URLs; cannot regenerate"
+            )
+
+        with tempfile.TemporaryDirectory(prefix=f"regen-shot-{video_id}-") as tmpdir:
+            tmp = Path(tmpdir)
+
+            timeline = self._download_json(s3_urls["timeline"], tmp / "timeline.json")
+            shots = self._extract_shots(timeline)
+            if not shots:
+                raise ValueError(
+                    "this video has no meta.shots[] — it predates the v3 "
+                    "shot-clip editor schema. Open it in the editor once to "
+                    "auto-build meta.shots[], or regenerate via the legacy "
+                    "/sentence/regenerate endpoint."
+                )
+            idx_in_list, target = _find_shot_by_idx(shots, shot_idx)
+            if target is None:
+                raise ValueError(f"shot {shot_idx!r} not in timeline")
+            if (target.get("audio_policy") or "narration_only") == "intrinsic_only":
+                raise ValueError(
+                    f"shot {shot_idx} is intrinsic_only — it carries its own "
+                    f"audio (source clip / Veo). There is no narration to "
+                    f"re-narrate. To replace its audio, edit the underlying "
+                    f"source asset."
+                )
+
+            old_start = float(target.get("start_time") or 0.0)
+            old_duration = float(target.get("duration") or 0.0)
+            old_end = old_start + old_duration
+
+            # 1. TTS the new text → local MP3 + word timestamps.
+            voice = self._resolve_voice(record, voice_overrides)
+            tts_result = self._synthesize_sentence(
+                text=new_text, output_path=tmp / "new_shot_clip.mp3", voice=voice,
+            )
+
+            # 2. Upload the new per-shot clip with a versioned key (cache-safe).
+            version_tag = _version_tag()
+            shot_id = str(target.get("id") or f"shot_{shot_idx:03d}")
+            clip_key = self._versioned_shot_clip_key(video_id, shot_id, version_tag)
+            new_clip_url = self.s3_service.upload_file(
+                file_path=tts_result.audio_path,
+                s3_key=clip_key,
+                content_type="audio/mpeg",
+            )
+
+            # 3. Splice into the master narration.mp3 (render worker does the
+            # ffmpeg+crossfade work — same primitive as sentence regen).
+            new_audio_key = self._versioned_audio_key(video_id, version_tag)
+            splice = self.render_service.splice_audio(
+                base_audio_url=s3_urls["audio"],
+                new_clip_url=new_clip_url,
+                replace_start=old_start,
+                replace_end=old_end,
+                output_key=new_audio_key,
+                crossfade_ms=crossfade_ms,
+                head_pad_ms=head_pad_ms,
+            )
+            new_global_url = splice.get("output_url")
+            new_global_duration = float(splice.get("new_duration") or 0.0)
+            duration_delta = float(splice.get("duration_delta") or 0.0)
+            if not new_global_url:
+                raise RuntimeError(f"splice_audio returned no output_url: {splice}")
+
+            # 4. Patch the target shot + ripple downstream shots and entries.
+            #
+            # Why ripple-boundary = `old_end` (not `old_start` like the
+            # sentence path):
+            #   In v3 each shot maps 1:1 to a timeline entry (entry.inTime
+            #   == shot.start_time). If we rippled at `old_start`, the
+            #   EDITED shot's entry inTime would be shifted by delta —
+            #   moving the shot itself forward in time and breaking its
+            #   render alignment. Using `old_end` means:
+            #     • edited entry: inTime < old_end → not shifted ✓
+            #     • edited entry: exitTime == old_end → shifted to
+            #       old_end + delta == new_end ✓
+            #     • next shot's entry: inTime == old_end → shifted by
+            #       delta (it now starts at the edited shot's new end) ✓
+            #     • overlays inside the edited shot: untouched (their
+            #       timing stays inside the shot's new range) ✓
+            #   The sentence path correctly uses old_start because
+            #   sentences sit INSIDE entries (not 1:1 with them).
+            updated_target = self._patch_shot(
+                target=target,
+                new_text=new_text,
+                new_clip_url=new_clip_url,
+                tts_result=tts_result,
+            )
+            _ripple_shots(shots, after_idx=idx_in_list, delta=duration_delta)
+            _ripple_entries(timeline, boundary=old_end, delta=duration_delta)
+            _bump_total_duration(timeline, delta=duration_delta)
+
+            # 5. Optional: splice global narration.words.json (best-effort —
+            # captions for downstream content stay in sync). Same logic as
+            # the sentence path; lifted directly.
+            words_url = s3_urls.get("words")
+            if words_url:
+                try:
+                    self._splice_global_words(
+                        words_s3_url=words_url,
+                        old_start=old_start,
+                        old_end=old_end,
+                        new_sentence_words=updated_target.get("words") or [],
+                        sentence_start_time=float(updated_target.get("start_time") or old_start),
+                        duration_delta=duration_delta,
+                        tmp_path=tmp / "words.out.json",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to splice global words.json for shot %s of %s: %s",
+                        shot_idx, video_id, exc,
+                    )
+
+            # 6. Persist: timeline JSON back to its S3 key, video record's
+            # audio URL pointed at the new spliced MP3. Also (best-effort)
+            # update shot_plan.json on S3 so resume parity holds.
+            timeline_url = self._upload_timeline_json(
+                timeline=timeline,
+                timeline_s3_url=s3_urls["timeline"],
+                video_id=video_id,
+                tmp_path=tmp / "timeline.out.json",
+            )
+            shot_plan_url = (s3_urls.get("shot_plan")
+                             or (s3_urls.get("html") if isinstance(s3_urls.get("html"), dict) else {}).get("shot_plan"))
+            if shot_plan_url:
+                try:
+                    self._sync_shot_plan_after_regen(
+                        shot_plan_s3_url=str(shot_plan_url),
+                        shot_idx=shot_idx,
+                        new_text=new_text,
+                        new_clip_url=new_clip_url,
+                        new_duration_s=float(tts_result.duration or 0.0),
+                        duration_delta=duration_delta,
+                        tmp_path=tmp / "shot_plan.out.json",
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "shot_plan.json sync skipped for %s: %s — timeline is "
+                        "authoritative; resume may need to rebuild shot_plan",
+                        video_id, exc,
+                    )
+            try:
+                self.repository.update_files(
+                    video_id=video_id, s3_urls={"audio": new_global_url},
+                )
+            except AttributeError:
+                logger.warning(
+                    "repository.update_files missing; record %s still points "
+                    "at old audio URL", video_id,
+                )
+
+        return ShotRegenerateResult(
+            video_id=video_id,
+            shot=updated_target,
+            duration_delta=duration_delta,
+            new_global_audio_url=new_global_url,
+            new_global_duration=new_global_duration,
+            timeline_url=timeline_url,
+        )
+
+    @staticmethod
+    def _extract_shots(timeline: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Pull `meta.shots[]` out of a timeline dict, returning [] when absent."""
+        meta = timeline.get("meta")
+        if not isinstance(meta, dict):
+            return []
+        shots = meta.get("shots")
+        return shots if isinstance(shots, list) else []
+
+    @staticmethod
+    def _patch_shot(
+        *,
+        target: Dict[str, Any],
+        new_text: str,
+        new_clip_url: str,
+        tts_result,
+    ) -> Dict[str, Any]:
+        """Mutate `target` (one entry in `meta.shots[]`) with the new clip's
+        text/url/duration/words. Mirrors _patch_sentence's contract."""
+        target["text"] = new_text
+        target["audio_url"] = new_clip_url
+        target["audio_duration_s"] = float(tts_result.duration or 0.0)
+        target["duration"] = float(tts_result.duration or 0.0)
+        target["audio_skipped"] = False  # by definition: we just generated audio
+        target["words"] = [
+            {"word": w["word"], "start": float(w["start"]), "end": float(w["end"])}
+            for w in (tts_result.words or [])
+        ]
+        return target
+
+    @staticmethod
+    def _versioned_shot_clip_key(video_id: str, shot_id: str, version_tag: str) -> str:
+        return f"ai-videos/{video_id}/shot_clips/{shot_id}-{version_tag}.mp3"
+
+    def _sync_shot_plan_after_regen(
+        self,
+        *,
+        shot_plan_s3_url: str,
+        shot_idx: int,
+        new_text: str,
+        new_clip_url: str,
+        new_duration_s: float,
+        duration_delta: float,
+        tmp_path: Path,
+    ) -> None:
+        """Best-effort sync of shot_plan.json after a re-narrate.
+
+        Keeps the v3 checkpoint coherent for resume scenarios. The timeline
+        is authoritative for the editor / render path — this is just
+        secondary state hygiene.
+        """
+        download_path = tmp_path.with_suffix(".in.json")
+        if not self.s3_service.download_file(shot_plan_s3_url, download_path):
+            raise RuntimeError(f"failed to download {shot_plan_s3_url}")
+        plan = json.loads(download_path.read_text(encoding="utf-8"))
+        shots = plan.get("shots") if isinstance(plan.get("shots"), list) else []
+        if not shots:
+            return
+        # Find by shot_index in the persisted plan (which is the canonical
+        # field on the plan, vs. shot_idx on timeline entries).
+        for i, s in enumerate(shots):
+            if not isinstance(s, dict):
+                continue
+            try:
+                idx_v = int(s.get("shot_index") if "shot_index" in s else s.get("shot_idx"))
+            except (TypeError, ValueError):
+                continue
+            if idx_v == shot_idx:
+                s["narration_text"] = new_text
+                s["audio_url"] = new_clip_url
+                s["audio_duration_s"] = new_duration_s
+                # Update end_time + ripple downstream by the duration delta
+                s["end_time"] = float(s.get("start_time") or 0.0) + new_duration_s
+                # Ripple every later shot's start/end by the delta
+                if abs(duration_delta) > 1e-6:
+                    for later in shots[i + 1:]:
+                        if not isinstance(later, dict):
+                            continue
+                        if "start_time" in later:
+                            later["start_time"] = float(later["start_time"]) + duration_delta
+                        if "end_time" in later:
+                            later["end_time"] = float(later["end_time"]) + duration_delta
+                break
+        tmp_path.write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding="utf-8")
+        s3_key = self._extract_s3_key(shot_plan_s3_url)
+        if s3_key:
+            self.s3_service.upload_file(
+                file_path=tmp_path, s3_key=s3_key, content_type="application/json",
+            )
 
     def silence_sentence(
         self,
@@ -1081,6 +1411,38 @@ def _ripple_sentences(
     if abs(delta) < 1e-6:
         return
     for s in sentences[after_idx + 1:]:
+        if "start_time" in s and isinstance(s["start_time"], (int, float)):
+            s["start_time"] = float(s["start_time"]) + delta
+
+
+def _find_shot_by_idx(
+    shots: List[Dict[str, Any]], shot_idx: int,
+) -> Tuple[int, Optional[Dict[str, Any]]]:
+    """Linear scan for `meta.shots[]` entry matching shot_idx. Tolerates
+    `shot_idx` AND `shot_index` field names so this works on both v3
+    (canonical: shot_idx) and director-style plans (shot_index)."""
+    for i, s in enumerate(shots):
+        if not isinstance(s, dict):
+            continue
+        cand = s.get("shot_idx", s.get("shot_index"))
+        try:
+            if int(cand) == int(shot_idx):
+                return i, s
+        except (TypeError, ValueError):
+            continue
+    return -1, None
+
+
+def _ripple_shots(
+    shots: List[Dict[str, Any]], *, after_idx: int, delta: float,
+) -> None:
+    """Shift every shot after `after_idx` by `delta`. Mirrors `_ripple_sentences`
+    but operates on the v3 ShotClip schema. Mutates in place; no-op on ~0 delta."""
+    if abs(delta) < 1e-6:
+        return
+    for s in shots[after_idx + 1:]:
+        if not isinstance(s, dict):
+            continue
         if "start_time" in s and isinstance(s["start_time"], (int, float)):
             s["start_time"] = float(s["start_time"]) + delta
 

@@ -20,9 +20,10 @@ import { clamp } from './utils/coord-convert';
 import { useAudioWaveform } from './utils/use-audio-waveform';
 import { pauseIfPlaying } from './playback/playback-engine';
 import { SentenceEditPopover } from './SentenceEditPopover';
+import { ShotEditPopover } from './ShotEditPopover';
 import { SoundCueRemovePopover } from './SoundCueRemovePopover';
 import { AddShotPopover } from './AddShotPopover';
-import type { Entry, SentenceClip, SoundCue } from '@/components/ai-video-player/types';
+import type { Entry, SentenceClip, ShotClip, SoundCue } from '@/components/ai-video-player/types';
 
 // ── Layout constants ────────────────────────────────────────────────────────
 
@@ -346,6 +347,16 @@ export function TimelineScrubber() {
         anchorViewportTop: number;
     } | null>(null);
 
+    // v3 editor unit. When `meta.shots[]` is present the editor renders
+    // shot regions on the waveform (instead of sentence regions) and
+    // clicks open the ShotEditPopover. Sentence regions remain the
+    // fallback for legacy timelines that don't have meta.shots[].
+    const [editingShot, setEditingShot] = useState<{
+        shot: ShotClip;
+        anchorViewportX: number;
+        anchorViewportTop: number;
+    } | null>(null);
+
     // Currently-active sound-cue popover. Same anchoring story as the
     // sentence popover above.
     const [editingCue, setEditingCue] = useState<{
@@ -460,6 +471,16 @@ export function TimelineScrubber() {
         () => (navigationMode === 'time_driven' ? meta.sentences ?? [] : []),
         [navigationMode, meta.sentences]
     );
+
+    // Per-shot audio clips (v3). When present, the editor PREFERS these
+    // over sentence regions — they're the canonical editing unit on v3
+    // timelines. Sentence regions fall through as the fallback path when
+    // shots is empty (legacy v2 timelines or pre-meta.shots videos).
+    const shots: ShotClip[] = useMemo(
+        () => (navigationMode === 'time_driven' ? meta.shots ?? [] : []),
+        [navigationMode, meta.shots]
+    );
+    const useShots = shots.length > 0;
 
     // Base-channel gaps: ranges where audio plays but no shot exists.
     // Surfaced as dashed pills under the entries so the user can spot
@@ -873,6 +894,40 @@ export function TimelineScrubber() {
         [totalDuration]
     );
 
+    // Count entries that will be re-timed when a given shot is re-narrated.
+    // Mirrors `countAffectedEntries` for sentences but keyed off the shot's
+    // start_time. Surfaced to the ShotEditPopover so the user sees the
+    // ripple cost before submitting.
+    const countAffectedShotEntries = useCallback(
+        (shot: ShotClip): number => {
+            const epsilon = 1e-3;
+            const boundary = shot.start_time;
+            return entries.reduce((n, e) => {
+                const t = e.inTime ?? e.start ?? 0;
+                return t >= boundary - epsilon ? n + 1 : n;
+            }, 0);
+        },
+        [entries]
+    );
+
+    const handleShotClick = useCallback(
+        (e: React.MouseEvent, shot: ShotClip) => {
+            e.stopPropagation();
+            const bar = barRef.current;
+            if (!bar) return;
+            const barRect = bar.getBoundingClientRect();
+            if (totalDuration <= 0 || barRect.width <= 0) return;
+            const centerTime = shot.start_time + shot.duration / 2;
+            const offsetX = clamp((centerTime / totalDuration) * barRect.width, 0, barRect.width);
+            setEditingShot({
+                shot,
+                anchorViewportX: barRect.left + offsetX,
+                anchorViewportTop: barRect.top + RULER_H,
+            });
+        },
+        [totalDuration]
+    );
+
     // ── Position helpers ───────────────────────────────────────────────────
 
     const timeToPercent = (t: number) => {
@@ -1062,50 +1117,86 @@ export function TimelineScrubber() {
                                 );
                             })}
 
-                            {/* Per-sentence regions: subtle hoverable bands so the user can
-                                click a sentence to edit its script. The waveform shows underneath;
-                                hover state is visual-only (opacity/border), it doesn't break the
-                                seek-on-bar-click behaviour because the regions stop propagation
-                                only on click. */}
-                            {sentences.map((s, i) => {
-                                const left = `${(s.start_time / totalDuration) * 100}%`;
-                                const width = `${(s.duration / totalDuration) * 100}%`;
-                                const isEditing = editingSentence?.sentence.id === s.id;
-                                // Silenced sentences (audio replaced with silence,
-                                // text cleared) get a muted gray treatment so the
-                                // user can spot empty slots at a glance.
-                                const isSilenced =
-                                    s.text.trim() === '' && (s.audio_url ?? '') === '';
-                                return (
-                                    <button
-                                        key={s.id}
-                                        type="button"
-                                        title={
-                                            isSilenced
-                                                ? '(silenced — click to add narration)'
-                                                : s.text
-                                        }
-                                        onClick={(e) => handleSentenceClick(e, s)}
-                                        className={[
-                                            'absolute bottom-0 top-0 cursor-pointer border-l transition-colors',
-                                            isEditing
-                                                ? isSilenced
-                                                    ? 'border-gray-500 bg-gray-300/40'
-                                                    : 'border-indigo-500 bg-indigo-300/40'
-                                                : isSilenced
-                                                  ? 'border-gray-400 bg-gray-200/40 hover:bg-gray-300/40'
-                                                  : 'border-transparent hover:border-indigo-400 hover:bg-indigo-200/30',
-                                            // Right-most border on the last sentence so the
-                                            // grid feels closed; intermediate sentences only
-                                            // need the left border to mark their start.
-                                            i === sentences.length - 1
-                                                ? 'border-r border-r-transparent'
-                                                : '',
-                                        ].join(' ')}
-                                        style={{ left, width }}
-                                    />
-                                );
-                            })}
+                            {/* Per-{shot|sentence} regions: subtle hoverable bands so the
+                                user can click an editing unit to re-narrate its audio. v3
+                                timelines populate `meta.shots[]` which is the preferred unit
+                                (see `useShots`); pre-v3 timelines fall back to sentences. */}
+                            {useShots
+                                ? shots.map((sh, i) => {
+                                      const left = `${(sh.start_time / totalDuration) * 100}%`;
+                                      const width = `${(sh.duration / totalDuration) * 100}%`;
+                                      const isEditing = editingShot?.shot.shot_idx === sh.shot_idx;
+                                      // Intrinsic-only shots (source-clip / Veo audio) carry
+                                      // their own audio — render with an amber treatment so
+                                      // the user spots them as a different unit. They're
+                                      // clickable but the popover renders as read-only.
+                                      const isIntrinsic = sh.audio_policy === 'intrinsic_only';
+                                      return (
+                                          <button
+                                              key={sh.id}
+                                              type="button"
+                                              title={
+                                                  isIntrinsic
+                                                      ? `(intrinsic audio · ${sh.shot_type})`
+                                                      : sh.text || sh.narration_brief
+                                              }
+                                              onClick={(e) => handleShotClick(e, sh)}
+                                              className={[
+                                                  'absolute bottom-0 top-0 cursor-pointer border-l transition-colors',
+                                                  isEditing
+                                                      ? isIntrinsic
+                                                          ? 'border-amber-500 bg-amber-300/40'
+                                                          : 'border-indigo-500 bg-indigo-300/40'
+                                                      : isIntrinsic
+                                                        ? 'border-amber-400 bg-amber-100/40 hover:bg-amber-200/40'
+                                                        : 'border-transparent hover:border-indigo-400 hover:bg-indigo-200/30',
+                                                  i === shots.length - 1
+                                                      ? 'border-r border-r-transparent'
+                                                      : '',
+                                              ].join(' ')}
+                                              style={{ left, width }}
+                                          />
+                                      );
+                                  })
+                                : sentences.map((s, i) => {
+                                      const left = `${(s.start_time / totalDuration) * 100}%`;
+                                      const width = `${(s.duration / totalDuration) * 100}%`;
+                                      const isEditing = editingSentence?.sentence.id === s.id;
+                                      // Silenced sentences (audio replaced with silence,
+                                      // text cleared) get a muted gray treatment so the
+                                      // user can spot empty slots at a glance.
+                                      const isSilenced =
+                                          s.text.trim() === '' && (s.audio_url ?? '') === '';
+                                      return (
+                                          <button
+                                              key={s.id}
+                                              type="button"
+                                              title={
+                                                  isSilenced
+                                                      ? '(silenced — click to add narration)'
+                                                      : s.text
+                                              }
+                                              onClick={(e) => handleSentenceClick(e, s)}
+                                              className={[
+                                                  'absolute bottom-0 top-0 cursor-pointer border-l transition-colors',
+                                                  isEditing
+                                                      ? isSilenced
+                                                          ? 'border-gray-500 bg-gray-300/40'
+                                                          : 'border-indigo-500 bg-indigo-300/40'
+                                                      : isSilenced
+                                                        ? 'border-gray-400 bg-gray-200/40 hover:bg-gray-300/40'
+                                                        : 'border-transparent hover:border-indigo-400 hover:bg-indigo-200/30',
+                                                  // Right-most border on the last sentence so the
+                                                  // grid feels closed; intermediate sentences only
+                                                  // need the left border to mark their start.
+                                                  i === sentences.length - 1
+                                                      ? 'border-r border-r-transparent'
+                                                      : '',
+                                              ].join(' ')}
+                                              style={{ left, width }}
+                                          />
+                                      );
+                                  })}
                         </div>
                     )}
 
@@ -1119,6 +1210,18 @@ export function TimelineScrubber() {
                             anchorViewportTop={editingSentence.anchorViewportTop}
                             affectedEntryCount={countAffectedEntries(editingSentence.sentence)}
                             onClose={() => setEditingSentence(null)}
+                        />
+                    )}
+
+                    {/* Shot-edit popover (v3). Only opens when the timeline has
+                        meta.shots[] populated and the user clicked a shot region above. */}
+                    {editingShot && (
+                        <ShotEditPopover
+                            shot={editingShot.shot}
+                            anchorViewportX={editingShot.anchorViewportX}
+                            anchorViewportTop={editingShot.anchorViewportTop}
+                            affectedEntryCount={countAffectedShotEntries(editingShot.shot)}
+                            onClose={() => setEditingShot(null)}
                         />
                     )}
 

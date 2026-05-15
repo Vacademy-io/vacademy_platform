@@ -2713,6 +2713,75 @@ class VideoGenerationPipeline:
             except Exception:
                 pass  # validation block below will fill in a safe default
 
+            # ── v3 dispatch (ShotPlanner-first) ──────────────────────
+            # Gated behind PIPELINE_VERSION=v3 (env) or tier_config
+            # `pipeline_version: "v3"`. On success, populates `script_plan`
+            # from ShotPlanner + NarrationWriter output, persists
+            # `shot_plan.json`, and short-circuits the v2 BeatPlanner +
+            # _draft_script + reviews + bridge below via `_v3_done=True`.
+            # On v3 failure, falls through to v2 — no run is sacrificed
+            # to the new path while it's bedding in.
+            _v3_done = False
+            self._v3_shot_plan = None  # cleared every script-stage entry
+            if self._pipeline_v3_enabled():
+                _v3_target_s = float(getattr(self, "_target_seconds", 0) or 0)
+                if _v3_target_s <= 0:
+                    _v3_target_s = 150.0
+                # Mutable container that `_run_v3_shot_planning` writes into
+                # phase-by-phase. If NarrationWriter raises after ShotPlanner
+                # already incurred real LLM cost, the caller can still bill
+                # the institute by reading this dict — without it the
+                # ShotPlanner tokens would be silently dropped.
+                _v3_partial_usage: Dict[str, Any] = {}
+                try:
+                    print(f"🆕 Pipeline v3 — ShotPlanner-first ({run_dir.name}) [{_v3_target_s:.0f}s target]")
+                    _v3_script_plan, _v3_shot_plan_dict, _v3_usage = self._run_v3_shot_planning(
+                        base_prompt,
+                        run_dir,
+                        target_duration_s=_v3_target_s,
+                        target_audience=target_audience,
+                        language=language,
+                        content_type=content_type,
+                        partial_usage=_v3_partial_usage,
+                    )
+                    script_plan = _v3_script_plan
+                    accumulate_usage(_v3_usage)
+                    _v3_done = True
+                    print(
+                        f"✅ Pipeline v3 complete — {len(_v3_shot_plan_dict.get('shots') or [])} shots, "
+                        f"{_v3_usage.get('prompt_tokens', 0) + _v3_usage.get('completion_tokens', 0)} tokens"
+                    )
+                    self._emit_progress({
+                        "type": "sub_stage", "sub_stage": "script_done",
+                        "message": "Shot plan + narration ready (v3)",
+                        "token_delta": {
+                            "prompt_tokens": _v3_usage.get("prompt_tokens", 0),
+                            "completion_tokens": _v3_usage.get("completion_tokens", 0),
+                        },
+                        "cumulative_tokens": dict(total_usage),
+                    })
+                except Exception as _v3_err:
+                    print(
+                        f"⚠️ Pipeline v3 failed "
+                        f"({type(_v3_err).__name__}: {_v3_err}) — falling back to v2"
+                    )
+                    self._v3_shot_plan = None  # html stage must NOT think v3 succeeded
+                    # Bill whatever LLM work completed before the failure so
+                    # we don't silently eat ShotPlanner cost on NarrationWriter
+                    # parse failures.
+                    _partial_tokens = (
+                        int(_v3_partial_usage.get("prompt_tokens", 0) or 0)
+                        + int(_v3_partial_usage.get("completion_tokens", 0) or 0)
+                    )
+                    if _partial_tokens > 0:
+                        accumulate_usage(_v3_partial_usage)
+                        print(
+                            f"   📊 Charged partial v3 usage to institute: "
+                            f"{_partial_tokens} tokens "
+                            f"(prompt={_v3_partial_usage.get('prompt_tokens', 0)}, "
+                            f"completion={_v3_partial_usage.get('completion_tokens', 0)})"
+                        )
+
             # ── BeatPlanner (Phase 1, opt-in) ─────────────────────────
             # When `beat_planner_enabled` is set on the tier, run an explicit
             # beat-planning LLM call BEFORE Script Generator. The beats land
@@ -2721,8 +2790,11 @@ class VideoGenerationPipeline:
             # this round — full BeatPlanner-as-input refactor is deferred.
             # Failure is non-fatal: log and continue (legacy Script
             # Generator path remains the source of truth).
+            #
+            # Gated on `not _v3_done`: when v3 succeeds, BeatPlanner is
+            # redundant (its duty is folded into ShotPlanner's prompt).
             self._beats_v2_plan = None
-            if self._tier_config.get("beat_planner_enabled"):
+            if not _v3_done and self._tier_config.get("beat_planner_enabled"):
                 try:
                     from beat_planner import plan_beats, BeatPlanError
                     self._emit_progress({"type": "sub_stage", "sub_stage": "beats_planning",
@@ -2769,138 +2841,145 @@ class VideoGenerationPipeline:
                 except Exception as _bp_err:
                     print(f"   ⚠️ BeatPlanner skipped ({type(_bp_err).__name__}: {_bp_err})")
 
-            print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
-            self._emit_progress({"type": "sub_stage", "sub_stage": "script_writing",
-                                  "message": "Writing script..."})
-            script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration, content_type=content_type)
-            script_plan = script_out["result"]
-            _script_usage = script_out.get("usage", {})
-            accumulate_usage(_script_usage)
+            # ── v2: monolithic ScriptGenerator + word-budget validation ──
+            # Skipped when v3 already populated `script_plan` from
+            # ShotPlanner + NarrationWriter above (the new path doesn't
+            # need a separate script LLM call).
+            if not _v3_done:
+                print(f"📝 Drafting refined script ({run_dir.name}) for {target_audience} [{target_duration}]...")
+                self._emit_progress({"type": "sub_stage", "sub_stage": "script_writing",
+                                      "message": "Writing script..."})
+                script_out = self._draft_script(base_prompt, run_dir, language=language, target_audience=target_audience, target_duration=target_duration, content_type=content_type)
+                script_plan = script_out["result"]
+                _script_usage = script_out.get("usage", {})
+                accumulate_usage(_script_usage)
 
-            # Word-budget validation: cheap planners often ignore the duration
-            # cap in the prompt. Validate after the draft and regen once if
-            # over budget by >15%. Skipped when user-authored (verbatim takes
-            # priority over duration matching).
-            if (
-                content_type == "VIDEO"
-                and not getattr(self, "_user_had_script", False)
-            ):
-                try:
-                    import re as _re_dur
-                    # Parse target_duration → seconds (mirrors _derive_pacing_style).
-                    _td_lower = (target_duration or "").lower().strip()
-                    _nums = [float(n) for n in _re_dur.findall(r"[\d.]+", _td_lower)]
-                    if _nums:
-                        if "second" in _td_lower:
-                            _target_seconds = sum(_nums) / len(_nums)
-                        else:
-                            _target_seconds = (sum(_nums) / len(_nums)) * 60.0
-                    else:
-                        _target_seconds = 150.0  # 2.5min fallback
-                    # Stash for the audio-overrun safety net at TTS time
-                    # (Fix 1f) — needs target_seconds + the resolved wps.
-                    self._target_seconds = float(_target_seconds)
-
-                    # Pull script text out of various shapes.
-                    _draft_text = ""
-                    if isinstance(script_plan, dict):
-                        _draft_text = (
-                            script_plan.get("script_text")
-                            or (script_plan.get("plan") or {}).get("script")
-                            or ""
-                        )
-                    _word_count = len(str(_draft_text).split())
-                    # Per-voice WPS so Sarvam Indian voices (~1.55 wps) don't
-                    # get a 2.6-wps script. Falls through provider-default →
-                    # 2.0 global default for unknown voices.
-                    _wps_for_budget = _resolve_voice_wps(
-                        getattr(self, "_tts_provider_resolved", None) or self._tts_provider,
-                        getattr(self, "_tts_voice_id_resolved", None) or self._tts_voice_id,
-                    )
-                    _voice_label_log = (
-                        f"{getattr(self, '_tts_provider_resolved', None) or self._tts_provider}"
-                        f":{getattr(self, '_tts_voice_id_resolved', None) or self._tts_voice_id or '_default'}"
-                    )
-                    _target_words = max(20, int(_target_seconds * _wps_for_budget))
-                    _budget_max = int(_target_words * 1.15)
-                    print(
-                        f"📏 Script word-count check: {_word_count} words / "
-                        f"{_target_words} target ({int(_target_seconds)}s × {_wps_for_budget:.2f} wps × 1.15 cap = {_budget_max}) "
-                        f"[voice={_voice_label_log}]"
-                    )
-                    if _word_count > _budget_max:
-                        # Regen once with an explicit cut directive prepended.
-                        _cut_to = max(20, int(_target_words * 0.95))
-                        print(
-                            f"⚠️ Script over budget ({_word_count} > {_budget_max}). "
-                            f"Regenerating with hard cap = {_cut_to} words (Fix J)."
-                        )
-                        _retry_prompt = (
-                            f"⚠️ URGENT REVISION REQUIRED: a previous draft of this script "
-                            f"was {_word_count} words for a {int(_target_seconds)}s target — "
-                            f"that exceeds the duration budget. The TTS voice for this run "
-                            f"({_voice_label_log}) paces at ~{_wps_for_budget:.2f} words/sec, "
-                            f"so {_word_count} words renders ~{_word_count / max(_wps_for_budget, 0.1):.0f}s of audio. "
-                            f"Rewrite the narration with a HARD CAP of {_cut_to} words. "
-                            f"Cut filler, examples, and any sentence that doesn't directly "
-                            f"serve the core message. Quality over quantity.\n\n"
-                            f"---\n\n{base_prompt}"
-                        )
-                        try:
-                            _retry_out = self._draft_script(
-                                _retry_prompt, run_dir,
-                                language=language,
-                                target_audience=target_audience,
-                                target_duration=target_duration,
-                                content_type=content_type,
-                            )
-                            _retry_plan = _retry_out.get("result")
-                            _retry_usage = _retry_out.get("usage", {})
-                            accumulate_usage(_retry_usage)
-                            # Validate the retry — if it's STILL over, ship it
-                            # anyway (avoid infinite regen loops). Log the result.
-                            _retry_text = ""
-                            if isinstance(_retry_plan, dict):
-                                _retry_text = (
-                                    _retry_plan.get("script_text")
-                                    or (_retry_plan.get("plan") or {}).get("script")
-                                    or ""
-                                )
-                            _retry_words = len(str(_retry_text).split())
-                            print(
-                                f"📏 Script regen result: {_retry_words} words "
-                                f"(was {_word_count}, cap {_budget_max})."
-                            )
-                            if _retry_plan and _retry_words <= _budget_max:
-                                script_plan = _retry_plan
-                            elif _retry_plan and _retry_words < _word_count:
-                                # Improved but still over — keep the better version.
-                                script_plan = _retry_plan
-                                print("⚠️ Retry still over budget but improved; using retry version.")
+                # Word-budget validation: cheap planners often ignore the duration
+                # cap in the prompt. Validate after the draft and regen once if
+                # over budget by >15%. Skipped when user-authored (verbatim takes
+                # priority over duration matching).
+                if (
+                    content_type == "VIDEO"
+                    and not getattr(self, "_user_had_script", False)
+                ):
+                    try:
+                        import re as _re_dur
+                        # Parse target_duration → seconds (mirrors _derive_pacing_style).
+                        _td_lower = (target_duration or "").lower().strip()
+                        _nums = [float(n) for n in _re_dur.findall(r"[\d.]+", _td_lower)]
+                        if _nums:
+                            if "second" in _td_lower:
+                                _target_seconds = sum(_nums) / len(_nums)
                             else:
-                                print("⚠️ Retry failed to improve; keeping original draft.")
-                        except Exception as _retry_err:
-                            print(f"⚠️ Word-budget regen failed (non-fatal): {_retry_err}")
-                    else:
-                        print(f"✅ Script within budget ({_word_count} ≤ {_budget_max} words).")
-                except Exception as _wb_err:
-                    print(f"⚠️ Word-budget validation failed (non-fatal): {_wb_err}")
-            self._emit_progress({
-                "type": "sub_stage", "sub_stage": "script_done",
-                "message": "Script ready",
-                "token_delta": {
-                    "prompt_tokens": _script_usage.get("prompt_tokens", 0),
-                    "completion_tokens": _script_usage.get("completion_tokens", 0),
-                },
-                "cumulative_tokens": dict(total_usage),
-            })
+                                _target_seconds = (sum(_nums) / len(_nums)) * 60.0
+                        else:
+                            _target_seconds = 150.0  # 2.5min fallback
+                        # Stash for the audio-overrun safety net at TTS time
+                        # (Fix 1f) — needs target_seconds + the resolved wps.
+                        self._target_seconds = float(_target_seconds)
+
+                        # Pull script text out of various shapes.
+                        _draft_text = ""
+                        if isinstance(script_plan, dict):
+                            _draft_text = (
+                                script_plan.get("script_text")
+                                or (script_plan.get("plan") or {}).get("script")
+                                or ""
+                            )
+                        _word_count = len(str(_draft_text).split())
+                        # Per-voice WPS so Sarvam Indian voices (~1.55 wps) don't
+                        # get a 2.6-wps script. Falls through provider-default →
+                        # 2.0 global default for unknown voices.
+                        _wps_for_budget = _resolve_voice_wps(
+                            getattr(self, "_tts_provider_resolved", None) or self._tts_provider,
+                            getattr(self, "_tts_voice_id_resolved", None) or self._tts_voice_id,
+                        )
+                        _voice_label_log = (
+                            f"{getattr(self, '_tts_provider_resolved', None) or self._tts_provider}"
+                            f":{getattr(self, '_tts_voice_id_resolved', None) or self._tts_voice_id or '_default'}"
+                        )
+                        _target_words = max(20, int(_target_seconds * _wps_for_budget))
+                        _budget_max = int(_target_words * 1.15)
+                        print(
+                            f"📏 Script word-count check: {_word_count} words / "
+                            f"{_target_words} target ({int(_target_seconds)}s × {_wps_for_budget:.2f} wps × 1.15 cap = {_budget_max}) "
+                            f"[voice={_voice_label_log}]"
+                        )
+                        if _word_count > _budget_max:
+                            # Regen once with an explicit cut directive prepended.
+                            _cut_to = max(20, int(_target_words * 0.95))
+                            print(
+                                f"⚠️ Script over budget ({_word_count} > {_budget_max}). "
+                                f"Regenerating with hard cap = {_cut_to} words (Fix J)."
+                            )
+                            _retry_prompt = (
+                                f"⚠️ URGENT REVISION REQUIRED: a previous draft of this script "
+                                f"was {_word_count} words for a {int(_target_seconds)}s target — "
+                                f"that exceeds the duration budget. The TTS voice for this run "
+                                f"({_voice_label_log}) paces at ~{_wps_for_budget:.2f} words/sec, "
+                                f"so {_word_count} words renders ~{_word_count / max(_wps_for_budget, 0.1):.0f}s of audio. "
+                                f"Rewrite the narration with a HARD CAP of {_cut_to} words. "
+                                f"Cut filler, examples, and any sentence that doesn't directly "
+                                f"serve the core message. Quality over quantity.\n\n"
+                                f"---\n\n{base_prompt}"
+                            )
+                            try:
+                                _retry_out = self._draft_script(
+                                    _retry_prompt, run_dir,
+                                    language=language,
+                                    target_audience=target_audience,
+                                    target_duration=target_duration,
+                                    content_type=content_type,
+                                )
+                                _retry_plan = _retry_out.get("result")
+                                _retry_usage = _retry_out.get("usage", {})
+                                accumulate_usage(_retry_usage)
+                                # Validate the retry — if it's STILL over, ship it
+                                # anyway (avoid infinite regen loops). Log the result.
+                                _retry_text = ""
+                                if isinstance(_retry_plan, dict):
+                                    _retry_text = (
+                                        _retry_plan.get("script_text")
+                                        or (_retry_plan.get("plan") or {}).get("script")
+                                        or ""
+                                    )
+                                _retry_words = len(str(_retry_text).split())
+                                print(
+                                    f"📏 Script regen result: {_retry_words} words "
+                                    f"(was {_word_count}, cap {_budget_max})."
+                                )
+                                if _retry_plan and _retry_words <= _budget_max:
+                                    script_plan = _retry_plan
+                                elif _retry_plan and _retry_words < _word_count:
+                                    # Improved but still over — keep the better version.
+                                    script_plan = _retry_plan
+                                    print("⚠️ Retry still over budget but improved; using retry version.")
+                                else:
+                                    print("⚠️ Retry failed to improve; keeping original draft.")
+                            except Exception as _retry_err:
+                                print(f"⚠️ Word-budget regen failed (non-fatal): {_retry_err}")
+                        else:
+                            print(f"✅ Script within budget ({_word_count} ≤ {_budget_max} words).")
+                    except Exception as _wb_err:
+                        print(f"⚠️ Word-budget validation failed (non-fatal): {_wb_err}")
+                self._emit_progress({
+                    "type": "sub_stage", "sub_stage": "script_done",
+                    "message": "Script ready",
+                    "token_delta": {
+                        "prompt_tokens": _script_usage.get("prompt_tokens", 0),
+                        "completion_tokens": _script_usage.get("completion_tokens", 0),
+                    },
+                    "cumulative_tokens": dict(total_usage),
+                })
 
             # Two-pass script review (Premium/Ultra tiers).
             # Skipped when the user supplied an explicit script — the review LLM
             # rewrites narration into "marketing-friendly" copy, which destroys
             # the user's verbatim text. User-authored mode is detected at
             # _draft_script time and surfaced via self._user_had_script.
-            if self._tier_config.get("two_pass_script") and content_type == "VIDEO":
+            # Also skipped on v3: ShotPlanner+NarrationWriter already produce
+            # the final per-shot narration; a second review pass is redundant.
+            if not _v3_done and self._tier_config.get("two_pass_script") and content_type == "VIDEO":
                 if getattr(self, "_user_had_script", False):
                     print(
                         "✋ Skipping two-pass script review — user-authored prompt detected, "
@@ -2992,12 +3071,42 @@ class VideoGenerationPipeline:
                 plan_data = json.loads(plan_path.read_text())
             else:
                 plan_data = {}
-            
+
             script_plan = {
                 "plan": plan_data,
                 "script_path": script_path,
                 "script_text": script_path.read_text(),
             }
+
+            # ── v3 resume detection ───────────────────────────────────
+            # On RESUME (do_script=False) the v3 dispatch in the do_script=True
+            # branch never fires. If the prior run was v3, `shot_plan.json` is
+            # on disk (downloaded from S3 in video_generation_service.py).
+            # Detect that here so the TTS-defer gate + html-stage Director-skip
+            # both see a consistent v3 state, regardless of which tier flags
+            # are set. Without this, free/standard v3 resumes silently fall
+            # back to monolithic TTS and the v3 shot plan is wasted.
+            _v3_resume_plan_path = run_dir / "shot_plan.json"
+            if _v3_resume_plan_path.exists():
+                try:
+                    _v3_resume_plan = json.loads(_v3_resume_plan_path.read_text())
+                    if (
+                        isinstance(_v3_resume_plan, dict)
+                        and isinstance(_v3_resume_plan.get("shots"), list)
+                        and _v3_resume_plan["shots"]
+                    ):
+                        self._v3_shot_plan = _v3_resume_plan
+                        script_plan["_v3"] = True
+                        print(
+                            f"♻️  v3 resume — loaded shot_plan.json "
+                            f"({len(_v3_resume_plan['shots'])} shots) from disk; "
+                            f"per-shot TTS will be used."
+                        )
+                except Exception as _v3r_err:
+                    print(
+                        f"⚠️ shot_plan.json read failed on resume "
+                        f"({type(_v3r_err).__name__}: {_v3r_err}) — falling back to v2 behavior"
+                    )
 
         # Content types that produce no audio (purely visual)
         NO_AUDIO_TYPES = {"SLIDES"}
@@ -3039,15 +3148,28 @@ class VideoGenerationPipeline:
             }
             print(f"🧪 [PHASE_B v3 GATE DIAG] {_gate_diag}")
 
+            # v3 path: ShotPlanner already populated shots with narration_text.
+            # We defer TTS so per-shot synthesis runs inside the html stage
+            # (same code path as v2 deferred TTS, just reading shot.narration_text
+            # from a ShotPlanner-authored plan instead of a Director-sliced one).
+            _v3_in_play = bool(
+                isinstance(script_plan, dict) and script_plan.get("_v3")
+                and getattr(self, "_v3_shot_plan", None)
+            )
             _v2_tts_deferred = (
                 do_tts
-                and self._tier_config.get("tts_per_shot_enabled")
-                and self._tier_config.get("use_director")
                 and do_html
                 and content_type == "VIDEO"
                 and content_type not in NO_AUDIO_TYPES
+                and (
+                    _v3_in_play
+                    or (
+                        self._tier_config.get("tts_per_shot_enabled")
+                        and self._tier_config.get("use_director")
+                    )
+                )
             )
-            print(f"🧪 [PHASE_B v3 GATE RESULT] _v2_tts_deferred = {_v2_tts_deferred}")
+            print(f"🧪 [PHASE_B v3 GATE RESULT] _v2_tts_deferred = {_v2_tts_deferred} (v3_in_play={_v3_in_play})")
             if _v2_tts_deferred:
                 print("🗣️  TTS deferred to html stage (v2 per-shot path)")
                 self._emit_progress({
@@ -3461,7 +3583,61 @@ class VideoGenerationPipeline:
                 # generate HTML per-shot with focused prompts. Falls back to
                 # segment-based flow on failure.
                 _director_plan = None
-                if self._tier_config.get("use_director") and content_type == "VIDEO":
+
+                # v3 short-circuit: ShotPlanner already produced the shot plan
+                # during the script stage. Use it directly — skip Director entirely.
+                # Resume parity: also try to load `shot_plan.json` from disk
+                # so a v3 run that crashed mid-html can pick up where it left off.
+                _v3_plan_in_memory = getattr(self, "_v3_shot_plan", None)
+                _v3_plan_on_disk = None
+                if _v3_plan_in_memory is None and content_type == "VIDEO":
+                    _shot_plan_ckpt = run_dir / "shot_plan.json"
+                    if _shot_plan_ckpt.exists():
+                        try:
+                            _candidate = json.loads(_shot_plan_ckpt.read_text())
+                            if (
+                                isinstance(_candidate, dict)
+                                and isinstance(_candidate.get("shots"), list)
+                                and _candidate["shots"]
+                            ):
+                                _v3_plan_on_disk = _candidate
+                        except Exception as _ck_err:
+                            print(f"⚠️ shot_plan.json checkpoint unreadable: {_ck_err}")
+                _active_v3_plan = _v3_plan_in_memory or _v3_plan_on_disk
+                if _active_v3_plan and content_type == "VIDEO":
+                    _director_plan = _active_v3_plan
+                    # Defensive: run AudioPolicyPlanner to fill in any missing
+                    # audio_policy on resume-loaded plans (idempotent).
+                    try:
+                        from audio_policy_planner import plan_audio_policy
+                        plan_audio_policy(
+                            _director_plan["shots"],
+                            ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                            mute_tts_on_source_clips=getattr(self, "_mute_tts_on_source_clips", False),
+                        )
+                    except Exception as _ap_err:
+                        print(f"   ⚠️ AudioPolicyPlanner normalize failed on v3 plan ({_ap_err})")
+                    # Cache back for any later html-stage reads.
+                    self._v3_shot_plan = _director_plan
+                    _src = "memory" if _v3_plan_in_memory else "shot_plan.json checkpoint"
+                    print(f"♻️  Using v3 shot plan from {_src} ({len(_director_plan['shots'])} shots) — Director skipped")
+                    self._emit_progress({
+                        "type": "sub_stage", "sub_stage": "director_done",
+                        "message": f"Shot plan from v3 ({len(_director_plan['shots'])} shots)",
+                        "shot_count": len(_director_plan["shots"]),
+                        "from_checkpoint": _v3_plan_in_memory is None,
+                        "v3": True,
+                        "shots_summary": [
+                            {"shot_index": s.get("shot_index", i),
+                             "shot_type": s.get("shot_type", ""),
+                             "duration_s": round(float(s.get("end_time", 0) or 0) - float(s.get("start_time", 0) or 0), 2),
+                             "start_time": s.get("start_time", 0),
+                             "end_time": s.get("end_time", 0),
+                             "narration_excerpt": (s.get("narration_text") or s.get("narration_excerpt") or "")[:80]}
+                            for i, s in enumerate(_director_plan["shots"])
+                        ],
+                    })
+                if _director_plan is None and self._tier_config.get("use_director") and content_type == "VIDEO":
                     # Checkpoint: load existing Director plan on resume (avoids re-running 2 LLM calls)
                     _director_ckpt = run_dir / "director_plan.json"
                     if _director_ckpt.exists():
@@ -8905,6 +9081,350 @@ class VideoGenerationPipeline:
         shot.pop("template_id", None)
         shot.pop("template_params", None)
         shot.pop("video_query", None)
+
+    # ─────────────────────────────────────────────────────────────────────
+    # v3 pipeline — ShotPlanner runs BEFORE the script; NarrationWriter
+    # authors per-shot text. Replaces BeatPlanner → ScriptGenerator →
+    # Director chain with one upfront planning stage. Gated by the
+    # `PIPELINE_VERSION=v3` env var (or per-tier `pipeline_version: "v3"`
+    # in QUALITY_TIERS) so it ships behind a flag during transition.
+    # See: docs/ai_content/AI_VIDEO_ARCHITECTURE_CHANGES.md "Pipeline Reorder v3"
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _pipeline_v3_enabled(self) -> bool:
+        """Returns True when the v3 ShotPlanner-first path should run for
+        this pipeline instance.
+
+        Resolution order (first hit wins):
+          1. `PIPELINE_VERSION` env var equals "v3" — operator override
+          2. Per-tier config `pipeline_version` equals "v3" — strategic rollout
+        Anything else (including absent / v1 / v2) → v2 path (existing).
+
+        The flag is read fresh each call so test fixtures can flip it
+        mid-run without re-instantiating the pipeline.
+        """
+        import os as _os_v3
+        env_val = (_os_v3.environ.get("PIPELINE_VERSION") or "").strip().lower()
+        if env_val == "v3":
+            return True
+        tier_val = (self._tier_config.get("pipeline_version") or "").strip().lower() \
+            if isinstance(self._tier_config, dict) else ""
+        return tier_val == "v3"
+
+    def _v3_aspect_label(self) -> str:
+        """Derive ShotPlanner's `image_ratio` input from instance state.
+        Returns "16:9" for landscape or "9:16" for portrait — matches the
+        format `shot_planner.build_shot_planner_user_prompt` expects."""
+        try:
+            w = int(getattr(self, "video_width", 1920) or 1920)
+            h = int(getattr(self, "video_height", 1080) or 1080)
+        except (TypeError, ValueError):
+            w, h = 1920, 1080
+        return "9:16" if w < h else "16:9"
+
+    def _v3_collect_reference_assets(self) -> List[Dict[str, Any]]:
+        """Shape `_reference_context` (uploaded assets bag) into the
+        compact dict-of-dicts shape ShotPlanner expects:
+          [{kind, name, description}, ...]
+        Empty list when no uploads — that's the "no BRAND ANCHOR" path."""
+        ref_ctx = getattr(self, "_reference_context", None) or {}
+        if not isinstance(ref_ctx, dict):
+            return []
+        assets: List[Dict[str, Any]] = []
+        # `embeddable_images` covers logos / brand marks; description holds
+        # the LLM-extracted "what is this" summary.
+        for img in (ref_ctx.get("embeddable_images") or [])[:8]:
+            if not isinstance(img, dict):
+                continue
+            assets.append({
+                "kind": "image",
+                "name": img.get("name") or img.get("filename") or "asset",
+                "description": img.get("description") or img.get("caption") or "",
+            })
+        # Source video (single, when present) — surface so ShotPlanner can
+        # pick SOURCE_CLIP shots.
+        src_clip = ref_ctx.get("source_clip")
+        if isinstance(src_clip, dict):
+            assets.append({
+                "kind": "source_video",
+                "name": src_clip.get("name") or "source.mp4",
+                "description": str(src_clip.get("transcript") or src_clip.get("description") or "")[:200],
+            })
+        return assets
+
+    def _v3_source_clip_available(self) -> bool:
+        """True when the user uploaded a source video that ShotPlanner is
+        allowed to slice via shot_type=SOURCE_CLIP."""
+        ref_ctx = getattr(self, "_reference_context", None) or {}
+        return bool(isinstance(ref_ctx, dict) and ref_ctx.get("source_clip"))
+
+    def _v3_article_screenshots(self) -> Optional[List[Dict[str, Any]]]:
+        """Surface scrape_url article screenshots for ARTICLE_FOCUS shots.
+        Returns None when no scrape happened (so ShotPlanner's user prompt
+        marks ARTICLE_FOCUS as unavailable)."""
+        ref_ctx = getattr(self, "_reference_context", None) or {}
+        if not isinstance(ref_ctx, dict):
+            return None
+        scrape = ref_ctx.get("scrape_url") or {}
+        if not isinstance(scrape, dict):
+            return None
+        screenshots = scrape.get("screenshots") or scrape.get("screenshot_inventory")
+        if not isinstance(screenshots, list) or not screenshots:
+            return None
+        out: List[Dict[str, Any]] = []
+        for sc in screenshots[:10]:
+            if not isinstance(sc, dict):
+                continue
+            out.append({
+                "id": sc.get("id") or sc.get("screenshot_id"),
+                "label": sc.get("label") or sc.get("description") or sc.get("alt") or "",
+            })
+        return out or None
+
+    def _v3_write_derived_script_artifacts(
+        self,
+        shot_plan: Dict[str, Any],
+        run_dir: Path,
+    ) -> Tuple[Path, str, List[Dict[str, Any]]]:
+        """Persist v3 artifacts:
+          - `shot_plan.json` (the full normalized plan — the v3 source of truth)
+          - `script.txt` (derived concat of per-shot narration_text — kept for
+            legacy consumers: S3 upload bundle, editor reference, render server logs)
+          - `beat_outline` (derived from shot_plan for the legacy script_plan
+            envelope so downstream code that reads `plan.beat_outline` still
+            works without v3 awareness)
+
+        Returns (script_path, script_text, beat_outline).
+        """
+        # Persist the full shot plan
+        try:
+            (run_dir / "shot_plan.json").write_text(
+                json.dumps(shot_plan, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception as _wp_err:
+            print(f"   ⚠️ Could not persist shot_plan.json: {_wp_err}")
+
+        # Derive script.txt from per-shot narration_text. Skipped shots
+        # (intrinsic_only) contribute nothing — the audio gap is silent in
+        # the rendered master narration too.
+        narration_parts: List[str] = []
+        beat_outline: List[Dict[str, Any]] = []
+        for s in shot_plan.get("shots", []):
+            if not isinstance(s, dict):
+                continue
+            text = (s.get("narration_text") or "").strip()
+            if text:
+                narration_parts.append(text)
+            beat_outline.append({
+                "label": f"Shot {int(s.get('shot_index') or 0)}",
+                "narration": text,
+                "visual_type": "",  # legacy field; not used by v3 consumers
+                "duration_estimate_s": float(s.get("duration_estimate_s") or 0.0),
+                "intent_role": s.get("intent_role") or "",
+                "narration_hint": bool(text),
+            })
+        script_text = "\n\n".join(narration_parts).strip()
+        script_path = run_dir / "script.txt"
+        try:
+            script_path.write_text(script_text, encoding="utf-8")
+        except Exception as _ws_err:
+            print(f"   ⚠️ Could not persist derived script.txt: {_ws_err}")
+        return script_path, script_text, beat_outline
+
+    @staticmethod
+    def _v3_accumulate_partial_usage(target: Dict[str, Any], src: Dict[str, Any]) -> None:
+        """Merge LLM usage from a single phase into a partial-usage dict.
+        Used by `_run_v3_shot_planning` so that if NarrationWriter raises
+        AFTER ShotPlanner succeeded, the caller can still bill the institute
+        for the ShotPlanner cost rather than losing it silently."""
+        if not isinstance(src, dict):
+            return
+        for k in ("prompt_tokens", "completion_tokens", "input_tokens", "output_tokens"):
+            try:
+                target[k] = int(target.get(k, 0) or 0) + int(src.get(k, 0) or 0)
+            except (TypeError, ValueError):
+                continue
+
+    def _run_v3_shot_planning(
+        self,
+        base_prompt: str,
+        run_dir: Path,
+        *,
+        target_duration_s: float,
+        target_audience: str,
+        language: str,
+        content_type: str,
+        partial_usage: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+        """v3 entry point — runs ShotPlanner + NarrationWriter, persists
+        artifacts, and returns the data downstream code needs.
+
+        Returns a tuple of:
+          1. `script_plan` — legacy-shaped dict for backward compat with the
+             rest of `run()`: keys = `script_path`, `script_text`, `plan`
+             (with `script`, `beat_outline`), plus `_v3=True` marker.
+          2. `shot_plan` — the full normalized v3 plan dict (also written to
+             disk as `shot_plan.json`). Caller stashes on `self._v3_shot_plan`
+             so the html stage uses it directly instead of running Director.
+          3. `usage` — token usage dict summed across both LLM calls.
+
+        `partial_usage` (optional): a mutable dict the caller passes in to
+        capture LLM tokens *as they accrue*, phase by phase. If NarrationWriter
+        raises after ShotPlanner billed real tokens, the caller can still
+        bill the institute by reading `partial_usage` — without this,
+        partial-failure usage was silently lost (the exception propagated
+        before the return-value accumulation could fire).
+
+        Raises any ShotPlanError / NarrationWriteError unchanged — caller
+        decides whether to fall back to v2 or surface as a hard run failure.
+        """
+        from shot_planner import plan_shots, ShotPlanError
+        from narration_writer import write_narration, NarrationWriteError
+
+        # ── 1. ShotPlanner ─────────────────────────────────────────────
+        tier_config = self._tier_config if isinstance(self._tier_config, dict) else {}
+        shot_planner_model = (
+            tier_config.get("shot_planner_model")
+            or tier_config.get("director_model")
+            or getattr(self.script_client, "model", None)
+        )
+        ai_video_cost_cap = float(tier_config.get("ai_video_per_video_cost_cap_usd") or 1.50)
+        brand_brief = self._extract_brand_brief() or {}
+
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "shot_planning",
+            "message": "Planning shots from intent...",
+            "quality_tier": self._quality_tier,
+        })
+        sp_result = plan_shots(
+            prompt=base_prompt,
+            target_duration_s=target_duration_s,
+            llm_chat=self.script_client.chat,
+            model=shot_planner_model,
+            target_audience=target_audience,
+            language=language,
+            content_type=content_type,
+            tier=self._quality_tier,
+            image_ratio=self._v3_aspect_label(),
+            visual_preferences=getattr(self, "_visual_preferences", None) or None,
+            reference_assets=self._v3_collect_reference_assets() or None,
+            brand_brief=brand_brief or None,
+            ai_video_enabled=getattr(self, "_ai_video_run_enabled", False),
+            ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+            ai_video_cost_cap_usd=ai_video_cost_cap,
+            source_clip_available=self._v3_source_clip_available(),
+            article_screenshots=self._v3_article_screenshots(),
+        )
+        shot_plan_dict = {
+            "shots": sp_result["shots"],
+            "continuity_notes": sp_result.get("continuity_notes", ""),
+            "recurring_motifs": sp_result.get("recurring_motifs") or [],
+        }
+        sp_usage = sp_result.get("usage") or {}
+        # Record ShotPlanner tokens NOW — if NarrationWriter raises below,
+        # this is the only place the caller can recover the partial cost.
+        if partial_usage is not None:
+            self._v3_accumulate_partial_usage(partial_usage, sp_usage)
+
+        # ── 2. AudioPolicyPlanner (defensive normalizer) ──────────────
+        # ShotPlanner already emits audio_policy per shot; AudioPolicyPlanner
+        # fills in anything missing AND honors the run-level
+        # mute_tts_on_source_clips toggle (which ShotPlanner doesn't see).
+        try:
+            from audio_policy_planner import plan_audio_policy
+            plan_audio_policy(
+                shot_plan_dict["shots"],
+                ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
+                mute_tts_on_source_clips=getattr(self, "_mute_tts_on_source_clips", False),
+                log_fn=print,
+            )
+        except Exception as _ap_err:
+            print(f"   ⚠️ AudioPolicyPlanner normalize failed ({_ap_err}); shots keep ShotPlanner values")
+
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "shot_planning_done",
+            "message": f"Shot plan ready: {len(shot_plan_dict['shots'])} shots",
+            "shot_count": len(shot_plan_dict["shots"]),
+        })
+
+        # ── 3. NarrationWriter ────────────────────────────────────────
+        narration_writer_model = (
+            tier_config.get("narration_writer_model")
+            or shot_planner_model
+        )
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "narration_writing",
+            "message": "Authoring per-shot narration...",
+        })
+        nw_result = write_narration(
+            shot_plan=shot_plan_dict,
+            llm_chat=self.script_client.chat,
+            model=narration_writer_model,
+            target_duration_s=target_duration_s,
+            target_audience=target_audience,
+            language=language,
+            brand_voice=(brand_brief.get("voice") if isinstance(brand_brief, dict) else None),
+        )
+        nw_usage = nw_result.get("usage") or {}
+        # Record NarrationWriter tokens. (ShotPlanner already recorded above
+        # so partial_usage now equals total usage on success.)
+        if partial_usage is not None:
+            self._v3_accumulate_partial_usage(partial_usage, nw_usage)
+
+        # ── 4. Persist artifacts (shot_plan.json, derived script.txt) ─
+        script_path, script_text, beat_outline = self._v3_write_derived_script_artifacts(
+            shot_plan_dict, run_dir,
+        )
+
+        # ── 5. Legacy-shaped script_plan for backwards compat ─────────
+        # Downstream code (review_script, _run_director context, etc.)
+        # reads `script_plan["plan"]["script"]` + `plan.beat_outline`.
+        # We populate both from the shot plan so the rest of run() keeps
+        # working without v3 awareness. `_v3` flag lets v3-aware code (html
+        # stage Director-skip) detect we already have a shot plan.
+        script_plan: Dict[str, Any] = {
+            "script_path": script_path,
+            "script_text": script_text,
+            "plan": {
+                "script": script_text,
+                "beat_outline": beat_outline,
+            },
+            "_v3": True,
+        }
+
+        # Sum LLM usage across both planning calls
+        usage = {
+            "input_tokens": int(sp_usage.get("input_tokens", 0) or 0)
+                + int(nw_usage.get("input_tokens", 0) or 0),
+            "output_tokens": int(sp_usage.get("output_tokens", 0) or 0)
+                + int(nw_usage.get("output_tokens", 0) or 0),
+            "prompt_tokens": int(sp_usage.get("prompt_tokens", 0) or 0)
+                + int(nw_usage.get("prompt_tokens", 0) or 0),
+            "completion_tokens": int(sp_usage.get("completion_tokens", 0) or 0)
+                + int(nw_usage.get("completion_tokens", 0) or 0),
+            "shot_planner": sp_usage,
+            "narration_writer": nw_usage,
+        }
+
+        self._emit_progress({
+            "type": "sub_stage",
+            "sub_stage": "narration_writing_done",
+            "message": "Per-shot narration ready",
+            "shot_count": len(shot_plan_dict["shots"]),
+            "token_delta": {
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"],
+            },
+        })
+
+        # Cache for html-stage Director-skip
+        self._v3_shot_plan = shot_plan_dict
+
+        return script_plan, shot_plan_dict, usage
 
     def _run_director(
         self,
@@ -19072,6 +19592,83 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 meta_dict["questions"] = question_markers
                 print(f"   ❓ Added {len(question_markers)} MCQ questions to timeline metadata")
 
+        # ── meta.shots[] (v3) — per-shot editor metadata ──────────────
+        # Editor reads this as the primary unit for shot-level editing
+        # (replaces the client-derived sentence-clip path). Sourced from
+        # the shot plan persisted by ShotPlanner (v3) or Director (v2);
+        # each shot's audio_url / audio_words_url / audio_script_url /
+        # audio_duration_s / audio_skipped were set by `_attach_per_shot_s3_urls`
+        # right after per-shot TTS concat.
+        _shot_plan_for_meta = None
+        # 1) In-memory v3 plan wins (freshest data, post-reconcile)
+        _mem_v3 = getattr(self, "_v3_shot_plan", None)
+        if isinstance(_mem_v3, dict) and _mem_v3.get("shots"):
+            _shot_plan_for_meta = _mem_v3
+        # 2) Otherwise: try shot_plan.json (v3 checkpoint)
+        if _shot_plan_for_meta is None:
+            _sp_path = run_dir / "shot_plan.json"
+            if _sp_path.exists():
+                try:
+                    _candidate = json.loads(_sp_path.read_text())
+                    if isinstance(_candidate, dict) and _candidate.get("shots"):
+                        _shot_plan_for_meta = _candidate
+                except Exception as _sp_err:
+                    print(f"   ⚠️ shot_plan.json read failed (meta.shots skipped): {_sp_err}")
+        # 3) Fallback: director_plan.json (v2)
+        if _shot_plan_for_meta is None:
+            _dp_path = run_dir / "director_plan.json"
+            if _dp_path.exists():
+                try:
+                    _candidate = json.loads(_dp_path.read_text())
+                    if isinstance(_candidate, dict) and _candidate.get("shots"):
+                        _shot_plan_for_meta = _candidate
+                except Exception as _dp_err:
+                    print(f"   ⚠️ director_plan.json read failed (meta.shots skipped): {_dp_err}")
+
+        if _shot_plan_for_meta and content_type == "VIDEO":
+            shot_clips: List[Dict[str, Any]] = []
+            # Offset shots by intro_duration so they align to the absolute
+            # video timeline (matches the existing convention for chapters /
+            # glossary / questions).
+            _offset = content_starts_at
+            for s in _shot_plan_for_meta.get("shots") or []:
+                if not isinstance(s, dict):
+                    continue
+                try:
+                    shot_idx = int(s.get("shot_index") or s.get("shot_idx") or 0)
+                except (TypeError, ValueError):
+                    shot_idx = 0
+                _audio_skipped = bool(s.get("audio_skipped"))
+                _audio_policy = s.get("audio_policy") or "narration_only"
+                _start_t = float(s.get("start_time") or 0.0)
+                _end_t = float(s.get("end_time") or 0.0)
+                _dur = max(0.0, _end_t - _start_t)
+                _narration = s.get("narration_text") or s.get("narration_excerpt") or ""
+                clip: Dict[str, Any] = {
+                    "id": f"shot_{shot_idx:03d}",
+                    "shot_idx": shot_idx,
+                    "shot_type": s.get("shot_type") or "",
+                    "text": str(_narration),
+                    "audio_url": s.get("audio_url") if not _audio_skipped else None,
+                    "audio_words_url": s.get("audio_words_url") if not _audio_skipped else None,
+                    "audio_script_url": s.get("audio_script_url") if not _audio_skipped else None,
+                    "audio_duration_s": float(s.get("audio_duration_s") or _dur),
+                    "audio_skipped": _audio_skipped,
+                    "audio_policy": _audio_policy,
+                    "start_time": round(_start_t + _offset, 3),
+                    "duration": round(_dur, 3),
+                    "intent_role": s.get("intent_role") or "",
+                    "narration_brief": s.get("narration_brief") or "",
+                    # words are per-shot relative; editor renders them against
+                    # audio_url playback time. Optional — not all shots carry
+                    # word timings until post-TTS reconcile completes.
+                    "words": s.get("words") or [],
+                }
+                shot_clips.append(clip)
+            if shot_clips:
+                meta_dict["shots"] = shot_clips
+                print(f"   🎬 Added {len(shot_clips)} shot clips to timeline.meta.shots (v3 editor unit)")
+
         timeline_output = {
             "meta": meta_dict,
             "entries": timeline_entries
@@ -19115,6 +19712,27 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         Returns the (possibly updated) audio path.
         """
         import subprocess as _sp
+
+        # Local helper — mirrors the one in `_concat_master_narration`. ffprobe
+        # for audio duration; returns 0.0 on any failure. Used by both the
+        # full-source-track extraction and the per-segment extraction to detect
+        # silent-failure WAV outputs that ffmpeg writes when the source has no
+        # audio stream (a 44-byte header file passes `Path.exists()` but has
+        # zero playable audio).
+        def _probe_duration(path: Path) -> float:
+            try:
+                _r = _sp.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                     "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                return float((_r.stdout or "0").strip() or 0.0)
+            except Exception:
+                try:
+                    from mutagen.wave import WAVE as _WAV
+                    return float(_WAV(str(path)).info.length)
+                except Exception:
+                    return 0.0
 
         # Read timeline to find SOURCE_CLIP entries
         tl_data = json.loads(timeline_path.read_text())
@@ -19189,15 +19807,35 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
                 # Extract full audio track (we'll seek per-segment in the mix command)
                 audio_track = mix_dir / f"source_audio_{sv_idx}.wav"
-                _sp.run(
+                _ffmpeg_extract = _sp.run(
                     ["ffmpeg", "-y", "-i", str(src_path), "-vn",
                      "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "1",
                      str(audio_track)],
                     capture_output=True, timeout=120,
                 )
-                if audio_track.exists():
+                # Existence alone isn't enough — ffmpeg can produce a near-empty
+                # WAV header file (44 bytes) when the source has no audio stream
+                # or fails mid-extraction. Require a meaningful filesize AND
+                # a non-zero ffprobe duration before treating the source as
+                # usable. Without this, the previous code would print "Extracted
+                # audio" on a silent file and the user would never know why
+                # the SOURCE_CLIP segment played silence.
+                _audio_ok = (
+                    audio_track.exists()
+                    and audio_track.stat().st_size > 1024
+                    and _probe_duration(audio_track) > 0.05
+                )
+                if _audio_ok:
                     source_audio_cache[sv_idx] = audio_track
                     print(f"  ✅ Extracted audio from source [{sv_idx}]")
+                else:
+                    _ffmpeg_err = (_ffmpeg_extract.stderr or b"").decode("utf-8", errors="replace")[-300:]
+                    print(
+                        f"  ⚠️ source [{sv_idx}] audio extraction produced "
+                        f"empty/silent file (size={audio_track.stat().st_size if audio_track.exists() else 0}B). "
+                        f"Source video may have no audio track. ffmpeg stderr tail: {_ffmpeg_err}"
+                    )
+                    # Don't add to cache; this source will be skipped from mixing.
                 # Clean up video file to save disk
                 src_path.unlink(missing_ok=True)
             except Exception as exc:
@@ -19212,15 +19850,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             shutil.rmtree(mix_dir, ignore_errors=True)
             return audio_path
 
-        # Extract per-clip segments from full source audio
-        segment_paths: List[Path] = []
+        # Extract per-clip segments from full source audio. CRITICAL: every
+        # branch must append SOMETHING to keep `segment_paths` index-aligned
+        # with `clips` — downstream code does `segment_paths[i]` lookups and a
+        # silent `continue` here would shift indices and silently drop later
+        # source clips. Use None as a placeholder when extraction is skipped/fails.
+        segment_paths: List[Optional[Path]] = []
         for i, clip in enumerate(clips):
             src_audio = source_audio_cache[clip["source_video_index"]]
             seg_path = mix_dir / f"segment_{i}.wav"
             dur = clip["source_end"] - clip["source_start"]
             if dur <= 0:
+                print(f"  ⚠️ source clip [{i}] has non-positive duration "
+                      f"({dur:.3f}s, source_start={clip['source_start']:.3f}, "
+                      f"source_end={clip['source_end']:.3f}) — skipping")
+                segment_paths.append(None)
                 continue
-            _sp.run(
+            _seg_ffmpeg = _sp.run(
                 ["ffmpeg", "-y", "-i", str(src_audio),
                  "-ss", str(clip["source_start"]),
                  "-t", str(dur),
@@ -19228,9 +19874,22 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                  str(seg_path)],
                 capture_output=True, timeout=30,
             )
-            if seg_path.exists():
+            # Same size+duration check as the full-track extraction: existence
+            # alone admits empty WAV headers.
+            _seg_ok = (
+                seg_path.exists()
+                and seg_path.stat().st_size > 1024
+                and _probe_duration(seg_path) > 0.05
+            )
+            if _seg_ok:
                 segment_paths.append(seg_path)
             else:
+                _seg_err = (_seg_ffmpeg.stderr or b"").decode("utf-8", errors="replace")[-200:]
+                print(
+                    f"  ⚠️ source segment [{i}] extraction produced empty/silent file "
+                    f"(size={seg_path.stat().st_size if seg_path.exists() else 0}B). "
+                    f"ffmpeg stderr tail: {_seg_err}"
+                )
                 segment_paths.append(None)
 
         # Build FFmpeg filter_complex
@@ -19264,7 +19923,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         tts_chain = ",".join(vol_filters)
         filter_parts = [f"[0:a]{tts_chain}[tts_gated]"]
 
-        # Delay and fade each source segment
+        # Delay and fade each source segment.
+        # CRITICAL ORDERING: fades MUST come BEFORE adelay. Putting them after
+        # adelay (the previous bug) made `afade=t=out:st={dur-fade_dur}` fire
+        # against the post-adelay STREAM time, where t=0 is the start of the
+        # silence padding — so the fade-out completed at t≈6.7s of the stream,
+        # which is still in the silence portion BEFORE the real audio plays
+        # (the audio doesn't appear until t=delay_ms/1000 = e.g. 33s). Result:
+        # source audio was multiplied by 0 throughout, and the user heard only
+        # background music during SOURCE_CLIP shots. Confirmed in production
+        # run vid_1778822400620_24rsbf5 (2026-05-15). With fades BEFORE adelay,
+        # they operate on the 0..dur audio segment directly; adelay then
+        # shifts the faded result into its timeline position.
         src_labels = []
         for clip, idx in valid_clips:
             label = f"src{idx}"
@@ -19274,9 +19944,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             fade_dur = min(0.3, dur / 3)
             fade_out_start = max(0, dur - fade_dur)
             filter_parts.append(
-                f"[{idx}:a]adelay={delay_ms}|{delay_ms},"
-                f"afade=t=in:st=0:d={fade_dur:.2f},"
-                f"afade=t=out:st={fade_out_start:.2f}:d={fade_dur:.2f}"
+                f"[{idx}:a]afade=t=in:st=0:d={fade_dur:.2f},"
+                f"afade=t=out:st={fade_out_start:.2f}:d={fade_dur:.2f},"
+                f"adelay={delay_ms}|{delay_ms}"
                 f"[{label}]"
             )
             src_labels.append(f"[{label}]")

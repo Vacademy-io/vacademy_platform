@@ -905,6 +905,16 @@ class VideoGenerationService:
                     if not _dp_local.exists():
                         self.s3_service.download_file(f"{_ckpt_base_url}/director_plan.json", _dp_local)
 
+                    # shot_plan.json (v3) — ShotPlanner+NarrationWriter output.
+                    # On v3 resumes, the html-stage Director branch reads this
+                    # in `automation_pipeline._run_v3_shot_planning`'s sibling
+                    # branch via `getattr(self, "_v3_shot_plan", None)` falling
+                    # back to disk. Download is best-effort: absent file just
+                    # means the run was v2 (no shot_plan.json was ever written).
+                    _sp_local = run_dir / "shot_plan.json"
+                    if not _sp_local.exists():
+                        self.s3_service.download_file(f"{_ckpt_base_url}/shot_plan.json", _sp_local)
+
                     # Per-shot cache files (shot_000.json … shot_NNN.json)
                     _shot_cache_local = run_dir / "shot_cache"
                     _shot_cache_local.mkdir(exist_ok=True)
@@ -2603,6 +2613,14 @@ class VideoGenerationService:
                         _dir_plan = run_dir / "director_plan.json"
                         if _dir_plan.exists():
                             _ckpt_files.append((_dir_plan, f"ai-videos/{video_id}/checkpoints/director_plan.json"))
+                        # v3 shot plan — ShotPlanner+NarrationWriter output.
+                        # Persisted alongside director_plan.json so a v3 run can
+                        # resume from the last saved shot without re-planning.
+                        # The editor's `/shot/regenerate` endpoint also reads
+                        # this to keep shot_plan + timeline in sync.
+                        _shot_plan = run_dir / "shot_plan.json"
+                        if _shot_plan.exists():
+                            _ckpt_files.append((_shot_plan, f"ai-videos/{video_id}/checkpoints/shot_plan.json"))
                         _shot_cache_dir = run_dir / "shot_cache"
                         if _shot_cache_dir.exists():
                             for _sc_file in sorted(_shot_cache_dir.glob("shot_*.json")):

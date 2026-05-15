@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import { useVideoEditorStore, InitParams } from './stores/video-editor-store';
+import { snapSizeToBucket } from './utils/caption-rendering';
 import { EditorCanvas } from './EditorCanvas';
 import { EntryListPanel } from './EntryListPanel';
 import { TimelineScrubber } from './TimelineScrubber';
@@ -31,6 +32,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 import { AddMediaOverlayDialog } from './AddMediaOverlayDialog';
 import { AddShotDialog } from './AddShotDialog';
 import { AudioTracksPanel } from './AudioTracksPanel';
+import { CaptionSettingsPanel } from './CaptionSettingsPanel';
 import { PlaybackBar } from './playback/PlaybackBar';
 import { RenderSettingsDialog } from '@/routes/video-api-studio/-components/RenderSettingsDialog';
 import { ThumbnailPickerPanel } from '@/routes/video-api-studio/-components/pipeline/ThumbnailPickerPanel';
@@ -105,6 +107,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     const {
         init,
         loadTimeline,
+        loadCaptionWords,
         isLoading,
         error,
         meta,
@@ -130,6 +133,7 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
         audioUrl: storeAudioUrl,
         htmlUrl: storeHtmlUrl,
         wordsUrl: storeWordsUrl,
+        captionSettings,
     } = useVideoEditorStore();
 
     const [entriesPanelOpen, setEntriesPanelOpen] = useState(true);
@@ -188,6 +192,12 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
     useEffect(() => {
         loadTimeline();
     }, [props.htmlUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Fetch narration.words.json so CaptionOverlay can render the caption layer.
+    // Soft-fails when wordsUrl is missing or unreachable — captions just don't show.
+    useEffect(() => {
+        loadCaptionWords();
+    }, [props.wordsUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Cmd/Ctrl+Shift+D toggles developer mode. Guarded against input focus
     // so the shortcut doesn't fire while typing into form fields.
@@ -818,6 +828,17 @@ export function VideoEditorPage(props: VideoEditorPageProps) {
                 onOpenChange={setRenderSettingsOpen}
                 onConfirm={handleRenderConfirm}
                 isPortrait={isPortrait}
+                // Seed the dialog from the editor's caption preview so the MP4
+                // matches what the user just saw on canvas. Resolution / fps /
+                // watermark still come from the dialog's own localStorage.
+                initialSettings={{
+                    captions: captionSettings.enabled,
+                    captionPosition: captionSettings.position,
+                    captionTextColor: captionSettings.textColor,
+                    captionBgColor: captionSettings.bgColor,
+                    captionBgOpacity: Math.round(captionSettings.bgOpacity * 100),
+                    captionSize: snapSizeToBucket(captionSettings.sizePx),
+                }}
             />
         </>
     );
@@ -855,6 +876,9 @@ function EditorLayout({ toolbar, entriesPanelOpen }: LayoutProps) {
             <PlaybackBar />
             <div data-tour="editor-timeline">
                 <TimelineScrubber />
+            </div>
+            <div data-tour="editor-captions">
+                <CaptionSettingsPanel />
             </div>
             <div data-tour="editor-audio-tracks">
                 <AudioTracksPanel />

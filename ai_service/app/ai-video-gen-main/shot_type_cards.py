@@ -11,7 +11,7 @@ Usage:
 """
 from __future__ import annotations
 
-from typing import Dict, List, Any
+from typing import Any, Dict, List, Tuple
 
 # ---------------------------------------------------------------------------
 # Core preamble — shared across ALL HTML generation calls regardless of shot type.
@@ -1965,32 +1965,102 @@ def build_per_shot_system_prompt(
     return "\n".join(parts)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Canvas-aware text rules — 4-bucket lookup keyed on (orientation, resolution)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Audit (post-Met-Gala, 2026-05) found the previous binary portrait/landscape
+# rule produced:
+#   • portrait 720 H1 13-char × 88px overflows safe area by 81px
+#   • landscape 720 H1 22-char × 128px overflows by 653px (catastrophic)
+#   • portrait 1080 inherits 720-tuned caps → text looks under-sized for HD
+# Switching to a 4-bucket lookup keyed on actual canvas dimensions fixes
+# every overflow case AND scales the visual proportions up on HD canvases.
+#
+# Values were derived from the constraint:
+#       chars × font-px × avg-glyph-em ≤ safe-area-width
+# where safe-area = 92% of canvas width (4% inset both sides) and
+# avg-glyph-em is per-font (Bebas Neue 0.50, Montserrat Black 0.65,
+# Inter Bold 0.60, Inter Regular 0.50). All buckets verified to leave
+# ≥5% safe-area slack for descenders + sub-pixel rounding.
+
+# Each value is `(char_cap, font_px_ceiling, clamp_str)`. The clamp string
+# is what the LLM should use verbatim in CSS; the px ceiling is what the
+# bbox lint enforces.
+_CANVAS_TIER_RULES: Dict[str, Dict[str, Tuple[int, int, str]]] = {
+    # Portrait 720×1280 (most reels — Met Gala canvas)
+    "portrait_720": {
+        "display": (8,  100, "clamp(2rem, min(14vw, 8vh), 6.25rem)"),
+        "h1":      (10,  76, "clamp(1.6rem, min(10.5vw, 6vh), 4.75rem)"),
+        "h2":      (18,  50, "clamp(1.2rem, min(7vw, 4vh), 3.1rem)"),
+        "body":    (40,  24, "clamp(0.95rem, min(3.4vw, 1.9vh), 1.5rem)"),
+        "label":   (30,  14, "clamp(0.75rem, 1.9vmin, 0.9rem)"),
+    },
+    # Portrait 1080×1920 (HD portrait)
+    "portrait_1080": {
+        "display": (11, 144, "clamp(2.5rem, min(13vw, 7.5vh), 9rem)"),
+        "h1":      (12, 112, "clamp(2rem, min(10vw, 5.8vh), 7rem)"),
+        "h2":      (22,  68, "clamp(1.4rem, min(6.3vw, 3.5vh), 4.25rem)"),
+        "body":    (52,  32, "clamp(1.05rem, min(3vw, 1.7vh), 2rem)"),
+        "label":   (38,  18, "clamp(0.85rem, 1.7vmin, 1.1rem)"),
+    },
+    # Landscape 1280×720 (720p landscape — supported but previously broken)
+    "landscape_720": {
+        "display": (11, 132, "clamp(2.5rem, min(10.3vw, 18.3vh), 8.25rem)"),
+        "h1":      (16,  96, "clamp(2rem, min(7.5vw, 13.3vh), 6rem)"),
+        "h2":      (26,  60, "clamp(1.4rem, min(4.7vw, 8.3vh), 3.75rem)"),
+        "body":    (52,  28, "clamp(1rem, min(2.2vw, 3.9vh), 1.75rem)"),
+        "label":   (38,  16, "clamp(0.8rem, 1.5vmin, 1rem)"),
+    },
+    # Landscape 1920×1080 (HD landscape — original design target)
+    "landscape_1080": {
+        "display": (14, 168, "clamp(2.75rem, min(8.75vw, 15.5vh), 10.5rem)"),
+        "h1":      (20, 116, "clamp(2rem, min(6vw, 10.7vh), 7.25rem)"),
+        "h2":      (32,  76, "clamp(1.5rem, min(4vw, 7vh), 4.75rem)"),
+        "body":    (62,  32, "clamp(1rem, min(1.7vw, 3vh), 2rem)"),
+        "label":   (50,  20, "clamp(0.9rem, 1.2vmin, 1.25rem)"),
+    },
+}
+
+
+def _canvas_bucket(width: int, height: int) -> str:
+    """Pick the 4-bucket key for the given canvas. The breakpoint at the
+    long-side dimension 720 vs 1080 is what distinguishes 720p from HD:
+      portrait_720   : 720×1280   (long side 1280)
+      portrait_1080  : 1080×1920  (long side 1920)
+      landscape_720  : 1280×720   (long side 1280)
+      landscape_1080 : 1920×1080  (long side 1920)
+    Off-spec canvases (e.g. 1440 portrait) bucket to the nearest standard
+    by long-side comparison — values still leave margin so we degrade gracefully.
+    """
+    is_portrait = width < height
+    long_side = max(width, height)
+    is_hd = long_side >= 1700  # halfway between 1280 and 1920
+    if is_portrait:
+        return "portrait_1080" if is_hd else "portrait_720"
+    return "landscape_1080" if is_hd else "landscape_720"
+
+
 def _build_text_bound_box_block(width: int, height: int) -> str:
     """Per-line character caps the LLM must respect for the current canvas.
 
     Lookup table > formula: LLMs handle "max 14 chars/line at display tier"
     more reliably than "0.55 × font-px × chars < 92% × canvas_w". Values are
-    calibrated against the Bebas Neue / Inter cap-height ratios at the new
-    font_scale ceilings (display 12rem, h1 8rem on landscape).
+    derived from the constraint `chars × font-px × glyph-em ≤ safe-area-width`
+    for each canvas bucket — see `_CANVAS_TIER_RULES` above.
     """
-    if width < height:
-        table = (
-            "   Portrait 9:16 1080×1920\n"
-            "   ─────────────────────────\n"
-            "   display tier   →   8 chars/line max\n"
-            "   h1 tier        →  13 chars/line max\n"
-            "   h2 tier        →  20 chars/line max\n"
-            "   body tier      →  40 chars/line max\n"
-        )
-    else:
-        table = (
-            "   Landscape 16:9 1920×1080\n"
-            "   ─────────────────────────\n"
-            "   display tier   →  14 chars/line max\n"
-            "   h1 tier        →  22 chars/line max\n"
-            "   h2 tier        →  34 chars/line max\n"
-            "   body tier      →  62 chars/line max\n"
-        )
+    bucket = _canvas_bucket(width, height)
+    rules = _CANVAS_TIER_RULES[bucket]
+    bucket_label = bucket.replace("_", " ").title()
+    table_lines = [
+        f"   {bucket_label} {width}×{height}",
+        "   ─────────────────────────",
+        f"   display tier   →  {rules['display'][0]:>3d} chars/line max",
+        f"   h1 tier        →  {rules['h1'][0]:>3d} chars/line max",
+        f"   h2 tier        →  {rules['h2'][0]:>3d} chars/line max",
+        f"   body tier      →  {rules['body'][0]:>3d} chars/line max",
+    ]
+    table = "\n".join(table_lines) + "\n"
     return (
         "**TEXT BOUND BOX (per-line character caps — non-negotiable)**:\n"
         f"Canvas is {width}×{height}. For text inside the safe area (4% inset both axes),\n"
@@ -2002,6 +2072,143 @@ def _build_text_bound_box_block(width: int, height: int) -> str:
         "  3. Shorten the copy to the essential 2–4 words.\n"
         "Glyph clipping at the canvas edge is a SHIPPING-BLOCKING error — the\n"
         "post-render bbox lint will flag it and force a regen.\n\n"
+        + _build_font_size_ceiling_block(width, height)
+        + _build_text_hierarchy_block(width, height)
+        + _build_back_half_motion_block()
+    )
+
+
+def _build_font_size_ceiling_block(width: int, height: int) -> str:
+    """Pillar 2.5 (canvas-aware) — explicit `font-size` CSS-value ceilings keyed
+    to the 4-bucket lookup. Both the clamp string AND the px ceiling come from
+    `_CANVAS_TIER_RULES`. Met-Gala audit (vid_1778837267767_ibwlsbk) shipped
+    `font-size: clamp(5rem, min(34vw, 25vh), …)` on a 2-char word — chars/line
+    was fine but rendered glyphs were 245px tall on a 1280px canvas. The
+    canvas-tuned clamp here can't produce that result on any supported size.
+    """
+    bucket = _canvas_bucket(width, height)
+    rules = _CANVAS_TIER_RULES[bucket]
+    orientation = "portrait" if width < height else "landscape"
+    lines = [
+        "**FONT-SIZE CEILING (non-negotiable, prompts the bbox lint)**:",
+        f"Canvas is {width}×{height} {orientation}. Use these MAX CSS `font-size`",
+        "values — NEVER exceed the upper clamp on the right:",
+    ]
+    for tier_label, key in (
+        ("Display / hero text",      "display"),
+        ("H1 / kinetic title",       "h1"),
+        ("H2 / sub-headline",        "h2"),
+        ("Body / narration",         "body"),
+        ("Tracking labels",          "label"),
+    ):
+        _ch, px, clamp = rules[key]
+        lines.append(f"  • {tier_label:24s} `{clamp}`  (≤ {px} px)")
+    lines.extend([
+        "",
+        "The HARD ceiling on the right of each clamp is what the post-render",
+        "bbox lint enforces. Picking the clamp values verbatim from this table",
+        "guarantees the first-pass renders inside the safe area on the current",
+        f"canvas ({orientation} {width}×{height}). Larger glyphs clip and look amateur.",
+        "",
+    ])
+    return "\n".join(lines) + "\n"
+
+
+def _build_text_hierarchy_block(width: int, height: int) -> str:
+    """Phase 2 — visual-quality rules that govern not just whether text FITS,
+    but whether it LOOKS GOOD. Met-Gala audit found multiple shots where text
+    technically fit the canvas but read as amateur (busy backgrounds without
+    scrim, line-height too loose for display, clipped descenders, no font-
+    weight hierarchy). Covers:
+      • line-height per tier
+      • letter-spacing per font/tier
+      • font-weight contrast scale
+      • text-on-media scrim / shadow
+      • descender clearance
+      • multi-line leading override
+      • final 'looks good' checklist the LLM self-evaluates against
+    """
+    orientation = "portrait" if width < height else "landscape"
+    return (
+        "**TEXT HIERARCHY (look-good rules — not just fit)**:\n"
+        f"Canvas {width}×{height} {orientation}. Text that FITS but breaks one\n"
+        "of these rules still reads as amateur. The LLM must address each:\n\n"
+
+        "• **line-height** (CRITICAL — default 1.2 is wrong for display text):\n"
+        "    Display / hero    → `line-height: 0.95;`  (hero text needs tight stack)\n"
+        "    H1 / kinetic       → `line-height: 1.0;`\n"
+        "    H2 / sub-headline → `line-height: 1.1;`\n"
+        "    Body / narration  → `line-height: 1.4;`   (readable prose leading)\n"
+        "    Tracking label    → `line-height: 1.2;`\n\n"
+
+        "• **letter-spacing** (font-aware — wrong tracking ages the design):\n"
+        "    Bebas Neue        → `letter-spacing: 0.02em;`  (condensed wants slight tracking)\n"
+        "    Montserrat Black  → `letter-spacing: -0.01em;` (heavy weight wants tight)\n"
+        "    Inter (any)       → `letter-spacing: 0;`        (designed neutral)\n"
+        "    UPPERCASE labels  → `letter-spacing: 0.16em;`   (caps always need open tracking)\n\n"
+
+        "• **font-weight contrast** (visible hierarchy needs ≥300-weight delta):\n"
+        "    Display / hero    → `font-weight: 900;` (or 800 for serif/script faces)\n"
+        "    H1 / kinetic       → `font-weight: 800;`\n"
+        "    H2 / sub-headline → `font-weight: 700;` (or 600)\n"
+        "    Body / narration  → `font-weight: 400;` or `500;`\n"
+        "    Tracking label    → `font-weight: 700;` (uppercase + bold = anchor weight)\n\n"
+
+        "• **text-on-media contrast** (when text sits over photo / video):\n"
+        "  Add ONE of these — never ship bare text on a busy image:\n"
+        "  (1) **Linear-gradient scrim**: place a `<div>` between media and text:\n"
+        "      `background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 60%);`\n"
+        "      Anchor the dark stop to the side text sits on (top/bottom/left/right).\n"
+        "  (2) **Text shadow** for short callouts only:\n"
+        "      `text-shadow: 0 2px 12px rgba(0,0,0,0.65), 0 0 2px rgba(0,0,0,0.4);`\n"
+        "  (3) **Solid 12-16% panel** behind the text block with backdrop-filter blur(8px).\n"
+        "  Bare white-on-photo without ANY of the above is a SHIPPING DEFECT (Met-Gala\n"
+        "  audit: 10 of 11 reviewed shots flagged for irrelevant-media-as-background and\n"
+        "  text-bleed-over-photo).\n\n"
+
+        "• **descender clearance** (j / g / p / q / y clip on tight containers):\n"
+        "  Any element with `overflow:hidden` containing text needs\n"
+        "  `padding-bottom: 0.15em;` to clear descenders. Skip ONLY for ALL-CAPS\n"
+        "  text where descenders are impossible (label tier with `text-transform:uppercase`).\n\n"
+
+        "• **multi-line leading override** (when text wraps to 2-3 lines):\n"
+        "  Tight the leading by 0.1: display lines stack at 0.85, h1 at 0.9, h2 at 1.0.\n"
+        "  3+ lines of display text is almost always a design failure — demote the tier.\n\n"
+
+        "• **looks-good self-check** (answer YES to each before emitting):\n"
+        "    1. Is the longest line of each tier under its char cap above?\n"
+        "    2. Does the displayed font-size match the tier's clamp ceiling?\n"
+        "    3. Is the weight contrast ≥300 between hero text and body text?\n"
+        "    4. If text is over media: is there a scrim, shadow, or backdrop panel?\n"
+        "    5. Does the tightest container have `padding-bottom: 0.15em` for descenders?\n"
+        "    6. Is line-height set explicitly (not inherited from default 1.2)?\n\n"
+    )
+
+
+def _build_back_half_motion_block() -> str:
+    """Pillar 2.6 — hoisted back-half-motion requirement to the top-of-prompt
+    bound-box rules so the LLM treats it as a SHIPPING-BLOCKING constraint, not
+    a buried best-practice. The animation validator already enforces this, but
+    too many shots in v2026-05 audit shipped failing this check (6 of 15 in the
+    Met Gala run). Restating here at higher prominence + a concrete copy-paste
+    idiom is cheaper than another regen pass.
+    """
+    return (
+        "**BACK-HALF MOTION (non-negotiable, validator rejects failing shots)**:\n"
+        "Every shot ≥3 s MUST include at least one GSAP tween whose `delay`\n"
+        "value is `>= 0.55 × shot_duration`. Front-loading every animation\n"
+        "into the first 0.6 s — then leaving the canvas frozen for 2+ s —\n"
+        "makes the shot read as a still frame. This is what the validator\n"
+        "flags and what currently triggers 30-40% of the corrective regens.\n\n"
+        "Pick ONE of these copy-paste idioms (use word_timings emphasis words\n"
+        "to anchor the delay when available):\n"
+        "  • `gsap.to('#accent', {scaleX:1, duration:0.45, delay: <0.6 × dur>, ease:'expo.out'});`\n"
+        "  • `gsap.to('#caption', {opacity:0, duration:0.3, delay: <0.65 × dur>});`\n"
+        "    paired with `gsap.to('#caption-b', {opacity:1, duration:0.4, delay: <0.7 × dur>});`\n"
+        "  • `gsap.fromTo('#bg-mark', {scale:0.6, opacity:0}, {scale:1, opacity:1, duration:1.4, delay: <0.55 × dur>});`\n"
+        "  • A counter rolling from N₁→N₂ that completes in the back half.\n"
+        "Front-load NOTHING that ends before the 50% mark unless ANOTHER\n"
+        "element fires in the back half to carry the eye.\n\n"
     )
 
 
@@ -2014,6 +2221,81 @@ OUTPUT_FORMAT_BLOCK = (
     "  raw `//` comments — they will be interpreted as comment delimiters and\n"
     "  break the parser.\n"
 )
+
+
+# Pillar 2.4 — instruction to skip the per-shot boilerplate the LLM
+# currently re-emits on every shot (SVG <defs>, Google Fonts @import, brand
+# palette CSS vars, text-safety rules). The renderer pre-injects all four
+# into every rendered frame, so the LLM emitting them is pure waste — the
+# Met-Gala audit measured ~22 KB of identical preamble per shot × 15 shots
+# = ~330 KB of LLM completion tokens spent on duplicates.
+# The rule is gated behind a tier knob `shot_html_shared_preamble_enabled`
+# so it can be A/B tested before defaulting on. When off, this block is
+# omitted from the prompt and the LLM keeps generating boilerplate as before.
+SHARED_PREAMBLE_RULE = (
+    "**SHARED PREAMBLE (DO NOT RE-EMIT — saves ~30% of your output tokens)**:\n"
+    "Your shot HTML will be wrapped by the renderer with a SHARED preamble that\n"
+    "ALREADY contains:\n"
+    "  • `<svg><defs>` with the `roughen` / `roughen-strong` SVG filters.\n"
+    "  • `@import url('…fonts.googleapis.com…')` for Montserrat, Inter, Bebas\n"
+    "    Neue, Poppins, Fira Code.\n"
+    "  • The `:root { --brand-primary, --brand-accent, --brand-text, --brand-bg,\n"
+    "    --brand-svg-stroke, --brand-svg-fill, --brand-annotation }` CSS vars\n"
+    "    derived from the institute's style_guide.\n"
+    "  • Universal text-safety rules: `* { overflow-wrap:break-word; word-break:\n"
+    "    break-word; box-sizing:border-box; }` plus the `[class*=\"-char\"]` and\n"
+    "    `[class*=\"-letter\"]` keep-all overrides.\n\n"
+    "**DO NOT** emit any of the above in your output. Start your HTML at the\n"
+    "`<div id=\"shot-root\">` element and reference the brand variables (e.g.\n"
+    "`color: var(--brand-text)`) and SVG filters (e.g. `filter:url(#roughen)`)\n"
+    "directly. The post-LLM stripper will scrub redundant `<svg><defs>`, font\n"
+    "`@import` and `:root { --brand-*… }` blocks if you emit them — it just\n"
+    "costs you tokens for the same final output.\n\n"
+)
+
+
+def maybe_append_shared_preamble_rule(prompt: str, enabled: bool) -> str:
+    """Helper for callers (`build_per_shot_system_prompt` consumers) that
+    want the dedup rule appended only when the tier knob is on. Keeps the
+    rule out of the prompt entirely on tiers that aren't ready for it
+    so we don't pay token cost for an instruction the renderer ignores."""
+    if not enabled:
+        return prompt
+    return prompt + "\n\n" + SHARED_PREAMBLE_RULE
+
+
+# Pillar 2.4 — list of regex patterns the post-LLM stripper drops from the
+# per-shot HTML when `shot_html_shared_preamble_enabled` is True. Each
+# pattern is line-anchored to avoid catching legitimate content (e.g. an
+# `<svg>` chart inside the shot body shouldn't match the `<svg><defs>`
+# pattern because it has different attributes). Patterns are written
+# defensively — when in doubt, the stripper leaves content alone.
+SHARED_PREAMBLE_STRIP_PATTERNS = [
+    # SVG <defs> wrapper with the `roughen` filter (Met-Gala exact pattern)
+    r'<svg\s+width="0"\s+height="0"[^>]*>\s*<defs>.*?</defs>\s*</svg>',
+    # Google Fonts @import (legitimate per-shot fonts are rare)
+    r'@import\s+url\([\'"]https?://fonts\.googleapis\.com/css2\?[^\)]*\)\s*;',
+    # :root brand palette block (catches any combination of --brand-* vars)
+    r':root\s*\{\s*(?:--brand-[a-z-]+:\s*[^;]+;\s*|--primary-color:\s*[^;]+;\s*|--accent-color:\s*[^;]+;\s*|--text-color:\s*[^;]+;\s*|/\*[^*]*\*/\s*)+\}',
+    # Universal text-safety reset
+    r'\*\s*\{\s*overflow-wrap:\s*break-word\s*;\s*word-break:\s*break-word\s*;\s*box-sizing:\s*border-box\s*;\s*\}',
+]
+
+
+def strip_shared_preamble(html: str) -> str:
+    """Pillar 2.4 — strip the redundant boilerplate the LLM tends to re-emit
+    even after being told not to. Idempotent: running on already-clean HTML
+    is a no-op. Returns the cleaned string. Caller decides when to invoke
+    (gated by tier knob `shot_html_shared_preamble_enabled` to allow A/B
+    runs against the un-stripped output)."""
+    import re as _re
+    out = html or ""
+    for pat in SHARED_PREAMBLE_STRIP_PATTERNS:
+        out = _re.sub(pat, "", out, flags=_re.IGNORECASE | _re.DOTALL)
+    # Squash leading whitespace runs left behind by removed `<style>` blocks
+    out = _re.sub(r"<style>\s*</style>", "", out)
+    out = _re.sub(r"\n\s*\n\s*\n+", "\n\n", out)
+    return out.lstrip()
 
 
 def build_ai_video_inline_teaching_block(

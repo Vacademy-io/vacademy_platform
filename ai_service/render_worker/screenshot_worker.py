@@ -327,8 +327,16 @@ class ScreenshotWorker:
             # false positives. Only flag elements with visible text content or
             # raster media (img/svg/canvas/video) — wrapper divs without their
             # own text are skipped to avoid duplicate reports.
+            # NOTE — single-arg signature: Playwright >= 1.40 dropped multi-
+            # positional `Page.evaluate(expression, arg1, arg2, …)`; only ONE
+            # argument is now accepted. The previous call site passed `width`
+            # + `height` as two positional args, triggering
+            # `Page.evaluate() takes from 2 to 3 positional arguments but 4
+            # were given` (Met-Gala incident — bbox-lint silently skipped on
+            # EVERY shot of the run). Pack both dimensions into a single
+            # object argument and destructure on the JS side.
             walker_js = """
-                (W, H) => {
+                ({W, H}) => {
                     function cssPath(el) {
                         if (!el) return '?';
                         if (el.id) return '#' + el.id;
@@ -416,7 +424,7 @@ class ScreenshotWorker:
                     await page.evaluate(
                         "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))"
                     )
-                    rows = await page.evaluate(walker_js, width, height)
+                    rows = await page.evaluate(walker_js, {"W": width, "H": height})
                     for row in rows or []:
                         violations.append({
                             "t": float(t),

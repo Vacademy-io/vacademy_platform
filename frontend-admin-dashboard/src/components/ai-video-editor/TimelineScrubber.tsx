@@ -29,6 +29,7 @@ import type { Entry, SentenceClip, ShotClip, SoundCue } from '@/components/ai-vi
 
 const RULER_H = 20; // time-ruler row
 const WAVEFORM_H = 32; // audio waveform row (shown only when audioUrl present)
+const CAPTION_TRACK_H = 22; // captions phrase row (shown only when captions enabled + transcript loaded)
 const CHANNEL_SEP_H = 13; // coloured channel header separating each channel section
 const TRACK_H = 22; // height of each track row inside a channel
 const LABEL_W = 48; // fixed-width left label column (px)
@@ -53,9 +54,13 @@ function formatSec(s: number) {
 }
 
 /** Compute the pixel y-offset of each channel group within the track area. */
-function computeChannelYOffsets(groups: ChannelGroup[], hasWaveform: boolean): number[] {
+function computeChannelYOffsets(
+    groups: ChannelGroup[],
+    hasWaveform: boolean,
+    hasCaptions: boolean
+): number[] {
     const offsets: number[] = [];
-    let y = RULER_H + (hasWaveform ? WAVEFORM_H : 0);
+    let y = RULER_H + (hasWaveform ? WAVEFORM_H : 0) + (hasCaptions ? CAPTION_TRACK_H : 0);
     for (const g of groups) {
         offsets.push(y);
         y += CHANNEL_SEP_H + g.trackCount * TRACK_H;
@@ -287,6 +292,8 @@ export function TimelineScrubber() {
         audioUrl,
         resizeEntryEdge,
         moveEntries,
+        captionPhrases,
+        captionEnabled,
     } = useVideoEditorStore(
         useShallow((s) => ({
             entries: s.entries,
@@ -297,6 +304,8 @@ export function TimelineScrubber() {
             audioUrl: s.audioUrl,
             resizeEntryEdge: s.resizeEntryEdge,
             moveEntries: s.moveEntries,
+            captionPhrases: s.captionPhrases,
+            captionEnabled: s.captionSettings.enabled,
         }))
     );
     // currentTime is intentionally NOT a parent-level subscription — playhead
@@ -511,11 +520,12 @@ export function TimelineScrubber() {
     }, [entries, navigationMode]);
     const hasWaveform =
         navigationMode === 'time_driven' && (waveformPeaks.length > 0 || waveformLoading);
+    const hasCaptions = captionEnabled && captionPhrases.length > 0;
 
     // Y-offsets for each channel section
     const channelYOffsets = useMemo(
-        () => computeChannelYOffsets(channelGroups, hasWaveform),
-        [channelGroups, hasWaveform]
+        () => computeChannelYOffsets(channelGroups, hasWaveform, hasCaptions),
+        [channelGroups, hasWaveform, hasCaptions]
     );
 
     // Total height of the track area
@@ -525,9 +535,12 @@ export function TimelineScrubber() {
             0
         );
         return (
-            RULER_H + (hasWaveform ? WAVEFORM_H : 0) + Math.max(channelsH, TRACK_H + CHANNEL_SEP_H)
+            RULER_H +
+            (hasWaveform ? WAVEFORM_H : 0) +
+            (hasCaptions ? CAPTION_TRACK_H : 0) +
+            Math.max(channelsH, TRACK_H + CHANNEL_SEP_H)
         );
-    }, [channelGroups, hasWaveform]);
+    }, [channelGroups, hasWaveform, hasCaptions]);
 
     // ── Mouse / touch scrub ────────────────────────────────────────────────
 
@@ -998,6 +1011,16 @@ export function TimelineScrubber() {
                         paddingTop: RULER_H + (hasWaveform ? WAVEFORM_H : 0),
                     }}
                 >
+                    {hasCaptions && (
+                        <div
+                            className="flex items-center justify-center rounded-l border-r-2 border-emerald-300/50 bg-emerald-50"
+                            style={{ height: CAPTION_TRACK_H }}
+                        >
+                            <span className="text-[9px] font-semibold uppercase tracking-wide text-emerald-600">
+                                CC
+                            </span>
+                        </div>
+                    )}
                     {channelGroups.map((g) => (
                         <div
                             key={g.channel.id}
@@ -1197,6 +1220,49 @@ export function TimelineScrubber() {
                                           />
                                       );
                                   })}
+                        </div>
+                    )}
+
+                    {/* Captions phrase row. Sits between the waveform (or ruler) and
+                        the shot channels. Each pill spans one caption phrase from the
+                        narration words.json; click a pill to seek to its start.
+                        Hidden when captions are off or no transcript is loaded so it
+                        doesn't add empty height to the timeline. */}
+                    {hasCaptions && (
+                        <div
+                            className="absolute inset-x-0 border-b border-emerald-100 bg-emerald-50"
+                            style={{
+                                top: RULER_H + (hasWaveform ? WAVEFORM_H : 0),
+                                height: CAPTION_TRACK_H,
+                            }}
+                        >
+                            {captionPhrases.map((p, i) => {
+                                const left = `${(p.startTime / totalDuration) * 100}%`;
+                                const width = `${
+                                    ((p.endTime - p.startTime) / totalDuration) * 100
+                                }%`;
+                                return (
+                                    <button
+                                        key={`cap-${i}`}
+                                        type="button"
+                                        title={`${p.startTime.toFixed(1)}s · ${p.text}`}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            pauseIfPlaying();
+                                            seek(p.startTime);
+                                        }}
+                                        className="absolute top-0.5 cursor-pointer overflow-hidden truncate rounded border border-emerald-300 bg-white px-1 text-left text-[10px] text-emerald-800 hover:border-emerald-500 hover:bg-emerald-100"
+                                        style={{
+                                            left,
+                                            width,
+                                            height: CAPTION_TRACK_H - 4,
+                                            lineHeight: `${CAPTION_TRACK_H - 6}px`,
+                                        }}
+                                    >
+                                        {p.text}
+                                    </button>
+                                );
+                            })}
                         </div>
                     )}
 

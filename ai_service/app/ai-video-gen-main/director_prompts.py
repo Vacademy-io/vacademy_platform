@@ -336,7 +336,55 @@ DIRECTOR_SYSTEM_PROMPT = (
     "without it, every shot reinvents where the logo sits and the video loses its through-line.\n"
     "Leave the field absent (or empty array) when the run truly has no recurring branded elements — "
     "but for any reel or product video with uploaded brand assets, at least the logo motif is "
-    "load-bearing.\n"
+    "load-bearing.\n\n"
+
+    # Pillar 2.3 — concrete few-shot examples for the high-stakes shot-type
+    # selection cases that the v2026-05 audit found Director getting wrong.
+    # The biggest miss was stat-on-cinema vs stat-as-text-slate (shot 3 of
+    # the Met Gala run picked the deterministic stat_block_with_context
+    # template — a black slate — when the user wanted the stat overlaid on
+    # craft footage). These three contrasted examples force the binding
+    # decision before it gets to the deterministic template engine.
+    "**SHOT-TYPE SELECTION — concrete examples (these are HARD precedents)**:\n\n"
+
+    "EXAMPLE A — stat callout on CINEMATIC footage (CORRECT for editorial / "
+    "documentary / culture videos):\n"
+    "  Narration: \"A record forty-two million dollars raised.\"\n"
+    "  ✅ shot_type: VIDEO_HERO\n"
+    "     video_query: \"luxury gala interior dramatic lighting slow motion\"\n"
+    "     text_overlay: large bold display number ($42 MILLION) anchored "
+    "bottom-third, cinematic background visible behind.\n"
+    "  ❌ DO NOT pick: TEMPLATE_STAT_BLOCK / stat_block_with_context (text-on-"
+    "black slate). Editorial / documentary / culture videos REJECT slate "
+    "treatments — the stat must live ON the imagery.\n\n"
+
+    "EXAMPLE B — stat callout as TEXT SLATE (CORRECT for fast-paced "
+    "educational / explainer when the slate IS the moment):\n"
+    "  Narration: \"There are exactly 100 senators in the United States.\"\n"
+    "  ✅ shot_type: KINETIC_TITLE or TEMPLATE_STAT_BLOCK\n"
+    "     Background: clean brand color, no media. Number animates in word-"
+    "by-word as a deliberate beat of stillness.\n"
+    "  ❌ DO NOT pick: VIDEO_HERO with a generic crowd shot — it dilutes the "
+    "instructional clarity the slate is designed to deliver.\n\n"
+
+    "EXAMPLE C — quote / name callout WITHOUT real-person imagery available:\n"
+    "  Narration: \"Beyoncé in a hand-crafted skeletal gown.\"\n"
+    "  If reference_assets contains a Beyoncé image URL → IMAGE_HERO with "
+    "`data-img-source=\"reference\"` + `data-reference-url=<url>`. \n"
+    "  If NOT in reference_assets → IMAGE_HERO with `data-img-source=\"web\"` "
+    "+ `data-img-query=\"Beyoncé 2026 Met Gala red carpet\"` (the per-shot "
+    "pipeline fetches via Serper).\n"
+    "  ❌ DO NOT pick: deterministic-template TEXT_DIAGRAM that just shows the "
+    "person's name in text — when imagery IS available, naming someone "
+    "without showing them is a missed beat.\n\n"
+
+    "**Heuristic**: when the script names a real person, brand, event, or "
+    "product, the shot's shot_type should always carry an image or video "
+    "slot. Slate treatments (TEMPLATE_*, KINETIC_TITLE with no imagery) are "
+    "reserved for: (a) pure typography hero moments where the WORDS are the "
+    "point ('FASHION IS ART'), (b) numeric callouts where the stat IS the "
+    "frame for an educational beat. Editorial / documentary / cultural-"
+    "commentary videos almost never want pure slates for named-entity shots.\n"
 )
 
 
@@ -1269,6 +1317,22 @@ def build_director_user_prompt(
     named_entities: Optional[List[Dict[str, Any]]] = None,
     web_search_available: bool = False,
     visual_preferences: Optional[Dict[str, Any]] = None,
+    # Pillar 2.2 — raw "VISUAL APPROACH" prose from the user's prompt. When
+    # provided, the Director sees BOTH the structured `visual_preferences`
+    # flags AND the original prose intent. Met-Gala audit found the user's
+    # multi-paragraph visual direction ("No on-screen avatar. The visuals
+    # are cinematic and editorial throughout. Use real fashion imagery…")
+    # was compressed into `{stock_video: high, …}` flags that lost the
+    # nuance — Director then picked a deterministic stat_block_with_context
+    # template for shot 3 ($42 M), shipping a black slate. The structured
+    # dict stays for soft per-family bias; this block carries the prose
+    # rules the dict cannot encode.
+    visual_intent_text: Optional[str] = None,
+    # Pillar 3 — pre-fetched reference image URLs for named entities the
+    # ShotPlanner / Director should lay out as `data-img-source="reference"`.
+    # Each entry: {name, kind, image_url, source, title?}. Empty / None
+    # means no pre-fetch happened (fall back to lazy Serper fetch as before).
+    reference_assets: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Assemble the Director user prompt from pipeline data."""
     aspect_label = "9:16 portrait" if width < height else "16:9"
@@ -1541,6 +1605,63 @@ def build_director_user_prompt(
     _vp_block = build_visual_preferences_director_block(visual_preferences)
     if _vp_block:
         extras.append(_vp_block)
+
+    # ── Pillar 2.2 — Raw visual-intent prose from the user's prompt ──
+    # The structured `visual_preferences` dict captures bias flags but loses
+    # the prose nuance ("no AI humans", "evoke atmosphere not recreate",
+    # "documentary score no drums"). Pass the raw paragraphs verbatim so the
+    # Director's shot-type / template selection respects intent the flag dict
+    # cannot encode. Trimmed to 2000 chars to keep token budget sane on
+    # extremely long prompts.
+    if visual_intent_text:
+        _vi_text = (visual_intent_text or "").strip()
+        if len(_vi_text) > 2000:
+            _vi_text = _vi_text[:2000].rstrip() + " …"
+        extras.append(
+            "\n\n<VISUAL_INTENT>\n"
+            "The user's prompt explicitly described how this video should look\n"
+            "and feel. The structured visual_preferences flags above are a\n"
+            "summary; the prose below carries rules the flags cannot encode.\n"
+            "**These are HARD constraints on shot-type selection, media source\n"
+            "choice, and deterministic-template overrides — honour every rule.**\n"
+            f"```\n{_vi_text}\n```\n"
+            "</VISUAL_INTENT>\n"
+        )
+
+    # ── Pillar 3 — Pre-fetched reference image URLs ──
+    # When named entities in the prompt have been web-fetched up-front, the
+    # Director sees the URLs at planning time and can lay them out as
+    # `<img data-img-source=\"reference\" data-reference-url=\"…\">`. This
+    # eliminates the lazy-fetch failure mode where shots that should feature
+    # a real person/brand end up text-only or AI-generated. For ANY shot
+    # featuring one of the entities below, prefer `IMAGE_HERO` or
+    # `IMAGE_SPLIT` with `data-img-source=\"reference\"`.
+    if reference_assets:
+        _ra_lines = []
+        for ra in (reference_assets or [])[:12]:  # cap at 12 for token budget
+            if not isinstance(ra, dict):
+                continue
+            _name = (ra.get("name") or ra.get("entity_name") or "").strip()
+            _kind = (ra.get("kind") or "entity").strip()
+            _url = (ra.get("image_url") or ra.get("url") or "").strip()
+            _src = (ra.get("source") or "").strip()
+            if not _name or not _url:
+                continue
+            _ra_lines.append(f"- {_name} ({_kind}) [{_src or 'web'}] → {_url}")
+        if _ra_lines:
+            extras.append(
+                "\n\n<REFERENCE_ASSETS>\n"
+                "Pre-fetched image URLs for named entities in the user prompt.\n"
+                "**For each entity below, emit a shot with `shot_type=IMAGE_HERO`\n"
+                "(or `IMAGE_SPLIT` when paired with a caption) and reference the\n"
+                "URL directly via `data-img-source=\"reference\"` +\n"
+                "`data-reference-url=\"<url>\"`.** These URLs are the highest-\n"
+                "fidelity option — prefer them over Pexels/Recraft for any shot\n"
+                "featuring the named entity. Do NOT emit `data-img-source=\"web\"`\n"
+                "or `\"generate\"` for these entities — they already exist.\n\n"
+                + "\n".join(_ra_lines)
+                + "\n</REFERENCE_ASSETS>\n"
+            )
 
     return base + "".join(extras)
 

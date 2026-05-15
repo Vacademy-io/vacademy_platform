@@ -7,6 +7,7 @@ import { getEditorIframeAgentScript } from './utils/editor-iframe-agent';
 import { pauseIfPlaying } from './playback/playback-engine';
 import { LayerHandlesOverlay } from './LayerHandlesOverlay';
 import { CanvasGuides } from './CanvasGuides';
+import { CaptionOverlay } from './CaptionOverlay';
 import type { Entry, ContentType } from '@/components/ai-video-player/types';
 import type { EntryTransform } from './stores/video-editor-store';
 
@@ -324,6 +325,13 @@ export function EditorCanvas({ onScaleChange }: EditorCanvasProps) {
                             No content at this time
                         </div>
                     )}
+                    {/* Caption preview — same CSS the render server emits per
+                        frame, so toggling captions on here previews exactly
+                        what the MP4 will contain. Sits inside the scaled
+                        canvas so its native px scale with the rest. Placed
+                        before LayerHandlesOverlay so selection handles can
+                        still cover it for interaction. */}
+                    <CaptionOverlay canvasW={canvasW} canvasH={canvasH} />
                     {/* On-canvas drag/resize/rotate handles for the selected
                         DOM layer. Lives inside the scaled 1920×1080 div so
                         positions just use canvas-space pixel values from the

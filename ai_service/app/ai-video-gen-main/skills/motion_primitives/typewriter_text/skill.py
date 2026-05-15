@@ -9,7 +9,7 @@ import json
 
 METADATA = {
     "id": "typewriter_text",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "category": "motion_primitive",
     "title": "Typewriter Text Reveal",
     "description": "Character-by-character text appearance with a blinking caret and natural jitter.",
@@ -38,8 +38,10 @@ PARAMS_SCHEMA = {
     },
 }
 
-# Size tokens map to typography rules
-_SIZE_MAP = {
+# Size-key fallbacks used when shot_pack isn't passed (legacy callers, tests).
+# In production, ctx["shot_pack"]["font_scale"][size_key] takes precedence
+# so the typography respects the canvas-aware caps.
+_SIZE_MAP_FALLBACK = {
     "display": "6.5rem",
     "h1": "4.5rem",
     "h2": "3rem",
@@ -53,27 +55,38 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
     duration = float(params.get("duration", 1.5) or 1.5)
     delay = float(params.get("delay", 0.2) or 0.2)
     size_key = str(params.get("size", "h1"))
-    font_size = _SIZE_MAP.get(size_key, _SIZE_MAP["h1"])
     caret = bool(params.get("caret", True))
     shot_idx = ctx.get("shot_index", 0)
     sid = f"tw{shot_idx}"
 
+    # Pull the canvas-aware clamp for the requested size tier; fall back to
+    # the static map only when shot_pack isn't wired through.
+    pack = ctx.get("shot_pack") or {}
+    fs = (pack.get("font_scale") or {}) if isinstance(pack, dict) else {}
+    font_size = fs.get(size_key) or _SIZE_MAP_FALLBACK.get(size_key, _SIZE_MAP_FALLBACK["h1"])
+    shot_duration = float(ctx.get("shot_duration", 5.0) or 5.0)
+
     caret_html = f'<span class="{sid}-caret"></span>' if caret else ""
     html = (
-        f'<div class="{sid}-wrap">'
+        f'<div class="{sid}-wrap" id="{sid}-root">'
         f'<span class="{sid}-text" id="{sid}-target"></span>'
         f'{caret_html}'
         f'</div>'
     )
 
     css = f"""
-.{sid}-wrap {{ font-family:'Bebas Neue','Montserrat',sans-serif; font-size:{font_size}; line-height:1.1; color:var(--brand-text); font-weight:700; letter-spacing:0.01em; display:inline-flex; align-items:baseline; }}
-.{sid}-text {{ white-space:pre-wrap; }}
+.{sid}-wrap {{ font-family:'Bebas Neue','Montserrat',sans-serif; font-size:{font_size}; line-height:1.1; color:var(--brand-text); font-weight:700; letter-spacing:0.01em; display:inline-flex; align-items:baseline; padding-bottom:0.12em; }}
+.{sid}-text {{ white-space:pre-wrap; overflow-wrap:anywhere; }}
 .{sid}-caret {{ display:inline-block; width:0.06em; height:1em; background:var(--brand-accent); margin-left:0.08em; animation:{sid}-blink 0.9s steps(1) infinite; }}
 @keyframes {sid}-blink {{ 0%,49%{{opacity:1}} 50%,100%{{opacity:0}} }}
 """
 
     text_json = json.dumps(text, ensure_ascii=False)
+    # Back-half motion: drift after typewriter completes so the shot still has
+    # motion through to the end (validator: tween with delay >= 0.55 × shot_dur).
+    type_finish = delay + duration
+    back_half_delay = max(type_finish + 0.2, shot_duration * 0.55)
+    back_half_dur = max(0.8, shot_duration - back_half_delay)
     js = (
         f'{{'
         f'var el=document.getElementById("{sid}-target");'
@@ -92,6 +105,11 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
         f'}}'
         f'requestAnimationFrame(_tick);'
         f'}}'
+        f'if(typeof gsap!=="undefined"){{'
+        f'gsap.fromTo("#{sid}-root",'
+        f'{{x:0, opacity:1}},'
+        f'{{x:6, opacity:1, duration:{back_half_dur:.2f}, delay:{back_half_delay:.2f}, ease:"sine.inOut"}});'
+        f'}}'
         f'}}'
     )
 
@@ -103,7 +121,9 @@ def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, An
     import html as _h
     text = str(params.get("text", "") or "Text")
     size_key = str(params.get("size", "h1"))
-    font_size = _SIZE_MAP.get(size_key, _SIZE_MAP["h1"])
+    pack = ctx.get("shot_pack") or {}
+    fs = (pack.get("font_scale") or {}) if isinstance(pack, dict) else {}
+    font_size = fs.get(size_key) or _SIZE_MAP_FALLBACK.get(size_key, _SIZE_MAP_FALLBACK["h1"])
     shot_idx = ctx.get("shot_index", 0)
     sid = f"tw{shot_idx}fb"
     html = f'<div class="{sid}-wrap"><span class="{sid}-text">{_h.escape(text)}</span></div>'

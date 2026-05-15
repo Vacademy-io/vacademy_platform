@@ -56,6 +56,7 @@ import {
     easingPresetFor,
 } from './utils/transitions';
 import { LayersTab } from './LayersTab';
+import { ShotCaptionOverride } from './ShotCaptionOverride';
 import { FIT_LABELS } from './controls';
 import { AdvancedSection } from './AdvancedSection';
 import { friendlyEntryName } from './registry/friendly-labels';
@@ -1807,7 +1808,12 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                         canvasH={canvasH}
                     />
                 )}
-                {tab === 'layers' && <LayersTab entryId={entryId} entryHtml={entry.html} />}
+                {tab === 'layers' && (
+                    <>
+                        <ShotCaptionOverride entryId={entryId} />
+                        <LayersTab entryId={entryId} entryHtml={entry.html} />
+                    </>
+                )}
                 {tab === 'code' && <HtmlTab entryId={entryId} entryHtml={entry.html} />}
             </div>
 

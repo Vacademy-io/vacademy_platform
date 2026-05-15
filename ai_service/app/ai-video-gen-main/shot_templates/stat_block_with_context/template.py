@@ -16,11 +16,14 @@ import html as _html
 
 METADATA = {
     "id": "stat_block_with_context",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "title": "Stat Block With Context",
     "description": "Hero animated number with eyebrow label, headline, and supporting context line. Locale-formatted, tabular digits.",
     "use_when": "Headline statistics that need framing — KPIs, savings figures, percentages, counts. Best at 3-6s shot duration.",
-    "compatible_shot_types": ["DATA_STORY", "TEXT_DIAGRAM", "IMAGE_HERO", "*"],
+    # Explicit allow-list — works for any shot whose narrative beat is "the
+    # number is the point". IMAGE_HERO is OK because the stat can sit over
+    # the image as an overlay.
+    "compatible_shot_types": ["DATA_STORY", "TEXT_DIAGRAM", "IMAGE_HERO"],
     "requires_tier": "premium",
     "requires_canvas": "any",
     "example_params": {
@@ -62,10 +65,12 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     sp = pack.get("spacing", {})
     ez = pack.get("ease", {})
 
-    fs_display = fs.get("display", "clamp(5rem, min(28vw, 28vh), 24rem)")
-    fs_h2 = fs.get("h2", "clamp(2rem, min(7vw, 12vh), 8rem)")
-    fs_caption = fs.get("caption", "clamp(1rem, min(2.4vw, 3vh), 1.8rem)")
-    fs_micro = fs.get("micro", "clamp(0.85rem, min(1.8vw, 2.3vh), 1.4rem)")
+    # Fallbacks match `portrait_720` bucket from _CANVAS_TIER_RULES so a missing
+    # shot_pack never overflows the smallest supported canvas.
+    fs_display = fs.get("display", "clamp(2rem, min(14vw, 8vh), 6.25rem)")
+    fs_h2 = fs.get("h2", "clamp(1.2rem, min(7vw, 4vh), 3.1rem)")
+    fs_caption = fs.get("caption", "clamp(0.75rem, 1.9vmin, 0.9rem)")
+    fs_micro = fs.get("micro", "clamp(0.75rem, 1.9vmin, 0.9rem)")
     safe = sp.get("safe_area", "5%")
     ease_entry = ez.get("entry", "power3.out")
 

@@ -29,7 +29,7 @@ import html as _html
 
 METADATA = {
     "id": "article_focus_zoom_pan",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "title": "Article Focus — Zoom-Pan with Quote Overlay",
     "description": (
         "Full-frame article page screenshot, slow GSAP zoom-pan toward a "
@@ -40,7 +40,10 @@ METADATA = {
         "news_recap videos where scrape_url captured the source article page. "
         "Use 1–2 ARTICLE_FOCUS shots per video at 3–5s each."
     ),
-    "compatible_shot_types": ["ARTICLE_FOCUS", "*"],
+    # Specialised template — only renders meaningfully for ARTICLE_FOCUS shots
+    # (resolves scrape_artifacts by id). Wildcard previously here was dead
+    # weight; the screenshot lookup would fail on any other shot type.
+    "compatible_shot_types": ["ARTICLE_FOCUS"],
     "requires_tier": "premium",
     "requires_canvas": "any",
     "example_params": {
@@ -187,8 +190,10 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
             + "</div>"
         )
 
-    fs_caption = fs.get("caption", "clamp(1rem, min(2.4vw, 3vh), 1.8rem)")
-    fs_body = fs.get("body", "clamp(1.2rem, min(2.4vw, 4.4vh), 2.4rem)")
+    # Fallbacks match `portrait_720` bucket from _CANVAS_TIER_RULES so a missing
+    # shot_pack never overflows the smallest supported canvas.
+    fs_caption = fs.get("caption", "clamp(0.75rem, 1.9vmin, 0.9rem)")
+    fs_body = fs.get("body", "clamp(0.95rem, min(3.4vw, 1.9vh), 1.5rem)")
     ease_entry = ez.get("entry", "power3.out")
 
     canvas_w = int(ctx.get("canvas_w", 1920) or 1920)
@@ -252,7 +257,9 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   border-radius: 2px;
 }}
 .{sid}-quote-body {{
-  font-family:'Inter','Georgia',serif;
+  /* Editorial pull-quote convention is a serif face — Inter (sans) was a
+     mismatched fallback that hid the intent on systems with Inter installed. */
+  font-family:'Georgia','Iowan Old Style','Times New Roman',serif;
   font-size: {fs_body};
   line-height: 1.35;
   color: {text_color};

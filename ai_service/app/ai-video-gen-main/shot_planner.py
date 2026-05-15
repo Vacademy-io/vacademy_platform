@@ -444,19 +444,56 @@ def build_shot_planner_user_prompt(
                 arrow = "PREFER" if bias == "high" else "AVOID"
                 lines.append(f"  - {fam}: {arrow}")
 
-    # Reference assets (BRAND ANCHOR)
+    # Reference assets — two flavours coexist in this list:
+    #   (a) Brand-anchor uploads from the institute (logo, hero asset)
+    #       schema: {kind, name|filename, description?, s3_url?}
+    #   (b) Pillar 3 web-prefetched references for named entities in prompt
+    #       schema: {name, kind, image_url, source, title?, suggested_query?}
+    # Both render under the same heading but with different action language —
+    # brand uploads are about WHERE to anchor; web pre-fetches are about WHICH
+    # url to embed verbatim.
     if reference_assets:
-        lines.append("")
-        lines.append("🏷️  BRAND ANCHOR — reference assets the FIRST and LAST shots MUST embed:")
-        for a in reference_assets[:8]:
-            kind = a.get("kind") or a.get("type") or "asset"
-            name = a.get("name") or a.get("filename") or "unnamed"
-            desc = (a.get("description") or a.get("excerpt") or "").strip()
-            lines.append(f"  - [{kind}] {name}: {desc[:160]}")
-        lines.append(
-            "REMINDER: open/close shots MUST be asset-hosting types (PRODUCT_HERO, IMAGE_HERO, "
-            "ANIMATED_ASSET, INFOGRAPHIC_SVG, DEVICE_MOCKUP) — NOT text-only shots."
-        )
+        _brand = [a for a in reference_assets if isinstance(a, dict) and not a.get("image_url")]
+        _prefetched = [a for a in reference_assets if isinstance(a, dict) and a.get("image_url")]
+
+        if _brand:
+            lines.append("")
+            lines.append("🏷️  BRAND ANCHOR — reference assets the FIRST and LAST shots MUST embed:")
+            for a in _brand[:8]:
+                kind = a.get("kind") or a.get("type") or "asset"
+                name = a.get("name") or a.get("filename") or "unnamed"
+                desc = (a.get("description") or a.get("excerpt") or "").strip()
+                lines.append(f"  - [{kind}] {name}: {desc[:160]}")
+            lines.append(
+                "REMINDER: open/close shots MUST be asset-hosting types (PRODUCT_HERO, IMAGE_HERO, "
+                "ANIMATED_ASSET, INFOGRAPHIC_SVG, DEVICE_MOCKUP) — NOT text-only shots."
+            )
+
+        # Pillar 3 — pre-fetched reference image URLs for named entities.
+        # Each entity has a real URL the per-shot HTML LLM can embed verbatim.
+        # ShotPlanner's job is to ALLOCATE these to specific shot_idx + shot_type
+        # so the downstream pipeline knows where each URL belongs.
+        if _prefetched:
+            lines.append("")
+            lines.append("🖼️  PRE-FETCHED REFERENCE IMAGES — entity → image URL mapping:")
+            for a in _prefetched[:12]:
+                _name = (a.get("name") or "").strip()
+                _kind = (a.get("kind") or "entity").strip()
+                _url = (a.get("image_url") or "").strip()
+                _src = (a.get("source") or "").strip()
+                if not _name or not _url:
+                    continue
+                lines.append(f"  - {_name} ({_kind}) [{_src or 'web'}] → {_url}")
+            lines.append("")
+            lines.append(
+                "**For each entity above:** allocate a shot featuring that entity with "
+                "`shot_type` = `IMAGE_HERO` (or `IMAGE_SPLIT` when paired with a "
+                "caption / quote). The shot's HTML placeholder MUST use "
+                "`<img data-img-source=\"reference\" data-reference-url=\"<exact URL>\">` "
+                "so the renderer wires the URL through verbatim. These URLs are the "
+                "HIGHEST-FIDELITY option — do NOT pick `data-img-source=\"web\"` or "
+                "`\"generate\"` for these entities."
+            )
 
     # Brand brief (extracted colors / fonts)
     if brand_brief:

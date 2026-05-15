@@ -19,11 +19,15 @@ import html as _html
 
 METADATA = {
     "id": "split_comparison",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "title": "Split Comparison",
     "description": "Side-by-side comparison with synchronized reveals — two columns, optional headline, center 'VS' divider.",
     "use_when": "Comparing exactly two concepts, products, options, eras, approaches, or before/after. Best at 4-7s shot duration.",
-    "compatible_shot_types": ["TEXT_DIAGRAM", "DATA_STORY", "PROCESS_STEPS", "*"],
+    # Explicit allow-list — composition is inherently comparative (left vs
+    # right), so only shot types whose narrative beat fits a binary contrast.
+    # Sequential / process beats (PROCESS_STEPS) belong on three_up_grid or
+    # a dedicated timeline template, not this one.
+    "compatible_shot_types": ["TEXT_DIAGRAM", "DATA_STORY"],
     "requires_tier": "premium",
     "requires_canvas": "any",
     "example_params": {
@@ -64,10 +68,14 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     sp = pack.get("spacing", {})
     ez = pack.get("ease", {})
 
-    fs_display = fs.get("display", "clamp(4rem, min(18vw, 32vh), 24rem)")
-    fs_h2 = fs.get("h2", "clamp(2rem, min(7vw, 12vh), 8rem)")
-    fs_caption = fs.get("caption", "clamp(1rem, min(2.4vw, 3vh), 1.8rem)")
-    fs_micro = fs.get("micro", "clamp(0.85rem, min(1.8vw, 2.3vh), 1.4rem)")
+    # Fallbacks match the conservative `portrait_720` bucket from
+    # shot_type_cards._CANVAS_TIER_RULES so a missing shot_pack never produces
+    # text that overflows the smallest supported canvas. When shot_pack IS
+    # wired (production path), these defaults are bypassed.
+    fs_display = fs.get("display", "clamp(2rem, min(14vw, 8vh), 6.25rem)")
+    fs_h2 = fs.get("h2", "clamp(1.2rem, min(7vw, 4vh), 3.1rem)")
+    fs_caption = fs.get("caption", "clamp(0.75rem, 1.9vmin, 0.9rem)")
+    fs_micro = fs.get("micro", "clamp(0.75rem, 1.9vmin, 0.9rem)")
     safe = sp.get("safe_area", "4%")
     gap_lg = sp.get("lg", "40px")
     ease_entry = ez.get("entry", "power3.out")

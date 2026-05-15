@@ -3,11 +3,18 @@ import {
     Entry,
     TimelineMeta,
     AudioTrack,
+    WordTimestamp,
     getDefaultMeta,
 } from '@/components/ai-video-player/types';
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
 import { clamp } from '../utils/coord-convert';
 import { buildTransitionCss, TransitionPair, Transition } from '../utils/transitions';
+import {
+    CaptionEditorSettings,
+    CaptionPhrase,
+    DEFAULT_CAPTION_EDITOR_SETTINGS,
+    buildPhrases,
+} from '../utils/caption-rendering';
 
 /**
  * Which backend table this timeline lives in. `'reel'` routes `/frame/*`
@@ -127,6 +134,37 @@ function persistDisplayNames(videoId: string, names: Record<string, string>): vo
         } else {
             window.localStorage.setItem(DISPLAY_NAMES_LS_PREFIX + videoId, JSON.stringify(onDisk));
         }
+    } catch {
+        /* private mode — fine */
+    }
+}
+
+// ── Caption editor settings (per-device preference) ───────────────────────
+//
+// Editor-side caption display preferences. NOT keyed by videoId — the user's
+// chosen size / colors / position apply across every video they edit so they
+// don't have to re-configure for each one. The render dialog seeds itself
+// from this slice (see RenderSettingsDialog.initialSettings) so what the user
+// previewed is what the MP4 will use.
+
+const CAPTION_SETTINGS_LS_KEY = 'vx-caption-editor-settings';
+
+function loadCaptionEditorSettings(): CaptionEditorSettings {
+    if (typeof window === 'undefined') return DEFAULT_CAPTION_EDITOR_SETTINGS;
+    try {
+        const raw = window.localStorage.getItem(CAPTION_SETTINGS_LS_KEY);
+        if (!raw) return DEFAULT_CAPTION_EDITOR_SETTINGS;
+        const parsed = JSON.parse(raw) as Partial<CaptionEditorSettings>;
+        return { ...DEFAULT_CAPTION_EDITOR_SETTINGS, ...parsed };
+    } catch {
+        return DEFAULT_CAPTION_EDITOR_SETTINGS;
+    }
+}
+
+function persistCaptionEditorSettings(s: CaptionEditorSettings): void {
+    if (typeof window === 'undefined') return;
+    try {
+        window.localStorage.setItem(CAPTION_SETTINGS_LS_KEY, JSON.stringify(s));
     } catch {
         /* private mode — fine */
     }
@@ -418,6 +456,24 @@ export interface VideoEditorState {
      *  that this is fine in practice. */
     insertingGapKey: string | null;
 
+    // ── Captions (editor preview + render dialog seed) ──────────────────────
+    //
+    // captionSettings is a user preference persisted across videos.
+    // captionWords + captionPhrases are derived from the loaded video's
+    // narration.words.json. Both reset to empty on `init()` and refill via
+    // `loadCaptionWords()` after a new wordsUrl is set.
+
+    /** Per-device caption display preferences (size, position, colors).
+     *  Round-trips into the render dialog so MP4 captions match the editor preview. */
+    captionSettings: CaptionEditorSettings;
+
+    /** Raw word-level timestamps from narration.words.json (absolute, in audio time). */
+    captionWords: WordTimestamp[];
+
+    /** Pre-computed phrases for caption rendering. Built once from
+     *  captionWords using the same algorithm as the render server. */
+    captionPhrases: CaptionPhrase[];
+
     // Actions
     init: (params: InitParams) => void;
     loadTimeline: () => Promise<void>;
@@ -562,10 +618,7 @@ export interface VideoEditorState {
      * 'intrinsic_only'` — those carry their own audio (source clip /
      * Veo audio) and have no master-narration slot to replace.
      */
-    regenerateShot: (
-        shotIdx: number,
-        newText: string
-    ) => Promise<{ ok: boolean; error?: string }>;
+    regenerateShot: (shotIdx: number, newText: string) => Promise<{ ok: boolean; error?: string }>;
 
     /**
      * Generate a new HTML shot to fill `[gapStart, gapEnd]` on the
@@ -591,6 +644,24 @@ export interface VideoEditorState {
         gap: TimelineGap,
         userHint: string | null
     ) => Promise<{ ok: boolean; error?: string }>;
+
+    /** Patch caption display settings. Persists to localStorage. */
+    setCaptionSettings: (patch: Partial<CaptionEditorSettings>) => void;
+    /** Convenience: flip the captions on/off. */
+    setCaptionEnabled: (enabled: boolean) => void;
+    /** Fetch `wordsUrl`, validate, and populate `captionWords` + `captionPhrases`.
+     *  Mirrors `useCaptions.ts:fetchWords` — same validation + same parse shape. */
+    loadCaptionWords: () => Promise<void>;
+    /**
+     * Set or clear the per-shot caption override stored under
+     * `entry.entry_meta.caption_style`. Pass `null` to clear the override
+     * (the entry falls back to the global caption settings). Marks the entry
+     * dirty so the next `saveChanges` persists it via `/frame/update`.
+     */
+    setEntryCaptionStyle: (
+        entryId: string,
+        style: { hide?: boolean; position?: 'top' | 'bottom' } | null
+    ) => void;
 }
 
 function snapshot(s: VideoEditorState): HistorySnapshot {
@@ -647,6 +718,9 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
     regeneratingShotIdx: null,
     insertingGapKey: null,
     naturalDurations: {},
+    captionSettings: loadCaptionEditorSettings(),
+    captionWords: [],
+    captionPhrases: [],
 
     init: (params) => {
         set({
@@ -680,6 +754,11 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             past: [],
             future: [],
             isSaving: false,
+            // captionSettings is a global preference — NOT reset per video.
+            // captionWords / captionPhrases ARE per-video and reload via
+            // loadCaptionWords() once the new wordsUrl is set.
+            captionWords: [],
+            captionPhrases: [],
         });
     },
 
@@ -1383,12 +1462,23 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                 if (isNew) {
                     // Same entry_meta logic as the /frame/update branch: send
                     // the display name (including empty string for "clear")
-                    // when the user has touched it. Skipped entirely when
-                    // there's no rename so we don't bloat the timeline JSON
-                    // with empty entry_meta objects for plain new shots.
+                    // when the user has touched it, plus any per-shot
+                    // caption_style override. Skipped entirely when there's
+                    // neither so we don't bloat the timeline JSON with empty
+                    // entry_meta objects for plain new shots.
                     const pendingNameAdd = useVideoEditorStore.getState().displayNames[entry.id];
+                    const captionStyleAdd = entry.entry_meta?.caption_style;
                     const addEntryMetaPayload: Record<string, unknown> | undefined =
-                        pendingNameAdd !== undefined ? { display_name: pendingNameAdd } : undefined;
+                        pendingNameAdd !== undefined || captionStyleAdd !== undefined
+                            ? {
+                                  ...(pendingNameAdd !== undefined
+                                      ? { display_name: pendingNameAdd }
+                                      : {}),
+                                  ...(captionStyleAdd !== undefined
+                                      ? { caption_style: captionStyleAdd }
+                                      : {}),
+                              }
+                            : undefined;
 
                     const res = await fetch(`${frameBase}/add`, {
                         method: 'POST',
@@ -1419,8 +1509,26 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                     // the field entirely so we don't trigger an unnecessary
                     // entry_meta merge round-trip on every HTML edit.
                     const pendingName = useVideoEditorStore.getState().displayNames[entry.id];
+                    // Per-shot caption override. Always send when present on
+                    // the entry (including `null` to clear an existing override
+                    // — BE merges naively, so null lands on disk and the
+                    // render server / load path treats null as "no override").
+                    const captionStyle = entry.entry_meta?.caption_style;
                     const entryMetaPayload: Record<string, unknown> | undefined =
-                        pendingName !== undefined ? { display_name: pendingName ?? '' } : undefined;
+                        pendingName !== undefined || captionStyle !== undefined
+                            ? {
+                                  ...(pendingName !== undefined
+                                      ? { display_name: pendingName ?? '' }
+                                      : {}),
+                                  // captionStyle can be undefined (no override set this
+                                  // session) or a value. We only enter this branch when
+                                  // it's defined OR a display name is pending — narrow
+                                  // explicitly so we don't emit `caption_style: undefined`.
+                                  ...(captionStyle !== undefined
+                                      ? { caption_style: captionStyle }
+                                      : {}),
+                              }
+                            : undefined;
 
                     const res = await fetch(`${frameBase}/update`, {
                         method: 'POST',
@@ -1776,5 +1884,91 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
             };
         });
         return { ok: true };
+    },
+
+    setCaptionSettings: (patch) => {
+        set((s) => {
+            const next = { ...s.captionSettings, ...patch };
+            persistCaptionEditorSettings(next);
+            return { captionSettings: next };
+        });
+    },
+
+    setCaptionEnabled: (enabled) => {
+        set((s) => {
+            const next = { ...s.captionSettings, enabled };
+            persistCaptionEditorSettings(next);
+            return { captionSettings: next };
+        });
+    },
+
+    setEntryCaptionStyle: (entryId, style) => {
+        set((s) => {
+            const isClear = !style || (style.hide === undefined && style.position === undefined);
+            const entries = s.entries.map((e) => {
+                if (e.id !== entryId) return e;
+                const baseMeta = e.entry_meta ?? {};
+                // `null` is the explicit "clear" sentinel. We always write SOME
+                // value (null when clearing, the style object otherwise) so the
+                // save flow has an unambiguous signal: deleting the key would
+                // be indistinguishable from "this entry never had an override",
+                // and `null` would be lost during the BE's deep-merge of
+                // entry_meta — sending it explicitly forces the server to
+                // overwrite any stale value.
+                return {
+                    ...e,
+                    entry_meta: {
+                        ...baseMeta,
+                        caption_style: isClear ? null : style,
+                    },
+                };
+            });
+            const dirtyEntryIds = s.dirtyEntryIds.includes(entryId)
+                ? s.dirtyEntryIds
+                : [...s.dirtyEntryIds, entryId];
+            return { entries, dirtyEntryIds };
+        });
+    },
+
+    loadCaptionWords: async () => {
+        const { wordsUrl } = get();
+        if (!wordsUrl) {
+            set({ captionWords: [], captionPhrases: [] });
+            return;
+        }
+        try {
+            const res = await fetch(wordsUrl);
+            if (!res.ok) {
+                // Soft fail — captions are an enhancement, not a hard requirement.
+                // Editor still functions without them; CaptionOverlay just renders nothing.
+                console.warn(`[captions] Failed to load words: ${res.status}`);
+                set({ captionWords: [], captionPhrases: [] });
+                return;
+            }
+            const data: unknown = await res.json();
+            if (!Array.isArray(data)) {
+                console.warn('[captions] Invalid words.json: not an array');
+                set({ captionWords: [], captionPhrases: [] });
+                return;
+            }
+            const validWords: WordTimestamp[] = data
+                .filter(
+                    (w: unknown): w is { word: unknown; start: unknown; end: unknown } =>
+                        !!w &&
+                        typeof w === 'object' &&
+                        'word' in (w as object) &&
+                        'start' in (w as object) &&
+                        'end' in (w as object)
+                )
+                .map((w) => ({
+                    word: String(w.word),
+                    start: Number(w.start),
+                    end: Number(w.end),
+                }));
+            set({ captionWords: validWords, captionPhrases: buildPhrases(validWords) });
+        } catch (err) {
+            console.warn('[captions] Error loading words:', err);
+            set({ captionWords: [], captionPhrases: [] });
+        }
     },
 }));

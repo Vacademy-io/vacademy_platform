@@ -8,7 +8,7 @@ from typing import Dict, Any
 
 METADATA = {
     "id": "stagger_list",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "category": "motion_primitive",
     "title": "Stagger List Reveal",
     "description": "Vertical list items sliding up and fading in with a tight stagger; supports icons and sub-captions.",
@@ -47,6 +47,16 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
     shot_idx = ctx.get("shot_index", 0)
     sid = f"sl{shot_idx}"
 
+    # Canvas-aware fonts via shot_pack. List items are body-scale; captions are
+    # smaller (label tier). Markers (numbers / icons) scale with h2.
+    pack = ctx.get("shot_pack") or {}
+    fs = (pack.get("font_scale") or {}) if isinstance(pack, dict) else {}
+    fs_text = fs.get("body") or "1.75rem"
+    fs_caption = fs.get("label") or "1.15rem"
+    fs_marker = fs.get("h2") or "2.4rem"
+    fs_icon = fs.get("h2") or "1.9rem"
+    shot_duration = float(ctx.get("shot_duration", 5.0) or 5.0)
+
     rows = []
     for i, item in enumerate(items):
         text = str(item.get("text", "") or "")
@@ -64,24 +74,35 @@ def render(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, Any]:
             f'<div class="{sid}-body"><div class="{sid}-text">{text}</div>{caption_html}</div>'
             f'</li>'
         )
-    html = f'<ul class="{sid}-list">' + "".join(rows) + "</ul>"
+    html = f'<ul class="{sid}-list" id="{sid}-root">' + "".join(rows) + "</ul>"
 
     css = f"""
 .{sid}-list {{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:1.1rem; }}
 .{sid}-item {{ display:flex; align-items:flex-start; gap:1.1rem; opacity:0; transform:translateY(24px); }}
-.{sid}-num {{ flex:0 0 auto; font-family:'Bebas Neue',sans-serif; font-size:2.4rem; line-height:1; color:var(--brand-accent); font-weight:900; min-width:3.2rem; }}
-.{sid}-icon {{ flex:0 0 auto; font-size:1.9rem; color:var(--brand-accent); min-width:2.4rem; }}
-.{sid}-body {{ flex:1; }}
-.{sid}-text {{ font-size:1.75rem; font-weight:700; color:var(--brand-text); line-height:1.25; }}
-.{sid}-caption {{ font-size:1.15rem; font-weight:500; color:var(--brand-text-secondary); margin-top:0.25rem; line-height:1.4; }}
+.{sid}-num {{ flex:0 0 auto; font-family:'Bebas Neue',sans-serif; font-size:{fs_marker}; line-height:1; color:var(--brand-accent); font-weight:900; min-width:3.2rem; }}
+.{sid}-icon {{ flex:0 0 auto; font-size:{fs_icon}; color:var(--brand-accent); min-width:2.4rem; }}
+.{sid}-body {{ flex:1; min-width:0; }}
+.{sid}-text {{ font-size:{fs_text}; font-weight:700; color:var(--brand-text); line-height:1.25; overflow-wrap:anywhere; }}
+.{sid}-caption {{ font-size:{fs_caption}; font-weight:500; color:var(--brand-text-secondary); margin-top:0.25rem; line-height:1.4; }}
 """
 
     js_parts = []
+    last_item_finish = entry_delay
     for i, _ in enumerate(items):
         d = entry_delay + i * stagger
+        last_item_finish = d + 0.5
         js_parts.append(
             f'gsap.to("#{sid}-i-{i}", {{opacity:1, y:0, duration:0.5, delay:{d:.3f}, ease:"power3.out"}});'
         )
+    # Back-half motion: drift the list subtly so the shot stays alive after
+    # the last item lands.
+    back_half_delay = max(last_item_finish + 0.3, shot_duration * 0.55)
+    back_half_dur = max(0.8, shot_duration - back_half_delay)
+    js_parts.append(
+        f'gsap.fromTo("#{sid}-root",'
+        f'{{x:0}},'
+        f'{{x:6, duration:{back_half_dur:.2f}, delay:{back_half_delay:.2f}, ease:"sine.inOut"}});'
+    )
     js = "\n".join(js_parts)
 
     return {"html": html, "css": css, "js": js, "plugins": ["gsap"]}
@@ -96,6 +117,12 @@ def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, An
     numbered = bool(params.get("numbered", False))
     shot_idx = ctx.get("shot_index", 0)
     sid = f"sl{shot_idx}fb"
+    pack = ctx.get("shot_pack") or {}
+    fs = (pack.get("font_scale") or {}) if isinstance(pack, dict) else {}
+    fs_text = fs.get("body") or "1.75rem"
+    fs_caption = fs.get("label") or "1.15rem"
+    fs_marker = fs.get("h2") or "2.4rem"
+    fs_icon = fs.get("h2") or "1.9rem"
     rows = []
     for i, item in enumerate(items):
         if not isinstance(item, dict):
@@ -118,10 +145,10 @@ def static_fallback(params: Dict[str, Any], ctx: Dict[str, Any]) -> Dict[str, An
     css = f"""
 .{sid}-list {{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:1.1rem; }}
 .{sid}-item {{ display:flex; align-items:flex-start; gap:1.1rem; }}
-.{sid}-num {{ flex:0 0 auto; font-family:'Bebas Neue',sans-serif; font-size:2.4rem; line-height:1; color:var(--brand-accent); font-weight:900; min-width:3.2rem; }}
-.{sid}-icon {{ flex:0 0 auto; font-size:1.9rem; color:var(--brand-accent); min-width:2.4rem; }}
-.{sid}-body {{ flex:1; }}
-.{sid}-text {{ font-size:1.75rem; font-weight:700; color:var(--brand-text); line-height:1.25; }}
-.{sid}-caption {{ font-size:1.15rem; font-weight:500; color:var(--brand-text-secondary); margin-top:0.25rem; line-height:1.4; }}
+.{sid}-num {{ flex:0 0 auto; font-family:'Bebas Neue',sans-serif; font-size:{fs_marker}; line-height:1; color:var(--brand-accent); font-weight:900; min-width:3.2rem; }}
+.{sid}-icon {{ flex:0 0 auto; font-size:{fs_icon}; color:var(--brand-accent); min-width:2.4rem; }}
+.{sid}-body {{ flex:1; min-width:0; }}
+.{sid}-text {{ font-size:{fs_text}; font-weight:700; color:var(--brand-text); line-height:1.25; overflow-wrap:anywhere; }}
+.{sid}-caption {{ font-size:{fs_caption}; font-weight:500; color:var(--brand-text-secondary); margin-top:0.25rem; line-height:1.4; }}
 """
     return {"html": html, "css": css, "js": "", "plugins": [], "audio_events": []}

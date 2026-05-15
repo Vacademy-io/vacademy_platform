@@ -9,11 +9,12 @@ import html as _html
 
 METADATA = {
     "id": "three_up_grid",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "title": "Three-Up Grid",
     "description": "2-4 equal cells with numbered headers, optional headline. Staggered slide-up reveal.",
     "use_when": "Listing 2-4 parallel concepts ('three reasons', 'three pillars', 'three benefits', step summaries). Best at 5-8s shot duration.",
-    "compatible_shot_types": ["TEXT_DIAGRAM", "PROCESS_STEPS", "DATA_STORY", "*"],
+    # Explicit allow-list — Director's catalog gets cleaner signal than "*".
+    "compatible_shot_types": ["TEXT_DIAGRAM", "PROCESS_STEPS", "DATA_STORY"],
     "requires_tier": "premium",
     "requires_canvas": "any",
     "example_params": {
@@ -46,11 +47,13 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     sp = pack.get("spacing", {})
     ez = pack.get("ease", {})
 
-    fs_h1 = fs.get("h1", "clamp(3rem, min(10vw, 22vh), 16rem)")
-    fs_h2 = fs.get("h2", "clamp(2rem, min(7vw, 12vh), 8rem)")
-    fs_body = fs.get("body", "clamp(1.2rem, min(2.4vw, 4.4vh), 2.4rem)")
-    fs_caption = fs.get("caption", "clamp(1rem, min(2.4vw, 3vh), 1.8rem)")
-    fs_micro = fs.get("micro", "clamp(0.85rem, min(1.8vw, 2.3vh), 1.4rem)")  # noqa: F841 (kept for parity with other templates)
+    # Fallbacks match `portrait_720` bucket from _CANVAS_TIER_RULES so a missing
+    # shot_pack never overflows the smallest supported canvas.
+    fs_h1 = fs.get("h1", "clamp(1.6rem, min(10.5vw, 6vh), 4.75rem)")
+    fs_h2 = fs.get("h2", "clamp(1.2rem, min(7vw, 4vh), 3.1rem)")
+    fs_body = fs.get("body", "clamp(0.95rem, min(3.4vw, 1.9vh), 1.5rem)")
+    fs_caption = fs.get("caption", "clamp(0.75rem, 1.9vmin, 0.9rem)")
+    fs_micro = fs.get("micro", "clamp(0.75rem, 1.9vmin, 0.9rem)")  # noqa: F841 (kept for parity with other templates)
     safe = sp.get("safe_area", "4%")
     gap_md = sp.get("md", "24px")
     gap_lg = sp.get("lg", "40px")

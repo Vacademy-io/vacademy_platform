@@ -2635,6 +2635,24 @@ class VideoGenerationService:
                     except Exception as _ckpt_err:
                         logger.warning(f"[VideoGenService] Failed to upload checkpoints to S3: {_ckpt_err}")
 
+                    # Pillar 1 — per-run cost balance sheet. The pipeline writes
+                    # cost_breakdown.json locally to run_dir on each run() call;
+                    # we mirror it to a stable S3 path so the FE/admin can fetch
+                    # the latest report without joining ai_token_usage. The file
+                    # is overwritten on each stage iteration — the final upload
+                    # (after render or the user's chosen stop_at stage) wins.
+                    try:
+                        _cb_file = run_dir / "cost_breakdown.json"
+                        if _cb_file.exists():
+                            self.s3_service.upload_file(
+                                _cb_file,
+                                s3_key=f"ai-videos/{video_id}/cost_breakdown/cost_breakdown.json",
+                                content_type="application/json",
+                            )
+                            logger.info(f"[VideoGenService] Uploaded cost_breakdown.json for {video_id}")
+                    except Exception as _cb_err:
+                        logger.warning(f"[VideoGenService] Failed to upload cost_breakdown.json: {_cb_err}")
+
                 # Update stage status — wrap in try/except so a stale-session error
                 # doesn't abort the entire pipeline after files were already uploaded.
                 try:

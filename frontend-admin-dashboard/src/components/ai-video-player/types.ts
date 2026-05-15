@@ -47,6 +47,21 @@ export interface Entry {
     entry_meta?: {
         text?: string;
         audio_text?: string;
+        /**
+         * Per-shot caption override applied by the render server. When absent
+         * or `null`, the global caption settings (from the render request body)
+         * are used.
+         *  - `hide: true` → no caption rendered during this entry's window.
+         *  - `position`   → forces 'top' or 'bottom' for this entry only.
+         *  - `null`       → explicit "clear" sentinel emitted by the editor so
+         *                   the BE deep-merge overwrites any stale override.
+         * Stored under `entry_meta` so it rides the existing pass-through-merge
+         * `/frame/update` round-trip with no schema change.
+         */
+        caption_style?: {
+            hide?: boolean;
+            position?: 'top' | 'bottom';
+        } | null;
         [key: string]: unknown;
     };
 }

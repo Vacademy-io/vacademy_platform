@@ -11,11 +11,15 @@ import re
 
 METADATA = {
     "id": "quote_callout",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "title": "Quote Callout",
     "description": "Oversized pull quote with slam-text line reveal + small attribution. One accent word optional.",
     "use_when": "Testimonials, citations, mission statements, narrator emphasis on a memorable line. Best at 4-7s shot duration.",
-    "compatible_shot_types": ["TEXT_DIAGRAM", "KINETIC_TITLE", "*"],
+    # Explicit allow-list. KINETIC_TITLE is in the composer's specialised
+    # blocklist (it has a dedicated builder), so listing it here would be
+    # dead weight — dropped. LOWER_THIRD added: short attribution-with-quote
+    # framings are exactly this template's wheelhouse.
+    "compatible_shot_types": ["TEXT_DIAGRAM", "LOWER_THIRD"],
     "requires_tier": "premium",
     "requires_canvas": "any",
     "example_params": {
@@ -45,8 +49,10 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     sp = pack.get("spacing", {})
     ez = pack.get("ease", {})
 
-    fs_display = fs.get("display", "clamp(4rem, min(18vw, 32vh), 24rem)")
-    fs_caption = fs.get("caption", "clamp(1rem, min(2.4vw, 3vh), 1.8rem)")
+    # Fallbacks match `portrait_720` bucket from _CANVAS_TIER_RULES so a missing
+    # shot_pack never overflows the smallest supported canvas.
+    fs_display = fs.get("display", "clamp(2rem, min(14vw, 8vh), 6.25rem)")
+    fs_caption = fs.get("caption", "clamp(0.75rem, 1.9vmin, 0.9rem)")
     safe = sp.get("safe_area", "5%")
     ease_entry = ez.get("entry", "power3.out")
 
@@ -137,11 +143,13 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   font-family:'Inter',system-ui,sans-serif;
 }}
 .{sid}-quote-block {{ display:flex; flex-direction:column; gap:0.1em; max-width:96%; }}
-.{sid}-slam-wrap {{ overflow:hidden; line-height:0.95; }}
+/* padding-bottom keeps descenders ("g","y","p") from being clipped by the
+   overflow:hidden wrapper that drives the slam-reveal. */
+.{sid}-slam-wrap {{ overflow:hidden; line-height:1; padding-bottom:0.15em; }}
 .{sid}-slam-text {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
   font-size:{fs_display};
-  font-weight:400; letter-spacing:0.005em;
+  font-weight:400; letter-spacing:0.005em; line-height:0.95;
   color:var(--brand-text);
   transform:translateY(105%); will-change:transform;
 }}

@@ -32,6 +32,8 @@ public class PackageDetailV2DTO {
     private String packageSessionId;
     private String levelId;
     private String levelName;
+    private String sessionId;
+    private String sessionName;
     private String dripConditionJson;
     private List<UserDTO> instructors;
     private Long readTimeInMinutes;
@@ -45,6 +47,7 @@ public class PackageDetailV2DTO {
     private String paymentOptionStatus;
     private String paymentPlanId;
     private Double minPlanActualPrice;
+    private Double minPlanElevatedPrice;
     private String currency;
     private Integer availableSlots;
     private Integer maxSeats;

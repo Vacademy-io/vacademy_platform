@@ -490,6 +490,11 @@ export const GET_PAYMENT_OPTIONS = `${BASE_URL}/admin-core-service/v1/payment-op
 export const MAKE_DEFAULT_PAYMENT_OPTION = `${BASE_URL}/admin-core-service/v1/payment-option/make-default-payment-option`;
 export const DELETE_PAYMENT_OPTION_URL = SAVE_PAYMENT_OPTION;
 
+// Payment plan markdown (Offer Price)
+export const APPLY_MARKDOWN_URL = `${BASE_URL}/admin-core-service/v1/payment-plan/markdown/apply`;
+export const RESET_MARKDOWN_URL = `${BASE_URL}/admin-core-service/v1/payment-plan/markdown/reset`;
+export const LOOKUP_MARKDOWN_URL = `${BASE_URL}/admin-core-service/v1/payment-plan/markdown/lookup`;
+
 export const ANALYTICS_USER_ACTIVITY = `${BASE_URL}/auth-service/v1/analytics/user-activity`;
 export const ANALYTICS_ACTIVE_USERS_REALTIME = `${BASE_URL}/auth-service/v1/analytics/active-users/real-time`;
 export const ANALYTICS_ACTIVE_USERS = `${BASE_URL}/auth-service/v1/analytics/active-users`;

@@ -69,6 +69,53 @@ function getCommonLibraries(): string {
         };
         </script>
         <script>${DIAGRAM_TEMPLATES_SCRIPT}</script>
+        <script>
+        // Runtime broken-image handler (mirrors render_harness.py).
+        // Captures img load failures via document-wide capture-phase listener
+        // (img.onerror does not bubble). Tags failed images AND swaps src to
+        // a transparent 1×1 GIF so the browser stops drawing the broken-image
+        // icon. CSS in getBaseStyles then paints a brand gradient in place.
+        // Belt-and-braces sweep catches images that "succeeded" with
+        // naturalWidth==0 (CDNs serving empty 200 responses on auth fail).
+        (function () {
+            var _BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+            function _markBroken(t) {
+                if (!t || !t.getAttribute || t.hasAttribute('data-img-broken')) return;
+                t.setAttribute('data-img-broken', '1');
+                try {
+                    var orig = t.getAttribute('src') || '';
+                    if (orig) t.setAttribute('data-img-broken-src', orig.slice(0, 300));
+                    t.src = _BLANK;
+                } catch (_e) {}
+            }
+            document.addEventListener('error', function (ev) {
+                try {
+                    var t = ev && ev.target;
+                    if (!t) return;
+                    var tag = (t.tagName || '').toUpperCase();
+                    if (tag !== 'IMG') return;
+                    _markBroken(t);
+                } catch (_e) {}
+            }, true);
+            function _imgSweep() {
+                try {
+                    var imgs = document.getElementsByTagName('img');
+                    for (var i = 0; i < imgs.length; i++) {
+                        var im = imgs[i];
+                        if (im.hasAttribute('data-img-broken')) continue;
+                        if (im.complete && im.naturalWidth === 0 && im.src && im.src !== _BLANK) {
+                            _markBroken(im);
+                        }
+                    }
+                } catch (_e) {}
+            }
+            if (document.readyState === 'complete') {
+                setTimeout(_imgSweep, 1000);
+            } else {
+                window.addEventListener('load', function () { setTimeout(_imgSweep, 1000); });
+            }
+        })();
+        </script>
     `;
 }
 
@@ -456,6 +503,19 @@ function getKenBurnsStyles(): string {
             [style*="opacity:0"]:not([data-allow-hidden]):not([data-vx-managed]),
             [style*="opacity: 0"]:not([data-allow-hidden]):not([data-vx-managed]) {
               animation: __sd_force_reveal 0.4s linear 5s forwards;
+            }
+
+            /* Runtime broken-image fallback (mirrors render_harness.py).
+               NOTE: pseudo-elements (::before/::after) don't render on
+               <img> because it's a replaced element — we use background +
+               transparent-color instead, and the JS handler swaps src to a
+               transparent 1×1 GIF so the broken-image icon stops painting.
+               Net result: a soft brand-gradient block where the broken
+               image was, instead of the browser's default broken-icon. */
+            img[data-img-broken="1"] {
+              background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+              color: transparent;
+              font-size: 0;
             }
         </style>
     `;

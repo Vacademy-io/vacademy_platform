@@ -381,6 +381,37 @@ class SerperService:
     )
     _BAD_EXTENSIONS = (".gif", ".ico")  # .svg handled separately (wiki flags OK)
 
+    # Crawler / proxy / SEO-preview hosts that 403 or return junk for
+    # programmatic fetches. Serper Images sometimes ranks these high because
+    # the social platform aggressively SEO-publishes them, but the URL only
+    # serves a real image to a logged-in browser session matching the
+    # original UA + referer. Headless Playwright (and any HEAD probe) gets
+    # a 403 or a blank/expired response. Result: silent broken-image icon.
+    # Reject at fetch time so they never make it to the candidate list.
+    _IMG_BLOCKLIST_HOSTS = (
+        "lookaside.instagram.com",
+        "lookaside.fbsbx.com",
+        "lookaside.facebook.com",
+        "external.fbsbx.com",
+        "external-iad3-1.xx.fbcdn.net",
+        "scontent.cdninstagram.com",
+        "scontent.xx.fbcdn.net",
+        "scontent.fbsbx.com",
+        "graph.facebook.com",
+        "fbcdn.net",
+        "cdninstagram.com",
+    )
+    # URL substrings that signal a crawler/proxy/cache URL even when the
+    # host isn't fully blocklisted. Matches the `/seo/google_widget/crawler/`
+    # endpoints Meta serves, plus the generic `/lookaside/crawler/` path.
+    _IMG_BLOCKLIST_URL_PATTERNS = (
+        "/seo/google_widget/crawler",
+        "/lookaside/crawler",
+        "/crawler/media",
+        "facebook.com/login",
+        "instagram.com/accounts/login",
+    )
+
     @staticmethod
     def _is_govt_or_edu_host(host: str) -> bool:
         """True for `.gov.*` / `.ac.*` / `.edu` ccTLD-style hosts. Quality boost."""
@@ -431,6 +462,21 @@ class SerperService:
         if not url:
             return (False, "empty url")
         url_lower = url.lower().split("?")[0]
+        # Host blocklist — crawler / SEO-preview / proxy hosts that serve
+        # broken or auth-required content to non-browser clients. Shot-8/9
+        # whiteouts in the Chanakya run were `lookaside.instagram.com` and
+        # `lookaside.fbsbx.com` URLs that 403 in Playwright.
+        host = (result.get("host") or "").lower()
+        host_match = host[4:] if host.startswith("www.") else host
+        for blocked in SerperService._IMG_BLOCKLIST_HOSTS:
+            if host_match == blocked or host_match.endswith("." + blocked):
+                return (False, f"blocklisted host: {host_match}")
+        # URL substring blocklist — same rationale, catches the crawler
+        # endpoint even when the host isn't fully blocked.
+        url_full_lower = url.lower()
+        for pat in SerperService._IMG_BLOCKLIST_URL_PATTERNS:
+            if pat in url_full_lower:
+                return (False, f"blocklisted url pattern: {pat}")
         # Format / extension.
         if any(url_lower.endswith(ext) for ext in SerperService._BAD_EXTENSIONS):
             return (False, "bad extension")

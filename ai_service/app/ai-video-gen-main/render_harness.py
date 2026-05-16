@@ -288,6 +288,26 @@ HARNESS_TEMPLATE = """
                   [style*="opacity: 0"]:not([data-allow-hidden]):not([data-vx-managed]) {
                     animation: __sd_force_reveal 0.4s linear 5s forwards;
                   }
+
+                  /* Runtime broken-image fallback.
+                     When an `<img>` fails to load (CDN went stale between the
+                     pipeline's HEAD probe and render time, CORS denial, host
+                     became flaky, etc.), the browser paints a broken-image
+                     icon + alt text by default. Paired with the JS handler
+                     below which swaps `src` to a transparent 1×1 GIF AND
+                     tags the element — the browser then paints no replaced
+                     content, the background gradient shows through, and the
+                     alt-text glyph is hidden via `color: transparent`.
+
+                     NOTE: pseudo-elements (`::before`/`::after`) do NOT
+                     render on `<img>` because <img> is a CSS replaced
+                     element. Background and color DO work, which is why
+                     the swap-src + bg-gradient approach is used. */
+                  img[data-img-broken="1"] {
+                    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+                    color: transparent;
+                    font-size: 0;
+                  }
                 </style>
 
                 <script>
@@ -312,6 +332,75 @@ HARNESS_TEMPLATE = """
                       };
                       console.log('[SHOT-TELEM] library_receipts=' + JSON.stringify(receipt));
                     } catch (e) { /* never break the page on telemetry */ }
+                  })();
+
+                  /* Runtime img-load failure handler.
+                     Captures load failures via the document-wide capture-phase
+                     `error` listener (img.onerror doesn't bubble, so we MUST
+                     use capture). For each failed image:
+                       1. Tag with `data-img-broken="1"` so the CSS above
+                          hides the broken raster + paints a soft gradient.
+                       2. Log a telemetry line — easy to grep for the URL
+                          that died between HEAD probe and render time, so
+                          the next pipeline run can blacklist it.
+
+                     This is a render-time SAFETY NET only. The pipeline's
+                     `_verify_image_url` HEAD probe should catch most dead
+                     URLs upstream. This catches the rest: CDN expired in
+                     the seconds between probe and render, hot-CDN cache
+                     miss, host throttled the Playwright fetch, etc. */
+                  (function () {
+                    // 1×1 transparent GIF — assigning to img.src stops the
+                    // browser from drawing the broken-image icon while
+                    // keeping the element's CSS box (so width/height/
+                    // object-fit/etc. continue to apply for the gradient).
+                    var _BLANK = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+
+                    function _markBroken(t, srcForTelemetry) {
+                      if (!t || !t.getAttribute || t.hasAttribute('data-img-broken')) return;
+                      t.setAttribute('data-img-broken', '1');
+                      try {
+                        // Stash original src for diagnostics.
+                        if (srcForTelemetry) t.setAttribute('data-img-broken-src', srcForTelemetry.slice(0, 300));
+                        // Swap to blank so the broken-image icon doesn't paint
+                        // over the gradient. The new src is a valid image, so
+                        // `load` fires (not `error`) — no re-tag loop.
+                        t.src = _BLANK;
+                      } catch (_se) {}
+                      try { console.log('[SHOT-TELEM] img_broken src=' + (srcForTelemetry || '?').slice(0, 200)); } catch (_te) {}
+                    }
+
+                    document.addEventListener('error', function (ev) {
+                      try {
+                        var t = ev && ev.target;
+                        if (!t) return;
+                        var tag = (t.tagName || '').toUpperCase();
+                        if (tag !== 'IMG') return;
+                        _markBroken(t, t.getAttribute('src') || '');
+                      } catch (_imgErr) { /* never break render on telemetry */ }
+                    }, true);
+
+                    // Belt-and-braces sweep at t≈1s: catch images that
+                    // "loaded" with naturalWidth==0 (CDNs serving empty 200
+                    // bodies on auth fail) and images whose `error` fired
+                    // before this listener attached.
+                    function _imgSweep() {
+                      try {
+                        var imgs = document.getElementsByTagName('img');
+                        for (var i = 0; i < imgs.length; i++) {
+                          var im = imgs[i];
+                          if (im.hasAttribute('data-img-broken')) continue;
+                          if (im.complete && im.naturalWidth === 0 && im.src && im.src !== _BLANK) {
+                            _markBroken(im, im.src);
+                          }
+                        }
+                      } catch (_e) {}
+                    }
+                    if (document.readyState === 'complete') {
+                      setTimeout(_imgSweep, 1000);
+                    } else {
+                      window.addEventListener('load', function () { setTimeout(_imgSweep, 1000); });
+                    }
                   })();
                 </script>
               </head>

@@ -18179,35 +18179,68 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             if hit and hit.get("url"):
                 qs = hit.get("_quality_score", 0.0)
                 src = hit.get("host") or hit.get("source", "")
-                print(
-                    f"    🔎 [pipeline] Web image (Serper, host={src}, score={qs}): {web_q[:60]}..."
-                )
-                return {
-                    "entry":       entry,
-                    "full_tag":    full_tag,
-                    "stock_url":   hit["url"],
-                    "image_bytes": None,
-                    "filename":    None,
-                    "usage":       {},
-                }
-            # Web filter rejected everything — cascade to stock as a softer
-            # fallback before giving up on found-imagery.
-            print(f"    🔎 [pipeline] Web returned no quality-passing result for '{web_q[:50]}' → cascading to stock")
-            img_source = "stock"
+                if not self._verify_image_url(hit["url"]):
+                    print(
+                        f"    ⚠️ [pipeline] Web URL failed HEAD (host={src}): "
+                        f"{hit['url'][:80]} → cascading to stock"
+                    )
+                else:
+                    print(
+                        f"    🔎 [pipeline] Web image (Serper, host={src}, score={qs}): {web_q[:60]}..."
+                    )
+                    return {
+                        "entry":       entry,
+                        "full_tag":    full_tag,
+                        "stock_url":   hit["url"],
+                        "image_bytes": None,
+                        "filename":    None,
+                        "usage":       {},
+                    }
+            # Web filter rejected everything (or candidate URL failed HEAD) —
+            # cascade DIRECTLY to AI gen. Stock photos are skipped at this
+            # tier: when the run has cultural context, AI gen with cultural
+            # prompt injection produces a region-appropriate image far more
+            # reliably than Pexels' bag-of-words match (the same reason we
+            # added must_match_keywords on the stock path). Stock remains as
+            # the post-AI-fail fallback inside `_image_fallback_chain`.
+            print(f"    🔎 [pipeline] Web returned no usable result for '{web_q[:50]}' → cascading to AI gen")
+            img_source = "generate"
 
         # ── Stock (Pexels / Pixabay) — keyword-cleaned query. ──────────────
+        # Only entered when the LLM explicitly requested stock; web rejections
+        # cascade to AI gen above, not here.
         if img_source == "stock":
             stock_q = self._pexels_query_for(prompt)
             services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), stock_q)
+            # When the run has a cultural context, require results whose alt
+            # text mentions a region keyword. Pexels/Pixabay relevance scoring
+            # is bag-of-words so "Indian student library" can return a generic
+            # student-in-library shot. Filtering rejects those silent
+            # mismatches — caller cascades to web → AI gen, which guarantees
+            # an Indian-context image.
+            _cc_must_match = None
+            _cc = getattr(self, "_cultural_context", None)
+            if _cc is not None and _cc.has_region and _cc.extra_stock_keywords:
+                _cc_must_match = list(_cc.extra_stock_keywords)
             for svc in services:
                 provider_name = type(svc).__name__.replace("Service", "")
-                result = svc.search_photos(stock_q, orientation=orientation)
+                result = svc.search_photos(
+                    stock_q, orientation=orientation,
+                    must_match_keywords=_cc_must_match,
+                )
                 if result:
+                    stock_url = result.get("url", "")
+                    if stock_url and not self._verify_image_url(stock_url):
+                        print(
+                            f"    ⚠️ [pipeline] Stock URL failed HEAD ({provider_name}): "
+                            f"{stock_url[:80]} → trying next provider"
+                        )
+                        continue
                     print(f"    📷 [pipeline] Stock photo ({provider_name}): {stock_q[:60]}")
                     return {
                         "entry":       entry,
                         "full_tag":    full_tag,
-                        "stock_url":   result.get("url", ""),
+                        "stock_url":   stock_url,
                         "image_bytes": None,
                         "filename":    None,
                         "usage":       {},
@@ -18220,7 +18253,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 pass
             else:
                 hit = self._web_search_quality_image(stock_q, canvas_w=canvas_w, canvas_h=canvas_h)
-                if hit and hit.get("url"):
+                if hit and hit.get("url") and self._verify_image_url(hit["url"]):
                     print(f"    🔎 [pipeline] Stock-miss → web hit ({hit.get('host','?')}): {stock_q[:50]}")
                     return {
                         "entry":       entry,
@@ -18238,7 +18271,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not image_bytes:
             # Seedream returned nothing — cascade through Pexels/Pixabay → SVG
             # placeholder so the shot doesn't ship with a broken `placeholder.png`.
-            fb = self._image_fallback_chain(prompt, is_cutout=is_cutout)
+            # skip_ai=True: caller IS the AI-gen-failed branch; the chain
+            # shouldn't loop back into the same generator that just failed.
+            fb = self._image_fallback_chain(prompt, is_cutout=is_cutout, skip_ai=True)
             if fb:
                 return {
                     "entry":       entry,
@@ -18275,40 +18310,225 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "cutout_failed": cutout_failed,
         }
 
+    # Per-process cache of URL → bool. URLs that pass once are pinned True
+    # for the remainder of the render so we don't HEAD them twice. URLs
+    # that fail are pinned False so cascades don't retry the same dead URL.
+    _URL_VERIFY_CACHE: Dict[str, bool] = {}
+    _URL_VERIFY_CACHE_MAX = 1024
+
+    @classmethod
+    def _verify_image_url(cls, url: str, *, timeout: float = 6.0) -> bool:
+        """Probe an image URL with HEAD (falls back to a 0-byte ranged GET).
+
+        Returns True when the URL serves a non-empty image-ish payload at
+        request time. Returns False on:
+          • Any HTTP status >= 400
+          • Connection / DNS / TLS errors
+          • Content-Type not starting with image/ (when reported)
+          • Content-Length == 0 (when reported)
+          • Login / redirect to a login page (heuristic on URL)
+
+        Cheap: HEAD-only by default. Falls back to a Range 0-0 GET when the
+        host doesn't speak HEAD (some CDNs 405 on HEAD). Each URL is probed
+        at most once per process via the class-level cache.
+
+        Why this matters: Serper + Pexels APIs sometimes return URLs that
+        404 / 403 / redirect to a Login page when fetched outside the
+        original session. Without this gate, those URLs reach the renderer
+        and produce silent broken-image icons (no fallback). With it, the
+        caller can immediately cascade to the next provider — or to AI gen.
+        """
+        if not url:
+            return False
+        if url.startswith("data:"):
+            return True  # base64 data URI; always renderable
+        if url.startswith("file://") or url.startswith("/"):
+            return True  # local file; renderer handles file→data conversion
+        # Already-known result
+        cached = cls._URL_VERIFY_CACHE.get(url)
+        if cached is not None:
+            return cached
+
+        def _decide(ok: bool) -> bool:
+            if len(cls._URL_VERIFY_CACHE) >= cls._URL_VERIFY_CACHE_MAX:
+                # Evict an arbitrary entry — order doesn't matter for correctness.
+                cls._URL_VERIFY_CACHE.pop(next(iter(cls._URL_VERIFY_CACHE)), None)
+            cls._URL_VERIFY_CACHE[url] = ok
+            return ok
+
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+        }
+
+        def _check_response(resp) -> bool:
+            try:
+                status = getattr(resp, "status", None) or resp.getcode()
+            except Exception:
+                status = 200
+            if status and status >= 400:
+                return False
+            try:
+                final_url = resp.geturl() or url
+            except Exception:
+                final_url = url
+            final_lower = (final_url or "").lower()
+            if "/login" in final_lower or "accounts/login" in final_lower:
+                return False
+            try:
+                ct = (resp.headers.get("Content-Type") or "").lower()
+            except Exception:
+                ct = ""
+            if ct and not (ct.startswith("image/") or "octet-stream" in ct or "svg" in ct):
+                # text/html etc. = the host is serving an interstitial page,
+                # not the image. Treat as failure even if 200.
+                return False
+            try:
+                cl = int(resp.headers.get("Content-Length") or 0)
+            except Exception:
+                cl = 0
+            if cl == 1 or (ct.startswith("image/") and 0 < cl < 256):
+                # 1x1 tracking pixel / placeholder — not usable content.
+                return False
+            return True
+
+        try:
+            req = urllib.request.Request(url, headers=headers, method="HEAD")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if _check_response(resp):
+                    return _decide(True)
+        except urllib.error.HTTPError as he:
+            if he.code in (403, 404, 410):
+                return _decide(False)
+            # 405 Method Not Allowed → host doesn't speak HEAD; fall through.
+        except Exception:
+            # DNS / timeout / TLS / etc — fall through to ranged GET.
+            pass
+
+        try:
+            range_headers = dict(headers)
+            range_headers["Range"] = "bytes=0-2047"
+            req = urllib.request.Request(url, headers=range_headers, method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                if _check_response(resp):
+                    # Confirm we actually got bytes (some hosts 200 with empty body).
+                    try:
+                        sample = resp.read(256)
+                    except Exception:
+                        sample = b""
+                    if sample:
+                        return _decide(True)
+        except Exception:
+            pass
+        return _decide(False)
+
     def _image_fallback_chain(
         self,
         prompt: str,
         is_cutout: bool = False,
+        *,
+        skip_ai: bool = False,
     ) -> Optional[Dict[str, Any]]:
-        """Cascade fallback when Seedream returns no bytes.
+        """Cascade fallback when the primary path can't produce a usable image.
 
-        Order:
-          1. Pexels stock photo (skipped for cutouts — would not have transparency).
+        Main pipeline cascade (in callers):
+            reference → web → AI gen → THIS chain (stock → SVG)
+
+        AI gen is tried in the main path because it's more reliable for
+        culturally-specific shots than Pexels' bag-of-words match. By the
+        time we land here, AI gen has either already been tried and failed
+        (callers pass `skip_ai=True`) or the caller skipped AI gen for a
+        specific reason — in which case stock_fallback's `skip_ai=False`
+        default lets AI gen run as the rescue.
+
+        Order inside this chain:
+          1. Pexels stock photo (each candidate HEAD-verified before commit).
           2. Pixabay stock photo (same).
-          3. Synthesized SVG placeholder using brand palette + prompt text.
-              Always succeeds, so this is also the absolute last resort.
+          3. AI image generation (Recraft/Seedream) — only when `skip_ai=False`.
+          4. Synthesized SVG placeholder. Always succeeds — last resort.
+
+        Cutouts skip steps 1-2 (stock photos rarely have alpha) and go
+        straight to AI gen for transparency support.
 
         Returns a dict matching the result-dict schema used by both
         `_process_image_task_simple` and `process_image_task`:
           - {"stock_url": "..."} for Pexels/Pixabay hits
+          - {"image_bytes": <png_bytes>} for AI-gen success
           - {"image_bytes": <svg_bytes>, "is_svg": True} for the synthesized placeholder
           - None only if synthesis itself fails (should never happen).
         """
-        # Stock fallback (skip for cutouts — stock photos rarely have alpha)
+        # Stock fallback (skip for cutouts — stock photos rarely have alpha).
+        # Each candidate is HEAD-verified so we don't replace one dead URL
+        # with another. If a provider returns an unverifiable URL, fall
+        # through to the next provider rather than commit the bad URL.
+        # Cultural-keyword filter is applied here too — same reason as the
+        # main path: cultural-context runs must not silently ship a generic
+        # off-context image just because Pexels keyword-matched a few words.
         if not is_cutout:
             try:
                 orientation = "portrait" if (
                     getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080)
                 ) else "landscape"
                 services = self._resolve_stock_provider_chain("", prompt)
+                _cc_must_match_fb = None
+                _cc_fb = getattr(self, "_cultural_context", None)
+                if _cc_fb is not None and _cc_fb.has_region and _cc_fb.extra_stock_keywords:
+                    _cc_must_match_fb = list(_cc_fb.extra_stock_keywords)
                 for svc in services:
                     provider_name = type(svc).__name__.replace("Service", "")
-                    result = svc.search_photos(prompt, orientation=orientation)
-                    if result and result.get("url"):
-                        print(f"    🔄 Image fallback → stock photo ({provider_name}): {prompt[:50]}...")
-                        return {"stock_url": result["url"], "image_bytes": None}
+                    try:
+                        result = svc.search_photos(
+                            prompt, orientation=orientation,
+                            must_match_keywords=_cc_must_match_fb,
+                        )
+                    except Exception as _ee:
+                        print(f"    ⚠️ Stock fallback {provider_name} errored ({_ee})")
+                        continue
+                    url = (result or {}).get("url") or ""
+                    if not url:
+                        continue
+                    if not self._verify_image_url(url):
+                        print(f"    ⚠️ Stock fallback {provider_name} URL failed HEAD: {url[:80]}")
+                        continue
+                    print(f"    🔄 Image fallback → stock photo ({provider_name}): {prompt[:50]}...")
+                    return {"stock_url": url, "image_bytes": None}
             except Exception as e:
-                print(f"    ⚠️ Stock fallback errored ({e}); continuing to synth SVG")
+                print(f"    ⚠️ Stock fallback errored ({e}); continuing")
+
+        # AI image generation — last real-image attempt before SVG placeholder.
+        # Skipped when the caller is _itself_ the AI-gen-failed branch (avoids
+        # recursion). The AI generator is bytes-in-bytes-out so its output
+        # never needs URL verification.
+        if not skip_ai:
+            try:
+                ai_prompt = prompt
+                if not is_cutout:
+                    try:
+                        image_style = getattr(self, '_current_image_style', 'realistic cinematic photograph')
+                        if image_style and image_style.lower() not in ai_prompt.lower():
+                            ai_prompt = f"{image_style}, {ai_prompt}"
+                        ai_prompt = self._inject_cultural_into_ai_prompt(ai_prompt)
+                    except Exception:
+                        pass  # If enhancement fails, send the bare prompt.
+                ai_bytes, _usage = self._call_image_generation_llm(ai_prompt, reference_image_url=None)
+                if ai_bytes:
+                    if is_cutout:
+                        try:
+                            ai_bytes = self._remove_background(ai_bytes)
+                        except Exception:
+                            pass
+                    print(f"    🔄 Image fallback → AI gen ({len(ai_bytes)} bytes): {prompt[:50]}...")
+                    return {"image_bytes": ai_bytes, "is_svg": False}
+            except _ImageGenRateLimitError:
+                # Rate-limit isn't a permanent failure — the executor needs
+                # to see it so the task gets requeued. Don't paper over.
+                raise
+            except Exception as e:
+                print(f"    ⚠️ AI gen fallback errored ({e}); continuing to synth SVG")
 
         # Synth SVG placeholder — cannot fail
         try:
@@ -19260,48 +19480,81 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     if _hit and _hit.get("url"):
                         qs = _hit.get("_quality_score", 0.0)
                         host = _hit.get("host") or _hit.get("source", "")
-                        print(
-                            f"    🔎 Web image (Serper, host={host}, score={qs}) for "
-                            f"seg={task.get('seg_idx', '?')}: {web_query[:60]}..."
-                        )
-                        return {
-                            "entry": task.get("entry"),
-                            "entry_id": id(task.get("entry")),
-                            "full_tag": task.get("full_tag", ""),
-                            "stock_url": _hit["url"],
-                            "image_bytes": None,
-                            "filename": None,
-                            "usage": {},
-                        }
-                # Web filter rejected everything → try stock as a softer
-                # fallback before defaulting to AI gen. Quality-filtered web
-                # results that ALL fail dimension/AR is a strong signal the
-                # subject is too niche for editorial sources; stock + AI are
-                # the remaining options.
+                        # HEAD-verify before committing. Serper's blocklist
+                        # filter already drops known-bad hosts, but stale
+                        # CDN URLs / expired tokens / unreachable mirrors
+                        # still slip through. Verifying here lets us cascade
+                        # to AI gen on failure rather than ship a shot that
+                        # renders with a broken-image icon.
+                        if not self._verify_image_url(_hit["url"]):
+                            print(
+                                f"    ⚠️ Web image URL failed HEAD verify (host={host}, "
+                                f"seg={task.get('seg_idx', '?')}): {_hit['url'][:80]} → cascading to AI gen"
+                            )
+                        else:
+                            print(
+                                f"    🔎 Web image (Serper, host={host}, score={qs}) for "
+                                f"seg={task.get('seg_idx', '?')}: {web_query[:60]}..."
+                            )
+                            return {
+                                "entry": task.get("entry"),
+                                "entry_id": id(task.get("entry")),
+                                "full_tag": task.get("full_tag", ""),
+                                "stock_url": _hit["url"],
+                                "image_bytes": None,
+                                "filename": None,
+                                "usage": {},
+                            }
+                # Web rejected everything → cascade DIRECTLY to AI gen.
+                # AI gen with cultural-prompt injection produces a region-
+                # appropriate image far more reliably than Pexels'
+                # bag-of-words match. Stock remains as the post-AI-fail
+                # fallback inside `_image_fallback_chain`.
                 print(
-                    f"    🔎 Web returned no quality-passing result for "
-                    f"seg={task.get('seg_idx', '?')}: '{web_query[:50]}' → cascading to stock"
+                    f"    🔎 Web returned no usable result for "
+                    f"seg={task.get('seg_idx', '?')}: '{web_query[:50]}' → cascading to AI gen"
                 )
-                img_source = "stock"
+                img_source = "generate"
 
             # Stock photo path — keyword-cleaned + region-tagged query.
-            # `_pexels_query_for()` strips the AI-style cinematic prefix the
-            # per-shot LLM tends to emit (e.g. "realistic cinematic photograph,
-            # Cinematic upward view of...") which Pexels can't keyword-match.
+            # Only entered when the LLM explicitly requested stock; web
+            # rejections cascade to AI gen above, not here.
             if img_source == "stock":
                 orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
                 stock_q = self._pexels_query_for(task["prompt"])
                 services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), stock_q)
+                # Cultural keyword filter — see comment at the simple-path
+                # call site (~ ln 18207). Required to make Pexels respect
+                # the run's cultural context instead of returning generic
+                # imagery on bag-of-words match.
+                _cc_must_match2 = None
+                _cc2 = getattr(self, "_cultural_context", None)
+                if _cc2 is not None and _cc2.has_region and _cc2.extra_stock_keywords:
+                    _cc_must_match2 = list(_cc2.extra_stock_keywords)
                 for svc in services:
                     provider_name = type(svc).__name__.replace("Service", "")
-                    result = svc.search_photos(stock_q, orientation=orientation)
+                    result = svc.search_photos(
+                        stock_q, orientation=orientation,
+                        must_match_keywords=_cc_must_match2,
+                    )
                     if result:
+                        stock_url = result.get("url", "")
+                        # HEAD-verify the candidate URL — Pexels/Pixabay
+                        # CDN responses are usually reliable but occasionally
+                        # serve 404s on stale entries. Cascade to the next
+                        # provider on failure rather than commit the bad URL.
+                        if stock_url and not self._verify_image_url(stock_url):
+                            print(
+                                f"    ⚠️ Stock URL failed HEAD ({provider_name}, "
+                                f"seg={task.get('seg_idx', '?')}): {stock_url[:80]} → trying next provider"
+                            )
+                            continue
                         print(f"    📷 Stock photo ({provider_name}) for seg={task.get('seg_idx', '?')}: {stock_q[:60]}")
                         return {
                             "entry": task.get("entry"),
                             "entry_id": id(task.get("entry")),
                             "full_tag": task.get("full_tag", ""),
-                            "stock_url": result.get("url", ""),
+                            "stock_url": stock_url,
                             "image_bytes": None,
                             "filename": None,
                             "usage": {},
@@ -19433,7 +19686,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
                 # Cascade through Pexels/Pixabay → SVG placeholder so the
                 # `<img>` tag isn't left pointing at the LLM's `placeholder.png`.
-                fb = self._image_fallback_chain(prompt, is_cutout=is_cutout)
+                # skip_ai=True: caller IS the AI-gen-failed branch; the chain
+                # shouldn't loop back into the same generator that just failed.
+                fb = self._image_fallback_chain(prompt, is_cutout=is_cutout, skip_ai=True)
                 if fb:
                     return {
                         "entry_id":   id(task["entry"]),

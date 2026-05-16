@@ -818,56 +818,128 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 } catch (_se) { return 'err'; }
                             };
 
-                            try {
-                                ${originalCode}
-                                try { console.log("[SHOT-TELEM] shot=${e.id} exit ok root-opacity=" + __snapRootOpacity()); } catch (_te2) {}
-                            } catch (e) {
-                                try { console.log("[SHOT-TELEM] shot=${e.id} exit threw root-opacity=" + __snapRootOpacity() + " err=" + (e && (e.message || e))); } catch (_te3) {}
-                                console.error("[SCRIPT-ERR shot=${e.id}] Script execution error in snippet:", e && (e.message || e));
-                                // Visual recovery: when the LLM script crashes mid-animation,
-                                // GSAP often leaves elements stuck at the from state
-                                // (opacity:0, scale, transform) because fromTo applies the
-                                // from values immediately then errors before queuing the tween.
-                                // Walk the shadow root and force any element with an
-                                // invisible inline style back to a visible neutral state —
-                                // matching what admin FE preview shows when animations
-                                // play out fully.
-                                try {
-                                    // Phase 1.2: un-tag `data-vx-managed` so the CSS
-                                    // safety net's 5s force-reveal CAN fire on any
-                                    // element this in-line recovery missed. The
-                                    // dispatcher tagged elements before script eval
-                                    // assuming GSAP/anime would own them; the catch
-                                    // proves the assumption was wrong.
-                                    const _tagged = scope.querySelectorAll('[data-vx-managed]');
-                                    for (const _t of _tagged) {
-                                        try { _t.removeAttribute('data-vx-managed'); } catch (_te) {}
+                            // Helper: detect a clip-path value that collapses the
+                            // element to ~0 visible area. Real-world patterns
+                            // seen in the LLM output (verified against the
+                            // Chanakya shot files):
+                            //   shot-5:  polygon(0% 0%, 0% 0%, 0% 0%, 0% 100%)
+                            //            → 3 of 4 vertices identical
+                            //   shot-7:  inset(50% 0% 50% 0%)
+                            //            → top+bottom sum to 100%, collapsed vertically
+                            //   shot-10: polygon(50% 50%, ... , 50% 50%)
+                            //            → all vertices identical
+                            //   plus circle(0) / ellipse(0 0) / inset(100% ...)
+                            // Returns true if the value would render essentially nothing.
+                            var __isCollapsedClipPath = function (cp) {
+                                if (!cp || cp === 'none') return false;
+                                // inset(t r b l). Collapse cases:
+                                //   • any side >= 100% → degenerate
+                                //   • top + bottom >= 100% → 0 visible height (shot-7)
+                                //   • left + right >= 100% → 0 visible width
+                                // Non-percent units (px/em) are treated as 0 here —
+                                // we can't know collapse without element size, but
+                                // GSAP clipPath wipes consistently use %.
+                                var insetMatch = cp.match(/inset\(\s*([^)]+)\)/);
+                                if (insetMatch) {
+                                    var raw = insetMatch[1].trim().split(/\s+/);
+                                    var sides = [0, 0, 0, 0]; // top right bottom left
+                                    for (var _si = 0; _si < Math.min(raw.length, 4); _si++) {
+                                        var m = raw[_si].match(/^(-?[0-9]+(?:\.[0-9]+)?)%$/);
+                                        sides[_si] = m ? parseFloat(m[1]) : 0;
                                     }
-                                    const _all = scope.querySelectorAll('*');
-                                    for (const _el of _all) {
-                                        const _st = _el.style;
+                                    // CSS shorthand: fewer values mirror to opposite sides.
+                                    if (raw.length === 1) { sides[1] = sides[2] = sides[3] = sides[0]; }
+                                    else if (raw.length === 2) { sides[2] = sides[0]; sides[3] = sides[1]; }
+                                    else if (raw.length === 3) { sides[3] = sides[1]; }
+                                    if (sides[0] >= 100 || sides[1] >= 100 || sides[2] >= 100 || sides[3] >= 100) return true;
+                                    if (sides[0] + sides[2] >= 100) return true; // top+bottom
+                                    if (sides[1] + sides[3] >= 100) return true; // left+right
+                                }
+                                // circle(0) / circle(0%) / circle(0px ...). Lookahead
+                                // `(?![\d.])` blocks matching the leading "0" of
+                                // "0.5em" or "05" as the full radius (no false fires
+                                // on visibly-sized small clip circles).
+                                if (/circle\(\s*0(?:\.0+)?(?:px|%|em|rem)?(?![\d.])/.test(cp)) return true;
+                                if (/ellipse\(\s*0(?:\.0+)?(?:px|%|em|rem)?\s+0(?:\.0+)?(?:px|%|em|rem)?(?![\d.])/.test(cp)) return true;
+                                if (/polygon\(/.test(cp)) {
+                                    var pts = cp.match(/-?[0-9]+(?:\.[0-9]+)?%?\s+-?[0-9]+(?:\.[0-9]+)?%?/g) || [];
+                                    if (pts.length < 3) return true; // not enough points for a real shape
+                                    var uniq = {};
+                                    for (var _i = 0; _i < pts.length; _i++) {
+                                        uniq[pts[_i].replace(/\s+/g, ' ').trim()] = 1;
+                                    }
+                                    var u = Object.keys(uniq).length;
+                                    // If 3+ vertices of an N-gon collapse to <=2 unique points
+                                    // OR more than half the vertices share one coord, the
+                                    // visible area is ~0. The exact threshold isn't critical
+                                    // — false positives only fire when the script has ALSO
+                                    // failed to open the reveal, in which case forcing
+                                    // clip-path:none is the correct repair.
+                                    if (u <= 2) return true;
+                                    if (u < Math.max(2, Math.ceil(pts.length / 2))) return true;
+                                }
+                                return false;
+                            };
+
+                            // Helper: walk the shadow scope and force any element
+                            // out of a hidden inline state back to a visible neutral
+                            // state. `force` is true when the script threw (we no
+                            // longer trust ANY of its work); false for the success
+                            // path, where we only repair elements that still look
+                            // hidden AFTER the script ran (e.g. shot-5: clipPath
+                            // collapses to a polygon with 3 identical points and
+                            // the reveal tween never opened it).
+                            var __vxRecover = function (force) {
+                                try {
+                                    if (force) {
+                                        var _tagged = scope.querySelectorAll('[data-vx-managed]');
+                                        for (var _ti = 0; _ti < _tagged.length; _ti++) {
+                                            try { _tagged[_ti].removeAttribute('data-vx-managed'); } catch (_te) {}
+                                        }
+                                    }
+                                    var _all = scope.querySelectorAll('*');
+                                    for (var _ai = 0; _ai < _all.length; _ai++) {
+                                        var _el = _all[_ai];
+                                        var _st = _el.style;
                                         if (!_st) continue;
-                                        // opacity:0 → 1 (covers fade-in animations that crashed)
-                                        if (_st.opacity !== '' && parseFloat(_st.opacity) < 1) {
-                                            _st.opacity = '1';
+                                        if (force) {
+                                            // opacity:0 → 1 (covers fade-in animations that crashed)
+                                            if (_st.opacity !== '' && parseFloat(_st.opacity) < 1) _st.opacity = '1';
+                                            // visibility:hidden → visible
+                                            if (_st.visibility === 'hidden') _st.visibility = 'visible';
+                                            // scale:0 / scale(0.x) → drop transform
+                                            if (_st.transform && /scale\((0(\.\d+)?|0\.\d)\)/.test(_st.transform)) {
+                                                _st.transform = '';
+                                            }
                                         }
-                                        // visibility:hidden → visible
-                                        if (_st.visibility === 'hidden') {
-                                            _st.visibility = 'visible';
-                                        }
-                                        // scale:0/0.something → reset transform if it's an entrance scale
-                                        if (_st.transform && /scale\((0(\.\d+)?|0\.\d)\)/.test(_st.transform)) {
-                                            _st.transform = '';
-                                        }
-                                        // clip-path: inset(...) hidden states
-                                        if (_st.clipPath && /inset\(.*100%.*\)/.test(_st.clipPath)) {
-                                            _st.clipPath = '';
+                                        // clip-path collapse — repair on BOTH paths.
+                                        // On the success path this catches the
+                                        // shot-5-white pattern where gsap.set hid the
+                                        // root but the gsap.to reveal never applied
+                                        // (scrub-mode edge / silent failure / etc.).
+                                        if (_st.clipPath && __isCollapsedClipPath(_st.clipPath)) {
+                                            _st.clipPath = 'none';
                                         }
                                     }
                                 } catch (_recoveryErr) {
-                                    // Recovery itself shouldn't crash; log and move on.
                                     console.warn("[SCRIPT-ERR shot=${e.id}] visual recovery failed:", _recoveryErr && _recoveryErr.message);
                                 }
+                            };
+
+                            try {
+                                ${originalCode}
+                                try { console.log("[SHOT-TELEM] shot=${e.id} exit ok root-opacity=" + __snapRootOpacity()); } catch (_te2) {}
+                                // Soft sweep after a successful run. Only repairs
+                                // collapsed clip-path — the script "succeeded" so
+                                // we don't touch opacity / visibility / transform
+                                // (those may be legitimate end-states for shots
+                                // with delayed entrances or terminal hide-outs).
+                                __vxRecover(false);
+                            } catch (e) {
+                                try { console.log("[SHOT-TELEM] shot=${e.id} exit threw root-opacity=" + __snapRootOpacity() + " err=" + (e && (e.message || e))); } catch (_te3) {}
+                                console.error("[SCRIPT-ERR shot=${e.id}] Script execution error in snippet:", e && (e.message || e));
+                                // Hard sweep: script crashed, repair every hide state.
+                                __vxRecover(true);
                             }
                         })(document.getElementById('${e.id}').shadowRoot);
                       `;

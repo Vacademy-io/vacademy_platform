@@ -123,21 +123,28 @@ class PixabayService:
         query: str,
         orientation: str = "landscape",
         per_page: int = 5,
+        must_match_keywords: Optional[List[str]] = None,
     ) -> Optional[Dict[str, str]]:
         """Return a single best-match photo dict or None.
 
         Shape matches PexelsService.search_photos: {url, photographer,
         photographer_url, alt, pexels_url}. The `pexels_url` key holds the
         Pixabay page URL to keep call sites uniform.
+
+        When `must_match_keywords` is set, only return a photo whose `tags`
+        contain at least one keyword (case-insensitive). On no match we
+        return None so the caller can cascade to AI gen rather than ship
+        an off-context image.
         """
         if not self.is_available:
             return None
 
+        effective_per_page = max(3, min(40 if must_match_keywords else per_page, 200))
         params = {
             "q": query,
             "image_type": "photo",
             "orientation": self._ORIENTATION_MAP.get(orientation, "all"),
-            "per_page": max(3, min(per_page, 200)),  # Pixabay requires per_page >= 3
+            "per_page": effective_per_page,  # Pixabay requires per_page >= 3
             "safesearch": "true",
         }
         data = self._request(self.PHOTOS_URL, params)
@@ -149,7 +156,21 @@ class PixabayService:
             logger.info(f"[Pixabay] No photo results for: {query[:50]}")
             return None
 
-        photo = hits[0]
+        if must_match_keywords:
+            kws = [k.lower() for k in must_match_keywords if k]
+            for h in hits:
+                tags_lower = (h.get("tags") or "").lower()
+                if any(kw in tags_lower for kw in kws):
+                    photo = h
+                    break
+            else:
+                logger.info(
+                    f"[Pixabay] No photo matched cultural keywords {kws} "
+                    f"in {len(hits)} candidates for: {query[:50]}"
+                )
+                return None
+        else:
+            photo = hits[0]
         # largeImageURL (1280w) is reliably available; fullHDURL/imageURL require
         # full API tier and may be absent for free keys.
         url = photo.get("fullHDURL") or photo.get("largeImageURL") or photo.get("webformatURL")

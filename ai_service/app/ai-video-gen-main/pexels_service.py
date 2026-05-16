@@ -126,6 +126,7 @@ class PexelsService:
         query: str,
         orientation: str = "landscape",
         per_page: int = 5,
+        must_match_keywords: Optional[List[str]] = None,
     ) -> Optional[Dict[str, str]]:
         """
         Search Pexels photos. Returns the best match or None.
@@ -134,18 +135,29 @@ class PexelsService:
             query: Search terms (e.g., "ocean waves sunset")
             orientation: "landscape" | "portrait" | "square"
             per_page: Number of results to fetch (1-80)
+            must_match_keywords: If provided, only return a photo whose `alt`
+                text contains at least one of these keywords (case-insensitive).
+                Used by the pipeline to enforce cultural context (e.g. ["indian",
+                "india"]) — Pexels relevance scoring is bag-of-words so a query
+                of "Indian student library" can return a Norwegian student in a
+                library. This filter rejects those silent mismatches; the
+                caller cascades to the next provider or to AI gen.
 
         Returns:
             {"url": "https://images.pexels.com/...", "photographer": "...", "alt": "..."}
-            or None if no results / API error.
+            or None if no results / API error / no result matches the
+            cultural keyword filter.
         """
         if not self.is_available:
             return None
 
+        # When a cultural filter is active we fetch more candidates so the
+        # filter has room to scan past off-context results. Pexels caps at 80.
+        effective_per_page = min(40 if must_match_keywords else per_page, 80)
         params = {
             "query": query,
             "orientation": orientation,
-            "per_page": min(per_page, 80),
+            "per_page": effective_per_page,
             "size": "large",
         }
 
@@ -158,8 +170,28 @@ class PexelsService:
             logger.info(f"[Pexels] No photo results for: {query[:50]}")
             return None
 
-        # Pick the first result (Pexels sorts by relevance)
-        photo = photos[0]
+        # Apply cultural-keyword filter when provided: scan in order, pick the
+        # first photo whose alt mentions any required keyword. No fallback to
+        # first-photo here — the caller cascades on None, which is correct
+        # behaviour when we KNOW the cultural context but Pexels can't satisfy
+        # it. Falling back to "any photo" would mean shipping the same
+        # off-context image that triggered the bug.
+        if must_match_keywords:
+            kws = [k.lower() for k in must_match_keywords if k]
+            for p in photos:
+                alt_lower = (p.get("alt") or "").lower()
+                if any(kw in alt_lower for kw in kws):
+                    photo = p
+                    break
+            else:
+                logger.info(
+                    f"[Pexels] No photo matched cultural keywords {kws} "
+                    f"in {len(photos)} candidates for: {query[:50]}"
+                )
+                return None
+        else:
+            # Pick the first result (Pexels sorts by relevance)
+            photo = photos[0]
         src = photo.get("src", {})
 
         # Prefer large2x (w=2000) for 1920px video frames, fall back to large (w=940)

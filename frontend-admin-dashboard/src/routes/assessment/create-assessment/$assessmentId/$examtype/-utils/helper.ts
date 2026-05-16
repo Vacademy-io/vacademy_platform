@@ -24,6 +24,19 @@ import { convertCustomFields } from '../-services/assessment-services';
 import testAccessSchema from './add-participants-schema';
 import { CourseWithSessionsType } from '@/stores/study-library/use-study-library-store';
 import { BatchData } from '@/types/assessments/batch-details';
+import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
+
+export const getAssessmentJoinLink = (
+    learnerPortalBaseUrl: string | undefined | null,
+    code: string | undefined | null
+) => {
+    const learnerBaseUrl = learnerPortalBaseUrl
+        ? learnerPortalBaseUrl.startsWith('http')
+            ? learnerPortalBaseUrl
+            : `https://${learnerPortalBaseUrl}`
+        : BASE_URL_LEARNER_DASHBOARD;
+    return `${learnerBaseUrl}/register?code=${code ?? ''}`;
+};
 
 interface Role {
     roleId: string;

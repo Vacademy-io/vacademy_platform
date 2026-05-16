@@ -90,6 +90,7 @@ import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/eval
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
 import { Route as CommunityQuestionPaperIndexRouteImport } from "./routes/community/question-paper/index"
 import { Route as CommunicationWhatsappTemplatesIndexRouteImport } from "./routes/communication/whatsapp-templates/index"
+import { Route as CommunicationNotificationHubIndexRouteImport } from "./routes/communication/notification-hub/index"
 import { Route as CommunicationInboxIndexRouteImport } from "./routes/communication/inbox/index"
 import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./routes/certificate-generation/student-data/index"
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
@@ -782,6 +783,16 @@ const CommunicationWhatsappTemplatesIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/communication/whatsapp-templates/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const CommunicationNotificationHubIndexRoute =
+  CommunicationNotificationHubIndexRouteImport.update({
+    id: "/communication/notification-hub/",
+    path: "/communication/notification-hub/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/communication/notification-hub/index.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -1495,6 +1506,7 @@ export interface FileRoutesByFullPath {
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
+  "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
@@ -1656,6 +1668,7 @@ export interface FileRoutesByTo {
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox": typeof CommunicationInboxIndexRoute
+  "/communication/notification-hub": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId": typeof ContentContentIdIndexRoute
@@ -1819,6 +1832,7 @@ export interface FileRoutesById {
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
   "/certificate-generation/student-data/": typeof CertificateGenerationStudentDataIndexRoute
   "/communication/inbox/": typeof CommunicationInboxIndexRoute
+  "/communication/notification-hub/": typeof CommunicationNotificationHubIndexRoute
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
@@ -1983,6 +1997,7 @@ export interface FileRouteTypes {
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
+    | "/communication/notification-hub/"
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
@@ -2144,6 +2159,7 @@ export interface FileRouteTypes {
     | "/automation/chatbot-flows"
     | "/certificate-generation/student-data"
     | "/communication/inbox"
+    | "/communication/notification-hub"
     | "/communication/whatsapp-templates"
     | "/community/question-paper"
     | "/content/$contentId"
@@ -2306,6 +2322,7 @@ export interface FileRouteTypes {
     | "/automation/chatbot-flows/"
     | "/certificate-generation/student-data/"
     | "/communication/inbox/"
+    | "/communication/notification-hub/"
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
@@ -2468,6 +2485,7 @@ export interface RootRouteChildren {
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
   CertificateGenerationStudentDataIndexRoute: typeof CertificateGenerationStudentDataIndexRoute
   CommunicationInboxIndexRoute: typeof CommunicationInboxIndexRoute
+  CommunicationNotificationHubIndexRoute: typeof CommunicationNotificationHubIndexRoute
   CommunicationWhatsappTemplatesIndexRoute: typeof CommunicationWhatsappTemplatesIndexRoute
   CommunityQuestionPaperIndexRoute: typeof CommunityQuestionPaperIndexRoute
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
@@ -3143,6 +3161,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof CommunicationWhatsappTemplatesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/communication/notification-hub/": {
+      id: "/communication/notification-hub/"
+      path: "/communication/notification-hub"
+      fullPath: "/communication/notification-hub/"
+      preLoaderRoute: typeof CommunicationNotificationHubIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/communication/inbox/": {
       id: "/communication/inbox/"
       path: "/communication/inbox"
@@ -3769,6 +3794,8 @@ const rootRouteChildren: RootRouteChildren = {
   CertificateGenerationStudentDataIndexRoute:
     CertificateGenerationStudentDataIndexRoute,
   CommunicationInboxIndexRoute: CommunicationInboxIndexRoute,
+  CommunicationNotificationHubIndexRoute:
+    CommunicationNotificationHubIndexRoute,
   CommunicationWhatsappTemplatesIndexRoute:
     CommunicationWhatsappTemplatesIndexRoute,
   CommunityQuestionPaperIndexRoute: CommunityQuestionPaperIndexRoute,

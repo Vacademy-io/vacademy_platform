@@ -115,24 +115,52 @@ public class EmailService {
      * @param sourceId Optional source ID
      * @param userId Optional user ID
      */
-    private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId) {
+    private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId, String fromEmail) {
         try {
             NotificationLog notificationLog = new NotificationLog();
             notificationLog.setId(UUID.randomUUID().toString());
             notificationLog.setNotificationType("EMAIL");
-            notificationLog.setChannelId(to); // Email address
+            notificationLog.setChannelId(to); // Email address (recipient — institute's counterparty)
             notificationLog.setBody(body != null ? body : subject); // Use body if available, otherwise subject
             notificationLog.setSource(source != null ? source : "EMAIL_SERVICE");
             notificationLog.setSourceId(sourceId);
             notificationLog.setUserId(userId);
+            // Institute-side address (the sender). Mirrors how WhatsApp uses sender_business_channel_id
+            // for the institute's WA business number — lets us scope inbox/stats by institute.
+            // Normalize "Display Name <email>" → email so it matches the address list returned by
+            // EmailConfigurationService.getInstituteConfiguredFromAddresses (which also extracts).
+            String normalizedFrom = normalizeFromAddress(fromEmail);
+            if (normalizedFrom != null) {
+                notificationLog.setSenderBusinessChannelId(normalizedFrom);
+            }
             notificationLog.setNotificationDate(LocalDateTime.now());
-            
+
             notificationLogRepository.save(notificationLog);
             logger.debug("Saved email notification log for: {} with ID: {}", to, notificationLog.getId());
         } catch (Exception e) {
             // Log error but don't fail email sending if log save fails
             logger.error("Failed to save email notification log for: {} - Error: {}", to, e.getMessage(), e);
         }
+    }
+
+    /**
+     * Extracts the bare email address from a possibly-formatted "From" value.
+     * Returns lowercased, trimmed email for {@code "support@x.com"}, {@code "Display Name <support@x.com>"},
+     * or {@code "  Support <SUPPORT@X.com>  "}. Returns null for null/blank input.
+     *
+     * Public so AnnouncementDeliveryService and other write paths apply the same normalization.
+     */
+    public static String normalizeFromAddress(String raw) {
+        if (raw == null) return null;
+        String s = raw.trim();
+        if (s.isEmpty()) return null;
+        int lt = s.indexOf('<');
+        int gt = s.lastIndexOf('>');
+        if (lt >= 0 && gt > lt) {
+            String inner = s.substring(lt + 1, gt).trim();
+            if (!inner.isEmpty()) return inner.toLowerCase();
+        }
+        return s.toLowerCase();
     }
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
@@ -331,7 +359,7 @@ public class EmailService {
 
             String messageId = null;
             try { messageId = message.getMessageID(); } catch (Exception ignored) {}
-            saveEmailNotificationLog(to, subject, text, "EMAIL_SERVICE", messageId, null);
+            saveEmailNotificationLog(to, subject, text, "EMAIL_SERVICE", messageId, null, fromToUse);
 
         } catch (Exception e) {
             logger.error("Failed to send email", e);
@@ -415,7 +443,7 @@ public class EmailService {
                     logger.info("OTP email successfully sent to: {}", to);
 
                     // Preserve existing OTP behavior: sourceId = calling service identifier (replies to OTP emails are not expected).
-                    saveEmailNotificationLog(to, emailSubject, emailBody, "OTP_SERVICE", service, null);
+                    saveEmailNotificationLog(to, emailSubject, emailBody, "OTP_SERVICE", service, null, fromToUse);
 
                 } catch (Exception e) {
                     logger.error("Error while sending OTP email", e);
@@ -598,7 +626,7 @@ public class EmailService {
 
                     String messageId = null;
                     try { messageId = message.getMessageID(); } catch (Exception ignored) {}
-                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", messageId, null);
+                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", messageId, null, finalFromEmail);
 
                 } catch (Exception e) {
                     logger.error("Failed to send HTML email to: {}", to, e);
@@ -693,7 +721,7 @@ public class EmailService {
 
                     String messageId = null;
                     try { messageId = message.getMessageID(); } catch (Exception ignored) {}
-                    saveEmailNotificationLog(to, emailSubject, emailBody, service != null ? service : "ATTACHMENT_EMAIL_SERVICE", messageId, null);
+                    saveEmailNotificationLog(to, emailSubject, emailBody, service != null ? service : "ATTACHMENT_EMAIL_SERVICE", messageId, null, fromToUse);
 
                 } catch (MessagingException e) {
                     logger.error("Error while preparing or sending the email", e);

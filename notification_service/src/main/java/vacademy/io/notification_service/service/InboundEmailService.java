@@ -97,13 +97,18 @@ public class InboundEmailService {
                 return;
             }
 
-            // 5. Institute lookup — best-effort, does not block saving
+            // 5. Institute lookup — best-effort, does not block saving.
+            // matchedInstituteAddress is the institute-side address (the To: that matched a mapping).
+            // We store it as sender_business_channel_id so inbox queries can scope by institute,
+            // mirroring how WhatsApp uses sender_business_channel_id for the institute's WA number.
             String instituteId = null;
+            String matchedInstituteAddress = null;
             for (String toAddr : toAddresses) {
                 Optional<EmailAddressMapping> mapping =
                         emailAddressMappingRepository.findByEmailAddressIgnoreCaseAndIsActiveTrue(toAddr);
                 if (mapping.isPresent()) {
                     instituteId = mapping.get().getInstituteId();
+                    matchedInstituteAddress = mapping.get().getEmailAddress();
                     break;
                 }
             }
@@ -164,6 +169,12 @@ public class InboundEmailService {
             inboundLog.setSourceId(messageId);
             inboundLog.setSource(parentLogId);
             inboundLog.setUserId(userId);
+            // email_address_mapping rows are already canonical lowercase emails, but route through
+            // the shared normalizer for consistency with EmailService / AnnouncementDeliveryService.
+            String normalizedInbox = EmailService.normalizeFromAddress(matchedInstituteAddress);
+            if (normalizedInbox != null) {
+                inboundLog.setSenderBusinessChannelId(normalizedInbox);
+            }
             inboundLog.setMessagePayload(messagePayload);
             inboundLog.setNotificationDate(LocalDateTime.now());
 

@@ -10,6 +10,7 @@ import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { MyButton } from '@/components/design-system/button';
 import {
     copyToClipboard,
+    getAssessmentJoinLink,
     handleDownloadQRCode,
 } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-utils/helper';
 import { Copy, DotsSixVertical, DownloadSimple, SpeakerLow } from '@phosphor-icons/react';
@@ -47,7 +48,6 @@ import { savePrivateQuestions } from '../-services/assessment-details-services';
 import { AssessmentDetailQuestions } from '../-utils/assessment-details-interface';
 import { transformResponseDataToMyQuestionsSchema } from '@/routes/assessment/question-papers/-utils/helper';
 import { MyQuestion } from '@/types/assessments/question-paper-form';
-import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { QuestionType } from '@/constants/dummy-data';
 
 interface Announcement {
@@ -319,6 +319,11 @@ const AssessmentPreview = ({ handleCloseDialog }: { handleCloseDialog: () => voi
         }
     }, [selectedSection, currentQuestionIndexes]);
 
+    const joinLink = getAssessmentJoinLink(
+        instituteDetails?.learner_portal_base_url,
+        assessmentDetails[0]?.saved_data.assessment_url
+    );
+
     if (isLoading || isQuestionsLoading) return <DashboardLoader />;
     return (
         <div className="flex flex-col">
@@ -328,18 +333,14 @@ const AssessmentPreview = ({ handleCloseDialog }: { handleCloseDialog: () => voi
                     <div className="flex items-center gap-8">
                         <div className="flex items-center gap-4">
                             <span className="px-3 py-2 text-sm underline">
-                                {`${BASE_URL_LEARNER_DASHBOARD}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}`}
+                                {joinLink}
                             </span>
                             <MyButton
                                 type="button"
                                 scale="small"
                                 buttonType="secondary"
                                 className="h-9 min-w-10"
-                                onClick={() =>
-                                    copyToClipboard(
-                                        `${BASE_URL_LEARNER_DASHBOARD}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}`
-                                    )
-                                }
+                                onClick={() => copyToClipboard(joinLink)}
                             >
                                 <Copy size={32} />
                             </MyButton>
@@ -348,7 +349,7 @@ const AssessmentPreview = ({ handleCloseDialog }: { handleCloseDialog: () => voi
                 </div>
                 <div className="flex items-center gap-4">
                     <QRCode
-                        value={`${BASE_URL_LEARNER_DASHBOARD}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}`}
+                        value={joinLink}
                         className="size-14"
                         id={`qr-code-svg-participants`}
                     />

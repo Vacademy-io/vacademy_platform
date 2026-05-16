@@ -12,10 +12,10 @@ import { useInstituteQuery } from '@/services/student-list-section/getInstituteD
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import {
     copyToClipboard,
+    getAssessmentJoinLink,
     handleDownloadQRCode,
 } from '../../create-assessment/$assessmentId/$examtype/-utils/helper';
 import { ScheduleTestMainDropdownComponent } from './ScheduleTestDetailsDropdownMenu';
-import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -52,6 +52,11 @@ const ScheduleTestDetails = ({
             });
         }
     };
+
+    const joinLink = getAssessmentJoinLink(
+        instituteDetails?.learner_portal_base_url,
+        scheduleTestContent.join_link
+    );
 
     if (isLoading) return <DashboardLoader />;
     return (
@@ -193,7 +198,7 @@ const ScheduleTestDetails = ({
                 <div className="flex items-center gap-2 text-sm text-neutral-500">
                     <h1 className="!font-normal text-black">Join Link:</h1>
                     <span className="px-3 py-2 text-sm underline">
-                        {`${BASE_URL_LEARNER_DASHBOARD}/register?code=${scheduleTestContent.join_link}`}
+                        {joinLink}
                     </span>
                     <MyButton
                         type="button"
@@ -202,8 +207,7 @@ const ScheduleTestDetails = ({
                         className="h-8 min-w-8"
                         onClick={(e) => {
                             e.stopPropagation();
-                            copyToClipboard(`${BASE_URL_LEARNER_DASHBOARD}/register?code=
-                            ${scheduleTestContent.join_link}`);
+                            copyToClipboard(joinLink);
                         }}
                     >
                         <Copy size={32} />
@@ -211,10 +215,9 @@ const ScheduleTestDetails = ({
                 </div>
                 <div className="flex items-center gap-4">
                     <QRCode
-                        value={`${BASE_URL_LEARNER_DASHBOARD}/register?code=
-                            ${scheduleTestContent.join_link}`}
+                        value={joinLink}
                         className="size-16"
-                        id={`qr-code-svg-assessment-list-${BASE_URL_LEARNER_DASHBOARD}/register?code=${scheduleTestContent.join_link}`}
+                        id={`qr-code-svg-assessment-list-${scheduleTestContent.join_link}`}
                     />
                     <MyButton
                         type="button"
@@ -223,7 +226,7 @@ const ScheduleTestDetails = ({
                         className="h-8 min-w-8"
                         onClick={(e) => {
                             handleDownloadQRCode(
-                                `qr-code-svg-assessment-list-${BASE_URL_LEARNER_DASHBOARD}/register?code=${scheduleTestContent.join_link}`
+                                `qr-code-svg-assessment-list-${scheduleTestContent.join_link}`
                             );
                             e.stopPropagation();
                         }}

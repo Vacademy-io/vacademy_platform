@@ -259,7 +259,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
     @Query("""
             SELECT DISTINCT al FROM ActivityLog al
             LEFT JOIN FETCH al.assignmentSlideTracked vt
-            WHERE al.userId = :userId AND al.slideId = :slideId
+            WHERE (:userId IS NULL OR :userId = '' OR al.userId = :userId)
+              AND al.slideId = :slideId
             """)
     Page<ActivityLog> findActivityLogsWithAssignmentSlide(@Param("userId") String userId,
             @Param("slideId") String slideId,

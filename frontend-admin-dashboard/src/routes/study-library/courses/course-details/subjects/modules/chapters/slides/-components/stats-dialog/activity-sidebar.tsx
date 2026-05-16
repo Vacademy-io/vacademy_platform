@@ -14,6 +14,7 @@ import { UserActivity } from '@/types/study-library/activity-stats-response-type
 import { useActivityStatsStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/activity-stats-store';
 
 export const ActivityStatsSidebar = () => {
+    const [open, setOpen] = useState(false);
     const [searchInput, setSearchInput] = useState('');
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -31,13 +32,14 @@ export const ActivityStatsSidebar = () => {
         data: activityStats,
         isLoading,
         error,
-    } = useQuery(
-        getSlideActivityStats({
+    } = useQuery({
+        ...getSlideActivityStats({
             slideId: slideId as string,
             page,
             size: pageSize,
-        })
-    );
+        }),
+        enabled: open && !!slideId,
+    });
 
     const formatTimeSpent = (timeInSeconds: number) => {
         const hours = Math.floor(timeInSeconds / 3600);
@@ -121,7 +123,7 @@ export const ActivityStatsSidebar = () => {
     const totalPages = activityStats?.totalPages ?? 0;
 
     return (
-        <Dialog>
+        <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 <MyButton
                     buttonType="secondary"

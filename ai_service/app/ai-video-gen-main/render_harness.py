@@ -258,7 +258,62 @@ HARNESS_TEMPLATE = """
                   @keyframes kbZoomPanTL { from { transform: scale(1.0) translate(2%, 2%); } to { transform: scale(1.15) translate(-2%, -2%); } }
                   .shot-enter { animation: shotFadeIn 0.6s ease-out forwards; }
                   @keyframes shotFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+                  /* ====================================================================
+                     CSS visibility safety net (Phase 1.2)
+
+                     If the LLM-emitted script sets an element to `opacity:0` inline and
+                     then fails to run its GSAP/anime/etc. fade-in (because an optional
+                     library threw, the JS sanitizer missed an edge case, or the script
+                     never reached the relevant tween), this rule force-reveals the
+                     element after 5 seconds. The shot may look stiff, but it ships
+                     CONTENT — never a blank canvas (the shot-2-white failure mode).
+
+                     Scope guards:
+                       • `[style*="opacity:0"]` matches only INLINE-styled opacity:0 —
+                         CSS class-driven opacity (used by deterministic templates) is
+                         untouched, because those have known animations.
+                       • `[data-allow-hidden]` is the LLM opt-out for elements that
+                         legitimately stay hidden (e.g. error-state divs).
+                       • `[data-vx-managed]` is set by the dispatcher on any element
+                         it knows GSAP / anime / Vivus owns, so legitimate long-delay
+                         entrances (e.g. delay:8s) aren't double-revealed by this rule.
+
+                     Use `animation` not `transition`: animations fire unconditionally
+                     when the rule applies; transitions require a property change after
+                     load and won't help if the JS that would change it never ran.
+                  */
+                  @keyframes __sd_force_reveal { to { opacity: 1; } }
+                  [style*="opacity:0"]:not([data-allow-hidden]):not([data-vx-managed]),
+                  [style*="opacity: 0"]:not([data-allow-hidden]):not([data-vx-managed]) {
+                    animation: __sd_force_reveal 0.4s linear 5s forwards;
+                  }
                 </style>
+
+                <script>
+                  /* Library-load receipts (Phase 1.3 telemetry). One line per page.
+                     Captured by the Playwright `page.on("console")` hook in the
+                     render worker and written to shot_telemetry.jsonl. Use the
+                     `[SHOT-TELEM]` prefix so grep-by-prefix lifts everything. */
+                  (function () {
+                    try {
+                      var receipt = {
+                        gsap:           typeof gsap !== 'undefined',
+                        MotionPath:     typeof MotionPathPlugin !== 'undefined',
+                        anime:          typeof anime !== 'undefined',
+                        RoughNotation:  typeof RoughNotation !== 'undefined',
+                        Vivus:          typeof Vivus !== 'undefined',
+                        Howler:         typeof Howler !== 'undefined',
+                        katex:          typeof katex !== 'undefined',
+                        mermaid:        typeof mermaid !== 'undefined',
+                        Prism:          typeof Prism !== 'undefined',
+                        d3:             typeof d3 !== 'undefined',
+                        splitReveal:    typeof splitReveal !== 'undefined'
+                      };
+                      console.log('[SHOT-TELEM] library_receipts=' + JSON.stringify(receipt));
+                    } catch (e) { /* never break the page on telemetry */ }
+                  })();
+                </script>
               </head>
               <body>
                 <!-- World Layer: Camera moves this. Contains Snippets & Character -->

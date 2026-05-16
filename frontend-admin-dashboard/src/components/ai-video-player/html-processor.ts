@@ -432,6 +432,31 @@ function getKenBurnsStyles(): string {
               from { opacity: 0; }
               to   { opacity: 1; }
             }
+
+            /* ============================================================
+               CSS visibility safety net (Phase 1.2 — mirrors render_harness.py)
+
+               If the LLM-emitted script sets an element to inline opacity:0
+               and then fails to run its GSAP/anime/etc. fade-in (because an
+               optional library threw, the JS sanitizer missed a pattern, or
+               the script never reached the relevant tween), this rule
+               force-reveals the element after 5 seconds. The shot may look
+               stiff but it ships CONTENT — never blank canvas.
+
+               Scope: matches ONLY inline opacity:0; CSS-class-driven opacity
+               (used by deterministic templates with known animations) is
+               untouched. `data-allow-hidden` is the LLM opt-out for
+               legitimately-hidden elements. `data-vx-managed` is set by the
+               dispatcher on elements it knows are owned by GSAP/anime so
+               long-delay entrances aren't double-revealed.
+
+               Keep BYTE-IDENTICAL to the rule in render_harness.py.
+            */
+            @keyframes __sd_force_reveal { to { opacity: 1; } }
+            [style*="opacity:0"]:not([data-allow-hidden]):not([data-vx-managed]),
+            [style*="opacity: 0"]:not([data-allow-hidden]):not([data-vx-managed]) {
+              animation: __sd_force_reveal 0.4s linear 5s forwards;
+            }
         </style>
     `;
 }

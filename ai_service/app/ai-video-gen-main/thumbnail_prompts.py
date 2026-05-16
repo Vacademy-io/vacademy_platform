@@ -51,10 +51,10 @@ INTENT_PRESETS: Dict[str, Dict[str, Any]] = {
             "and gives the thumbnail its energy"
         ),
         "type_style": (
-            "ultra-heavy condensed sans-serif (Impact / Bebas Neue / Anton style), "
-            "all caps, very tight letter spacing, oversized so it fills 35-50% of "
-            "the frame height, pure white with a black or hot-color stroke. "
-            "ONE word painted in an accent color for emphasis"
+            "heavy bold sans-serif with NORMAL letter spacing (not condensed, "
+            "not squeezed — each letter clearly distinguishable). All caps. "
+            "Pure white with a black or hot-color outline / stroke. ONE word "
+            "painted in an accent color for emphasis"
         ),
         "headline_brief": (
             "Write like MrBeast / Marques Brownlee promo copy — a punchy benefit "
@@ -71,9 +71,10 @@ INTENT_PRESETS: Dict[str, Dict[str, Any]] = {
             "Soft dramatic light, clean backdrop, the face anchors the frame"
         ),
         "type_style": (
-            "heavy condensed sans-serif, all caps or mixed-case bold, oversized, "
-            "white with a colored stroke. ONE key noun painted in a punchy "
-            "accent color (yellow, cyan, hot pink, lime)"
+            "heavy bold sans-serif with NORMAL legible letter spacing (not "
+            "condensed). All caps or mixed-case bold. White with a colored "
+            "stroke. ONE key noun painted in a punchy accent color (yellow, "
+            "cyan, hot pink, lime)"
         ),
         "headline_brief": (
             "Write a curiosity-gap headline (5 words max). Tease the surprising "
@@ -92,9 +93,9 @@ INTENT_PRESETS: Dict[str, Dict[str, Any]] = {
             "creator's hands or face visible. Optional progress markers or arrows"
         ),
         "type_style": (
-            "chunky heavy sans-serif, all caps or sentence case bold, oversized, "
-            "white on a contrasting color band or stroke. ONE number or key "
-            "word painted in an accent color"
+            "chunky heavy sans-serif with NORMAL legible letter spacing (not "
+            "condensed). All caps or sentence case bold. White on a contrasting "
+            "color band or stroke. ONE number or key word painted in an accent color"
         ),
         "headline_brief": (
             "Write a results-forward or stakes-forward tutorial hook (5 words max). "
@@ -112,9 +113,9 @@ INTENT_PRESETS: Dict[str, Dict[str, Any]] = {
             "a hint of confetti or motion. No empty scenery"
         ),
         "type_style": (
-            "very heavy display sans-serif, all caps, massive scale, "
-            "white with a vibrant accent color (red, yellow, cyan) on the "
-            "key word or as a background band"
+            "heavy bold sans-serif with NORMAL letter spacing — fully legible, "
+            "NOT condensed or squeezed. All caps. White with a vibrant accent "
+            "color (red, yellow, cyan) on the key word or as a background band"
         ),
         "headline_brief": (
             "Write an electrifying event reveal (3 words max). All caps okay. "
@@ -132,9 +133,11 @@ INTENT_PRESETS: Dict[str, Dict[str, Any]] = {
             "clear focal subject. NEVER empty scenery"
         ),
         "type_style": (
-            "ultra-condensed news-display sans-serif (Impact / Anton style), "
-            "all caps, oversized, white with a heavy black stroke OR white on a "
-            "blood-red / hot-yellow color band. ONE key word in an accent color"
+            "heavy bold news-display sans-serif (think a strong news-magazine "
+            "headline) with NORMAL legible letter spacing — fully readable at "
+            "thumbnail size, NOT compressed. All caps. White with a heavy black "
+            "stroke OR white on a blood-red / hot-yellow color band. ONE key "
+            "word in an accent color"
         ),
         "headline_brief": (
             "Write a news hook with stakes or revelation (6 words max). "
@@ -151,9 +154,9 @@ INTENT_PRESETS: Dict[str, Dict[str, Any]] = {
             "story. Cinematic shallow focus, atmospheric light. Subject-forward"
         ),
         "type_style": (
-            "bold condensed sans-serif (Oswald / Bebas style), oversized, "
-            "white with subtle color tint or glow, all caps or title case. "
-            "Tighter spacing, lower in the frame so the face dominates"
+            "bold sans-serif with NORMAL legible letter spacing — readable, "
+            "NOT compressed. All caps or title case. White with subtle color "
+            "tint or glow. Lower in the frame so the face dominates"
         ),
         "headline_brief": (
             "Write an emotional one-line hook (4 words max). "
@@ -170,9 +173,10 @@ INTENT_PRESETS: Dict[str, Dict[str, Any]] = {
             "the frame. Movie-poster intensity"
         ),
         "type_style": (
-            "very heavy display sans-serif (Impact / Bebas style), MASSIVE scale, "
-            "all caps, white with a strong stroke or chrome / gold gradient. "
-            "Treat it like a film title — the heaviest text style of any intent"
+            "very heavy display sans-serif with NORMAL legible letter spacing — "
+            "readable, NOT condensed. All caps. White with a strong stroke or "
+            "chrome / gold gradient. Movie-poster heft without sacrificing "
+            "letter distinctness"
         ),
         "headline_brief": (
             "Write a movie-trailer title (3 words max, ALL CAPS). "
@@ -423,14 +427,19 @@ def build_recraft_thumbnail_prompt(
     if primary:
         tier_lines.append(
             f"TIER 1 (largest, dominant headline): the words \"{primary}\". "
-            "Render OVERSIZED, occupying ~25-35% of the frame height. "
+            "Render LARGE and bold, occupying ~15-25% of the frame height — "
+            "big enough to dominate, but with ENOUGH ROOM that every letter "
+            "is fully legible and not squeezed against its neighbours. If "
+            "the words don't fit at that size with normal letter spacing, "
+            "break them onto a second line rather than condensing the letters. "
             f"{type_style}."
         )
     if secondary:
         tier_lines.append(
             f"TIER 2 (smaller, immediately below TIER 1, same font family but "
-            f"~50-65% of TIER 1's height): the words \"{secondary}\". "
-            "Same alignment as TIER 1, slightly tighter weight okay."
+            f"~55-70% of TIER 1's height): the words \"{secondary}\". "
+            "Same alignment as TIER 1, same NORMAL letter spacing (do not "
+            "condense to fit)."
         )
     if tagline:
         tier_lines.append(
@@ -505,8 +514,18 @@ def build_recraft_thumbnail_prompt(
         "single line of uniform-sized text spanning the full width; empty "
         "wide landscapes with no subject; thin tall serif fonts; small text; "
         "cluttered overlays; generic stock-photo blandness; muted desaturated "
-        "palettes; soft-pastel marketing-brochure energy. "
-        # 9. Quality bar.
+        "palettes; soft-pastel marketing-brochure energy; OVERLY CONDENSED "
+        "typography where letters bleed into each other (no Bebas-style "
+        "extreme compression that makes an F look like an E). "
+        # 9. Legibility quality bar — hard requirement on letter rendering.
+        "LEGIBILITY IS MANDATORY: every letter in every tier must be clearly "
+        "distinguishable. Use NORMAL letter spacing — not compressed, not "
+        "squeezed. No two letters should touch or overlap. Each letter must "
+        "be recognizable on its own (an F must look like an F, not an E; an "
+        "I must not merge with an adjacent letter). If the words don't fit "
+        "at the chosen size with normal spacing, break onto an extra line or "
+        "reduce the text size — NEVER condense the letterforms. "
+        # 10. Final quality bar.
         "This thumbnail should look like the best-performing thumbnail on a "
         "successful creator's channel — emotion-forward, visually loud, "
         "instantly clickable, with text laid out in a clear hierarchy. Sharp "

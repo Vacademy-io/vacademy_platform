@@ -781,9 +781,48 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 __sd_Vivus.LINEAR = window.Vivus.LINEAR;
                             }
 
+                            // Phase 1.3 telemetry — emit ENTER on script eval so we
+                            // can later see which shots failed to reach EXIT (= script
+                            // threw mid-execution). The console listener in the render
+                            // worker tees these to shot_telemetry.jsonl for grep-by-id.
+                            try { console.log("[SHOT-TELEM] shot=${e.id} enter"); } catch (_te) {}
+
+                            // Tag every element currently in the shadow scope with
+                            // `data-vx-managed` so the CSS visibility safety net's
+                            // 5s force-reveal rule does NOT fire on elements that
+                            // the dispatcher knows are owned by an active animation
+                            // pipeline (their fades are handled by GSAP/anime, not
+                            // by the LLM's inline-opacity:0). If the script
+                            // subsequently errors, the recovery walker below still
+                            // un-tags them so the safety net CAN fire on legitimately-
+                            // stuck elements. Net effect: the safety net's 5s
+                            // reveal only triggers when the dispatcher's recovery
+                            // ALSO failed.
+                            try {
+                                const _scoped = scope.querySelectorAll('[style*="opacity:0"], [style*="opacity: 0"]');
+                                for (const _el of _scoped) {
+                                    if (_el && _el.setAttribute) _el.setAttribute('data-vx-managed', '1');
+                                }
+                            } catch (_tagErr) { /* tagging must never break the page */ }
+
+                            // Helper: snapshot #shot-root opacity. The shot-2-white bug
+                            // showed shot-root stuck at opacity 0 in the rendered MP4.
+                            // Logging it at every exit (and in the catch) makes the
+                            // failure mode visible in shot_telemetry.jsonl — easy to
+                            // grep for `root-opacity=0` to find blank shots before users do.
+                            var __snapRootOpacity = function () {
+                                try {
+                                    var _r = scope.querySelector('#shot-root') || scope.host;
+                                    if (!_r) return 'no-root';
+                                    return (getComputedStyle ? getComputedStyle(_r).opacity : (_r.style && _r.style.opacity)) || '?';
+                                } catch (_se) { return 'err'; }
+                            };
+
                             try {
                                 ${originalCode}
+                                try { console.log("[SHOT-TELEM] shot=${e.id} exit ok root-opacity=" + __snapRootOpacity()); } catch (_te2) {}
                             } catch (e) {
+                                try { console.log("[SHOT-TELEM] shot=${e.id} exit threw root-opacity=" + __snapRootOpacity() + " err=" + (e && (e.message || e))); } catch (_te3) {}
                                 console.error("[SCRIPT-ERR shot=${e.id}] Script execution error in snippet:", e && (e.message || e));
                                 // Visual recovery: when the LLM script crashes mid-animation,
                                 // GSAP often leaves elements stuck at the from state
@@ -794,6 +833,16 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 // matching what admin FE preview shows when animations
                                 // play out fully.
                                 try {
+                                    // Phase 1.2: un-tag `data-vx-managed` so the CSS
+                                    // safety net's 5s force-reveal CAN fire on any
+                                    // element this in-line recovery missed. The
+                                    // dispatcher tagged elements before script eval
+                                    // assuming GSAP/anime would own them; the catch
+                                    // proves the assumption was wrong.
+                                    const _tagged = scope.querySelectorAll('[data-vx-managed]');
+                                    for (const _t of _tagged) {
+                                        try { _t.removeAttribute('data-vx-managed'); } catch (_te) {}
+                                    }
                                     const _all = scope.querySelectorAll('*');
                                     for (const _el of _all) {
                                         const _st = _el.style;

@@ -1810,20 +1810,27 @@ class VideoGenerationPipeline:
 
     @staticmethod
     def _get_default_branding() -> Dict[str, Any]:
-        """Return default Vacademy branding configuration."""
+        """Return the default branding fallback.
+
+        All three sections (intro / outro / watermark) default to `enabled: False`
+        — the codebase is multi-tenant, so a non-Vacademy institute should never
+        see Vacademy branding leaked through this fallback. The Vacademy HTML is
+        kept in the dict (off-by-default) so Vacademy itself can flip the
+        toggles on if it wants the historical look; other tenants ignore it.
+        """
         return {
             "intro": {
-                "enabled": True,
+                "enabled": False,
                 "duration_seconds": 3.0,
                 "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:linear-gradient(160deg, #ffffff 0%, #f8f8fa 50%, #ffffff 100%);'><h1 style='color:#1a1a1a; font-size:64px; font-family:Inter,sans-serif; font-weight:300; letter-spacing:6px; margin:0; text-transform:uppercase;'>Vacademy</h1><div style='width:48px; height:1px; background:rgba(0,0,0,0.12); margin:20px 0;'></div><p style='color:rgba(0,0,0,0.35); font-size:16px; font-family:Inter,sans-serif; font-weight:400; letter-spacing:3px; text-transform:uppercase;'>Learn Smarter</p></div>"
             },
             "outro": {
-                "enabled": True,
+                "enabled": False,
                 "duration_seconds": 4.0,
                 "html": "<div style='display:flex; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%; background:#ffffff;'><p style='color:rgba(0,0,0,0.4); font-size:15px; font-family:Inter,sans-serif; font-weight:400; letter-spacing:4px; text-transform:uppercase; margin:0 0 24px 0;'>Thank you for watching</p><div style='width:32px; height:1px; background:rgba(0,0,0,0.1); margin:0 0 24px 0;'></div><p style='color:rgba(0,0,0,0.2); font-size:13px; font-family:Inter,sans-serif; font-weight:300; letter-spacing:2px;'>Powered by Vacademy</p></div>"
             },
             "watermark": {
-                "enabled": True,
+                "enabled": False,
                 "position": "top-right",
                 "max_width": 200,
                 "max_height": 80,
@@ -15063,6 +15070,24 @@ class VideoGenerationPipeline:
                 return [], usage
 
             html = self._sanitize_html_content(html)
+
+            # JS call sanitizer — wrap every statement-context call to a
+            # known-optional animation library (anime, annotate,
+            # splitReveal, animateSVG, playSound, …) in a `typeof X !==
+            # 'undefined'` guard. A missing library now becomes a no-op on
+            # that one call instead of throwing ReferenceError and killing
+            # the rest of the script (shot-2-white pattern). gsap.* is
+            # deliberately not in the guard list — GSAP is a hard
+            # dependency; wrapping it would just mask real bugs.
+            try:
+                from js_call_sanitizer import sanitize_optional_calls
+                html = sanitize_optional_calls(html)
+            except Exception as _jcs_err:
+                # Defensive — never let the sanitizer break a shot. Log and
+                # ship the un-sanitized HTML; the CSS visibility safety net
+                # in the harness is the second line of defence.
+                print(f"   ⚠️ Shot {shot_idx + 1} JS sanitizer failed ({_jcs_err}); shipping unsanitized")
+
             html = self._clamp_entry_animations(html, duration)
 
             # Pillar 2.4 — strip the redundant shared preamble the LLM tends

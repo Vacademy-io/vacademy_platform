@@ -40,7 +40,7 @@ public class TaskStatusManager {
             throw new VacademyException("Task Not Found");
 
         String resultJson = taskStatus.get().getResultJson();
-        if (Objects.isNull(resultJson) || resultJson.isEmpty())
+        if (isBlankResultJson(resultJson))
             return ResponseEntity.ok(new AutoQuestionPaperResponse());
 
         try {
@@ -51,19 +51,29 @@ public class TaskStatusManager {
         }
     }
 
+    private boolean isBlankResultJson(String resultJson) {
+        if (Objects.isNull(resultJson)) return true;
+        String t = resultJson.trim();
+        return t.isEmpty()
+                || "null".equalsIgnoreCase(t)
+                || "{}".equals(t)
+                || "[]".equals(t);
+    }
+
     public ResponseEntity<LecturePlanDto> getLecturePlan(String taskId) {
         Optional<TaskStatus> taskStatus = taskStatusService.getTaskStatusById(taskId);
         if (taskStatus.isEmpty())
             throw new VacademyException("Task Not Found");
 
         String resultJson = taskStatus.get().getResultJson();
-        if (Objects.isNull(resultJson) || resultJson.isEmpty())
+        if (isBlankResultJson(resultJson))
             return ResponseEntity.ok(new LecturePlanDto());
 
         try {
             return ResponseEntity.ok(responseConverterService.convertToLecturePlanDto(resultJson));
 
         } catch (Exception e) {
+            log.error("Failed to convert lecture plan for taskId={}: {}", taskId, e.getMessage(), e);
             return ResponseEntity.ok(new LecturePlanDto());
         }
     }

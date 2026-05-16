@@ -306,6 +306,8 @@ Dialogs opened from non-editor contexts (`VideoResult.tsx`, `PipelinePanel.tsx`)
 
 7. **`captionPhrases` is derived state.** Built once in `loadCaptionWords()` from `captionWords`. If you ever let the user edit individual word timestamps mid-session, also rebuild `captionPhrases`.
 
+8. **The editor caption overlay needs an explicit `zIndex`.** `EditorCanvas`'s `EntryLayer` sets `zIndex: entry.z ?? zFallback` per shot — overlay shots can carry z up to 8999. Without `zIndex: 9999` on the caption div, captions stack *under* any shot with z>0 and disappear. The render server avoids this because the dispatcher emits captions in a dedicated overlay slot, not as a DOM sibling of shots. Set in [caption-rendering.ts:captionContainerCss](../../frontend-admin-dashboard/src/components/ai-video-editor/utils/caption-rendering.ts).
+
 ---
 
 ## 8. Key files
@@ -355,3 +357,4 @@ Bundled chronologically; see file blame / commits for exact lines.
 5. **Dead `caption_box` in generate_video.py** — local set but never consumed. Deleted.
 6. **Inaccurate "Client defaults" comment** in `generate_video.py:850-851`. Replaced with the real "px at 1920w canvas" contract description.
 7. **ADD path drops `caption_style`** — `/frame/add` payload only included `display_name` in `entry_meta`, so caption overrides on freshly-inserted shots were dropped on first save. Fixed to mirror the UPDATE branch.
+8. **Editor caption overlay invisible due to z-stacking** — the caption div had no explicit `zIndex`, so any shot with `entry.z > 0` (overlay band 500–8999) rendered on top and hid the caption. Fixed by setting `zIndex: 9999` in `captionContainerCss` — above all shot bands, below selection handles.

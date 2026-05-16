@@ -182,6 +182,13 @@ export function captionContainerCss(
         alignItems: 'center',
         justifyContent: 'center',
         pointerEvents: 'none',
+        // Sit above every shot entry. The editor's EntryLayer sets
+        // `zIndex: entry.z ?? zFallback` and shots in the overlay band can
+        // carry z up to 8999 — without an explicit zIndex here, captions
+        // stack UNDER any overlay (or even base shots with z>0) and become
+        // invisible. 9999 keeps us above all shot bands while staying below
+        // LayerHandlesOverlay (20000) so selection handles remain clickable.
+        zIndex: 9999,
         ...position,
     };
 }

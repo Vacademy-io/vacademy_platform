@@ -3714,6 +3714,22 @@ class VideoGenerationPipeline:
                                 img_source_e = source_match_e.group(1).lower()
                             provider_match_e = re.search(r'data-stock-provider=["\'](\w+)["\']', full_tag)
                             stock_provider_e = provider_match_e.group(1).lower() if provider_match_e else ""
+
+                            # Fix 2 + Fix 3: auto-bind to brand asset or
+                            # Pillar-3 prefetched URL when the prompt warrants it.
+                            # See `_maybe_bind_tag_to_reference` docstring.
+                            _bound_tag_e, _bound_src_e, _bound_url_e, _bind_label_e = (
+                                self._maybe_bind_tag_to_reference(full_tag, prompt_e, img_source_e)
+                            )
+                            _reference_url_e = ""
+                            if _bind_label_e:
+                                print(
+                                    f"    🏷️  Auto-bound (early-pipeline, {_bind_label_e}): "
+                                    f"{prompt_e[:50]} → {_bound_url_e[:80]}"
+                                )
+                                full_tag = _bound_tag_e
+                                img_source_e = _bound_src_e
+                                _reference_url_e = _bound_url_e
                             task_e = {
                                 "entry": entry,
                                 "full_tag": full_tag,
@@ -3721,6 +3737,7 @@ class VideoGenerationPipeline:
                                 "seg_idx": id(entry),
                                 "img_source": img_source_e,
                                 "stock_provider": stock_provider_e,
+                                "reference_url": _reference_url_e,
                                 "timestamp": datetime.now().strftime("%f"),
                             }
                             with _early_image_lock:
@@ -3914,6 +3931,14 @@ class VideoGenerationPipeline:
                             director_plan=_director_plan,
                             run_name=run_name,
                             run_dir=run_dir,
+                            # The user's raw prompt is the most authoritative
+                            # topic signal — carries cultural/regional cues
+                            # (e.g. "UPSC coaching", "Telangana farmers")
+                            # that downstream layers (script → Director →
+                            # shot prompts) often dilute. We pass it through
+                            # so the thumbnail layer can anchor both headline
+                            # and visuals to the actual topic.
+                            base_prompt=base_prompt,
                         )
                     except Exception as _tb_err:
                         print(f"   ⚠️ Could not start thumbnail batch: {_tb_err}")
@@ -9565,12 +9590,39 @@ class VideoGenerationPipeline:
             except Exception as _pf_err:
                 print(f"   ⚠️ v3 reference prefetch errored ({_pf_err}); falling back to lazy fetch")
 
+        # Cultural context (same as v2 path — see _run_director for docstring).
+        # Idempotent — only fires if not already computed.
+        self._ensure_cultural_context(
+            base_prompt=base_prompt or "",
+            named_entities=self._extract_named_entities(base_prompt or "") if base_prompt else [],
+            brand_brief=brand_brief or {},
+        )
+
         self._emit_progress({
             "type": "sub_stage",
             "sub_stage": "shot_planning",
             "message": "Planning shots from intent...",
             "quality_tier": self._quality_tier,
         })
+        # Build the live template catalog + valid-ID whitelist so the
+        # ShotPlanner is grounded in the registry. Without this, the LLM
+        # invents plausible-sounding IDs from its training data
+        # (`image_hero_standard`, `process_3_steps`) which then fail the
+        # composer's lookup. Catalog goes in the user prompt; valid_ids
+        # is also used post-LLM to scrub any survivors.
+        _tmpl_catalog_md = ""
+        _tmpl_valid_ids: Optional[List[str]] = None
+        try:
+            from shot_template_registry import (
+                build_catalog_for_director,
+                get_registry as _tmpl_get_registry,
+            )
+            _canvas = "portrait" if self._v3_aspect_label() == "9:16" else "landscape"
+            _tmpl_catalog_md = build_catalog_for_director(self._quality_tier, _canvas)
+            _tmpl_valid_ids = sorted((_tmpl_get_registry() or {}).keys())
+        except Exception as _cat_err:
+            print(f"   ⚠️ Template catalog unavailable for ShotPlanner ({_cat_err})")
+
         sp_result = plan_shots(
             prompt=base_prompt,
             target_duration_s=target_duration_s,
@@ -9589,6 +9641,9 @@ class VideoGenerationPipeline:
             ai_video_cost_cap_usd=ai_video_cost_cap,
             source_clip_available=self._v3_source_clip_available(),
             article_screenshots=self._v3_article_screenshots(),
+            cultural_context=getattr(self, "_cultural_context", None),
+            template_catalog_md=_tmpl_catalog_md or None,
+            valid_template_ids=_tmpl_valid_ids,
         )
         shot_plan_dict = {
             "shots": sp_result["shots"],
@@ -9870,6 +9925,20 @@ class VideoGenerationPipeline:
             # Either Serper unavailable or no entities found — empty list
             # signals "no pre-fetched assets" to the Director / ShotPlanner.
             self._reference_assets = []
+
+        # Cultural / geographic context — derives the run's target region
+        # (india / usa / uk / etc.) so downstream image routing can:
+        #   • bias Serper with the right `gl=` for region-appropriate hits;
+        #   • inject "indian" / regional keywords into stock-search queries;
+        #   • weave cultural descriptors into AI image-gen prompts.
+        # Cheap-first inference: explicit param → brand kit → rule-based on
+        # named entities → LLM (Gemini Flash) → "none". Always sets a value;
+        # `region == "none"` means culture-agnostic (no keyword injection).
+        self._ensure_cultural_context(
+            base_prompt=getattr(self, "_user_prompt_raw", "") or "",
+            named_entities=_named_entities or [],
+            brand_brief=self._extract_brand_brief() or {},
+        )
 
         # Pillar 2.2 — feed the raw user-prompt "VISUAL APPROACH" prose to
         # Director so it sees the intent the structured flags can't encode.
@@ -13772,7 +13841,9 @@ class VideoGenerationPipeline:
             # diverge in composition instead of converging on one templated look.
             _aspirational_prompt = self._quality_tier in ("ultra", "super_ultra")
             system_prompt = build_per_shot_system_prompt(
-                shot_type, _w, _h, aspirational=_aspirational_prompt
+                shot_type, _w, _h,
+                aspirational=_aspirational_prompt,
+                cultural_context=getattr(self, "_cultural_context", None),
             )
             # Pillar 2.4 — append the "don't re-emit shared preamble" rule
             # when the tier knob is on. Token cost: ~600 chars in the system
@@ -17651,10 +17722,333 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
         }
 
+    # ── Cultural-context-aware image routing helpers ────────────────────
+    # Used by `_process_image_task_simple` and `process_image_task` to:
+    #   • derive a per-run CulturalContext once (lazy + idempotent)
+    #   • strip AI-style verbiage from Pexels search queries
+    #   • inject regional keywords into stock / web queries
+    #   • re-route stock → web for region-tagged queries (aggressive mode)
+    #   • cascade stock-miss → web → AI-gen on quality failure
+    # Each helper is a pure-ish function that reads self._cultural_context.
+
+    # Regex patterns for stripping AI-style verbiage that pollutes stock search.
+    # Source: Pexels/Pixabay are keyword-based — "realistic cinematic photograph,
+    # Cinematic upward view" returns garbage; "indian student library studying"
+    # returns the actual subject. Applied ONLY to stock queries; AI-gen still
+    # gets the rich descriptive prompt.
+    _PEXELS_STRIP_RE = re.compile(
+        r"("
+        r"\brealistic\s+cinematic\s+photograph,?\s*"
+        r"|\bcinematic\s+photograph\s+of\b"
+        r"|\b(?:realistic|cinematic|dslr|dslr-quality|professional|hyperrealistic)\b,?\s*"
+        r"|\bphotograph\s+of\b\s*"
+        r"|,?\s*(?:no\s+text\s+overlays?|no\s+faces?|aspect[-_\s]?ratio[^,]*|16:9|9:16)\b"
+        r"|,?\s*\{aspect_label\}"
+        r")",
+        re.IGNORECASE,
+    )
+    # Common stop-words and adjective tails that drag down Pexels relevance.
+    _PEXELS_TAIL_NOISE = re.compile(
+        r"\b(?:cinematic|moody|atmospheric|dramatic|stylish|elegant|beautiful|stunning|breathtaking)\b,?\s*",
+        re.IGNORECASE,
+    )
+
+    def _ensure_cultural_context(
+        self,
+        *,
+        base_prompt: str,
+        named_entities: Optional[List[Dict[str, Any]]] = None,
+        brand_brief: Optional[Dict[str, Any]] = None,
+        explicit_region: Optional[str] = None,
+    ) -> None:
+        """Lazily compute and stash the run's CulturalContext.
+
+        Idempotent — first call sets `self._cultural_context`; subsequent calls
+        return immediately. Safe to invoke from multiple entry points (v2
+        Director path, v3 ShotPlanner path, lazy fallback from image task).
+        """
+        if getattr(self, "_cultural_context", None) is not None:
+            return
+        try:
+            from cultural_context import infer_cultural_context
+            ctx = infer_cultural_context(
+                user_prompt=base_prompt or "",
+                named_entities=named_entities or [],
+                brand_brief=brand_brief or {},
+                explicit_region=explicit_region,
+                script_client=getattr(self, "script_client", None),
+            )
+            self._cultural_context = ctx
+            if ctx.has_region:
+                print(
+                    f"🌍 Cultural context: region='{ctx.region}' "
+                    f"(via {ctx.derived_from}, conf={ctx.confidence:.2f}) — "
+                    f"stock keywords: {ctx.extra_stock_keywords}, gl={ctx.gl}"
+                )
+            else:
+                print(f"🌍 Cultural context: none (culture-agnostic content; no region injection)")
+        except Exception as _cc_err:
+            print(f"   ⚠️ Cultural-context inference failed ({_cc_err}); proceeding without region bias")
+            # Sentinel so we don't keep retrying. None means "not computed yet";
+            # an empty CulturalContext means "computed, no region".
+            try:
+                from cultural_context import CulturalContext
+                self._cultural_context = CulturalContext()
+            except Exception:
+                self._cultural_context = None
+
+    def _strip_ai_image_verbiage(self, prompt: str) -> str:
+        """Remove AI-style descriptive prefixes/qualifiers from a stock search
+        query. Pexels/Pixabay want short noun-phrase keywords; the LLM tends to
+        emit cinematic AI-gen prose. This trims it to what the stock provider
+        can actually match.
+
+        Idempotent. Never returns empty — falls back to the first 4-6 words of
+        the original if stripping removes everything.
+        """
+        if not prompt:
+            return ""
+        s = self._PEXELS_STRIP_RE.sub(" ", prompt)
+        s = self._PEXELS_TAIL_NOISE.sub(" ", s)
+        # Collapse whitespace, strip leading/trailing commas + spaces.
+        s = re.sub(r"\s+", " ", s).strip(" ,.;:-")
+        # If aggressive stripping wiped the prompt, fall back to first 6 words
+        # of the original (still better than the LLM-style descriptive prose).
+        if len(s) < 4:
+            s = " ".join((prompt or "").split()[:6])
+        # Pexels relevance drops fast past ~8 keywords. Truncate trailing comma
+        # clauses if the remaining query is still long.
+        if "," in s:
+            first_clause = s.split(",", 1)[0].strip()
+            if len(first_clause.split()) >= 3:
+                s = first_clause
+        return s
+
+    def _pexels_query_for(self, prompt: str) -> str:
+        """Build the actual query Pexels gets: stripped + region-tagged.
+
+        Steps:
+          1. Strip AI-style verbiage (the polluting "realistic cinematic
+             photograph, Cinematic upward view of..." prefix).
+          2. Inject the region keyword from `CulturalContext` if not already
+             present — turns "student library" into "indian student library"
+             for India-targeted runs.
+        """
+        cleaned = self._strip_ai_image_verbiage(prompt)
+        cc = getattr(self, "_cultural_context", None)
+        if cc is not None:
+            cleaned = cc.stock_query_with_region(cleaned)
+        return cleaned
+
+    def _aggressive_route_img_source(self, requested: str, query: str) -> str:
+        """Aggressive routing: any culturally-specific query goes web-first.
+
+        Returns one of "reference" | "brand" | "stock" | "web" | "generate".
+
+        Rules:
+          - "reference" / "brand" are LLM/replacer decisions tied to specific
+            assets — never override.
+          - When CulturalContext has a region AND the query has any specificity
+            (≥4 words OR contains the region keyword), prefer "web" over
+            "stock". Stock libraries don't index culturally-tagged subjects
+            well; Google Images does.
+          - When no cultural region OR the query is genuinely generic (≤3
+            common-noun words), keep the LLM's choice — Pexels usually wins
+            on generic queries.
+        """
+        if requested in ("reference", "brand"):
+            return requested
+        cc = getattr(self, "_cultural_context", None)
+        if cc is None or not cc.has_region:
+            return requested or "stock"
+        q = (query or "").strip()
+        word_count = len(q.split())
+        q_lower = q.lower()
+        has_region_kw = any(kw.lower() in q_lower for kw in (cc.extra_stock_keywords or []))
+        # Very short generic queries (≤3 words, no region keyword) → stock.
+        if word_count <= 3 and not has_region_kw:
+            return requested if requested in ("stock", "web", "generate") else "stock"
+        # Anything else with a region → web first (aggressive).
+        if requested == "generate":
+            # Respect the LLM if it explicitly chose generate (e.g. hyper-
+            # specific moments that don't exist in any library).
+            return "generate"
+        return "web"
+
+    def _inject_cultural_into_ai_prompt(self, prompt: str) -> str:
+        """Weave cultural descriptors into an AI image-generation prompt.
+
+        Prepends a short cultural-specificity clause so the AI model renders
+        region-appropriate features and settings. Skipped when CulturalContext
+        has no region or the prompt already mentions the region.
+        """
+        if not prompt:
+            return prompt
+        cc = getattr(self, "_cultural_context", None)
+        if cc is None or not cc.has_region:
+            return prompt
+        p_lower = prompt.lower()
+        if any(kw.lower() in p_lower for kw in (cc.extra_stock_keywords or [])):
+            return prompt
+        # Lead with a short cultural clause; AI image generators give weight
+        # to the FIRST descriptors in the prompt.
+        people = (cc.people_descriptors or [cc.region.title()])[0]
+        return f"{people} subject and {cc.region} setting. {prompt}"
+
+    def _web_search_quality_image(
+        self, query: str, *, canvas_w: int, canvas_h: int
+    ) -> Optional[Dict[str, Any]]:
+        """Wrapper around Serper's `best_quality_image` that plumbs the run's
+        cultural context for geo bias. Returns the chosen result dict or None
+        (caller cascades to AI-gen on None).
+        """
+        serper = getattr(self, "_serper_service", None)
+        if not serper or not getattr(serper, "is_available", False):
+            return None
+        cc = getattr(self, "_cultural_context", None)
+        gl = (cc.gl if cc and cc.gl else "us")
+        hl = (cc.hl if cc and cc.hl else "en")
+        try:
+            return serper.best_quality_image(query, canvas_w, canvas_h, gl=gl, hl=hl)
+        except Exception as e:
+            print(f"   ⚠️ best_quality_image errored: {e}")
+            return None
+
+    # ── Brand-asset + prefetch binding (Fix 2 + Fix 3) ──────────────────
+    # Closes the gap where the per-shot LLM emits `data-img-source="generate"`
+    # for entities the pipeline ALREADY has a real asset for. Two cases:
+    #   • Brand kit logo — uploaded by user, lives in `_reference_context`.
+    #     AI gen would hallucinate a substitute. Wrong.
+    #   • Pillar-3 prefetched entity (Indian Parliament Wikipedia photo, etc.)
+    #     LLM didn't follow the rules and asked AI gen anyway. Wrong.
+    # Both are fixed by rewriting the `<img>` tag at task-build time so the
+    # consumer (process_image_task / _process_image_task_simple) takes the
+    # zero-API "reference" path.
+
+    # Tokens in the LLM's image prompt that signal "this shot is about the brand
+    # itself" — usually paired with the institute / company name. Matches are
+    # case-insensitive substring; conservative because brand assets are
+    # high-fidelity (using one for the wrong shot looks worse than missing it).
+    _BRAND_LOGO_TOKENS = (
+        "logo", "wordmark", "emblem", "insignia", "brand mark", "brand-mark",
+        "institute mark", "academy logo", "company logo", "official mark",
+    )
+
+    def _match_brand_asset_for_prompt(self, prompt: str) -> Optional[str]:
+        """Match an `<img>` prompt against the user's uploaded brand kit.
+
+        Returns the brand image URL when ANY of these is true:
+          • prompt contains one of the brand-logo tokens above (LLM asked for
+            "the logo" / "academy logo" / etc.), AND a brand image is uploaded
+          • prompt explicitly mentions the institute / brand name AND there's
+            a logo-intent token
+
+        Conservative — bare brand-name mentions WITHOUT a logo-intent token
+        don't trigger (the shot might be about the brand's product / story,
+        not the wordmark itself). Returns None on no match.
+        """
+        if not prompt:
+            return None
+        ref_ctx = getattr(self, "_reference_context", None) or {}
+        if not isinstance(ref_ctx, dict):
+            return None
+        embeddable = ref_ctx.get("embeddable_images") or []
+        if not isinstance(embeddable, list) or not embeddable:
+            return None
+
+        prompt_lower = prompt.lower()
+        has_logo_intent = any(tok in prompt_lower for tok in self._BRAND_LOGO_TOKENS)
+        if not has_logo_intent:
+            return None
+
+        # Pick the first uploaded brand image — typically the primary logo.
+        for img in embeddable:
+            if not isinstance(img, dict):
+                continue
+            url = (img.get("s3_url") or img.get("url") or "").strip()
+            if url:
+                return url
+        return None
+
+    def _match_prefetched_reference_for_prompt(self, prompt: str) -> Optional[Dict[str, Any]]:
+        """Match an `<img>` prompt against `_reference_assets` (Pillar-3 prefetch).
+
+        Returns the matched entry dict ({name, kind, image_url, source, …})
+        when the prompt mentions a prefetched entity by name. The matching is
+        case-insensitive substring with a 4-char minimum on the entity name
+        to avoid false positives on short common nouns. First match wins.
+        """
+        prefetched = getattr(self, "_reference_assets", None) or []
+        if not isinstance(prefetched, list) or not prefetched:
+            return None
+        if not prompt:
+            return None
+        prompt_lower = prompt.lower()
+        for entry in prefetched:
+            if not isinstance(entry, dict):
+                continue
+            name = (entry.get("name") or "").strip()
+            url = (entry.get("image_url") or entry.get("url") or "").strip()
+            if not name or not url or len(name) < 4:
+                continue
+            if name.lower() in prompt_lower:
+                return entry
+        return None
+
+    def _rewrite_tag_to_reference(self, full_tag: str, url: str) -> str:
+        """Rewrite an `<img>` tag: set `data-img-source="reference"` +
+        `data-reference-url="<url>"`. Strips any existing values for those
+        attributes so the rewrite is idempotent and we don't end up with
+        two conflicting `data-img-source` values on the same tag.
+        """
+        # Drop pre-existing data-img-source / data-reference-url.
+        tag = re.sub(r'\s+data-img-source\s*=\s*["\'][^"\']*["\']', "", full_tag)
+        tag = re.sub(r'\s+data-reference-url\s*=\s*["\'][^"\']*["\']', "", tag)
+        # Escape any quotes that snuck into the URL (defensive — Serper URLs
+        # don't normally have them, but cheap insurance).
+        safe_url = url.replace('"', "%22")
+        injected = f' data-img-source="reference" data-reference-url="{safe_url}"'
+        # Inject just before the closing > or />.
+        if tag.endswith("/>"):
+            return tag[:-2].rstrip() + injected + " />"
+        if tag.endswith(">"):
+            return tag[:-1].rstrip() + injected + ">"
+        return tag + injected
+
+    def _maybe_bind_tag_to_reference(
+        self, full_tag: str, prompt: str, current_img_source: str
+    ) -> tuple:
+        """Try to bind a generate/stock/web tag to a brand asset or prefetched
+        reference URL. Returns (new_full_tag, new_img_source, reference_url,
+        bind_label). When no binding applies, returns the inputs verbatim with
+        bind_label="".
+
+        Skips when the tag is already a reference / brand / article_screenshot
+        — those are LLM-explicit choices the pipeline must honour as-is.
+        """
+        # Don't override explicit LLM choices for asset-tied sources.
+        if current_img_source in ("reference", "brand", "article_screenshot"):
+            return (full_tag, current_img_source, "", "")
+
+        # Brand asset wins over prefetched reference (higher fidelity — user
+        # uploaded the actual logo, vs Wikipedia photo of a named entity).
+        brand_url = self._match_brand_asset_for_prompt(prompt)
+        if brand_url:
+            return (self._rewrite_tag_to_reference(full_tag, brand_url),
+                    "reference", brand_url, "brand")
+
+        pref = self._match_prefetched_reference_for_prompt(prompt)
+        if pref and pref.get("image_url"):
+            url = pref["image_url"]
+            return (self._rewrite_tag_to_reference(full_tag, url),
+                    "reference", url, f"prefetch:{pref.get('name', '?')}")
+
+        return (full_tag, current_img_source, "", "")
+
     def _apply_layout_to_entries(self, entries: List[Dict[str, Any]], seg: Dict[str, Any]) -> None:
         # We now trust the LLM (or default to full screen) for geometry.
         # We only assign index and ensure int types.
-        
+
         entries.sort(key=lambda x: x["start"])
 
         for i, entry in enumerate(entries):
@@ -17698,19 +18092,93 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not prompt:
             return None
 
-        # Stock photo path: try configured providers in order (hint + fallback) before
-        # falling through to AI generation.
-        img_source = task.get("img_source", "generate")
-        if self._tier_config.get("stock_preference") == "stock_only" and img_source == "generate":
+        # Lazy-init cultural context for the run if it wasn't computed during
+        # Director / ShotPlanner (e.g. cached resume from `html` stage). All
+        # downstream routing helpers depend on it being set.
+        if getattr(self, "_cultural_context", None) is None:
+            self._ensure_cultural_context(
+                base_prompt=getattr(self, "_user_prompt_raw", "") or "",
+                named_entities=[],
+                brand_brief=self._extract_brand_brief() or {},
+            )
+
+        is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
+        canvas_w = getattr(self, 'video_width', 1920)
+        canvas_h = getattr(self, 'video_height', 1080)
+        orientation = "portrait" if canvas_w < canvas_h else "landscape"
+
+        # ── reference: brand asset or Pillar-3 prefetched URL, zero-API. ──
+        # When the task-build site auto-bound a tag (Fix 2 + Fix 3) it sets
+        # img_source="reference" + reference_url. The task is ready to ship —
+        # no API call, no cascade. Mirrors the same branch in `process_image_task`.
+        requested_source = task.get("img_source", "generate")
+        if requested_source == "reference":
+            _ref_url = (task.get("reference_url") or "").strip()
+            if _ref_url:
+                print(
+                    f"    🏷️  [pipeline] Brand/reference image for "
+                    f"seg={task.get('seg_idx', '?')}: {_ref_url[:80]}"
+                )
+                return {
+                    "entry":       entry,
+                    "full_tag":    full_tag,
+                    "stock_url":   _ref_url,
+                    "image_bytes": None,
+                    "filename":    None,
+                    "usage":       {},
+                }
+            # Missing URL — degrade to AI gen rather than crashing the task.
+            requested_source = "generate"
+
+        # Aggressive routing: when the run has a cultural region, route any
+        # query with cultural specificity to WEB first (Serper) instead of
+        # stock. Pexels/Pixabay don't index culturally-tagged subjects well;
+        # Google Images does. Cutouts skip this — they need clean isolated
+        # objects (AI gen is the only good path).
+        if self._tier_config.get("stock_preference") == "stock_only" and requested_source == "generate":
+            requested_source = "stock"
+        img_source = requested_source if is_cutout else self._aggressive_route_img_source(
+            requested_source, prompt
+        )
+
+        # ── Web (Serper) — region-biased, quality-filtered. ────────────────
+        # Reached either because the LLM explicitly asked for it OR because
+        # aggressive routing upgraded a stock task to web. Returns None when
+        # no result clears the dimension/AR/host filters → cascade to stock
+        # below, then to AI gen.
+        if img_source == "web":
+            web_q = (task.get("img_query") or "").strip() or self._strip_ai_image_verbiage(prompt)
+            web_q = (self._cultural_context.stock_query_with_region(web_q)
+                     if getattr(self, "_cultural_context", None) is not None else web_q)
+            hit = self._web_search_quality_image(web_q, canvas_w=canvas_w, canvas_h=canvas_h)
+            if hit and hit.get("url"):
+                qs = hit.get("_quality_score", 0.0)
+                src = hit.get("host") or hit.get("source", "")
+                print(
+                    f"    🔎 [pipeline] Web image (Serper, host={src}, score={qs}): {web_q[:60]}..."
+                )
+                return {
+                    "entry":       entry,
+                    "full_tag":    full_tag,
+                    "stock_url":   hit["url"],
+                    "image_bytes": None,
+                    "filename":    None,
+                    "usage":       {},
+                }
+            # Web filter rejected everything — cascade to stock as a softer
+            # fallback before giving up on found-imagery.
+            print(f"    🔎 [pipeline] Web returned no quality-passing result for '{web_q[:50]}' → cascading to stock")
             img_source = "stock"
+
+        # ── Stock (Pexels / Pixabay) — keyword-cleaned query. ──────────────
         if img_source == "stock":
-            orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
-            services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), prompt)
+            stock_q = self._pexels_query_for(prompt)
+            services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), stock_q)
             for svc in services:
                 provider_name = type(svc).__name__.replace("Service", "")
-                result = svc.search_photos(prompt, orientation=orientation)
+                result = svc.search_photos(stock_q, orientation=orientation)
                 if result:
-                    print(f"    📷 [pipeline] Stock photo ({provider_name}): {prompt[:60]}...")
+                    print(f"    📷 [pipeline] Stock photo ({provider_name}): {stock_q[:60]}")
                     return {
                         "entry":       entry,
                         "full_tag":    full_tag,
@@ -17720,11 +18188,28 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         "usage":       {},
                     }
             if services:
-                print(f"    ⚠️  [pipeline] All stock providers failed, falling back to Seedream: {prompt[:50]}...")
+                print(f"    ⚠️  [pipeline] All stock providers missed, cascading to web: {stock_q[:50]}")
+            # Stock returned nothing — try web before falling all the way to AI.
+            if self._cultural_context is not None and self._cultural_context.has_region:
+                # Skip the cascade if we already tried web above.
+                pass
+            else:
+                hit = self._web_search_quality_image(stock_q, canvas_w=canvas_w, canvas_h=canvas_h)
+                if hit and hit.get("url"):
+                    print(f"    🔎 [pipeline] Stock-miss → web hit ({hit.get('host','?')}): {stock_q[:50]}")
+                    return {
+                        "entry":       entry,
+                        "full_tag":    full_tag,
+                        "stock_url":   hit["url"],
+                        "image_bytes": None,
+                        "filename":    None,
+                        "usage":       {},
+                    }
 
-        is_cutout = 'data-cutout="true"' in full_tag or "data-cutout='true'" in full_tag
-        print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {prompt[:60]}...")
-        image_bytes, usage_meta = self._call_image_generation_llm(prompt)
+        # ── AI generation — last resort. Cultural context woven into the prompt. ──
+        ai_prompt = prompt if is_cutout else self._inject_cultural_into_ai_prompt(prompt)
+        print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {ai_prompt[:60]}...")
+        image_bytes, usage_meta = self._call_image_generation_llm(ai_prompt)
         if not image_bytes:
             # Seedream returned nothing — cascade through Pexels/Pixabay → SVG
             # placeholder so the shot doesn't ship with a broken `placeholder.png`.
@@ -18126,7 +18611,22 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # touch this code path.
         repo = None
         try:
-            from app.repositories.vision_review_repository import VisionReviewRepository
+            try:
+                from app.repositories.vision_review_repository import VisionReviewRepository
+            except ImportError:
+                # Module is sometimes loaded with a sys.path that doesn't
+                # include the ai_service root (e.g. the run-from-pipeline
+                # subprocess vs the FastAPI uvicorn worker). The `app/`
+                # package lives at `<service_root>/app`, so injecting
+                # `<service_root>` into sys.path resolves it. `__file__` is
+                # `<service_root>/app/ai-video-gen-main/automation_pipeline.py`
+                # so the service root is `parents[2]`.
+                import sys as _sys_vrr
+                from pathlib import Path as _Path_vrr
+                _service_root_vrr = str(_Path_vrr(__file__).resolve().parents[2])
+                if _service_root_vrr not in _sys_vrr.path:
+                    _sys_vrr.path.insert(0, _service_root_vrr)
+                from app.repositories.vision_review_repository import VisionReviewRepository
             repo = VisionReviewRepository()
         except Exception as exc:
             print(f"   ⚠️ vision-review persistence: repository unavailable ({exc}) — skipping DB writes")
@@ -18566,6 +19066,22 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 # in process_image_task without any API call.
                 _refurl_match = re.search(r'data-reference-url=["\']([^"\']+)["\']', full_tag)
                 _reference_url = _refurl_match.group(1).strip() if _refurl_match else ""
+
+                # Auto-bind brand assets / Pillar-3 prefetch (Fix 2 + Fix 3).
+                # If the LLM emitted `data-img-source="generate"` (or "stock"
+                # / "web") for a prompt that mentions our uploaded brand logo
+                # OR a prefetched named entity, rewrite the tag to reference
+                # the asset URL directly. AI gen can't reproduce a real logo
+                # and there's no reason to re-fetch a Parliament photo we
+                # already have. Idempotent on already-bound tags.
+                _bound_tag, _bound_src, _bound_url, _bind_label = self._maybe_bind_tag_to_reference(
+                    full_tag, prompt, img_source
+                )
+                if _bind_label:
+                    print(f"    🏷️  Auto-bound shot ({_bind_label}): {prompt[:50]} → {_bound_url[:80]}")
+                    full_tag = _bound_tag
+                    img_source = _bound_src
+                    _reference_url = _bound_url
                 tasks.append({
                     "entry": entry,
                     "full_tag": full_tag,
@@ -18678,23 +19194,49 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     and getattr(self._serper_service, 'is_available', False)
                 ) else "generate"
 
-            # ── web: Google Image search via Serper for named entities ──
-            # Falls through to stock then AI gen on no match. Uses the dedicated
-            # `data-img-query` if the per-shot LLM provided one, else the
-            # cinematic-flavoured `data-img-prompt`.
+            # Lazy-init cultural context — same as `_process_image_task_simple`.
+            # All routing helpers below depend on `self._cultural_context`.
+            if getattr(self, "_cultural_context", None) is None:
+                self._ensure_cultural_context(
+                    base_prompt=getattr(self, "_user_prompt_raw", "") or "",
+                    named_entities=[],
+                    brand_brief=self._extract_brand_brief() or {},
+                )
+
+            # Aggressive routing: when CulturalContext.has_region, upgrade
+            # culturally-specific queries from stock → web. Cutouts skip this
+            # (need isolated objects — AI gen is the only good path).
+            _ir_cutout = task.get("is_cutout", False)
+            _ir_prompt = task.get("prompt", "")
+            if not _ir_cutout:
+                img_source = self._aggressive_route_img_source(img_source, _ir_prompt)
+
+            # ── web: Google Image search via Serper, quality-filtered ──
+            # Uses `best_quality_image` (not `best_image`) so we hard-reject
+            # under-sized / wrong-orientation / low-reputation hits, then
+            # re-rank by host quality. The run's CulturalContext supplies
+            # the `gl=` Google geo bias for region-appropriate indexing.
             if img_source == "web":
                 _serper = getattr(self, '_serper_service', None)
                 if _serper and getattr(_serper, 'is_available', False):
-                    orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
-                    web_query = (task.get("img_query") or "").strip() or task.get("prompt", "")
+                    canvas_w = getattr(self, 'video_width', 1920)
+                    canvas_h = getattr(self, 'video_height', 1080)
+                    web_query = (task.get("img_query") or "").strip() or self._strip_ai_image_verbiage(_ir_prompt)
+                    cc = getattr(self, "_cultural_context", None)
+                    if cc is not None:
+                        web_query = cc.stock_query_with_region(web_query)
                     try:
-                        _hit = _serper.best_image(web_query, orientation=orientation)
+                        _hit = self._web_search_quality_image(
+                            web_query, canvas_w=canvas_w, canvas_h=canvas_h
+                        )
                     except Exception as _se:
-                        print(f"    ⚠️ Serper image search errored ({_se}); falling through to stock")
+                        print(f"    ⚠️ Serper quality search errored ({_se}); falling through to stock")
                         _hit = None
                     if _hit and _hit.get("url"):
+                        qs = _hit.get("_quality_score", 0.0)
+                        host = _hit.get("host") or _hit.get("source", "")
                         print(
-                            f"    🔎 Web image (Serper, src={_hit.get('source','')}) for "
+                            f"    🔎 Web image (Serper, host={host}, score={qs}) for "
                             f"seg={task.get('seg_idx', '?')}: {web_query[:60]}..."
                         )
                         return {
@@ -18706,19 +19248,30 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             "filename": None,
                             "usage": {},
                         }
-                # Fall through to stock — keeps the existing Pexels/Pixabay behavior.
+                # Web filter rejected everything → try stock as a softer
+                # fallback before defaulting to AI gen. Quality-filtered web
+                # results that ALL fail dimension/AR is a strong signal the
+                # subject is too niche for editorial sources; stock + AI are
+                # the remaining options.
+                print(
+                    f"    🔎 Web returned no quality-passing result for "
+                    f"seg={task.get('seg_idx', '?')}: '{web_query[:50]}' → cascading to stock"
+                )
                 img_source = "stock"
 
-            # Stock photo path: try configured providers in order (hint + fallback)
-            # before falling through to AI generation.
+            # Stock photo path — keyword-cleaned + region-tagged query.
+            # `_pexels_query_for()` strips the AI-style cinematic prefix the
+            # per-shot LLM tends to emit (e.g. "realistic cinematic photograph,
+            # Cinematic upward view of...") which Pexels can't keyword-match.
             if img_source == "stock":
                 orientation = "portrait" if getattr(self, 'video_width', 1920) < getattr(self, 'video_height', 1080) else "landscape"
-                services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), task["prompt"])
+                stock_q = self._pexels_query_for(task["prompt"])
+                services = self._resolve_stock_provider_chain(task.get("stock_provider", ""), stock_q)
                 for svc in services:
                     provider_name = type(svc).__name__.replace("Service", "")
-                    result = svc.search_photos(task["prompt"], orientation=orientation)
+                    result = svc.search_photos(stock_q, orientation=orientation)
                     if result:
-                        print(f"    📷 Stock photo ({provider_name}) for seg={task.get('seg_idx', '?')}: {task['prompt'][:60]}...")
+                        print(f"    📷 Stock photo ({provider_name}) for seg={task.get('seg_idx', '?')}: {stock_q[:60]}")
                         return {
                             "entry": task.get("entry"),
                             "entry_id": id(task.get("entry")),
@@ -18729,7 +19282,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             "usage": {},
                         }
                 if services:
-                    print(f"    ⚠️  All stock providers failed, falling back to Seedream: {task['prompt'][:50]}...")
+                    print(f"    ⚠️  All stock providers missed, falling back to Seedream: {stock_q[:50]}")
 
             prompt     = task["prompt"]
             idx        = task["seg_idx"]
@@ -18748,6 +19301,12 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 image_style = getattr(self, '_current_image_style', 'realistic cinematic photograph')
                 if image_style.lower() not in prompt.lower():
                     prompt = f"{image_style}, {prompt}"
+
+                # Weave cultural descriptors when CulturalContext has a region.
+                # AI image generators give weight to the first descriptors, so
+                # leading with "Indian subject and india setting." materially
+                # changes who/where renders. No-op when region is "none".
+                prompt = self._inject_cultural_into_ai_prompt(prompt)
 
             # Subject continuity (ultra+): if this shot is part of a recurring
             # subject AND a reference URL has already been cached from an
@@ -20583,6 +21142,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         director_plan: Dict[str, Any],
         run_name: Optional[str],
         run_dir: Path,
+        base_prompt: Optional[str] = None,
     ) -> None:
         """Fire 4 Seedream thumbnail calls in a daemon thread.
 
@@ -20649,6 +21209,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     orientation=_orientation,
                     subjects_list=[],
                     brand_color_hex=_brand_color_hex,
+                    original_prompt=base_prompt,
                     llm_chat=_llm_chat,
                 )
 

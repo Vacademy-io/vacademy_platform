@@ -315,6 +315,7 @@ def build_recraft_thumbnail_prompt(
     hero_subject_label: Optional[str],
     visual_style: Optional[str],
     brand_color_hex: Optional[str] = None,
+    topic_context: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Compose a Recraft prompt for a single thumbnail with text baked in.
 
@@ -364,6 +365,44 @@ def build_recraft_thumbnail_prompt(
                 f"the composition; otherwise pick a more eye-catching palette): "
                 f"{color_name}. "
             )
+
+    # Topic anchor — the authoritative grounding signal. Take precedence
+    # over the (possibly diluted) hero_subject_label. Strip text-cue
+    # language before injecting so we don't pull title-card / hex code /
+    # quoted-string patterns into the image prompt.
+    topic_anchor_clause = ""
+    if topic_context:
+        op_raw = (topic_context.get("original_prompt") or "").strip()
+        op_clean = _sanitize_subject(op_raw)
+        if op_clean and len(op_clean) >= 12:
+            if len(op_clean) > 240:
+                op_clean = op_clean[:240].rsplit(" ", 1)[0]
+            topic_anchor_clause = (
+                f"TOPIC (most authoritative — the actual video subject the "
+                f"viewer is searching for): {op_clean}. "
+                "The thumbnail's people, props, location, clothing, signage, "
+                "and visual cues MUST be authentic to this topic — including "
+                "cultural, regional, and contextual specifics. If the topic "
+                "is about an Indian institution, use Indian people and "
+                "settings; if it's about Brazilian football, use Brazilian "
+                "players and stadiums; if it's about a Japanese craft, use "
+                "Japanese practitioners and surroundings. Do NOT default to "
+                "a generic Western stock-photo person if the topic implies "
+                "another culture or region. "
+            )
+        # Also surface the key terms as concrete grounding nouns.
+        key_terms = topic_context.get("key_terms") or []
+        if isinstance(key_terms, list) and key_terms:
+            cleaned_terms = [
+                _sanitize_subject(str(t)) for t in key_terms[:8]
+                if isinstance(t, str) and t.strip()
+            ]
+            cleaned_terms = [t for t in cleaned_terms if t]
+            if cleaned_terms:
+                topic_anchor_clause += (
+                    "Key topic nouns to reflect visually where natural: "
+                    + ", ".join(cleaned_terms) + ". "
+                )
 
     # Sanitize all package fields before injecting into the prompt.
     def _safe(v: Any) -> str:
@@ -419,7 +458,12 @@ def build_recraft_thumbnail_prompt(
         # 1. The job.
         "Create a high-impact viral video thumbnail designed to compel a click. "
         "This is for a top-tier creator's feed, not a stock-photo ad. "
-        # 2. The mandatory subject + side-composition rule.
+        # 2. Topic anchor — comes BEFORE composition rules so the model
+        # treats authentic topic-grounding as a hard constraint that shapes
+        # every other downstream choice (subject's identity, clothing,
+        # setting, props, palette).
+        f"{topic_anchor_clause}"
+        # 3. The mandatory subject + side-composition rule.
         "MANDATORY composition: the frame is split into a SUBJECT ZONE and a "
         "TEXT ZONE, side by side. The SUBJECT ZONE (one third or one half of "
         "the frame, your choice of left or right) contains a single clear "
@@ -477,9 +521,21 @@ def build_recraft_thumbnail_prompt(
 
 _HEADLINE_SYSTEM_PROMPT = (
     "You write thumbnail headline PACKAGES for the world's top YouTube "
-    "creators. Given a video's title, narration excerpt, and intent, you "
-    "return a structured text package engineered for maximum click-through. "
+    "creators. Given a video's TOPIC CONTEXT (original user prompt, title, "
+    "key terms, narration), you return a structured text package engineered "
+    "for maximum click-through — but ANCHORED IN THE ACTUAL TOPIC, not a "
+    "generic clickbait pattern. "
     "\n\n"
+    "TOPIC ANCHORING — THE MOST IMPORTANT RULE:\n"
+    "The headline package MUST contain at least one specific noun, proper "
+    "noun, or domain term from the video's actual topic. Take it from the "
+    "user prompt, the title, or the key terms — NEVER invent unrelated "
+    "topics (no 'physics' for a coaching video, no 'crypto' for a cooking "
+    "video). If the topic is 'UPSC coaching new batch starting', the "
+    "headline must reference UPSC / coaching / batch / civil services — "
+    "not generic dramatic words. The viewer must see the headline and "
+    "immediately know what the video is about.\n"
+    "\n"
     "OUTPUT SHAPE (return JSON, no markdown fences, no commentary):\n"
     "{\n"
     "  \"primary\": \"...\",        // Line 1, BIGGEST text. 1-3 words. "
@@ -493,33 +549,43 @@ _HEADLINE_SYSTEM_PROMPT = (
     "}\n"
     "\n"
     "WRITING RULES:\n"
-    "1. Write like a top creator (MrBeast, Veritasium, Cleo Abram, Marques "
-    "Brownlee, Casey Neistat). Not a marketing copywriter. The package "
-    "must feel like a story hook, not a slogan.\n"
-    "2. Two-line hierarchy is the default: a SHORT loud primary plus a "
-    "smaller secondary that completes the thought. Example: "
-    "primary='5M BOUGHT', secondary='Views'. The combined read should be "
-    "complete and clear.\n"
-    "3. Use ONE of these proven patterns in the combined read: stakes "
-    "('I LOST EVERYTHING'), specificity ('$2M IN 24 HOURS'), contradiction "
-    "('CHEAPER THAN APPLE'), revelation ('WHAT THEY HID'), curiosity gap "
-    "('THIS BREAKS PHYSICS'), transformation ('30 DAYS LATER'), or "
-    "comparison ('BOT vs REAL').\n"
-    "4. The optional `tagline` is a small contrasting label — think a "
-    "speech bubble ('Trust us'), a category chip ('BOT vs REAL'), or a "
-    "callout ('LIVE NOW'). Use it when it ADDS information; otherwise "
-    "leave it empty.\n"
-    "5. The `accent_word` is one word from primary or secondary that "
-    "deserves a colored highlight (the most provocative noun or number). "
-    "Leave empty if no single word stands out.\n"
-    "6. BANNED patterns: generic CTAs ('Buy Now', 'Watch Now', 'Secure "
-    "Yours Today'); dictionary titles ('Understanding X', 'Introduction "
-    "to X'); soft promises ('A Better Way to X'); instructional phrasing "
-    "without stakes ('How to Do X' unless wrapped in drama).\n"
-    "7. ALL CAPS is allowed and often best for primary. No trailing "
+    "1. STYLE — write like a top creator (MrBeast, Veritasium, Cleo Abram, "
+    "Marques Brownlee, Casey Neistat). Not a marketing copywriter. The "
+    "package must feel like a story hook, not a slogan.\n"
+    "2. CONTENT — every concrete noun you use must come from the topic "
+    "context. The DRAMA is in how you frame the topic, not in inventing "
+    "different topics. If the topic doesn't have a natural drama angle, "
+    "use a curiosity hook around the topic's actual name or terms (e.g. "
+    "'THE UPSC TRAP', 'WHY THIS BATCH IS DIFFERENT').\n"
+    "3. Two-line hierarchy is the default: a SHORT loud primary plus a "
+    "smaller secondary that completes the thought. The combined read "
+    "should make sense to someone who knows nothing about the video. "
+    "Example for a UPSC coaching announcement: primary='NEW UPSC BATCH', "
+    "secondary='Limited Seats'. For a Telangana forest scandal recap: "
+    "primary='TELANGANA FOREST', secondary='Scandal Exposed'.\n"
+    "4. PATTERNS — pick the framing that fits the topic: stakes (loss / "
+    "danger), specificity (a number, place, date), contradiction (two "
+    "things in opposition), revelation (something hidden), curiosity gap "
+    "(promise without spoiling), transformation (before/after), or "
+    "comparison (X vs Y). The framing serves the topic, not the other way "
+    "around.\n"
+    "5. The optional `tagline` is a small contrasting label that ADDS "
+    "information — a date, category, location, or status badge. Use only "
+    "when it sharpens the topic (e.g. tagline='Starts Aug 15', "
+    "tagline='Live Now', tagline='Hyderabad'). If you can't add real "
+    "information, leave it empty.\n"
+    "6. The `accent_word` is one word from primary or secondary that "
+    "deserves a colored highlight — the most provocative noun or number. "
+    "Prefer the topic-specific noun (UPSC, TELANGANA, $2M) over a generic "
+    "drama word (NEW, SECRET).\n"
+    "7. BANNED patterns: generic CTAs ('Buy Now', 'Watch Now', 'Secure "
+    "Yours Today'); off-topic clickbait ('You won't believe what X did' "
+    "where X is unrelated to the actual topic); dictionary titles "
+    "('Understanding X'); soft promises ('A Better Way to X').\n"
+    "8. ALL CAPS is allowed and often best for primary. No trailing "
     "punctuation. No quotes inside any field.\n"
-    "8. Be true to the video — don't invent claims the narration won't "
-    "back up. But pick the DRAMATIC angle, not the neutral summary."
+    "9. Be true to the video — every claim must be backed by the "
+    "narration. Drama yes, fabrication no."
 )
 
 
@@ -530,21 +596,49 @@ def _build_headline_user_prompt(
     headline_brief: str,
     max_words: int,
     narration_hint: Optional[str],
+    topic_context: Optional[Dict[str, Any]] = None,
 ) -> str:
     excerpt = (narration_hint or "").strip()
     if len(excerpt) > 480:
         excerpt = excerpt[:477] + "..."
+
+    # Topic context block — the authoritative grounding signal. Listed FIRST
+    # so the model anchors to it before reading style guidance.
+    topic_block_parts: List[str] = []
+    if topic_context:
+        op = (topic_context.get("original_prompt") or "").strip()
+        if op:
+            if len(op) > 400:
+                op = op[:397] + "..."
+            topic_block_parts.append(f"ORIGINAL USER PROMPT (most authoritative — the actual topic): {op}")
+        sd = topic_context.get("subject_domain")
+        if isinstance(sd, str) and sd.strip():
+            topic_block_parts.append(f"Subject domain: {sd.strip()}")
+        key_terms = topic_context.get("key_terms") or []
+        if isinstance(key_terms, list) and key_terms:
+            terms_str = ", ".join(str(t) for t in key_terms[:10])
+            topic_block_parts.append(
+                f"Key topic terms (use AT LEAST ONE of these in the headline): {terms_str}"
+            )
+
+    topic_block = ""
+    if topic_block_parts:
+        topic_block = "TOPIC CONTEXT — anchor the headline to these:\n" + "\n".join(topic_block_parts) + "\n\n"
+
     return (
-        f"Video title: {title}\n"
-        f"Intent: {intent}\n"
-        f"Combined-read word cap (primary + secondary): {max_words} words.\n"
-        f"Intent-specific brief: {headline_brief}\n"
-        + (f"\nNarration sample (use this to find the most dramatic angle):\n{excerpt}\n" if excerpt else "")
+        topic_block
+        + f"Video title: {title}\n"
+        + f"Intent: {intent}\n"
+        + f"Combined-read word cap (primary + secondary): {max_words} words.\n"
+        + f"Intent-specific brief: {headline_brief}\n"
+        + (f"\nNarration sample (find the dramatic angle WITHIN this topic):\n{excerpt}\n" if excerpt else "")
         + "\n"
-        + "Pick the SINGLE most dramatic moment, contradiction, stake, or "
-        + "revelation from the narration above — not a neutral summary of "
-        + "the topic. Write the package as if you were the creator's "
-        + "thumbnail strategist trying to win the next 10M views.\n"
+        + "Anchor the headline to the actual topic above. Pick the most "
+        + "dramatic angle within that topic — not a generic drama unrelated "
+        + "to the video. Every concrete noun in the headline must trace "
+        + "back to the user prompt, title, key terms, or narration. "
+        + "Write as the creator's thumbnail strategist trying to win the "
+        + "next 10M views, but staying TRUE TO THE VIDEO.\n"
         + "\n"
         + "Return JSON with the exact shape from the system prompt: "
         + "{\"primary\": \"...\", \"secondary\": \"...\", \"tagline\": "
@@ -614,6 +708,7 @@ def generate_thumbnail_headline(
     title: str,
     intent: str,
     narration_hint: Optional[str] = None,
+    topic_context: Optional[Dict[str, Any]] = None,
 ) -> Tuple[HeadlinePackage, Dict[str, Any]]:
     """Return (headline package, usage dict).
 
@@ -655,12 +750,14 @@ def generate_thumbnail_headline(
                         headline_brief=brief,
                         max_words=max_words,
                         narration_hint=narration_hint,
+                        topic_context=topic_context,
                     ),
                 },
             ],
-            # Higher temperature so the model takes more dramatic angles
-            # rather than safe, marketing-copy phrasings.
-            temperature=0.95,
+            # Moderate temperature: enough creativity to find the dramatic
+            # angle, low enough that the model stays grounded in the actual
+            # topic. 0.95 was over-rotating into off-topic clickbait.
+            temperature=0.8,
             max_tokens=300,
         )
     except Exception as e:

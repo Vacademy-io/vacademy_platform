@@ -368,6 +368,9 @@ def build_shot_planner_user_prompt(
     source_clip_available: bool = False,
     article_screenshots: Optional[List[Dict[str, Any]]] = None,
     subject_domain: Optional[str] = None,
+    cultural_context: Any = None,
+    template_catalog_md: Optional[str] = None,
+    valid_template_ids: Optional[List[str]] = None,
 ) -> str:
     """Build the user-facing prompt for the ShotPlanner LLM call.
 
@@ -519,6 +522,39 @@ def build_shot_planner_user_prompt(
             lines.append("")
             lines.append("BRAND BRIEF:")
             lines.extend(brand_lines)
+
+    # CULTURAL CONTEXT — included near the END of the prompt so the LLM
+    # reads region descriptors right before producing the plan. Empty when
+    # region is "none" (culture-agnostic video — no over-constraining).
+    if cultural_context is not None:
+        try:
+            block = cultural_context.to_prompt_block()
+            if block:
+                lines.append("")
+                lines.append(block)
+        except Exception:
+            pass
+
+    # TEMPLATE CATALOG — live list of registered shot templates. Placed at
+    # the END so it's the most recent thing the LLM sees before emitting
+    # `template_id`. Combined with a hard whitelist constraint to stop
+    # the ShotPlanner from hallucinating IDs like `image_hero_standard`
+    # or `process_3_steps` (seen in the Chanakya run).
+    if template_catalog_md:
+        lines.append("")
+        lines.append(template_catalog_md)
+    if valid_template_ids:
+        # Hard whitelist — restated explicitly. Catalog markdown alone has
+        # proven insufficient (LLMs default to plausible-sounding training-
+        # data IDs). Listing the allowed values verbatim corrects it.
+        _allow_list = ", ".join(f'"{tid}"' for tid in valid_template_ids)
+        lines.append("")
+        lines.append(
+            f"**HARD CONSTRAINT**: `template_id` MUST be one of [{_allow_list}] or "
+            f"`null`. Do NOT invent template IDs. If no listed template fits, "
+            f"set `template_id: null` and the shot renders via the standard "
+            f"per-shot LLM path."
+        )
 
     lines.append("")
     lines.append("Output the JSON now. No commentary, no fences, no preamble.")
@@ -812,6 +848,9 @@ def plan_shots(
     source_clip_available: bool = False,
     article_screenshots: Optional[List[Dict[str, Any]]] = None,
     subject_domain: Optional[str] = None,
+    cultural_context: Any = None,
+    template_catalog_md: Optional[str] = None,
+    valid_template_ids: Optional[List[str]] = None,
     temperature: float = 0.6,
     max_tokens: int = 16000,
 ) -> Dict[str, Any]:
@@ -862,6 +901,9 @@ def plan_shots(
         source_clip_available=source_clip_available,
         article_screenshots=article_screenshots,
         subject_domain=subject_domain,
+        cultural_context=cultural_context,
+        template_catalog_md=template_catalog_md,
+        valid_template_ids=valid_template_ids,
     )
 
     messages = [
@@ -876,6 +918,14 @@ def plan_shots(
         response_format={"type": "json_object"},
     )
     parsed = _parse_shot_plan(text or "")
+
+    # Validation pass — strip any `template_id` the LLM invented despite the
+    # whitelist constraint. Catches `image_hero_standard` / `process_3_steps`
+    # style hallucinations BEFORE they reach the composer (where they'd just
+    # log "unknown template_id" and fall back to LLM, costing tokens).
+    if valid_template_ids is not None:
+        _scrub_invalid_template_ids(parsed["shots"], set(valid_template_ids))
+
     return {
         "shots": parsed["shots"],
         "continuity_notes": parsed["continuity_notes"],
@@ -884,6 +934,40 @@ def plan_shots(
         "raw": text or "",
         "wpm": DEFAULT_WPM,
     }
+
+
+def _scrub_invalid_template_ids(
+    shots: List[Dict[str, Any]],
+    valid_ids: set,
+) -> None:
+    """Mutate shots in place: clear any `template_id` not in `valid_ids`.
+
+    Mirror of the run-time check in `shot_template_composer.compose` — but
+    catches the hallucinated IDs at planner-output time so the composer
+    never has to log "unknown template_id". The shot falls through to the
+    per-shot LLM path with no further intervention.
+
+    When `valid_ids` is empty, this is a no-op (treat "unknown" as "skip
+    validation" rather than "reject everything" — defensive).
+    """
+    if not valid_ids:
+        return
+    invalid_seen: List[str] = []
+    for shot in shots:
+        tid = shot.get("template_id")
+        if isinstance(tid, str) and tid.strip() and tid not in valid_ids:
+            invalid_seen.append(tid)
+            # Strip both template_id and template_params — they're useless
+            # without each other and the composer won't touch the shot.
+            shot["template_id"] = None
+            shot.pop("template_params", None)
+    if invalid_seen:
+        # Deduped, capped — useful for diagnostics without flooding the log.
+        _unique = sorted(set(invalid_seen))
+        print(
+            f"   ⚠️ ShotPlanner emitted {len(invalid_seen)} invalid template_id(s) "
+            f"(stripped to null): {_unique[:5]}"
+        )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

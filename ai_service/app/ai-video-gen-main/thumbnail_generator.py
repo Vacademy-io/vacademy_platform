@@ -227,6 +227,43 @@ def _upload_png_to_s3(
         return None
 
 
+def _extract_key_terms_from_script_plan(script_plan: Dict[str, Any]) -> List[str]:
+    """Flatten and dedupe `key_terms` from every beat in the script plan.
+
+    These are the domain-specific nouns the script writer flagged as central
+    to the topic — exactly the words the headline and visuals should anchor
+    to (e.g. ["UPSC", "civil services", "preliminary exam"] for a coaching
+    video, ["forest", "land grab", "Telangana"] for a news recap). Used as
+    a topic-grounding signal for both the headline LLM and Recraft.
+    """
+    if not script_plan:
+        return []
+    beats = script_plan.get("beat_outline") or []
+    if not isinstance(beats, list):
+        return []
+    seen: set = set()
+    out: List[str] = []
+    for beat in beats:
+        if not isinstance(beat, dict):
+            continue
+        terms = beat.get("key_terms") or []
+        if not isinstance(terms, list):
+            continue
+        for t in terms:
+            if not isinstance(t, str):
+                continue
+            t = t.strip()
+            if not t:
+                continue
+            k = t.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(t)
+    # Cap to a reasonable size so the prompts don't bloat.
+    return out[:12]
+
+
 def run(
     *,
     seedream_call: Callable[..., Tuple[Optional[bytes], Optional[Dict[str, Any]]]],
@@ -236,6 +273,7 @@ def run(
     orientation: str = "landscape",
     subjects_list: Optional[List[Dict[str, Any]]] = None,
     brand_color_hex: Optional[str] = None,
+    original_prompt: Optional[str] = None,
     llm_chat: Optional[Callable[..., Tuple[str, Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
     """Generate ONE thumbnail with the headline rendered into the image by Recraft.
@@ -247,13 +285,22 @@ def run(
                        Recraft (see `_IMAGE_GEN_MODEL`).
         run_id: stable id used as the S3 key prefix.
         script_plan: the inner JSON from `_generate_script_plan` (title,
-                     intent, visual_style, script).
+                     intent, visual_style, script, beat_outline).
         director_plan: optional Director shot plan — used only to derive a
                        hero subject hint from the first shot's image_prompt.
         orientation: 'landscape' (16:9) or 'portrait' (9:16).
         subjects_list: subject_extractor output for hero-subject lookup.
         brand_color_hex: optional brand primary color (e.g. "#FF6B00"). Fed
                          to Recraft as a descriptive color name, soft hint.
+        original_prompt: the user's raw input prompt — the most authoritative
+                         topic source. Carries cultural / regional / domain
+                         signals (e.g. "UPSC coaching", "Brazilian football")
+                         that get diluted by the time the Director plans
+                         shots. Used to anchor both the headline LLM and the
+                         Recraft visuals to the actual topic, preventing the
+                         drift mode where a UPSC-coaching video produced a
+                         "you won't believe what physics did" headline over a
+                         generic excited person.
         llm_chat: callable for the headline LLM. If None, falls back to a
                   truncated title.
 
@@ -270,7 +317,24 @@ def run(
         batch_ts = int(time.time() * 1000)
 
         visual_style = (script_plan or {}).get("visual_style") if script_plan else None
+        subject_domain = (script_plan or {}).get("subject_domain") if script_plan else None
         title = ((script_plan or {}).get("title") or "").strip()
+
+        # Key terms across all beats — the domain-specific nouns the script
+        # writer flagged. The most reliable anchor for both headline and visuals.
+        key_terms = _extract_key_terms_from_script_plan(script_plan or {})
+
+        # Topic context — the authoritative grounding signal we pass to both
+        # the headline LLM and Recraft. Composed from the original user prompt
+        # (strongest cultural/topical cue) + script title + subject_domain +
+        # key_terms. Always represents the ACTUAL topic, no matter how much
+        # downstream layers may have diluted it.
+        topic_context: Dict[str, Any] = {
+            "original_prompt": (original_prompt or "").strip(),
+            "title": title,
+            "subject_domain": subject_domain,
+            "key_terms": key_terms,
+        }
 
         # Hero subject — recurring subject from extractor wins; otherwise first
         # shot's image_prompt. The sanitizer in `tp.build_recraft_thumbnail_prompt`
@@ -290,6 +354,7 @@ def run(
             title=title or "Watch this",
             intent=intent,
             narration_hint=narration_hint,
+            topic_context=topic_context,
         )
 
         # Build the Recraft prompt with the structured headline baked in.
@@ -299,6 +364,7 @@ def run(
             hero_subject_label=hero_label,
             visual_style=visual_style,
             brand_color_hex=brand_color_hex,
+            topic_context=topic_context,
         )
 
         try:

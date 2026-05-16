@@ -253,6 +253,71 @@ IMAGE_PROMPT_GUIDELINES = (
 )
 
 # ---------------------------------------------------------------------------
+# IMAGE ROUTING RULE — 4-tier decision tree taught to the per-shot LLM so it
+# picks the right `data-img-source` upfront. Companion to the runtime cascade
+# in automation_pipeline.py (which fixes wrong choices post-hoc).
+# ---------------------------------------------------------------------------
+
+IMAGE_ROUTING_RULE = (
+    "**IMAGE SOURCE ROUTING — 4 TIERS** (pick the right `data-img-source` upfront):\n"
+    "\n"
+    "1. **`data-img-source=\"reference\"`** + `data-reference-url=\"<url>\"`\n"
+    "   → For any entity listed in PRE-FETCHED REFERENCE IMAGES / BRAND ANCHOR.\n"
+    "     These URLs are the HIGHEST-FIDELITY option — real photographs / the\n"
+    "     user's own uploaded logo. Use them whenever the script mentions the\n"
+    "     entity by name. NEVER ask AI generation to recreate a real brand logo.\n"
+    "\n"
+    "2. **`data-img-source=\"stock\"`** + `data-img-query=\"<3-6 keyword phrase>\"`\n"
+    "   → For COMMON, generic subjects ('students library', 'office meeting',\n"
+    "     'city skyline', 'success abstract'). Stock libraries (Pexels/Pixabay)\n"
+    "     are keyword-search engines: short noun phrases retrieve well.\n"
+    "     REQUIRED: emit BOTH `data-img-prompt` (cinematic description for the\n"
+    "     pipeline's fallback to AI gen) AND `data-img-query` (3-6 keyword\n"
+    "     phrase for the actual stock search). Example:\n"
+    "       <img data-img-source=\"stock\"\n"
+    "            data-img-prompt=\"cinematic wide shot of an office meeting...\"\n"
+    "            data-img-query=\"office meeting professionals\"\n"
+    "            src=\"placeholder.png\" />\n"
+    "\n"
+    "3. **`data-img-source=\"web\"`** + `data-img-query=\"<entity name + context>\"`\n"
+    "   → For NAMED real-world subjects (people, places, products, events,\n"
+    "     specific institutions), AND for any subject with cultural /\n"
+    "     demographic specificity ('indian student studying', 'delhi street',\n"
+    "     'iit delhi campus'). Stock can't index these well; Google Images can.\n"
+    "     The pipeline filters web results for dimensions and host quality\n"
+    "     before shipping. Example:\n"
+    "       <img data-img-source=\"web\"\n"
+    "            data-img-prompt=\"cinematic wide shot of the Indian Parliament...\"\n"
+    "            data-img-query=\"sansad bhavan indian parliament building\"\n"
+    "            src=\"placeholder.png\" />\n"
+    "\n"
+    "4. **`data-img-source=\"generate\"`** (AI image gen) — LAST RESORT\n"
+    "   → For HYPER-SPECIFIC cultural moments that neither stock nor web can\n"
+    "     serve (e.g. 'rural Bihar classroom 1990s'), fictional scenes, or\n"
+    "     cutout assets (`data-cutout=\"true\"`). AI gen invents — do NOT use\n"
+    "     it for real logos, real people, real landmarks (use reference/web).\n"
+    "\n"
+    "RULE OF THUMB: query length ≤ 3 generic words → stock; cultural / named\n"
+    "subject → web; can't find it anywhere → generate.\n\n"
+)
+
+
+def build_cultural_context_block(cultural_context: Any) -> str:
+    """Format the CulturalContext as a `<CULTURAL_CONTEXT>` block for the LLM.
+
+    Returns empty string when `cultural_context` is None or its `region` is
+    `"none"` (culture-agnostic content — no region keyword injection).
+    Delegated to the dataclass's own `to_prompt_block` method so the format
+    stays in one place; this wrapper just guards None.
+    """
+    if cultural_context is None:
+        return ""
+    try:
+        return cultural_context.to_prompt_block() or ""
+    except Exception:
+        return ""
+
+# ---------------------------------------------------------------------------
 # DO NOT rules — shared.
 # Extracted from lines 892-898.
 # ---------------------------------------------------------------------------
@@ -1907,6 +1972,7 @@ def build_per_shot_system_prompt(
     height: int = 1080,
     *,
     aspirational: bool = False,
+    cultural_context: Any = None,
 ) -> str:
     """Build a system prompt with only ONE shot type card.
 
@@ -1918,6 +1984,11 @@ def build_per_shot_system_prompt(
     defensive preamble + DO-NOT list for variants that drop the stylistic
     bans and the mandatory `.stage-drift` / 2-text-levels prescriptions while
     keeping the technical rails. Reduces cross-shot templating.
+
+    `cultural_context` (optional `CulturalContext` instance) — when present
+    AND has a region, the prompt gets a `<CULTURAL_CONTEXT>` block teaching
+    the LLM to write region-aware image prompts. The 4-tier routing rule is
+    always included for image-bearing shot types regardless of region.
     """
     aspect_label = "9:16 portrait" if width < height else "16:9"
 
@@ -1945,6 +2016,10 @@ def build_per_shot_system_prompt(
         parts.append(
             IMAGE_PROMPT_GUIDELINES.replace("{aspect_label}", aspect_label)
         )
+        # 4-tier source-routing rule teaches the LLM to pick `data-img-source`
+        # correctly upfront so the runtime cascade fires less often. Included
+        # only for image-bearing shot types — pure-text shots don't need it.
+        parts.append(IMAGE_ROUTING_RULE)
 
     parts.append(ANIMATION_TOOLS)
     parts.append(principles)
@@ -1956,6 +2031,13 @@ def build_per_shot_system_prompt(
     # vid_1778774930857_w8cwa1y where "THE ULTIMATE ECOSYSTEM." clipped at
     # left edge because h1 resolved to ~1500px on a 1280px canvas).
     parts.append(_build_text_bound_box_block(width, height))
+
+    # CULTURAL CONTEXT — placed near the END (high-recency position) so the
+    # LLM remembers to weave region descriptors into image prompts. Empty
+    # when region is "none" (no-op for culture-agnostic videos).
+    cultural_block = build_cultural_context_block(cultural_context)
+    if cultural_block:
+        parts.append(cultural_block)
 
     # OUTPUT FORMAT — strict JSON envelope. Three JSON parse failures on shots
     # 2/3/4 of the same run were caused by the per-shot prompt never asserting

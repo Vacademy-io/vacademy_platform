@@ -820,29 +820,33 @@ class VideoGenerationService:
                         else:
                             logger.warning(f"[VideoGenService] Failed to download script.txt from {script_url}")
 
-                # Also pull `script_plan.json` (internal — not stored in DB
-                # s3_urls). Without this, the resume path loads `plan_data = {}`
-                # and the Director skips with "missing script or beat outline".
-                # The plan is uploaded by the SCRIPT stage; we reconstruct the
-                # public S3 URL from convention.
+                # Also pull internal plan files — `script_plan.json` (v2) and
+                # `shot_plan.json` (v3). Without these, the resume path loads
+                # `plan_data = {}` and the Director skips with "missing script
+                # or beat outline" (v2) or the v3 ShotPlanner falls back to a
+                # synthesized stub. Both are uploaded by the SCRIPT stage and
+                # the public S3 URL is reconstructed from convention.
                 try:
                     from ..config import get_settings
                     settings = get_settings()
                     bucket = settings.aws_bucket_name or settings.aws_s3_public_bucket
-                    plan_key = f"ai-videos/{video_id}/script/script_plan.json"
-                    plan_url = f"https://{bucket}.s3.amazonaws.com/{plan_key}"
-                    plan_local = run_dir / "script_plan.json"
-                    if not plan_local.exists():
-                        logger.info(f"[VideoGenService] Attempting to download script_plan.json from S3...")
+                    for _plan_name in ("script_plan.json", "shot_plan.json"):
+                        plan_key = f"ai-videos/{video_id}/script/{_plan_name}"
+                        plan_url = f"https://{bucket}.s3.amazonaws.com/{plan_key}"
+                        plan_local = run_dir / _plan_name
+                        if plan_local.exists():
+                            continue
+                        logger.info(f"[VideoGenService] Attempting to download {_plan_name} from S3...")
                         if self.s3_service.download_file(plan_url, plan_local):
-                            logger.info(f"[VideoGenService] Successfully downloaded script_plan.json")
+                            logger.info(f"[VideoGenService] Successfully downloaded {_plan_name}")
                         else:
                             logger.info(
-                                f"[VideoGenService] script_plan.json not found in S3 "
-                                f"(legacy run? Director will use a synthesized fallback beat)"
+                                f"[VideoGenService] {_plan_name} not found in S3 "
+                                f"(legacy run or v2-only / v3-only path? "
+                                f"Director/ShotPlanner will use a synthesized fallback)"
                             )
                 except Exception as e:
-                    logger.warning(f"[VideoGenService] Could not download script_plan.json: {e}")
+                    logger.warning(f"[VideoGenService] Could not download plan JSON files: {e}")
             
             # Need narration_raw.json and narration.mp3 if resuming from WORDS or later
             if start_stage_idx >= 3:  # WORDS, HTML, or RENDER
@@ -1505,7 +1509,8 @@ class VideoGenerationService:
             # Without this, resume at HTML loses the plan and the Director skips.
             "script": [
                 ("script_path", "script", "script.txt"),
-                (None, None, "script_plan.json"),  # internal — see download path
+                (None, None, "script_plan.json"),  # internal — see download path (v2)
+                (None, None, "shot_plan.json"),    # internal — see download path (v3)
             ],
             "tts": [
                 ("audio_path", "audio", "narration.mp3"),
@@ -3222,6 +3227,10 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
 
             seedream_call = make_standalone_seedream_call(api_key)
 
+            # The video record's `prompt` field carries the user's original
+            # input — same authoritative topic signal we pass on first-time
+            # generation. Threading it through makes regenerate honor the
+            # actual topic instead of drifting to generic clickbait.
             thumb_set = _run_thumb(
                 seedream_call=seedream_call,
                 run_id=video_id,
@@ -3229,6 +3238,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 director_plan=director_plan,
                 orientation=orientation,
                 subjects_list=[],
+                original_prompt=(record.prompt or "").strip() or None,
                 llm_chat=None,
             )
 

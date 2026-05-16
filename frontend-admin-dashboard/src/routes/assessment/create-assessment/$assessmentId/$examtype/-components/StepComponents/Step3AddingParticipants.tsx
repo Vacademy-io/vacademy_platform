@@ -30,6 +30,7 @@ import QRCode from 'react-qr-code';
 import {
     copyToClipboard,
     getAllSessions,
+    getAssessmentJoinLink,
     getCustomFieldsWhileEditStep3,
     getStepKey,
     handleDownloadQRCode,
@@ -54,7 +55,6 @@ import { useSavedAssessmentStore } from '../../-utils/global-states';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useTestAccessStore } from '../../-utils/zustand-global-states/step3-adding-participants';
 import { useParams } from '@tanstack/react-router';
-import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { convertDateFormat } from './Step1BasicInfo';
 import { handleGetIndividualStudentList } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/assessment-details-services';
 import { getInstituteId } from '@/constants/helper';
@@ -141,7 +141,10 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
             },
             join_link:
                 storeDataStep3?.join_link ||
-                `${BASE_URL_LEARNER_DASHBOARD}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}`,
+                getAssessmentJoinLink(
+                    instituteDetails?.learner_portal_base_url,
+                    assessmentDetails[0]?.saved_data.assessment_url
+                ),
             show_leaderboard: storeDataStep3?.show_leaderboard || true,
             notify_student: storeDataStep3?.notify_student || {
                 when_assessment_created: true,
@@ -508,7 +511,10 @@ const Step3AddingParticipants: React.FC<StepContentProps> = ({
     };
 
     const getJoinLink = () => {
-        return `${BASE_URL_LEARNER_DASHBOARD}/register?code=${assessmentDetails[0]?.saved_data.assessment_url}` || '';
+        return getAssessmentJoinLink(
+            instituteDetails?.learner_portal_base_url,
+            assessmentDetails[0]?.saved_data.assessment_url
+        );
     };
 
     const getShowLeaderboardSetting = (savedData: any) => {

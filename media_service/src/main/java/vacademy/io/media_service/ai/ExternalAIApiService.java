@@ -704,7 +704,7 @@ public class ExternalAIApiService {
      * On any unexpected error this falls back to the input string so the
      * write path can never get worse than the previous unvalidated behavior.
      */
-    private String cleanInvalidQuestionsFromJson(String mergedJson) {
+    String cleanInvalidQuestionsFromJson(String mergedJson) {
         if (mergedJson == null || mergedJson.isEmpty()) {
             return mergedJson;
         }

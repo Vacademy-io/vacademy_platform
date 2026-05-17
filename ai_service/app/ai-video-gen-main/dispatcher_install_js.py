@@ -926,6 +926,134 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 }
                             };
 
+                            // Bug 5 (word-break root cause):
+                            // Auto-scale-to-fit text helper. Runs AFTER the shot
+                            // script (which may set initial transforms / opacities)
+                            // and AFTER FontFace.ready (which finishes loading
+                            // any @font-face declarations the shot CSS uses).
+                            // Walks the shadow scope for text-bearing elements
+                            // whose intrinsic width exceeds the container's
+                            // max-content width AND that would otherwise wrap
+                            // mid-word because of the universal `word-break:
+                            // break-word` foundation rule. For each such
+                            // element, binary-searches a font-size scale
+                            // between 0.55 and 1.0 of the computed font-size
+                            // until the text fits on its allotted lines (or
+                            // floor is reached). Applies the resulting size
+                            // as inline `font-size`.
+                            //
+                            // This makes the recurring "UPS/C", "DREA/M"
+                            // character-break bug essentially impossible: the
+                            // foundation rule still exists as a last-resort,
+                            // but text never reaches it because the auto-scaler
+                            // pre-empts overflow by shrinking the font.
+                            //
+                            // Cost: ~5-15 text elements per shot × ~7 binary-
+                            // search iterations × 1 getBoundingClientRect each
+                            // ≈ 50ms per shot. Acceptable for the small text
+                            // count of typical generated HTML.
+                            var __fitTextOne = function (el) {
+                                try {
+                                    if (!el || !el.style || !el.getBoundingClientRect) return;
+                                    // Skip explicit opt-outs.
+                                    if (el.hasAttribute('data-no-fit')) return;
+                                    // Skip elements with no visible text node.
+                                    var hasText = false;
+                                    for (var ci = 0; ci < el.childNodes.length; ci++) {
+                                        var cn = el.childNodes[ci];
+                                        if (cn.nodeType === 3 && (cn.nodeValue || '').trim()) {
+                                            hasText = true; break;
+                                        }
+                                    }
+                                    if (!hasText) return;
+                                    // Read computed font-size (in px). If it's already
+                                    // small (<32px), don't bother — large display text
+                                    // is the failure mode, not body copy.
+                                    var cs = getComputedStyle(el);
+                                    var fsPx = parseFloat(cs.fontSize);
+                                    if (!fsPx || fsPx < 32) return;
+                                    // Quick fit check: scrollWidth catches the natural
+                                    // intrinsic width even when CSS overflow:hidden
+                                    // would clip it visually.
+                                    var initialScroll = el.scrollWidth;
+                                    var initialClient = el.clientWidth;
+                                    if (initialClient <= 0) return;
+                                    // Allow a small tolerance — sub-pixel jitter.
+                                    if (initialScroll <= initialClient + 2) return;
+                                    // Binary-search font-size scale ∈ [0.55, 1.0].
+                                    // 1.0 known to overflow (we hit this branch
+                                    // because scrollWidth > clientWidth at the
+                                    // original size); 0.55 is the floor.
+                                    // Goal: find the LARGEST scale at which the
+                                    // text fits. If it fits at mid, try larger
+                                    // (lo = mid). If it overflows, try smaller
+                                    // (hi = mid). Floor at 0.55 — below that
+                                    // the text becomes unreadable; accept
+                                    // overflow if even 0.55 won't fit.
+                                    var lo = 0.55, hi = 1.0;
+                                    var original = fsPx;
+                                    var best = lo;  // pessimistic default
+                                    for (var iter = 0; iter < 7; iter++) {
+                                        var mid = (lo + hi) / 2;
+                                        el.style.fontSize = (original * mid) + 'px';
+                                        // Force layout flush by reading.
+                                        if (el.scrollWidth <= el.clientWidth + 2) {
+                                            best = mid; lo = mid;   // fits; try larger
+                                        } else {
+                                            hi = mid;                // overflows; try smaller
+                                        }
+                                    }
+                                    el.style.fontSize = (original * best) + 'px';
+                                    try {
+                                        console.log(
+                                            "[fit-text] shot=${e.id} " +
+                                            "tag=" + el.tagName.toLowerCase() +
+                                            " id=" + (el.id || '-') +
+                                            " " + Math.round(original) + "px → " +
+                                            Math.round(original * best) + "px"
+                                        );
+                                    } catch (_lge) {}
+                                } catch (_fterr) { /* never break the shot */ }
+                            };
+
+                            var __fitTextSweep = function () {
+                                try {
+                                    var nodes = scope.querySelectorAll(
+                                        // Restrict to nodes that the LLM tends to make
+                                        // big-text containers. Skip <script>, <style>,
+                                        // <video>, <img>, <svg>, etc. — they aren't
+                                        // text containers and scrollWidth on them is
+                                        // meaningless.
+                                        'div, span, p, h1, h2, h3, h4, ' +
+                                        '[class*="headline"], [class*="title"], [class*="display"], ' +
+                                        '[id*="title"], [id*="headline"], [id*="display"], [id*="slam"]'
+                                    );
+                                    for (var ni = 0; ni < nodes.length; ni++) {
+                                        __fitTextOne(nodes[ni]);
+                                    }
+                                } catch (_fserr) { /* never break the shot */ }
+                            };
+
+                            // Run the fit-text sweep when fonts are ready — running
+                            // before fonts load gives stale measurements based on
+                            // fallback fonts.
+                            var __scheduleFit = function () {
+                                try {
+                                    if (document && document.fonts && document.fonts.ready) {
+                                        document.fonts.ready.then(function () {
+                                            // Defer one rAF so the shot script's
+                                            // initial gsap.set / transforms have
+                                            // applied before we measure.
+                                            requestAnimationFrame(__fitTextSweep);
+                                        });
+                                    } else {
+                                        requestAnimationFrame(__fitTextSweep);
+                                    }
+                                } catch (_se) {
+                                    try { __fitTextSweep(); } catch (_se2) {}
+                                }
+                            };
+
                             try {
                                 ${originalCode}
                                 try { console.log("[SHOT-TELEM] shot=${e.id} exit ok root-opacity=" + __snapRootOpacity()); } catch (_te2) {}
@@ -935,6 +1063,10 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                                 // (those may be legitimate end-states for shots
                                 // with delayed entrances or terminal hide-outs).
                                 __vxRecover(false);
+                                // Bug 5 — auto-scale text on the success path.
+                                // Doesn't run on the catch path because the
+                                // recovery already touched font sizes / transforms.
+                                __scheduleFit();
                             } catch (e) {
                                 try { console.log("[SHOT-TELEM] shot=${e.id} exit threw root-opacity=" + __snapRootOpacity() + " err=" + (e && (e.message || e))); } catch (_te3) {}
                                 console.error("[SCRIPT-ERR shot=${e.id}] Script execution error in snippet:", e && (e.message || e));
@@ -1174,31 +1306,22 @@ _DISPATCHER_INSTALL_JS_TEMPLATE = """
                 host.style.height = (e.h | 0) + 'px';
                 console.log('[SIZING-DIAG] branding ' + e.id + ' size=' + e.w + 'x' + e.h + ' pos=' + e.x + ',' + e.y);
               } else {
+                // Caption host sits over the shot iframes as a transparent
+                // full-viewport overlay. The inner caption HTML (emitted by
+                // generate_video.py) is a `<div style="width:100%; height:100%; position:relative;">`
+                // wrapper with an absolutely-positioned caption pill — so the
+                // host must be viewport-sized for the percentage math to
+                // resolve correctly, but MUST stay transparent. The earlier
+                // version copy-pasted the shot-entry logic from
+                // `__updateSnippets` and forced an opaque body-colored
+                // background here, which turned every captioned frame into a
+                // solid white screen with just the caption visible.
                 host.style.left = '0px';
                 host.style.top = '0px';
                 host.style.width = window.innerWidth + 'px';
                 host.style.height = window.innerHeight + 'px';
                 host.style.overflow = 'hidden';
-                host.style.background = getComputedStyle(document.body).backgroundColor || '#ffffff';
-                // Force the inner content to stretch to fill — prevents white gap at bottom
-                const wr = host.shadowRoot.getElementById('content-wrapper');
-                if (wr) {
-                  wr.style.minHeight = window.innerHeight + 'px';
-                  // Find the first child div and stretch it too
-                  const firstChild = wr.firstElementChild;
-                  if (firstChild && firstChild.tagName === 'STYLE') {
-                    // Skip <style> tags, get the first content element
-                    const contentEl = firstChild.nextElementSibling;
-                    if (contentEl) {
-                      contentEl.style.minHeight = '100%';
-                      contentEl.style.boxSizing = 'border-box';
-                    }
-                  } else if (firstChild) {
-                    firstChild.style.minHeight = '100%';
-                    firstChild.style.boxSizing = 'border-box';
-                  }
-                }
-                console.log('[SIZING-DIAG] full-viewport ' + e.id + ' (orig size=' + e.w + 'x' + e.h + ', forced=' + window.innerWidth + 'x' + window.innerHeight + ')');
+                host.style.background = 'transparent';
               }
             };
           }

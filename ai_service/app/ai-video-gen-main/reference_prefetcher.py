@@ -57,7 +57,12 @@ def prefetch_reference_assets(
     *,
     max_assets: int = 8,
     orientation: Optional[str] = None,
+    canvas_w: Optional[int] = None,
+    canvas_h: Optional[int] = None,
+    gl: str = "us",
+    hl: str = "en",
     cost_tracker: Any = None,
+    region_keywords: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     """For each named entity with a fetchable kind, call Serper for the top
     image hit and return enriched entries.
@@ -75,6 +80,17 @@ def prefetch_reference_assets(
         orientation: "portrait" or "landscape" — forwarded to Serper for
             aspect-aware ranking. Caller passes based on `video_width <
             video_height`.
+        canvas_w, canvas_h: Pixel dimensions of the output video canvas.
+            When BOTH are provided, the prefetcher upgrades from Serper's
+            simple `best_image()` to `best_quality_image()` which runs the
+            full hard filter — orientation match, dimension cutoffs (image
+            long-side must meet canvas long-side), aspect-ratio fit, host
+            reputation scoring. Bug 4a: without this upgrade, landscape
+            Bloomberg / wire-service / editorial URLs land in
+            `_reference_assets` and ship on portrait canvases where they
+            get cropped to vertical slices.
+        gl, hl: Google geo / language bias. Forwarded to `best_quality_image`.
+            Caller should pass `cultural_context.gl` / `.hl` when available.
         cost_tracker: Optional `CostEventTracker` instance. When set, each
             Serper call is recorded as `kind="stock"` for the per-run
             cost balance sheet.
@@ -123,7 +139,39 @@ def prefetch_reference_assets(
 
         attempts_remaining -= 1
         try:
-            hit = serper_service.best_image(query, orientation=orientation)
+            # Bug 4a: when canvas dimensions are known, use the quality-
+            # filtered Serper variant which enforces orientation match,
+            # dimension cutoffs, aspect-ratio fit, and host reputation
+            # scoring. Without this gate, landscape editorial URLs (Bloomberg,
+            # wire services) land in `_reference_assets` and ship on portrait
+            # canvases cropped to vertical slices. Falls back to the simple
+            # `best_image` when canvas dims aren't passed (legacy callers).
+            #
+            # Subject relevance: the entity name itself IS the subject (we're
+            # prefetching a reference image of that specific entity). Split
+            # the name into significant tokens (≥3 chars) so the relevance
+            # check can match on individual words like "parliament" or
+            # "beyonce" — full-phrase matching would be too strict and would
+            # reject editorially-correct hits whose title omits one word.
+            #
+            # Strip cultural region words from the keyword list so they
+            # don't pollute relevance scoring. "Indian Parliament" → just
+            # ["parliament"]; the editorial host for "Parliament of India"
+            # then matches 1/1 (full coverage) → 1.0 mul. Without the strip
+            # it would match 1/2 (parliament hits, "indian" doesn't word-
+            # match "India") → 0.5 mul.
+            _region_set = {w.lower() for w in (region_keywords or []) if w}
+            subj_kws = [
+                tok.lower() for tok in name.split()
+                if len(tok) >= 3 and tok.lower() not in _region_set
+            ]
+            if canvas_w and canvas_h:
+                hit = serper_service.best_quality_image(
+                    query, int(canvas_w), int(canvas_h), gl=gl, hl=hl,
+                    subject_keywords=subj_kws,
+                )
+            else:
+                hit = serper_service.best_image(query, orientation=orientation)
         except Exception as exc:
             # Serper rate limits or transport errors fall through — the
             # pipeline still runs with lazy fetch for this entity.

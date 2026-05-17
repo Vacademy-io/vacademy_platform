@@ -2372,18 +2372,54 @@ class VideoGenerationPipeline:
             #     package. The directory IS on sys.path (inserted by the
             #     service before constructing this pipeline) so a bare
             #     `import ai_video_orchestrator` works.
+            # Two-path import — mirrors the same pattern in
+            # `ai_video_orchestrator.py`. We need to accept BOTH:
+            #   • FastAPI server: cwd = `ai_service/`, so `app/` is a
+            #     top-level package → `app.services.fal_veo_client` works.
+            #   • Standalone runner / test harness: only `app/services/`
+            #     is on sys.path, so `app.services.*` raises
+            #     ModuleNotFoundError but a bare `fal_veo_client` works.
+            # The previous code only tried the first path, so any run
+            # outside the FastAPI server disabled AI video with a
+            # confusing error.
+            FalVeoClient = None
+            get_fal_api_key_from_env = None
+            AiVideoCostTracker = None
+            _imp_err: Optional[Exception] = None
             try:
-                from app.services.fal_veo_client import (
+                from app.services.fal_veo_client import (  # type: ignore
                     FalVeoClient, get_fal_api_key_from_env,
                 )
-                from ai_video_orchestrator import AiVideoCostTracker
-            except Exception as _imp_err:
-                print(
-                    f"⚠️  AI video enabled but module import failed "
-                    f"({type(_imp_err).__name__}: {_imp_err}); disabling."
-                )
-                self._ai_video_run_enabled = False
-                self._ai_video_audio_run_enabled = False
+            except (ModuleNotFoundError, ImportError) as _err1:
+                try:
+                    from fal_veo_client import (  # type: ignore[no-redef]
+                        FalVeoClient, get_fal_api_key_from_env,
+                    )
+                except (ModuleNotFoundError, ImportError) as _err2:
+                    # Surface BOTH paths' errors so debugging shows what was
+                    # tried (the original error message was opaque).
+                    _imp_err = _err2
+                    print(
+                        f"⚠️  AI video enabled but fal_veo_client import failed:"
+                        f"\n      tried `app.services.fal_veo_client` → {type(_err1).__name__}: {_err1}"
+                        f"\n      tried `fal_veo_client`              → {type(_err2).__name__}: {_err2}"
+                        f"\n      hint: ensure either ai_service/ OR ai_service/app/services/ is on sys.path"
+                        f"\n      disabling AI video."
+                    )
+                    self._ai_video_run_enabled = False
+                    self._ai_video_audio_run_enabled = False
+            if _imp_err is None and self._ai_video_run_enabled:
+                try:
+                    from ai_video_orchestrator import AiVideoCostTracker
+                except (ModuleNotFoundError, ImportError) as _err3:
+                    print(
+                        f"⚠️  AI video enabled but ai_video_orchestrator "
+                        f"import failed ({type(_err3).__name__}: {_err3}); "
+                        f"hint: ai_service/app/ai-video-gen-main/ must be on "
+                        f"sys.path. Disabling AI video."
+                    )
+                    self._ai_video_run_enabled = False
+                    self._ai_video_audio_run_enabled = False
             if self._ai_video_run_enabled:
                 _fal_key = get_fal_api_key_from_env()
                 if not _fal_key:
@@ -3542,7 +3578,9 @@ class VideoGenerationPipeline:
                 # Vision-review persistence runs before _process_stock_videos
                 # because the latter strips `_vision_review` from each entry.
                 self._persist_vision_review_cases(html_segments, run_dir, video_id=getattr(self, "_current_video_id", None))
-                html_segments, stock_usage = self._process_stock_videos(html_segments)
+                # Bug 1: pass run_dir so the AI-video-on Veo rescue path can
+                # invoke `orchestrate_ai_video_shot` for stock-miss recovery.
+                html_segments, stock_usage = self._process_stock_videos(html_segments, run_dir=run_dir)
                 accumulate_usage(stock_usage)
             else:
                 # STANDARD VIDEO FLOW
@@ -4297,7 +4335,8 @@ class VideoGenerationPipeline:
                 # Vision-review persistence runs before _process_stock_videos
                 # because the latter strips `_vision_review` from each entry.
                 self._persist_vision_review_cases(html_segments, run_dir, video_id=getattr(self, "_current_video_id", None))
-                html_segments, stock_usage = self._process_stock_videos(html_segments)
+                # Bug 1: see twin call site for run_dir rationale.
+                html_segments, stock_usage = self._process_stock_videos(html_segments, run_dir=run_dir)
                 accumulate_usage(stock_usage)
 
             # ── Background music (Lyria) ──
@@ -9586,13 +9625,27 @@ class VideoGenerationPipeline:
                     _entities = self._extract_named_entities(base_prompt or "")
                     if _entities:
                         from reference_prefetcher import prefetch_reference_assets
-                        _orient = "portrait" if getattr(self, "video_width", 1920) < getattr(self, "video_height", 1080) else "landscape"
+                        _vw = getattr(self, "video_width", 1920)
+                        _vh = getattr(self, "video_height", 1080)
+                        _orient = "portrait" if _vw < _vh else "landscape"
+                        # Bug 4a — see twin call site in non-v3 path for rationale.
+                        _cc_v3 = getattr(self, "_cultural_context", None)
+                        _gl_v3 = (getattr(_cc_v3, "gl", None) or "us") if _cc_v3 else "us"
+                        _hl_v3 = (getattr(_cc_v3, "hl", None) or "en") if _cc_v3 else "en"
                         self._reference_assets = prefetch_reference_assets(
                             _entities,
                             _serper,
                             max_assets=8,
                             orientation=_orient,
+                            canvas_w=_vw,
+                            canvas_h=_vh,
+                            gl=_gl_v3,
+                            hl=_hl_v3,
                             cost_tracker=getattr(self, "_cost_events", None),
+                            region_keywords=(
+                                list(getattr(_cc_v3, "extra_stock_keywords", []))
+                                if _cc_v3 else None
+                            ),
                         )
             except Exception as _pf_err:
                 print(f"   ⚠️ v3 reference prefetch errored ({_pf_err}); falling back to lazy fetch")
@@ -9918,12 +9971,30 @@ class VideoGenerationPipeline:
             try:
                 from reference_prefetcher import prefetch_reference_assets
                 _orientation = "portrait" if _w < _h else "landscape"
+                # Bug 4a: pass canvas dims + cultural-context gl/hl so the
+                # prefetcher uses Serper's `best_quality_image` (with
+                # orientation filter + dimension cutoffs + host scoring)
+                # instead of the unfiltered `best_image`. Without this,
+                # landscape editorial URLs (Bloomberg, wire-service photos)
+                # were entering `_reference_assets` and shipping on portrait
+                # canvases as vertical crops.
+                _cc_pf = getattr(self, "_cultural_context", None)
+                _gl_pf = (getattr(_cc_pf, "gl", None) or "us") if _cc_pf else "us"
+                _hl_pf = (getattr(_cc_pf, "hl", None) or "en") if _cc_pf else "en"
                 self._reference_assets = prefetch_reference_assets(
                     _named_entities,
                     self._serper_service,
                     max_assets=8,
                     orientation=_orientation,
+                    canvas_w=_w,
+                    canvas_h=_h,
+                    gl=_gl_pf,
+                    hl=_hl_pf,
                     cost_tracker=getattr(self, "_cost_events", None),
+                    region_keywords=(
+                        list(getattr(_cc_pf, "extra_stock_keywords", []))
+                        if _cc_pf else None
+                    ),
                 )
             except Exception as _pf_err:
                 print(f"   ⚠️ Reference prefetch errored ({_pf_err}); falling back to lazy fetch")
@@ -14968,6 +15039,25 @@ class VideoGenerationPipeline:
                     # _attempt_usage — add whatever partial usage we got.
                     for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
                         usage[_k] = usage.get(_k, 0) + _attempt_usage.get(_k, 0)
+                    # Bug 2 (telemetry): on parse failure, capture the LLM's
+                    # raw response so we can see WHY it kept failing. The
+                    # `raw` variable holds the response from html_client.chat
+                    # IF the call succeeded but parsing failed (ValueError
+                    # from _extract_json_blob). For network errors `raw` is
+                    # not defined — guard with locals(). 400-char window
+                    # captures truncation marker / safety-block reason / the
+                    # malformed prefix without flooding logs.
+                    try:
+                        _raw_snippet = locals().get('raw', '')
+                        if _raw_snippet:
+                            _raw_text = str(_raw_snippet)[:400].replace('\n', ' \\n ')
+                            print(
+                                f"   [shot-llm-raw] shot={shot_idx + 1} attempt={attempt + 1}/{max_attempts} "
+                                f"err={type(e).__name__}: {str(e)[:80]} | "
+                                f"raw[:400]={_raw_text!r}"
+                            )
+                    except Exception:
+                        pass  # telemetry must never break the fallback path
                     if attempt == max_attempts - 1:
                         print(f"   ❌ Shot {shot_idx + 1} failed after {max_attempts} attempts: {e}")
                         self._emit_progress({
@@ -15036,7 +15126,15 @@ class VideoGenerationPipeline:
                             else:
                                 _fb_text_color = "var(--brand-text, #2a1a0a)"
 
-                        # Multi-source text — never empty.
+                        # Multi-source text. Bug 2: removed the
+                        # `shot_type.replace("_", " ").title()` rung that
+                        # produced literal internal vocabulary like "Kinetic
+                        # Title" on user-facing screens when narration /
+                        # visual_description / text_elements were all empty.
+                        # Now an empty result is allowed and triggers a
+                        # text-less fallback (animated accent rule only)
+                        # below — a tasteful brand-color blip instead of
+                        # leaking internal shot-type names.
                         _text_elems = shot.get("text_elements") or []
                         if isinstance(_text_elems, list):
                             _elem_text = " · ".join(str(e) for e in _text_elems[:2]).strip()
@@ -15046,16 +15144,25 @@ class VideoGenerationPipeline:
                             (shot.get("narration_excerpt") or "").strip()
                             or (shot.get("visual_description") or "").strip()
                             or _elem_text
-                            or shot_type.replace("_", " ").title()
-                            or "Generating..."
+                            or ""  # explicit empty → emit accent-only fallback
                         )[:200]
+                        # Text div only renders when we actually have text;
+                        # otherwise we emit just the accent rule so the shot
+                        # is a visually neutral brand blip (no internal
+                        # vocabulary surfaces to the viewer).
+                        _fb_text_div = (
+                            f"<div style='max-width:88%;text-align:center;font-family:{_fb_font},sans-serif;"
+                            f"font-size:2.4rem;font-weight:700;color:{_fb_text_color};line-height:1.4;opacity:0;' id='fb_t'>"
+                            f"{_fb_text}</div>"
+                        ) if _fb_text else ""
+                        _fb_text_anim = (
+                            "gsap.to('#fb_t',{opacity:1,y:-10,duration:0.5,delay:0.1,ease:'power2.out'});"
+                        ) if _fb_text else ""
                         _fb_html = (
                             "<div id='shot-root' style='position:relative;width:100%;height:100%;"
                             f"overflow:hidden;background:{_fb_bg};display:flex;align-items:center;"
                             "justify-content:center;padding:6%;'>"
-                            f"<div style='max-width:88%;text-align:center;font-family:{_fb_font},sans-serif;"
-                            f"font-size:2.4rem;font-weight:700;color:{_fb_text_color};line-height:1.4;opacity:0;' id='fb_t'>"
-                            f"{_fb_text}</div>"
+                            f"{_fb_text_div}"
                             f"<div style='position:absolute;bottom:10%;left:50%;transform:translateX(-50%);"
                             f"width:6rem;height:4px;background:{_fb_accent};border-radius:2px;opacity:0;' id='fb_b'></div>"
                             # IIFE with typeof gsap guard — shadow-DOM safe (see
@@ -15064,7 +15171,7 @@ class VideoGenerationPipeline:
                             # fire because the fallback HTML is mounted in a shadow
                             # root, so the fade-in animations silently never ran.
                             "<script>(function(){if(typeof gsap==='undefined')return;"
-                            "gsap.to('#fb_t',{opacity:1,y:-10,duration:0.5,delay:0.1,ease:'power2.out'});"
+                            f"{_fb_text_anim}"
                             "gsap.to('#fb_b',{opacity:1,duration:0.4,delay:0.4});"
                             "})();</script></div>"
                         )
@@ -18130,6 +18237,77 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 s = first_clause
         return s
 
+    # Tokens dropped from subject-keyword extraction. Stopwords + AI-prose
+    # adjectives that frequent the LLM's `img_prompt` but carry no subject
+    # signal. Lower-case match.
+    _SUBJECT_STOPWORDS: Set[str] = {
+        # Common English stopwords.
+        "the", "a", "an", "of", "in", "on", "at", "with", "by", "for",
+        "to", "and", "or", "as", "is", "are", "from", "into", "over",
+        "under", "near", "this", "that", "these", "those", "be", "been",
+        # AI-prose adjectives the LLM keeps emitting.
+        "cinematic", "realistic", "professional", "beautiful", "stunning",
+        "dramatic", "atmospheric", "depth", "field", "shot", "view",
+        "image", "photo", "photograph", "background", "scene", "high",
+        "quality", "detailed", "wide", "close", "up", "cute",
+    }
+
+    def _subject_keywords_from_task(self, task: Dict[str, Any]) -> List[str]:
+        """Distill content-word subject keywords from a Director image task.
+
+        Used by `best_quality_image(subject_keywords=)` to score Serper hits
+        for subject relevance. The exoticindia.com sculpture bug shipped
+        because the host SEO-ranks on `indian + <any visual noun>`; without
+        a subject check, every culturally-correct hit ranks regardless of
+        whether the image shows the requested subject.
+
+        Pipeline:
+          1. Start with `task["img_query"]` (shorter, hand-picked keyword
+             string from the LLM) if present, else strip AI verbiage from
+             `task["prompt"]`.
+          2. Tokenize on whitespace + punctuation.
+          3. Lower-case, drop stopwords + AI-prose adjectives + tokens ≤ 2 chars.
+          4. Drop cultural region words via `CulturalContext.extra_stock_keywords`
+             — they describe geo, not subject (the host filter handles geo).
+          5. Dedupe preserving first-seen order. Cap at 8 keywords to keep
+             relevance matching cheap.
+
+        Returns: lower-cased list of subject keywords. May be empty when the
+        prompt was nothing but cultural + stopword content — in that case
+        `best_quality_image` skips the relevance multiplier (back-compat).
+        """
+        raw = (task.get("img_query") or "").strip()
+        if not raw:
+            raw = self._strip_ai_image_verbiage(task.get("prompt", ""))
+        if not raw:
+            return []
+        # Split on whitespace AND punctuation. Keep apostrophes inside tokens
+        # so possessives don't get truncated mid-word.
+        tokens = re.split(r"[\s,;:\.\-\(\)\[\]\"]+", raw.lower())
+        # Region words from the run's cultural context — these describe geo,
+        # not subject. Lower-cased for matching.
+        cc = getattr(self, "_cultural_context", None)
+        region_words: Set[str] = set()
+        if cc is not None and getattr(cc, "extra_stock_keywords", None):
+            region_words = {w.lower() for w in cc.extra_stock_keywords if w}
+        out: List[str] = []
+        seen: Set[str] = set()
+        for tok in tokens:
+            tok = tok.strip("'\"")
+            if len(tok) < 3:
+                continue
+            if tok in self._SUBJECT_STOPWORDS:
+                continue
+            if tok in region_words:
+                continue
+            if tok in seen:
+                continue
+            seen.add(tok)
+            out.append(tok)
+            if len(out) >= 8:
+                break
+        return out
+
     def _pexels_query_for(self, prompt: str) -> str:
         """Build the actual query Pexels gets: stripped + region-tagged.
 
@@ -18202,11 +18380,19 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         return f"{people} subject and {cc.region} setting. {prompt}"
 
     def _web_search_quality_image(
-        self, query: str, *, canvas_w: int, canvas_h: int
+        self,
+        query: str,
+        *,
+        canvas_w: int,
+        canvas_h: int,
+        subject_keywords: Optional[List[str]] = None,
     ) -> Optional[Dict[str, Any]]:
         """Wrapper around Serper's `best_quality_image` that plumbs the run's
         cultural context for geo bias. Returns the chosen result dict or None
         (caller cascades to AI-gen on None).
+
+        `subject_keywords` (when supplied) is forwarded so Serper scores hits
+        against the LLM's content words and drops off-subject SEO-trap hosts.
         """
         serper = getattr(self, "_serper_service", None)
         if not serper or not getattr(serper, "is_available", False):
@@ -18215,10 +18401,194 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         gl = (cc.gl if cc and cc.gl else "us")
         hl = (cc.hl if cc and cc.hl else "en")
         try:
-            return serper.best_quality_image(query, canvas_w, canvas_h, gl=gl, hl=hl)
+            return serper.best_quality_image(
+                query, canvas_w, canvas_h, gl=gl, hl=hl,
+                subject_keywords=subject_keywords,
+            )
         except Exception as e:
             print(f"   ⚠️ best_quality_image errored: {e}")
             return None
+
+    # Per-process cache for image-dimension probes. URLs map to
+    # (width, height) or (None, None) for "probed and unknown".
+    # Bounded eviction keeps memory flat across long runs.
+    _IMG_DIM_CACHE: Dict[str, Tuple[Optional[int], Optional[int]]] = {}
+    _IMG_DIM_CACHE_MAX = 1024
+
+    @classmethod
+    def _probe_image_dimensions(
+        cls, url: str, *, timeout: float = 4.0
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """Read width/height of a remote image WITHOUT downloading the full body.
+
+        How: Range-GET the first ~2KB and parse format-specific headers via
+        `struct`. Supports the four formats the pipeline encounters in
+        practice — PNG, JPEG, WebP, GIF. Returns `(None, None)` on any
+        failure (unknown format, network error, malformed header, truncated
+        body) so the caller can treat orientation as "unknown" → skip the
+        orientation check rather than crash.
+
+        Bug 4b: the `data-img-source="reference"` path commits a URL with
+        no orientation enforcement. A landscape Bloomberg URL emitted as
+        a reference URL ships on a portrait canvas cropped to a vertical
+        slice. This probe is the cheap gate before commit — ~50ms per URL
+        when the server supports Range, ~150ms when it doesn't.
+
+        Cached per-process, so re-probes are free.
+        """
+        if not url or not isinstance(url, str):
+            return (None, None)
+        if url.startswith("data:") or url.startswith("file://") or url.startswith("/"):
+            # Local / data URIs — caller already has the bytes if it cares;
+            # probing makes no sense.
+            return (None, None)
+        cached = cls._IMG_DIM_CACHE.get(url)
+        if cached is not None:
+            return cached
+
+        import struct
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            "Range": "bytes=0-2047",
+        }
+        data = b""
+        try:
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = resp.read(2048)
+        except Exception:
+            return cls._dim_cache_put(url, (None, None))
+
+        if not data:
+            return cls._dim_cache_put(url, (None, None))
+
+        def _decide(w: Optional[int], h: Optional[int]) -> Tuple[Optional[int], Optional[int]]:
+            return cls._dim_cache_put(url, (w, h))
+
+        # PNG: 8-byte signature + IHDR chunk @ offset 16 carries width / height
+        # as two big-endian uint32s.
+        if data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) >= 24:
+            try:
+                w, h = struct.unpack(">II", data[16:24])
+                return _decide(int(w), int(h))
+            except Exception:
+                return _decide(None, None)
+
+        # GIF: "GIF87a" / "GIF89a" + logical screen descriptor @ offset 6 with
+        # width / height as two little-endian uint16s.
+        if data[:6] in (b"GIF87a", b"GIF89a") and len(data) >= 10:
+            try:
+                w, h = struct.unpack("<HH", data[6:10])
+                return _decide(int(w), int(h))
+            except Exception:
+                return _decide(None, None)
+
+        # WebP: "RIFF" .... "WEBP". VP8X chunk variant carries canvas dims as
+        # two 3-byte little-endian fields starting at offset 24.
+        if data[:4] == b"RIFF" and len(data) >= 30 and data[8:12] == b"WEBP":
+            try:
+                chunk_id = data[12:16]
+                if chunk_id == b"VP8X":
+                    w_minus_1 = data[24] | (data[25] << 8) | (data[26] << 16)
+                    h_minus_1 = data[27] | (data[28] << 8) | (data[29] << 16)
+                    return _decide(w_minus_1 + 1, h_minus_1 + 1)
+                if chunk_id == b"VP8 " and len(data) >= 30:
+                    # Lossy keyframe — width / height at offset 26 as little-
+                    # endian uint16, masked to 14 bits.
+                    w = struct.unpack("<H", data[26:28])[0] & 0x3FFF
+                    h = struct.unpack("<H", data[28:30])[0] & 0x3FFF
+                    return _decide(int(w), int(h))
+                if chunk_id == b"VP8L" and len(data) >= 25:
+                    # Lossless: 14-bit dims packed in 5 bytes starting @ offset 21.
+                    b0, b1, b2, b3 = data[21], data[22], data[23], data[24]
+                    w = ((b1 & 0x3F) << 8) | b0
+                    h = ((b3 & 0x0F) << 10) | (b2 << 2) | ((b1 & 0xC0) >> 6)
+                    return _decide(w + 1, h + 1)
+            except Exception:
+                return _decide(None, None)
+
+        # JPEG: scan for the SOF0/1/2 marker (0xFFC0, 0xFFC1, 0xFFC2) which is
+        # immediately followed by 2 bytes of segment length + 1 byte precision
+        # + 2 bytes height + 2 bytes width (all big-endian). The marker rarely
+        # appears in the first 2KB for full-quality JPEGs but consistently
+        # does for the editorial / Bloomberg JPEGs the pipeline encounters.
+        if data[:3] == b"\xff\xd8\xff":
+            try:
+                i = 2
+                while i < len(data) - 9:
+                    if data[i] != 0xFF:
+                        i += 1
+                        continue
+                    marker = data[i + 1]
+                    # Padding fill bytes; advance.
+                    if marker == 0xFF:
+                        i += 1
+                        continue
+                    # SOI / EOI have no length field.
+                    if marker in (0xD8, 0xD9):
+                        i += 2
+                        continue
+                    # SOF0..SOF15 (excluding DHT/DAC/DNL at 0xC4/0xCC/0xDC) carry dims.
+                    if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                        h = struct.unpack(">H", data[i + 5:i + 7])[0]
+                        w = struct.unpack(">H", data[i + 7:i + 9])[0]
+                        return _decide(int(w), int(h))
+                    # Other segments: skip past length-prefixed payload.
+                    seg_len = struct.unpack(">H", data[i + 2:i + 4])[0]
+                    i += 2 + seg_len
+            except Exception:
+                return _decide(None, None)
+
+        # Unknown format / header not in the first 2KB.
+        return _decide(None, None)
+
+    @classmethod
+    def _dim_cache_put(
+        cls, url: str, dims: Tuple[Optional[int], Optional[int]]
+    ) -> Tuple[Optional[int], Optional[int]]:
+        """Bounded-LRU-ish insert into the dim cache. Pops an arbitrary entry
+        when over capacity; correctness doesn't depend on which we evict."""
+        if len(cls._IMG_DIM_CACHE) >= cls._IMG_DIM_CACHE_MAX:
+            cls._IMG_DIM_CACHE.pop(next(iter(cls._IMG_DIM_CACHE)), None)
+        cls._IMG_DIM_CACHE[url] = dims
+        return dims
+
+    def _reference_url_orientation_ok(self, url: str) -> bool:
+        """True when the URL's image orientation matches the canvas
+        orientation (portrait vs landscape). Returns True when dimensions
+        can't be determined — we'd rather ship a maybe-wrong reference
+        than block a maybe-right one. The runtime broken-image fallback
+        in render_harness still catches actual load failures.
+
+        Used by the reference path (Bug 4b belt-and-braces) to drop
+        landscape URLs being committed against portrait canvases (the
+        Chanakya shot-10 Bloomberg case)."""
+        try:
+            w, h = self._probe_image_dimensions(url)
+        except Exception:
+            return True
+        if not w or not h:
+            return True
+        canvas_w = int(getattr(self, "video_width", 1920) or 1920)
+        canvas_h = int(getattr(self, "video_height", 1080) or 1080)
+        canvas_portrait = canvas_h > canvas_w
+        img_portrait = h > w
+        if canvas_portrait != img_portrait:
+            return False
+        # Also reject extreme aspect mismatches even when orientation agrees
+        # (e.g. a panoramic 4000×800 image on a landscape 1920×1080 canvas
+        # is technically "landscape" but crops to a thin horizontal strip).
+        # 0.45..2.2 covers all the standard editorial / stock aspect ratios.
+        if canvas_portrait:
+            ar_ok = 0.45 <= (w / h) <= 0.85
+        else:
+            ar_ok = 1.2 <= (w / h) <= 2.4
+        return ar_ok
 
     # ── Brand-asset + prefetch binding (Fix 2 + Fix 3) ──────────────────
     # Closes the gap where the per-shot LLM emits `data-img-source="generate"`
@@ -18417,24 +18787,36 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # When the task-build site auto-bound a tag (Fix 2 + Fix 3) it sets
         # img_source="reference" + reference_url. The task is ready to ship —
         # no API call, no cascade. Mirrors the same branch in `process_image_task`.
+        # Bug 4b: belt-and-braces orientation probe before commit.
         requested_source = task.get("img_source", "generate")
         if requested_source == "reference":
             _ref_url = (task.get("reference_url") or "").strip()
             if _ref_url:
+                if self._reference_url_orientation_ok(_ref_url):
+                    print(
+                        f"    🏷️  [pipeline] Brand/reference image for "
+                        f"seg={task.get('seg_idx', '?')}: {_ref_url[:80]}"
+                    )
+                    return {
+                        "entry":       entry,
+                        "full_tag":    full_tag,
+                        "stock_url":   _ref_url,
+                        "image_bytes": None,
+                        "filename":    None,
+                        "usage":       {},
+                    }
                 print(
-                    f"    🏷️  [pipeline] Brand/reference image for "
-                    f"seg={task.get('seg_idx', '?')}: {_ref_url[:80]}"
+                    f"    ⚠️  [pipeline] [reference-orientation-mismatch] "
+                    f"seg={task.get('seg_idx', '?')} url={_ref_url[:80]} → rerouting"
                 )
-                return {
-                    "entry":       entry,
-                    "full_tag":    full_tag,
-                    "stock_url":   _ref_url,
-                    "image_bytes": None,
-                    "filename":    None,
-                    "usage":       {},
-                }
-            # Missing URL — degrade to AI gen rather than crashing the task.
-            requested_source = "generate"
+                # Reroute to web (Serper enforces orientation) → AI gen if web fails.
+                requested_source = "web" if (
+                    getattr(self, "_serper_service", None)
+                    and getattr(self._serper_service, "is_available", False)
+                ) else "generate"
+            else:
+                # Missing URL — degrade to AI gen rather than crashing the task.
+                requested_source = "generate"
 
         # Aggressive routing: when the run has a cultural region, route any
         # query with cultural specificity to WEB first (Serper) instead of
@@ -18456,7 +18838,11 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             web_q = (task.get("img_query") or "").strip() or self._strip_ai_image_verbiage(prompt)
             web_q = (self._cultural_context.stock_query_with_region(web_q)
                      if getattr(self, "_cultural_context", None) is not None else web_q)
-            hit = self._web_search_quality_image(web_q, canvas_w=canvas_w, canvas_h=canvas_h)
+            subj_kws = self._subject_keywords_from_task(task)
+            hit = self._web_search_quality_image(
+                web_q, canvas_w=canvas_w, canvas_h=canvas_h,
+                subject_keywords=subj_kws,
+            )
             if hit and hit.get("url"):
                 qs = hit.get("_quality_score", 0.0)
                 src = hit.get("host") or hit.get("source", "")
@@ -18533,7 +18919,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 # Skip the cascade if we already tried web above.
                 pass
             else:
-                hit = self._web_search_quality_image(stock_q, canvas_w=canvas_w, canvas_h=canvas_h)
+                hit = self._web_search_quality_image(
+                    stock_q, canvas_w=canvas_w, canvas_h=canvas_h,
+                    subject_keywords=self._subject_keywords_from_task(task),
+                )
                 if hit and hit.get("url") and self._verify_image_url(hit["url"]):
                     print(f"    🔎 [pipeline] Stock-miss → web hit ({hit.get('host','?')}): {stock_q[:50]}")
                     return {
@@ -19354,12 +19743,191 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 print(f"   👁️  Top issues: {top_str}")
             print(f"   👁️  Cost: ${self._vision_review_run_cost_usd:.4f} (cap ${self._tier_config.get('vision_review_run_cost_cap_usd', 0.0):.2f})")
 
-    def _process_stock_videos(self, html_segments: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    # Veo-allowed clip durations. Snap-target for the rescue path. Mirrors
+    # `_ALLOWED_DURATIONS_S` in `ai_video_orchestrator.py` — duplicated here
+    # to avoid the import cycle that would happen if we imported the
+    # orchestrator at module top-level.
+    _VEO_RESCUE_ALLOWED_DURATIONS_S = (4, 6, 8)
+
+    def _veo_rescue_video(
+        self,
+        *,
+        query: str,
+        entry: Dict[str, Any],
+        shot_idx_hint: int,
+        run_dir: Path,
+    ) -> Optional[Dict[str, Any]]:
+        """Generate a Veo clip to rescue a stock-video miss (Bug 1, AI-on branch).
+
+        Called from `_process_stock_videos` when initial Pexels/Pixabay
+        cultural-filter search returns nothing AND `_ai_video_run_enabled`.
+        Bypasses the no-filter retry step (which would ship off-context
+        stock); spends ~$0.30-0.80 on a Veo call for a clip that actually
+        matches the cultural query.
+
+        Returns a dict matching the `picked` shape used downstream:
+            `{"url": "<fal cdn URL>", "image": "", "duration": <int>,
+              "_veo_request_id": "...", "_veo_cost_usd": <float>}`
+        Returns None on any failure (Veo error, cap exhaustion, missing
+        client / cost-tracker, import error) — caller cascades to the next
+        rescue step (Serper video → image-still rewrite).
+
+        NEVER raises. Veo orchestrator returns typed results, never
+        exceptions — we just check `.error is None` to decide success.
+
+        Cost accounting: Veo charges flow through the same
+        `_ai_video_cost_tracker` the explicit AI_VIDEO_HERO shots use. By
+        the time `_process_stock_videos` runs, all explicit AI shots are
+        done, so the rescue spends whatever's left of the $1.50 cap.
+        When the cap is exhausted, the orchestrator returns
+        `error_class="CircuitBreakerExhausted"` and we fall through —
+        no money wasted.
+        """
+        # Eligibility checks. Quietly return None on any blocker so the
+        # waterfall can cascade — don't log a noisy warning here.
+        if not getattr(self, "_ai_video_run_enabled", False):
+            return None
+        veo_client = getattr(self, "_fal_veo_client", None)
+        cost_tracker = getattr(self, "_ai_video_cost_tracker", None)
+        if veo_client is None or cost_tracker is None:
+            return None
+        if run_dir is None:
+            return None
+
+        # Late import — orchestrator module isn't always on path during
+        # tests or standalone runs. Mirrors the same two-path import we
+        # added in the pipeline ctor.
+        try:
+            from ai_video_orchestrator import orchestrate_ai_video_shot
+        except Exception as _imp_err:
+            print(f"    ⚠️ Veo rescue: orchestrator import failed ({_imp_err}); skipping")
+            return None
+
+        # Snap shot duration to Veo's allowed 4/6/8s. Prefer the closest
+        # value that doesn't OVERSHOOT the shot's actual on-screen window
+        # — better to loop a 4s clip than have an 8s Veo clip overflow
+        # into the next shot. Default to 4s when the shot doesn't expose
+        # a duration (e.g. when called from the rescue path without
+        # entry start/end metadata).
+        try:
+            shot_dur_s = float(entry.get("end", 0.0)) - float(entry.get("start", 0.0))
+        except (TypeError, ValueError):
+            shot_dur_s = 0.0
+        if shot_dur_s <= 0:
+            shot_dur_s = 4.0
+        # Pick the LARGEST allowed duration <= shot_dur_s (so the clip
+        # doesn't run past the shot's end). If shot is shorter than 4s,
+        # take 4s as the floor (Veo minimum).
+        veo_dur = 4
+        for d in self._VEO_RESCUE_ALLOWED_DURATIONS_S:
+            if d <= shot_dur_s + 0.5:
+                veo_dur = d
+
+        # Build the Veo prompt. The query already has the cultural prefix
+        # (applied earlier by `stock_query_with_region`). We additionally
+        # wrap it in a brief cinematic-shot directive so Veo produces
+        # establishing-shot quality output rather than a static image.
+        # `_inject_cultural_into_ai_prompt` is idempotent — no double-tag
+        # if the query already mentions the region.
+        try:
+            base_prompt = self._inject_cultural_into_ai_prompt(query)
+        except Exception:
+            base_prompt = query
+        # Brief style prefix — matches Veo's prompt patterns and discourages
+        # in-frame text (Veo handles text poorly per the Director prompt).
+        veo_prompt = (
+            f"Cinematic establishing shot. {base_prompt}. "
+            f"Natural motion, atmospheric lighting, no in-frame text, no captions."
+        )
+
+        synthetic_shot: Dict[str, Any] = {
+            "ai_video_prompt": veo_prompt,
+            "ai_video_duration_s": veo_dur,
+            # No audio for rescue clips — keep narration as the audio bed
+            # so the rescue is invisible to the audio mix.
+            "ai_video_audio": False,
+        }
+
+        canvas = (
+            "portrait"
+            if int(getattr(self, "video_width", 1920) or 1920)
+            < int(getattr(self, "video_height", 1080) or 1080)
+            else "landscape"
+        )
+
+        print(
+            f"    🤖 Veo rescue: shot~{shot_idx_hint} dur={veo_dur}s "
+            f"canvas={canvas} prompt={veo_prompt[:80]}..."
+        )
+
+        try:
+            result = orchestrate_ai_video_shot(
+                shot=synthetic_shot,
+                shot_idx=shot_idx_hint,
+                run_dir=run_dir,
+                veo_client=veo_client,
+                cost_tracker=cost_tracker,
+                ledger=getattr(self, "_ai_video_ledger", None),
+                canvas=canvas,
+                run_audio_enabled=False,  # rescue clips are always muted
+                safety_tolerance="3",
+                log_fn=print,
+            )
+        except Exception as _orch_err:
+            # The orchestrator is documented to never raise — but be
+            # defensive in case a future change does. Same cascade
+            # behaviour as a returned error result.
+            print(f"    ⚠️ Veo rescue: orchestrator raised {type(_orch_err).__name__}: {_orch_err}")
+            return None
+
+        if result.error:
+            # Common error classes:
+            #   - CircuitBreakerExhausted (cap exceeded — expected on dense runs)
+            #   - SafetyBlockError (Veo refused the prompt)
+            #   - VeoTimeoutError / VeoTransientError (network)
+            #   - AiVideoSpecError (shouldn't happen — synthetic shot is well-formed)
+            klass = result.error_class or "UnknownError"
+            print(
+                f"    ⚠️ Veo rescue failed ({klass}): {result.error[:120]}; "
+                f"cascading to next rescue step"
+            )
+            return None
+
+        if not result.video_url:
+            # Defensive: success path with empty URL shouldn't happen
+            # but guard against it.
+            return None
+
+        print(
+            f"    ✅ Veo rescue: {veo_dur}s clip in {result.elapsed_s:.1f}s "
+            f"@${result.cost_usd:.3f} → {result.video_url[:80]}"
+        )
+        return {
+            "url": result.video_url,
+            "image": "",  # Veo doesn't return a poster; renderer renders from video
+            "id": None,
+            "duration": veo_dur,
+            "_veo_request_id": result.request_id,
+            "_veo_cost_usd": result.cost_usd,
+        }
+
+    def _process_stock_videos(
+        self,
+        html_segments: List[Dict[str, Any]],
+        run_dir: Optional[Path] = None,
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """Scan HTML for <video data-video-query='...'> tags, search Pexels, inject URLs.
 
         When `stock_video_ranking` is enabled (super_ultra), fetches 5-6 candidates,
         dedupes against `self._used_pexels_video_ids`, and picks the best match via
         a tiny LLM scoring call. Otherwise uses the legacy first-match path.
+
+        `run_dir` is optional but required for the AI video Veo rescue path
+        (Bug 1, AI-on branch). When AI video is enabled AND `run_dir` is
+        passed, a stock-video miss escalates to `orchestrate_ai_video_shot`
+        for a fresh Veo-generated clip with cultural prompt injection. When
+        `run_dir` is None or AI video is disabled, the rescue cascades to
+        Serper video → image-still rewrite → strip-tag as before.
 
         Always strips internal shot-context fields before returning, even on the
         Pexels-unavailable early-return path, so the timeline JSON stays clean.
@@ -19498,8 +20066,140 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         picked_provider = provider_name
                         break
 
+                # Bug 1 — culturally-aware waterfall when initial stock search misses.
+                # Tier order:
+                #   AI video ON branch:
+                #     1. Already tried: Pexels + Pixabay (cultural filter).
+                #     2. Veo rescue — generate the clip with cultural prompt.
+                #        (Skips the no-filter retry — off-context stock is
+                #        worse than a Veo-generated culturally-correct clip
+                #        when the run has paid for AI video capability.)
+                #     3. If Veo fails (cap exhausted / safety block / etc.),
+                #        fall through to the AI-off cascade below.
+                #   AI video OFF branch (and AI-on Veo-failure fall-through):
+                #     2. Retry stock without `must_match_keywords` (the query
+                #        still has cultural prefix from `stock_query_with_region`
+                #        so this isn't a free-for-all — `[off-context]` log).
+                #     3. Serper WEB video search (cultural keywords in query).
+                #     4. STOCK IMAGE rescue: rewrite `<video>` → `<img>` and run
+                #        `_image_fallback_chain` with the cultural-prefixed query.
+                #     5. Strip the `<video>` tag if all rescues fail.
+
+                # AI-on branch: try Veo BEFORE the no-filter retry.
+                # `_veo_rescue_video` returns None when:
+                #   • AI video not enabled (so non-AI runs no-op past this)
+                #   • cap exhausted / Veo error / safety block
+                #   • run_dir wasn't passed (legacy callers)
+                # → caller cascades to the no-filter retry below.
+                if (
+                    not picked
+                    and getattr(self, "_ai_video_run_enabled", False)
+                    and run_dir is not None
+                ):
+                    _veo_pick = self._veo_rescue_video(
+                        query=query,
+                        entry=entry,
+                        shot_idx_hint=entry.get("index", 0) or 0,
+                        run_dir=run_dir,
+                    )
+                    if _veo_pick:
+                        picked = _veo_pick
+                        picked_provider = "Veo [rescue]"
+
+                if not picked and cc_must_match_v:
+                    for svc in services:
+                        provider_name = type(svc).__name__.replace("Service", "")
+                        if use_ranking:
+                            _retry_pool = svc.search_video_candidates(
+                                query, orientation=orientation, per_page=12,
+                                must_match_keywords=None,
+                            )
+                            picked = _retry_pool[0] if _retry_pool else None
+                        else:
+                            picked = svc.search_videos(
+                                query, orientation=orientation,
+                                must_match_keywords=None,
+                            )
+                        if picked:
+                            picked_provider = f"{provider_name} [off-context]"
+                            if picked.get("id") is not None:
+                                used_ids.add(picked["id"])
+                            print(
+                                f"    🎬 Stock video {picked_provider}: {query[:60]} "
+                                f"(cultural retry without must_match)"
+                            )
+                            break
+
                 if not picked:
-                    print(f"    ⚠️ No stock video for: {query[:50]}")
+                    # Serper web video — cultural keywords are already in `query`.
+                    # When AI video is on, we get here only if Veo rescue already
+                    # failed (cap exhausted / safety block / etc.) — falling
+                    # through is fine since something is better than nothing.
+                    _serper = getattr(self, "_serper_service", None)
+                    if _serper and getattr(_serper, "is_available", False):
+                        try:
+                            _serp_hit = _serper.best_video(query)
+                        except Exception as _sv_err:
+                            print(f"    ⚠️ Serper video rescue errored: {_sv_err}")
+                            _serp_hit = None
+                        if _serp_hit and _serp_hit.get("url"):
+                            picked = {
+                                "url": _serp_hit.get("url", ""),
+                                "image": _serp_hit.get("thumbnail_url", ""),
+                                "id": None,
+                                "duration": 0,
+                            }
+                            picked_provider = "Serper"
+                            print(f"    🔎 Serper video rescue: {query[:60]}")
+
+                if not picked:
+                    # STOCK IMAGE rescue: rewrite <video> to <img> and run the
+                    # full image cascade (Serper → Pexels → Pixabay → AI gen →
+                    # SVG placeholder). The shot loses motion but keeps visual
+                    # coverage — much better than blank background.
+                    try:
+                        _img_fb = self._image_fallback_chain(query, is_cutout=False)
+                    except Exception as _ifc_err:
+                        print(f"    ⚠️ Image-still rescue errored: {_ifc_err}")
+                        _img_fb = None
+                    _img_url = (_img_fb or {}).get("stock_url") or ""
+                    if _img_url:
+                        # Build a stand-in <img> tag that matches the visual
+                        # footprint of the original <video>. Pull through any
+                        # style/class/id from the original tag so layered
+                        # CSS (.scrim, .hero-img, etc.) still wires up.
+                        _orig_style = ""
+                        _style_m = re.search(r'style=(["\'])(.*?)\1', full_tag)
+                        if _style_m:
+                            _orig_style = _style_m.group(2)
+                        _orig_class_m = re.search(r'class=(["\'])(.*?)\1', full_tag)
+                        _orig_class = _orig_class_m.group(2) if _orig_class_m else ""
+                        # Default to full-cover when no style was provided.
+                        if "object-fit" not in _orig_style:
+                            _orig_style = (
+                                _orig_style.rstrip(";").rstrip()
+                                + (";" if _orig_style else "")
+                                + "object-fit:cover;"
+                            )
+                        if "width" not in _orig_style:
+                            _orig_style += "width:100%;height:100%;"
+                        _img_tag = (
+                            f'<img src="{_img_url}" '
+                            f'class="{_orig_class}" '
+                            f'style="{_orig_style}" '
+                            f'data-fallback-from="video" '
+                            f'data-original-video-query="{query[:80]}" '
+                            f'alt="visual" />'
+                        )
+                        html = html.replace(full_tag, _img_tag)
+                        replacements_count += 1
+                        print(f"    🖼  stock-image rescue: {query[:60]}")
+                        continue
+                    # All paths failed — strip the <video> tag entirely so the
+                    # shot ships with brand-bg + text overlay only (not a blank
+                    # 100% × 100% block).
+                    html = html.replace(full_tag, '')
+                    print(f"    ⚠️ All video paths failed, stripped tag: {query[:50]}")
                     continue
                 print(f"    🎬 Stock video ({picked_provider}): {query[:60]}...")
 
@@ -19678,28 +20378,45 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # ── reference: user-uploaded brand asset, no API call (Fix 2c) ──
             # The per-shot LLM emits `<img data-img-source="reference"
             # data-reference-url="<s3_url>">` for shots anchored on the
-            # user's brand assets. Returns the URL verbatim — same shape as
-            # article_screenshot. Falls through to AI gen if the URL is
-            # missing (defensive: shouldn't happen, but matches the
-            # article_screenshot pattern).
+            # user's brand assets OR on Pillar-3 prefetched named entities.
+            # Bug 4b: belt-and-braces orientation probe before commit. Even
+            # after Bug 4a (prefetcher uses best_quality_image), other paths
+            # can still produce orientation-mismatched reference URLs:
+            # brand-kit uploads from before the user knew the canvas, manual
+            # URL paste, and `_match_prefetched_reference_for_prompt` rewrites.
+            # Probe the URL; if orientation mismatches the canvas, drop it
+            # and reroute to fresh `web` (Serper) search which DOES enforce
+            # orientation, then fall through to AI gen if that also fails.
             if img_source == "reference":
                 _ref_url_direct = (task.get("reference_url") or "").strip()
                 if _ref_url_direct:
+                    if self._reference_url_orientation_ok(_ref_url_direct):
+                        print(
+                            f"    🏷️  Brand-reference image for seg={task.get('seg_idx', '?')}: "
+                            f"{_ref_url_direct[:80]}..."
+                        )
+                        return {
+                            "entry": task.get("entry"),
+                            "entry_id": id(task.get("entry")),
+                            "full_tag": task.get("full_tag", ""),
+                            "stock_url": _ref_url_direct,
+                            "image_bytes": None,
+                            "filename": None,
+                            "usage": {},
+                        }
                     print(
-                        f"    🏷️  Brand-reference image for seg={task.get('seg_idx', '?')}: "
-                        f"{_ref_url_direct[:80]}..."
+                        f"    ⚠️  [reference-orientation-mismatch] seg={task.get('seg_idx', '?')} "
+                        f"url={_ref_url_direct[:80]} → rerouting to web search"
                     )
-                    return {
-                        "entry": task.get("entry"),
-                        "entry_id": id(task.get("entry")),
-                        "full_tag": task.get("full_tag", ""),
-                        "stock_url": _ref_url_direct,
-                        "image_bytes": None,
-                        "filename": None,
-                        "usage": {},
-                    }
-                # No URL → fall through to AI gen rather than failing.
-                img_source = "generate"
+                    # Reroute: switch source to web so the Serper path picks
+                    # an orientation-correct image with the same prompt.
+                    img_source = "web" if (
+                        getattr(self, "_serper_service", None)
+                        and getattr(self._serper_service, "is_available", False)
+                    ) else "generate"
+                else:
+                    # No URL → fall through to AI gen rather than failing.
+                    img_source = "generate"
 
             # ── article_screenshot: synchronous lookup in scrape_artifacts ──
             # Resolves `data-screenshot-id` against the captured-files manifest
@@ -19777,7 +20494,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         web_query = cc.stock_query_with_region(web_query)
                     try:
                         _hit = self._web_search_quality_image(
-                            web_query, canvas_w=canvas_w, canvas_h=canvas_h
+                            web_query, canvas_w=canvas_w, canvas_h=canvas_h,
+                            subject_keywords=self._subject_keywords_from_task(task),
                         )
                     except Exception as _se:
                         print(f"    ⚠️ Serper quality search errored ({_se}); falling through to stock")
@@ -19919,27 +20637,23 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     if event and event.wait(timeout=120):
                         _ref_url = (self._subject_refs or {}).get(_sub_id)
 
-            # Brand-image fallback (Fix 2d): when there is no recurring-character
-            # subject at all, condition Seedream on the user's first uploaded
-            # brand image. Subject continuity wins when active because:
-            #   - subsequent shots of a recurring subject MUST use the cached ref
-            #     (otherwise the character drifts across shots);
-            #   - the FIRST shot of a recurring subject MUST generate fresh (no
-            #     ref) so it can become the canonical reference — passing the
-            #     brand image here would overwrite that canonical look.
-            # We therefore only apply the brand fallback when `_sub_id` is unset.
+            # Brand-image fallback (Fix 2d, GATED by prompt intent — Bug 3):
+            # when there is no recurring-character subject at all AND the prompt
+            # actually wants brand imagery (logo/wordmark/emblem/etc.), condition
+            # Seedream on the user's first uploaded brand image. Previously this
+            # ran unconditionally and Seedream would composite the brand logo
+            # into UNRELATED content shots — the Chanakya hook (an "Indian
+            # library at pre-dawn" prompt) shipped with the academy logo bleeding
+            # through the i2i output. `_match_brand_asset_for_prompt` returns the
+            # brand URL only when the prompt mentions brand-logo intent; we
+            # reuse it here as the gate so the brand reference is passed ONLY
+            # to brand-intent prompts. Subject continuity still wins when
+            # active (subsequent shots of a recurring subject MUST use the
+            # cached ref to avoid character drift; the FIRST shot MUST generate
+            # fresh so it can become canonical).
             _brand_ref_for_gen: Optional[str] = None
             if not _sub_id and not _ref_url:
-                _ref_for_brand = getattr(self, '_reference_context', None)
-                if isinstance(_ref_for_brand, dict):
-                    _ebi = _ref_for_brand.get('embeddable_images') or []
-                    if isinstance(_ebi, list):
-                        for _bi_first in _ebi[:1]:
-                            if isinstance(_bi_first, dict):
-                                _u = (_bi_first.get('s3_url') or _bi_first.get('url') or '').strip()
-                                if _u:
-                                    _brand_ref_for_gen = _u
-                                    break
+                _brand_ref_for_gen = self._match_brand_asset_for_prompt(prompt)
             _seedream_ref = _ref_url or _brand_ref_for_gen
 
             label = f"seg={idx}" + (" (cutout)" if is_cutout else "")

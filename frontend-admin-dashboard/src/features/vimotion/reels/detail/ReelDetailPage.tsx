@@ -31,6 +31,7 @@ import { getInstituteId } from '@/constants/helper';
 import { useVimotionApiKey } from '../../dashboard/hooks/useVimotionApiKey';
 import { useReel } from '../hooks/useReel';
 import { deleteReel, type ReelResponse } from '../services/reels-api';
+import { VimotionLoader } from '../../brand/VimotionLoader';
 import { StageProgressList } from './StageProgressList';
 
 interface ReelDetailPageProps {
@@ -469,7 +470,7 @@ function buildEditorSearch(
 function CenteredLoader({ message }: { message: string }) {
     return (
         <div className="flex flex-col items-center justify-center gap-3 py-24 text-sm text-neutral-500">
-            <Loader2 className="size-6 animate-spin" />
+            <VimotionLoader size={56} className="text-neutral-900" label={message} />
             <p>{message}</p>
         </div>
     );

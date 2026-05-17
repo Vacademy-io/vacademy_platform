@@ -6,7 +6,6 @@ import {
     LogOut,
     Palette,
     Scissors,
-    Sparkles,
     UserSquare2,
     Users,
     Wand2,
@@ -19,6 +18,7 @@ import { removeCookiesAndLogout } from '@/lib/auth/sessionUtility';
 import { useStudioName } from './hooks/useStudioName';
 import { HelpMenu } from '../tour/HelpMenu';
 import { useVimotionRole } from '../auth/useVimotionRole';
+import { VimotionLogoMark } from '../brand/VimotionLogoMark';
 import type { DashboardTab } from './tabsConfig';
 
 interface SidebarProps {
@@ -64,7 +64,7 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
             {/* Brand + studio name */}
             <div className="flex items-center gap-2.5 p-5">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
-                    <Sparkles className="size-4 text-primary-500" />
+                    <VimotionLogoMark size={20} className="text-neutral-900" />
                 </div>
                 <div className="min-w-0">
                     <p className="truncate text-sm font-semibold leading-tight text-neutral-900">

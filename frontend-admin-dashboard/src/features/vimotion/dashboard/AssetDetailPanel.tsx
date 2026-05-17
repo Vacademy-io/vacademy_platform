@@ -10,6 +10,7 @@ import {
     type VideoContextData,
 } from '@/routes/video-api-studio/-services/input-asset';
 import { CreateReelsCTA } from '../reels/dashboard/CreateReelsCTA';
+import { VimotionLoader } from '../brand/VimotionLoader';
 
 interface AssetDetailPanelProps {
     asset: InputAssetRecord;
@@ -472,7 +473,7 @@ function ArtifactLinks({ links }: { links: Array<{ label: string; url: string | 
 function ProcessingState({ progress }: { progress: number }) {
     return (
         <div className="flex flex-col items-center justify-center gap-3 py-12 text-center">
-            <Loader2 className="size-6 animate-spin text-blue-500" />
+            <VimotionLoader size={48} className="text-neutral-900" label="Indexing in progress" />
             <p className="text-sm font-medium text-neutral-900">Indexing in progress</p>
             <p className="text-xs text-neutral-500">
                 {progress || 0}% — extraction completes in the background.

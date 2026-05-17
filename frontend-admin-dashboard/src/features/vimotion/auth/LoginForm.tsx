@@ -5,7 +5,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useNavigate, Link } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { z } from 'zod';
-import { ArrowRight, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -19,6 +19,8 @@ import {
 import { setAuthorizationCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { vimotionLogin } from '../api/signup';
+import { VimotionLogoMark } from '../brand/VimotionLogoMark';
+import { useVimotionDocumentChrome } from '../brand/useVimotionDocumentChrome';
 import { OutputShowcase } from './OutputShowcase';
 
 const loginSchema = z.object({
@@ -29,6 +31,7 @@ const loginSchema = z.object({
 type LoginValues = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
+    useVimotionDocumentChrome();
     const navigate = useNavigate();
     const [showPassword, setShowPassword] = useState(false);
 
@@ -68,7 +71,7 @@ export function LoginForm() {
                 {/* Mobile-only top bar with the wordmark */}
                 <div className="flex items-center gap-2 px-6 pt-6 lg:hidden">
                     <div className="flex size-8 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
-                        <Sparkles className="size-4 text-primary-500" />
+                        <VimotionLogoMark size={18} className="text-neutral-900" />
                     </div>
                     <span className="text-lg font-semibold tracking-tight text-neutral-900">
                         Vimotion

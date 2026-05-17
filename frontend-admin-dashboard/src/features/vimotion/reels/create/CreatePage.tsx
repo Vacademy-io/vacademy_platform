@@ -18,6 +18,7 @@ import { useVimotionApiKey } from '../../dashboard/hooks/useVimotionApiKey';
 import { useScan } from '../hooks/useScan';
 import type { ReelCandidate } from '../services/reels-api';
 import { AssetPickerStep } from './AssetPickerStep';
+import { VimotionLoader } from '../../brand/VimotionLoader';
 import { PreviewTray } from './PreviewTray';
 import { ScanResultsGrid } from './ScanResultsGrid';
 import { ScanSettingsStrip } from './ScanSettingsStrip';
@@ -187,7 +188,7 @@ export function CreatePage() {
 function CenteredLoader({ message }: { message: string }) {
     return (
         <div className="flex flex-col items-center justify-center gap-3 py-24 text-sm text-neutral-500">
-            <Loader2 className="size-6 animate-spin" />
+            <VimotionLoader size={56} className="text-neutral-900" label={message} />
             <p>{message}</p>
         </div>
     );

@@ -1022,9 +1022,22 @@ def build_ai_video_director_block(
         "",
         "You MAY emit shots with `shot_type: \"AI_VIDEO_HERO\"` when content fits.",
         f"Each AI video shot costs $0.24-$0.40 — there is a hard "
-        f"${cost_cap_usd:.2f} ceiling per video, after which AI video shots "
-        f"fall back to a non-AI alternative automatically. Use AI_VIDEO_HERO "
-        f"SPARINGLY (1-3 per video typically).",
+        f"${cost_cap_usd:.2f} ceiling per video. **Plus a HARD CAP of 4 "
+        f"AI_VIDEO_HERO shots per video** (the post-Director validator "
+        f"demotes any excess to VIDEO_HERO automatically — pick your 4 "
+        f"shots intentionally rather than padding the plan).",
+        "",
+        "**WHERE TO USE AI_VIDEO_HERO** (in order of priority):",
+        "  1. **The hook** (shot 0 or 1) — if the opening visual needs "
+        "something stock can't deliver. A cinematic establishing shot of "
+        "a specific scene/subject is worth the $0.30. A generic opener "
+        "is NOT — use VIDEO_HERO + KINETIC_TEXT for those.",
+        "  2. **The CTA / closer** (last shot) — same logic; the lasting "
+        "impression deserves the spend if it's visually load-bearing.",
+        "  3. **One mid-act emotional beat** — the single most cinematic "
+        "moment that's not the hook or CTA. Pick ONE, not three.",
+        "  Beyond these 3, demand a real reason. Everything else is "
+        "VIDEO_HERO / IMAGE_HERO / TEXT_DIAGRAM / KINETIC_TEXT.",
         "",
         "**Best fit for AI_VIDEO_HERO:**",
         "- Cinematic moments where stock footage can't capture the intent "
@@ -1036,12 +1049,30 @@ def build_ai_video_director_block(
         "- Anything text or animation could convey better (use TEXT_DIAGRAM, KINETIC_TEXT)",
         "- Anything requiring readable text in-frame (Veo handles text poorly)",
         "- Routine explanation shots (use stock, AI image, or motion graphics)",
+        "- **Shots shorter than 4 seconds** — Veo's minimum clip is 4s, "
+        "so a 2-3s AI_VIDEO_HERO wastes 30-50% of the cost on invisible "
+        "frames. Pick VIDEO_HERO/IMAGE_HERO for short beats.",
+        "- B-roll that real stock footage covers well (Pexels has decent "
+        "coverage for: classrooms, libraries, students writing, professors "
+        "lecturing, cityscapes, ocean, nature, generic office work). Try "
+        "VIDEO_HERO first; only escalate to AI_VIDEO_HERO if the moment "
+        "is conceptually too specific for stock.",
         "",
         "**Per-shot fields you MUST set when picking AI_VIDEO_HERO:**",
         "  `ai_video_prompt` (string, REQUIRED) — detailed visual description in "
         "third-person present tense; describe action, subject, framing, lighting; "
         "avoid in-frame text",
         "  `ai_video_duration_s` (integer, REQUIRED) — one of 4, 6, or 8",
+        "  `video_query` (string, REQUIRED — was 'recommended', now hard) — "
+        "stock-video search terms to fall back to if Veo fails or the per-"
+        "video budget is exhausted. The pipeline demotes AI_VIDEO_HERO to "
+        "VIDEO_HERO using this query on any failure path; an empty "
+        "`video_query` yields a worse IMAGE_HERO fallback.",
+        "",
+        "**Shot duration check:** the shot's `end_time - start_time` MUST "
+        "be ≥ 4.0 seconds for AI_VIDEO_HERO. If the beat is shorter, pick "
+        "a different shot_type — the validator will demote sub-4s "
+        "AI_VIDEO_HERO shots regardless of what you set.",
         "",
         "**For shots longer than 8s:** Veo's hard ceiling per call is 8 seconds. "
         "You have TWO ways to extend a shot beyond that, both supported:",
@@ -1058,15 +1089,14 @@ def build_ai_video_director_block(
         "feel repetitive. Best for ambient / mood shots where exact action "
         "isn't load-bearing.",
         "",
-        "**Fallback hint (recommended):** also set `video_query` (stock-video "
-        "search terms) on the same shot. If Veo fails (safety block, timeout, "
-        "cost cap), the shot falls back to a stock VIDEO_HERO using "
-        "`video_query` — no LLM regen needed.",
-        "",
-        "**Hero-pacing rule still applies:** never schedule two consecutive "
-        "AI_VIDEO_HERO shots, and never adjacent to IMAGE_HERO / VIDEO_HERO "
-        "/ PRODUCT_HERO either. Heroes always need a motion-graphic or "
-        "text shot between them.",
+        "**Hero-pacing rule — ENFORCED by validator:** never schedule two "
+        "consecutive AI_VIDEO_HERO shots. If you put AI_VIDEO_HERO at index "
+        "N, index N+1 (in temporal order, skipping overlay shots) must be "
+        "a non-hero shot (TEXT_DIAGRAM, KINETIC_TEXT, PROCESS_STEPS, etc.). "
+        "The validator demotes any second-in-a-row AI_VIDEO_HERO to "
+        "VIDEO_HERO automatically. Same rule applies to IMAGE_HERO / "
+        "VIDEO_HERO / PRODUCT_HERO adjacency — heroes always need a "
+        "motion-graphic or text shot between them.",
     ]
     if audio_enabled:
         lines.extend([

@@ -215,6 +215,7 @@ class PexelsService:
         orientation: str = "landscape",
         per_page: int = 3,
         min_duration: int = 5,
+        must_match_keywords: Optional[List[str]] = None,
     ) -> Optional[Dict[str, str]]:
         """
         Search Pexels videos. Returns the best HD match or None.
@@ -224,18 +225,29 @@ class PexelsService:
             orientation: "landscape" | "portrait" | "square"
             per_page: Number of results to fetch
             min_duration: Minimum video duration in seconds
+            must_match_keywords: If provided, only return a video whose
+                metadata (alt / tags / url path) mentions at least one
+                keyword (case-insensitive). Used by the pipeline to enforce
+                cultural context (e.g. ["indian", "india"]) — Pexels video
+                relevance is bag-of-words so an "Indian student writing
+                exam" query can return a generic study clip. This filter
+                rejects those silent mismatches; the caller cascades to
+                the next provider.
 
         Returns:
             {"url": "https://...mp4", "image": "poster_url", "photographer": "..."}
-            or None if no results / API error.
+            or None if no results / API error / no result matches cultural filter.
         """
         if not self.is_available:
             return None
 
+        # Mirror search_photos: when filtering, over-fetch so we have room
+        # to scan past off-context candidates.
+        effective_per_page = min(40 if must_match_keywords else per_page, 80)
         params = {
             "query": query,
             "orientation": orientation,
-            "per_page": min(per_page, 80),
+            "per_page": effective_per_page,
             "size": "medium",
         }
 
@@ -248,11 +260,26 @@ class PexelsService:
             logger.info(f"[Pexels] No video results for: {query[:50]}")
             return None
 
-        # Find first video meeting duration requirement
+        kws = [k.lower() for k in (must_match_keywords or []) if k]
+
+        # Find first video meeting duration + (optional) cultural-keyword filter
         for video in videos:
             duration = video.get("duration", 0)
             if duration < min_duration:
                 continue
+
+            if kws:
+                # Pexels videos rarely have an `alt`. Build a haystack from
+                # whatever metadata IS present: alt, the pexels page URL
+                # (slug often encodes subject — e.g. "indian-student-...")
+                # and the photographer's user URL (sometimes regional).
+                hay = " ".join(filter(None, [
+                    (video.get("alt") or ""),
+                    (video.get("url") or ""),
+                    ((video.get("user") or {}).get("url") or ""),
+                ])).lower()
+                if not any(kw in hay for kw in kws):
+                    continue
 
             # Pick HD mp4 from video_files array
             video_files = video.get("video_files", [])
@@ -269,7 +296,11 @@ class PexelsService:
                 "pexels_url": video.get("url", ""),
             }
 
-        logger.info(f"[Pexels] No suitable video (min {min_duration}s) for: {query[:50]}")
+        reason = (
+            f"no suitable video (min {min_duration}s)"
+            if not kws else f"no video matched cultural keywords {kws}"
+        )
+        logger.info(f"[Pexels] {reason} in {len(videos)} for: {query[:50]}")
         return None
 
     def search_video_candidates(
@@ -278,20 +309,27 @@ class PexelsService:
         orientation: str = "landscape",
         per_page: int = 6,
         min_duration: int = 5,
+        must_match_keywords: Optional[List[str]] = None,
     ) -> List[Dict[str, Any]]:
         """Return up to `per_page` usable video candidates (not just the first).
 
         Shape per candidate: {id, url, image, duration, photographer, alt, pexels_url}.
         Callers can rank or dedupe them before picking one. Used by super_ultra
         tier's LLM-ranked stock video selection.
+
+        `must_match_keywords` works the same way as in `search_videos`: drop
+        candidates whose metadata doesn't mention any keyword, so cultural
+        context isn't silently ignored when the run feeds the LLM ranker.
         """
         if not self.is_available:
             return []
 
+        # Over-fetch when filtering so the ranker still sees a meaningful pool.
+        effective_per_page = min(40 if must_match_keywords else per_page, 80)
         params = {
             "query": query,
             "orientation": orientation,
-            "per_page": min(per_page, 80),
+            "per_page": effective_per_page,
             "size": "medium",
         }
         data = self._request(self.VIDEOS_URL, params)
@@ -299,11 +337,20 @@ class PexelsService:
             return []
 
         videos = data.get("videos", [])
+        kws = [k.lower() for k in (must_match_keywords or []) if k]
         candidates: List[Dict[str, Any]] = []
         for video in videos:
             duration = video.get("duration", 0)
             if duration < min_duration:
                 continue
+            if kws:
+                hay = " ".join(filter(None, [
+                    (video.get("alt") or ""),
+                    (video.get("url") or ""),
+                    ((video.get("user") or {}).get("url") or ""),
+                ])).lower()
+                if not any(kw in hay for kw in kws):
+                    continue
             hd_file = self._pick_video_file(video.get("video_files", []), preferred_quality="hd")
             if not hd_file:
                 continue

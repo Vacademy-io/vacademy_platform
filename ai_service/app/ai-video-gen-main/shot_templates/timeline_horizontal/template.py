@@ -218,7 +218,12 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
 .{sid}-pin-dot {{
   position:absolute; inset:0; border-radius:50%;
   background:var(--brand-accent);
-  box-shadow:0 0 0 4px rgba(255,255,255,0.06), 0 0 12px 4px rgba(255,255,255,0.04);
+  /* Halo rings — brand-primary tint so the dot reads on both light and
+     dark backgrounds. The original rgba(255,255,255,0.06) was invisible
+     on white-bg runs. */
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--brand-primary, #004280) 14%, transparent),
+    0 0 12px 4px color-mix(in srgb, var(--brand-primary, #004280) 10%, transparent);
 }}
 .{sid}-date {{
   color:var(--brand-text); letter-spacing:0.03em;

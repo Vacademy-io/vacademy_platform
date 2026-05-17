@@ -107,6 +107,11 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
         '</div>'
     )
 
+    # Portrait gets narrower gaps + tighter padding so 3+ stacked cells fit on
+    # a 1920px-tall canvas without overflowing.
+    cell_padding = "1.1rem 1.2rem" if is_portrait else "1.6rem 1.4rem"
+    grid_gap = gap_md if is_portrait else gap_lg
+
     css = f"""
 .{sid}-stage {{
   position:absolute; inset:0; padding:{safe}; display:flex;
@@ -120,21 +125,34 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   text-align:center; max-width:90%; margin:0 auto;
 }}
 .{sid}-grid {{
-  display:grid; gap:{gap_lg}; width:100%; align-items:start;
+  display:grid; gap:{grid_gap}; width:100%; max-width:88%;
+  margin:0 auto; align-items:start;
 }}
+/* Cell: tinted brand background + colored leading bar so the cell renders
+   as a visible card on both light and dark brand backgrounds. Original
+   rgba(255,255,255,0.06) top border was invisible on white-bg runs (the
+   reason this template shipped as raw text in the Chanakya video). */
 .{sid}-cell {{
-  display:flex; flex-direction:column; gap:{gap_md};
-  padding:1.6rem 1.2rem; opacity:0;
-  border-top:1px solid rgba(255,255,255,0.06);
+  position:relative;
+  display:flex; flex-direction:column; gap:0.4rem;
+  padding:{cell_padding}; opacity:0;
+  border-radius:12px;
+  background:color-mix(in srgb, var(--brand-primary, #004280) 6%, transparent);
+  border:1px solid color-mix(in srgb, var(--brand-primary, #004280) 14%, transparent);
+  border-left:4px solid var(--brand-accent);
 }}
+/* "01"/"02"/"03" — promoted from orphaned label to inline pill so it
+   visually anchors with the title and the leading bar. */
 .{sid}-num {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
   font-size:{fs_caption}; letter-spacing:0.18em;
-  color:var(--brand-accent); font-weight:700;
+  color:var(--brand-accent); font-weight:800;
+  align-self:flex-start;
 }}
 .{sid}-rule {{
   width:clamp(2rem, 5vmin, 4rem); height:3px; background:var(--brand-accent);
   border-radius:2px; transform-origin:left center;
+  margin-top:0.1rem; margin-bottom:0.4rem;
 }}
 .{sid}-ctitle {{
   font-family:'Bebas Neue','Montserrat',sans-serif;
@@ -146,6 +164,7 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   font-size:{fs_body};
   line-height:1.5; color:var(--brand-text-secondary);
   max-width:46ch;
+  margin-top:0.2rem;
 }}
 """
 

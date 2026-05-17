@@ -10779,6 +10779,17 @@ class VideoGenerationPipeline:
             else:
                 shot["background_treatment"] = _existing_bg
 
+        # AI_VIDEO_HERO post-Director validation. Runs after shot-type
+        # normalization so we have valid types to inspect. Only fires when
+        # the run is AI-video-enabled — otherwise AI_VIDEO_HERO shots are
+        # downgraded inside `_shot_task`'s bypass anyway. Validator demotes
+        # shots that would waste budget (too short, no fallback set,
+        # consecutive, count over cap, projected cost over cap) BEFORE any
+        # Veo network call so the cost tracker stays honest and the
+        # Director's pacing intent is respected.
+        if getattr(self, "_ai_video_run_enabled", False):
+            self._validate_ai_video_shots(shots)
+
         # Normalize the top-level recurring_motifs envelope field (Tier 4 L1).
         # Coerce non-list / non-dict items to empty so downstream consumers
         # (the per-shot continuity brief builder) can trust the shape.
@@ -13633,6 +13644,32 @@ class VideoGenerationPipeline:
                         orchestrate_ai_video_shot, orchestrate_ai_video_chain,
                     )
                     _av_canvas = "portrait" if _h > _w else "landscape"
+
+                    # Cultural context injection — same idea as stock images
+                    # and stock videos. The Director / per-shot LLM is taught
+                    # to bake cultural descriptors into `ai_video_prompt`, but
+                    # that's the LLM contract, not a guarantee. Veo is highly
+                    # steerable: prepending "Indian subject and india setting"
+                    # to "student studying for exam" materially changes the
+                    # rendered subject. We mutate the shot dict in place so
+                    # both the orchestrator's `prompt=` and the metadata file
+                    # it writes reflect what was actually sent — useful for
+                    # debugging cultural drift in the saved shot_NNN.json.
+                    _cc_av = getattr(self, "_cultural_context", None)
+                    if _cc_av is not None and _cc_av.has_region:
+                        # Parent prompt (single-shot path + chain auto-split path)
+                        _av_parent = (shot.get("ai_video_prompt") or "").strip()
+                        if _av_parent:
+                            shot["ai_video_prompt"] = self._inject_cultural_into_ai_prompt(_av_parent)
+                        # Per-segment prompts (Director-explicit chain path)
+                        _av_segs_in = shot.get("ai_video_segments") or []
+                        if isinstance(_av_segs_in, list) and _av_segs_in:
+                            for _seg in _av_segs_in:
+                                if not isinstance(_seg, dict):
+                                    continue
+                                _sp = (_seg.get("prompt") or "").strip()
+                                if _sp:
+                                    _seg["prompt"] = self._inject_cultural_into_ai_prompt(_sp)
 
                     # Dispatch single-shot vs chain. Chain when EITHER:
                     #   - `ai_video_segments` carries >1 entry (Director explicit), OR
@@ -17822,6 +17859,250 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             except Exception:
                 self._cultural_context = None
 
+    # Conservative Veo pricing for the pre-flight validator. Real cost is
+    # resolved later by `fal_veo_client.price_per_call_usd`, but we don't
+    # want to import that just to gate a Director plan. These figures are
+    # the high end of Veo 3.1 Lite pricing (the cheapest supported model)
+    # so a "fits the budget" decision here cannot be more permissive than
+    # the runtime tracker. Net effect: validator is slightly more conservative
+    # than the real tracker, which is the right direction (avoid surprises).
+    _AI_VIDEO_USD_PER_SEC_AUDIO_OFF: float = 0.10
+    _AI_VIDEO_USD_PER_SEC_AUDIO_ON: float = 0.15
+    # Default per-video shot count cap. Acts as a floor on top of the dollar
+    # cap so a Director going wild with cheap shots can't blow the pacing
+    # ratio (visual fatigue from too many AI shots is its own problem,
+    # separate from cost). Configurable via tier_config["ai_video_max_shots"].
+    _AI_VIDEO_DEFAULT_MAX_SHOTS: int = 4
+
+    def _estimate_ai_video_shot_cost_usd(self, shot: Dict[str, Any]) -> float:
+        """Conservative Veo cost estimate for one shot. Uses the worst-case
+        Veo 3.1 Lite per-second price. Returns USD as a float."""
+        try:
+            dur = float(shot.get("ai_video_duration_s") or 0.0)
+        except (TypeError, ValueError):
+            dur = 0.0
+        # Snap to Veo's allowed durations (4/6/8). Below 4 → 4 (Veo min);
+        # above 8 → 8 (single-shot path) OR per-segment for chains.
+        segments = shot.get("ai_video_segments") or []
+        if isinstance(segments, list) and len(segments) > 0:
+            total = 0.0
+            for seg in segments:
+                if not isinstance(seg, dict):
+                    continue
+                try:
+                    sd = float(seg.get("duration_s") or 0.0)
+                except (TypeError, ValueError):
+                    sd = 0.0
+                sd = max(4.0, min(8.0, sd or 8.0))
+                total += sd
+            dur = total
+        else:
+            if dur <= 0:
+                dur = 8.0  # Director didn't set duration — assume max
+            elif dur < 4.0:
+                dur = 4.0
+            # If >8 and no segments, it's the auto-split chain path. Round
+            # up to a multiple of 8 to mirror `_resolve_segments` behaviour.
+            elif dur > 8.0:
+                full = int(dur // 8)
+                rem = dur - full * 8
+                if rem >= 2.0:
+                    full += 1
+                dur = max(8.0, full * 8.0)
+        audio_on = bool(shot.get("ai_video_audio")) and getattr(self, "_ai_video_audio_run_enabled", False)
+        rate = self._AI_VIDEO_USD_PER_SEC_AUDIO_ON if audio_on else self._AI_VIDEO_USD_PER_SEC_AUDIO_OFF
+        return dur * rate
+
+    def _validate_ai_video_shots(self, shots: List[Dict[str, Any]]) -> None:
+        """Pre-flight validator for AI_VIDEO_HERO shots. Demotes shots that
+        would waste budget or break pacing, BEFORE any Veo network call.
+
+        Demotion target:
+          • `VIDEO_HERO` when the shot has a usable `video_query` (best
+            visual continuity — same shape, same stock-search semantics)
+          • `IMAGE_HERO` otherwise (Ken Burns on AI-generated still — still
+            cinematic, no API spend until the per-shot LLM runs)
+
+        Five checks, applied in order:
+
+          1. Sub-4s shots — Veo's minimum is 4s. A 2-3s AI_VIDEO_HERO would
+             cost a full 4s clip for a fraction of the visible window. Waste.
+             Demote unconditionally.
+
+          2. Missing fallback hint — every AI_VIDEO_HERO MUST have a
+             `video_query` so Veo-fail downgrades stay graceful. Director is
+             told this in the prompt, but the LLM forgets. Auto-derive
+             `video_query` from `ai_video_prompt` via the same stripping
+             helper Pexels uses for image queries. No demotion here — the
+             shot keeps AI_VIDEO_HERO, we just guarantee the fallback exists.
+
+          3. Consecutive AI_VIDEO_HERO — hero pacing rule (never two HERO
+             shots back-to-back). Demote the second of any consecutive pair.
+             Ignores overlay shots (they don't break the chain).
+
+          4. Pre-flight budget projection — sum the conservative cost of
+             every surviving AI_VIDEO_HERO. If total > cap, demote shots
+             starting from the LEAST important (middle of the video) until
+             under budget. Hook (shot 0/1) and CTA (last shot) demoted last.
+             Mirrors the runtime circuit breaker but with prioritized
+             demotion instead of fail-on-arrival order.
+
+          5. Hard count cap — `tier_config["ai_video_max_shots"]` (default
+             4). Same priority order as (4): hook + CTA survive, middles
+             demote. Catches the "Director picked 8 cheap shots" case.
+
+        Mutates `shots` in place. Prints a `🎬` line per demotion so the
+        run log shows what got demoted and why.
+        """
+        if not shots:
+            return
+
+        non_overlay = [s for s in shots if not s.get("overlay")]
+        if not non_overlay:
+            return
+
+        def _demote(shot: Dict[str, Any], reason: str) -> None:
+            """Strip AI video fields and pick a sensible fallback shot type."""
+            vq = (shot.get("video_query") or "").strip()
+            if not vq:
+                # Derive from ai_video_prompt before we strip it, so the
+                # demoted shot still has a stock-search query to use.
+                vq = self._strip_ai_image_verbiage(
+                    shot.get("ai_video_prompt") or shot.get("visual_description") or ""
+                )
+                if vq:
+                    shot["video_query"] = vq
+            fallback = "VIDEO_HERO" if vq else "IMAGE_HERO"
+            old = shot.get("shot_type")
+            shot["shot_type"] = fallback
+            # Strip AI video fields so the downstream path doesn't re-trigger
+            # the AI_VIDEO_HERO bypass on resume / regen.
+            for k in (
+                "ai_video_prompt", "ai_video_duration_s", "ai_video_segments",
+                "ai_video_negative_prompt", "ai_video_seed", "ai_video_audio",
+            ):
+                shot.pop(k, None)
+            # IMAGE_HERO needs image_prompt; synthesize one from the visual
+            # description if absent so the per-shot LLM has something to use.
+            if fallback == "IMAGE_HERO" and not (shot.get("image_prompt") or "").strip():
+                shot["image_prompt"] = (
+                    shot.get("visual_description")
+                    or shot.get("narration_excerpt")
+                    or "cinematic hero shot"
+                )
+            print(
+                f"   🎬 AI video demote: shot {shot.get('shot_index', '?')} "
+                f"{old} → {fallback} ({reason})"
+            )
+
+        # ── Check 1: sub-4s demotion ───────────────────────────────────
+        for s in non_overlay:
+            if s.get("shot_type") != "AI_VIDEO_HERO":
+                continue
+            try:
+                dur = float(s.get("end_time", 0)) - float(s.get("start_time", 0))
+            except (TypeError, ValueError):
+                dur = 0.0
+            if dur < 4.0:
+                _demote(s, f"duration {dur:.1f}s < Veo minimum 4s")
+
+        # ── Check 2: enforce video_query fallback (no demotion) ────────
+        for s in non_overlay:
+            if s.get("shot_type") != "AI_VIDEO_HERO":
+                continue
+            if (s.get("video_query") or "").strip():
+                continue
+            derived = self._strip_ai_image_verbiage(
+                s.get("ai_video_prompt") or s.get("visual_description") or ""
+            )
+            if derived:
+                s["video_query"] = derived
+                print(
+                    f"   🎬 AI video: shot {s.get('shot_index', '?')} added "
+                    f"video_query fallback (Director omitted it)"
+                )
+            # If derivation produces nothing, leave the shot alone — the
+            # runtime fallback will land on IMAGE_HERO if Veo fails.
+
+        # ── Check 3: consecutive-hero pacing ───────────────────────────
+        non_overlay_sorted = sorted(
+            non_overlay, key=lambda s: float(s.get("start_time", 0))
+        )
+        prev_was_ai = False
+        for s in non_overlay_sorted:
+            is_ai = s.get("shot_type") == "AI_VIDEO_HERO"
+            if is_ai and prev_was_ai:
+                _demote(s, "consecutive AI_VIDEO_HERO (hero-pacing rule)")
+                prev_was_ai = False  # the demotion broke the chain
+            else:
+                prev_was_ai = is_ai
+
+        # ── Checks 4 + 5: budget projection + count cap ────────────────
+        ai_shots_now = [
+            s for s in non_overlay_sorted if s.get("shot_type") == "AI_VIDEO_HERO"
+        ]
+        if not ai_shots_now:
+            return
+
+        cap_usd = float(
+            self._tier_config.get("ai_video_per_video_cost_cap_usd")
+            or AI_VIDEO_PER_VIDEO_COST_CAP_USD
+        )
+        max_shots = int(
+            self._tier_config.get("ai_video_max_shots")
+            or self._AI_VIDEO_DEFAULT_MAX_SHOTS
+        )
+
+        # Priority order for demotion: keep hook (first non-overlay) + CTA
+        # (last non-overlay) until forced to demote them. Demote middles
+        # first, in reverse-index order (latest middles first — preserves
+        # the earlier mid-video AI shots which usually carry more setup).
+        first_idx = non_overlay_sorted[0].get("shot_index")
+        last_idx = non_overlay_sorted[-1].get("shot_index")
+
+        def _demote_priority(shot: Dict[str, Any]) -> int:
+            si = shot.get("shot_index")
+            if si == first_idx:
+                return 2  # hook — demote last
+            if si == last_idx:
+                return 2  # CTA — demote last
+            return 0      # middle — demote first
+
+        # Hard count cap first (cheaper to evaluate, often the binding constraint).
+        while len(ai_shots_now) > max_shots:
+            # Pick the lowest-priority middle, breaking ties by latest
+            # start_time (later middles less narratively load-bearing).
+            ai_shots_now.sort(
+                key=lambda s: (_demote_priority(s), -float(s.get("start_time", 0)))
+            )
+            victim = ai_shots_now[0]
+            _demote(
+                victim,
+                f"exceeds max shots cap ({max_shots}); demoting lowest-priority middle"
+            )
+            ai_shots_now = ai_shots_now[1:]
+
+        # Budget projection.
+        projected = sum(self._estimate_ai_video_shot_cost_usd(s) for s in ai_shots_now)
+        if projected <= cap_usd:
+            return
+
+        # Sort survivors so we demote middles first (priority=0), CTAs/hooks
+        # last (priority=2). Within same priority, demote latest start first.
+        ai_shots_now.sort(
+            key=lambda s: (_demote_priority(s), -float(s.get("start_time", 0)))
+        )
+        while ai_shots_now and projected > cap_usd:
+            victim = ai_shots_now[0]
+            cost = self._estimate_ai_video_shot_cost_usd(victim)
+            _demote(
+                victim,
+                f"projected ${projected:.2f} > cap ${cap_usd:.2f}; "
+                f"demoting saves ${cost:.2f}"
+            )
+            projected -= cost
+            ai_shots_now = ai_shots_now[1:]
+
     def _strip_ai_image_verbiage(self, prompt: str) -> str:
         """Remove AI-style descriptive prefixes/qualifiers from a stock search
         query. Pexels/Pixabay want short noun-phrase keywords; the LLM tends to
@@ -19128,6 +19409,26 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 full_tag = match.group(1)
                 query = match.group(3)
 
+                # Apply cultural context — same pipeline as images. The LLM
+                # is taught to prefix queries with the region descriptor
+                # ("Indian student studying"), but doesn't always follow
+                # through; this prepend is the defensive guard. No-op when
+                # the query already mentions the region or when the run has
+                # no region.
+                cc = getattr(self, "_cultural_context", None)
+                if cc is not None and cc.has_region:
+                    query = cc.stock_query_with_region(query)
+                # Cultural-keyword filter for the stock providers below.
+                # Pexels/Pixabay video relevance is bag-of-words: the LLM's
+                # "Indian student writing exam" query can return a generic
+                # study clip (mostly the off-context candidate). Filtering
+                # rejects those mismatches; the cascade lands on the next
+                # provider, and if none match we emit "No stock video for:"
+                # which the caller already handles by skipping the tag.
+                cc_must_match_v = None
+                if cc is not None and cc.has_region and cc.extra_stock_keywords:
+                    cc_must_match_v = list(cc.extra_stock_keywords)
+
                 provider_match = re.search(r'data-stock-provider=["\'](\w+)["\']', full_tag)
                 provider_hint = provider_match.group(1).lower() if provider_match else ""
                 source_match_v = re.search(r'data-video-source=["\'](\w+)["\']', full_tag)
@@ -19166,7 +19467,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         # sees a different 6 — breaks the "same top-6 every time"
                         # repetition without dropping into low-relevance pages.
                         candidates = svc.search_video_candidates(
-                            query, orientation=orientation, per_page=24
+                            query, orientation=orientation, per_page=24,
+                            must_match_keywords=cc_must_match_v,
                         )
                         fresh = [c for c in candidates if c.get("id") not in used_ids]
                         pool_full = fresh if fresh else candidates
@@ -19187,7 +19489,10 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                             if picked and picked.get("id") is not None:
                                 used_ids.add(picked["id"])
                     else:
-                        picked = svc.search_videos(query, orientation=orientation)
+                        picked = svc.search_videos(
+                            query, orientation=orientation,
+                            must_match_keywords=cc_must_match_v,
+                        )
 
                     if picked:
                         picked_provider = provider_name

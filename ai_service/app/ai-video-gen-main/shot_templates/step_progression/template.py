@@ -142,48 +142,67 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
     )
 
     if is_portrait:
-        # Portrait → column flex; cells full-width but capped via max-width;
-        # arrows are tall + thin between cells. Description uses left-align so
-        # multi-line body reads naturally.
+        # Portrait → column flex; cells full-width but capped via max-width.
+        # The arrow between cells aligns with the BADGE COLUMN (not page
+        # center) so badge + arrow + badge form a continuous visual rail.
+        # Cells use a brand-tinted background + leading accent bar so they
+        # render as visible cards on both light AND dark brand backgrounds
+        # (color-mix is widely supported; on browsers that don't support it
+        # the cell still renders as raw text, same as the original behaviour
+        # on white-bg runs — no regression).
         flow_css = f"""
 .{sid}-flow {{
   display:flex; flex-direction:column; align-items:stretch;
-  gap:0.8rem; width:100%; max-width:88%; margin:0 auto;
+  gap:0.6rem; width:100%; max-width:88%; margin:0 auto;
 }}
 .{sid}-cell {{
-  display:flex; flex-direction:row; align-items:flex-start; gap:1rem;
-  padding:1rem 1.1rem;
-  border-radius:14px; background:rgba(255,255,255,0.04);
-  border:1px solid rgba(255,255,255,0.08);
+  display:grid; grid-template-columns:3.4rem 1fr; grid-template-rows:auto auto;
+  column-gap:1rem; row-gap:0.1rem;
+  padding:1rem 1.2rem 1rem 0.9rem;
+  border-radius:14px;
+  background:color-mix(in srgb, var(--brand-primary, #004280) 6%, transparent);
+  border:1px solid color-mix(in srgb, var(--brand-primary, #004280) 16%, transparent);
+  border-left:4px solid var(--brand-accent);
   opacity:0; will-change:transform;
 }}
 .{sid}-badge {{
-  flex:0 0 auto; width:2.6rem; height:2.6rem;
+  grid-row:1 / span 2; align-self:center;
+  width:2.8rem; height:2.8rem;
   border-radius:50%; display:flex; align-items:center; justify-content:center;
   background:var(--brand-accent);
+  box-shadow:0 2px 8px color-mix(in srgb, var(--brand-primary, #004280) 30%, transparent);
 }}
 .{sid}-badge-num {{
-  font-family:'Bebas Neue','Montserrat',sans-serif; font-size:1.5rem;
-  color:#000; font-weight:900; line-height:1; padding-top:0.05em;
+  font-family:'Bebas Neue','Montserrat',sans-serif; font-size:1.6rem;
+  color:#fff; font-weight:900; line-height:1; padding-top:0.05em;
 }}
 .{sid}-title {{
+  grid-column:2; grid-row:1; align-self:end;
   font-family:'Bebas Neue','Montserrat',sans-serif; font-size:{fs_h2};
   letter-spacing:0.005em; line-height:1.05;
-  color:var(--brand-text); padding-bottom:0.1em;
+  color:var(--brand-text);
+  min-width:0; overflow-wrap:anywhere;
 }}
 .{sid}-desc {{
+  grid-column:2; grid-row:2; align-self:start;
   font-family:'Inter',sans-serif; font-size:{fs_body};
   color:var(--brand-text-secondary); line-height:1.45;
   margin-top:0.25rem;
+  min-width:0; overflow-wrap:anywhere;
 }}
-.{sid}-cell > .{sid}-title,
-.{sid}-cell > .{sid}-desc {{ flex:1; min-width:0; overflow-wrap:anywhere; }}
-.{sid}-cell {{ display:grid; grid-template-columns:auto 1fr; grid-template-rows:auto auto; column-gap:1rem; }}
-.{sid}-cell .{sid}-badge {{ grid-row:1 / span 2; align-self:center; }}
+/* Arrow sits in the badge column (left-anchored) so badge → arrow → badge
+   forms a vertical rail. Container width matches cell padding-left +
+   badge-column width so the arrow's centre lines up with the badge's centre. */
 .{sid}-arrow {{
-  align-self:center; height:2.2rem; width:1.5rem; opacity:0;
+  align-self:flex-start;
+  padding-left:0.9rem;       /* matches cell padding-left */
+  width:3.4rem;              /* matches cell badge-column width */
+  height:3rem;
+  display:flex; align-items:center; justify-content:center;
+  opacity:0;
+  box-sizing:content-box;
 }}
-.{sid}-arrow-svg {{ width:100%; height:100%; display:block; }}
+.{sid}-arrow-svg {{ width:2.4rem; height:100%; display:block; }}
 """
     else:
         # Landscape → row grid; equal flex per cell, arrows in between as
@@ -198,8 +217,10 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   flex:1 1 0; min-width:0;
   display:flex; flex-direction:column; align-items:center;
   gap:0.8rem; padding:1.4rem 1.1rem;
-  border-radius:18px; background:rgba(255,255,255,0.04);
-  border:1px solid rgba(255,255,255,0.08);
+  border-radius:18px;
+  background:color-mix(in srgb, var(--brand-primary, #004280) 6%, transparent);
+  border:1px solid color-mix(in srgb, var(--brand-primary, #004280) 16%, transparent);
+  border-top:4px solid var(--brand-accent);
   opacity:0; will-change:transform;
   text-align:center;
 }}
@@ -207,10 +228,11 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
   width:3.4rem; height:3.4rem;
   border-radius:50%; display:flex; align-items:center; justify-content:center;
   background:var(--brand-accent);
+  box-shadow:0 2px 10px color-mix(in srgb, var(--brand-primary, #004280) 30%, transparent);
 }}
 .{sid}-badge-num {{
   font-family:'Bebas Neue','Montserrat',sans-serif; font-size:2rem;
-  color:#000; font-weight:900; line-height:1; padding-top:0.05em;
+  color:#fff; font-weight:900; line-height:1; padding-top:0.05em;
 }}
 .{sid}-title {{
   font-family:'Bebas Neue','Montserrat',sans-serif; font-size:{fs_h2};
@@ -275,13 +297,14 @@ def render(shot: Dict[str, Any], params: Dict[str, Any], ctx: Dict[str, Any]) ->
                 f"gsap.to('#{sid}-arrow-path-{i}', "
                 f"{{strokeDashoffset:0, duration:0.45, delay:{arrow_delay:.2f}, ease:'power2.out'}});"
             )
-    # Last-cell emphasis pulse (subtle).
+    # Last-cell emphasis pulse — scale-pulse + brand-accent ring shadow.
+    # (The original rgba(255,255,255,0.06) ring was invisible on light brand
+    # backgrounds; scale-pulse reads on any theme.)
     js_parts.append(
         f"gsap.fromTo('#{sid}-cell-{n - 1}', "
-        f"{{boxShadow:'0 0 0 0 rgba(255,255,255,0)'}}, "
-        f"{{boxShadow:'0 0 0 8px rgba(255,255,255,0.06)', "
-        f"duration:0.5, delay:{last_cell_delay + 0.55:.2f}, "
-        f"yoyo:true, repeat:1, ease:'sine.inOut'}});"
+        f"{{scale:1}}, "
+        f"{{scale:1.025, duration:0.4, delay:{last_cell_delay + 0.55:.2f}, "
+        f"yoyo:true, repeat:1, ease:'sine.inOut', transformOrigin:'center center'}});"
     )
     js_parts.append(
         f"gsap.fromTo('.{sid}-stage', {{x:0, y:0, scale:1}}, {{x:10, y:-5, scale:1.02, duration:12, ease:'none'}});"

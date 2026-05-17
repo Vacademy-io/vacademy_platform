@@ -261,6 +261,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             LEFT JOIN FETCH al.assignmentSlideTracked vt
             WHERE (:userId IS NULL OR :userId = '' OR al.userId = :userId)
               AND al.slideId = :slideId
+              AND al.sourceType = 'ASSIGNMENT'
             """)
     Page<ActivityLog> findActivityLogsWithAssignmentSlide(@Param("userId") String userId,
             @Param("slideId") String slideId,
@@ -314,7 +315,14 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             WHERE a.slide_id = :slideId
             GROUP BY s.user_id, s.full_name
             ORDER BY lastActive DESC
-            """, nativeQuery = true)
+            """,
+            countQuery = """
+            SELECT COUNT(DISTINCT a.user_id)
+            FROM activity_log a
+            JOIN student s ON a.user_id = s.user_id
+            WHERE a.slide_id = :slideId
+            """,
+            nativeQuery = true)
     Page<LearnerActivityProjection> findStudentActivityBySlideId(@Param("slideId") String slideId, Pageable pageable);
 
     @Query(value = """

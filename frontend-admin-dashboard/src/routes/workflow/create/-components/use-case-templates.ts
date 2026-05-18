@@ -15,10 +15,12 @@ export interface WizardQuestion {
     id: string;
     label: string;
     helpText?: string;
-    type: 'batch_select' | 'batch_multi_select' | 'template_select' | 'audience_select' | 'live_session_select' | 'invite_select' | 'number' | 'select' | 'text';
+    type: 'batch_select' | 'batch_multi_select' | 'template_select' | 'audience_select' | 'live_session_select' | 'invite_select' | 'package_select' | 'number' | 'select' | 'text' | 'json_payload';
     required?: boolean;
     options?: Array<{ value: string; label: string }>; // for 'select' type
     defaultValue?: string | number;
+    /** Helper text shown ABOVE the JSON editor for json_payload questions. */
+    jsonPayloadHint?: string;
     /** Only show this question if another answer matches */
     showIf?: { questionId: string; values: string[] };
     /**
@@ -382,6 +384,22 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'number',
                 defaultValue: 7,
             },
+            {
+                id: 'excludeToday',
+                label: "Include today's classes?",
+                helpText:
+                    'For morning-sent emails: pick "exclude today" so the report covers up through yesterday only. '
+                    + "This keeps the email and the View Full Report deep-link consistent — they won't drift "
+                    + "apart as more classes happen later in the day. "
+                    + "Pick \"include today\" only if the workflow runs in the evening or you want a partial-day snapshot.",
+                type: 'select',
+                required: true,
+                defaultValue: 'exclude',
+                options: [
+                    { value: 'exclude', label: "Exclude today (recommended — N full days ending yesterday)" },
+                    { value: 'include', label: "Include today (window ends now — may show a partial day)" },
+                ],
+            },
         ],
         generateWorkflow: (answers) => {
             // batchId may be a string (legacy single-select) or string[] (multi-select).
@@ -396,11 +414,10 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: {
                     ...(batchCsv ? { batchId: batchCsv } : {}),
                     daysBack: answers.daysBack ?? 7,
-                    // Exclude today's date from the window. The email goes out in the
-                    // morning, but more classes happen through the day — without this,
-                    // the deep-link "View Full Report" on the portal would show different
-                    // numbers than the email when clicked later in the same day.
-                    excludeToday: true,
+                    // Only set excludeToday=true when the admin picked "exclude" (default).
+                    // When "include" is picked, omit the param entirely so the backend
+                    // uses its original semantics (today + N days back).
+                    ...(answers.excludeToday !== 'include' ? { excludeToday: true } : {}),
                 },
             }, 250, 50, true);
 
@@ -1095,6 +1112,20 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'number',
                 defaultValue: 7,
             },
+            {
+                id: 'excludeToday',
+                label: "Include today's classes?",
+                helpText:
+                    'For morning-sent emails: pick "exclude today" so numbers in the email match the deep-link view '
+                    + 'even after more classes happen during the day.',
+                type: 'select',
+                required: true,
+                defaultValue: 'exclude',
+                options: [
+                    { value: 'exclude', label: "Exclude today (recommended for morning sends)" },
+                    { value: 'include', label: "Include today (may show a partial day)" },
+                ],
+            },
         ],
         generateWorkflow: (answers) => {
             const queryNode = makeNode('QUERY', 'Fetch student engagement', {
@@ -1102,9 +1133,7 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: {
                     batchId: answers.batchId as string,
                     daysBack: answers.daysBack ?? 7,
-                    // Morning email — exclude today so the deep link stays consistent
-                    // with the email even after more classes happen during the day.
-                    excludeToday: true,
+                    ...(answers.excludeToday !== 'include' ? { excludeToday: true } : {}),
                 },
             }, 250, 50, true);
 
@@ -1149,6 +1178,20 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'number',
                 defaultValue: 7,
             },
+            {
+                id: 'excludeToday',
+                label: "Include today's classes?",
+                helpText:
+                    'For morning-sent emails: pick "exclude today" so numbers in the email match the deep-link view '
+                    + 'even after more classes happen during the day.',
+                type: 'select',
+                required: true,
+                defaultValue: 'exclude',
+                options: [
+                    { value: 'exclude', label: "Exclude today (recommended for morning sends)" },
+                    { value: 'include', label: "Include today (may show a partial day)" },
+                ],
+            },
         ],
         generateWorkflow: (answers) => {
             const queryNode = makeNode('QUERY', 'Fetch student data', {
@@ -1156,9 +1199,7 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: {
                     batchId: answers.batchId as string,
                     daysBack: answers.daysBack ?? 7,
-                    // Morning email — exclude today so the deep link stays consistent
-                    // with the email even after more classes happen during the day.
-                    excludeToday: true,
+                    ...(answers.excludeToday !== 'include' ? { excludeToday: true } : {}),
                 },
             }, 250, 50, true);
 
@@ -1254,6 +1295,169 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                     makeEdge(queryNode.id, absentEmailNode.id, 'absent'),
                 ],
                 workflowDescription: 'Post-class recap emails to present and absent students for every live class in the institute.',
+            };
+        },
+    },
+
+    // ─── 27. Send enrollment data to external webhook (Pabbly / Zapier / n8n / etc.) ───
+    // Single HTTP_REQUEST node — no QUERY needed, because LEARNER_BATCH_ENROLLMENT
+    // already puts user (UserDTO with fullName/email/mobileNumber) and packageName
+    // (added by StudentRegistrationManager) on the workflow context. triggerTime is
+    // injected by WorkflowTriggerService.
+    //
+    // Scoping:
+    //   - "institute" → no filter, fires on every enrollment in the institute
+    //   - "course"    → prepended CONDITION node that checks #ctx['packageId']
+    //                   == <chosen packageId>. Uses CONDITION instead of trigger-level
+    //                   scoping because LEARNER_BATCH_ENROLLMENT fires per-batch
+    //                   (packageSessionId) and there's no trigger-matching layer for
+    //                   packageId today. CONDITION adds one tiny check per enrollment
+    //                   globally — negligible overhead.
+    //
+    // Payload: admin-editable JSON object. Values can be SpEL expressions referencing
+    // #ctx['...']. The HTTP_REQUEST body evaluator (HttpHelperUtils.evaluateBodyExpressions)
+    // SpEL-evaluates any string containing #ctx or #root; non-SpEL values pass through
+    // as literals.
+    {
+        id: 'webhook_on_enrollment',
+        name: 'Send enrollment data to webhook',
+        description: 'When a learner enrolls, POST their details to an external webhook (Pabbly, Zapier, n8n, Make, etc.). Payload is fully configurable.',
+        icon: '🔗',
+        triggerEvents: ['LEARNER_BATCH_ENROLLMENT'],
+        workflowType: 'EVENT_DRIVEN',
+        questions: [
+            {
+                id: 'webhookUrl',
+                label: 'Webhook URL',
+                helpText: 'The POST endpoint that will receive the enrollment data. Get this from your Pabbly Connect workflow, Zapier Catch Hook, n8n Webhook node, etc.',
+                type: 'text',
+                required: true,
+            },
+            {
+                id: 'scope',
+                label: 'When should this fire?',
+                helpText: 'Pick "institute-wide" to fire on every learner enrollment in your institute, or "specific course" to fire only when learners enroll in one chosen course.',
+                type: 'select',
+                required: true,
+                defaultValue: 'institute',
+                options: [
+                    { value: 'institute', label: 'For every enrollment in this institute' },
+                    { value: 'course', label: 'Only when learners enroll in a specific course' },
+                ],
+            },
+            {
+                id: 'courseId',
+                label: 'Which course?',
+                helpText: 'The webhook will only fire when learners enroll in batches of this course.',
+                type: 'package_select',
+                required: true,
+                showIf: { questionId: 'scope', values: ['course'] },
+            },
+            {
+                id: 'payloadJson',
+                label: 'Webhook payload (JSON)',
+                type: 'json_payload',
+                required: true,
+                jsonPayloadHint:
+                    'Edit the JSON below. Each value can be a literal string OR a SpEL expression. ' +
+                    'Available variables on the context:  ' +
+                    '#ctx[\'triggerTime\'] (ISO timestamp), ' +
+                    '#ctx[\'user\'].fullName / .email / .mobileNumber / .username, ' +
+                    '#ctx[\'packageName\'] (course), ' +
+                    '#ctx[\'packageId\'], #ctx[\'packageSessionIds\'] (batch), ' +
+                    '#ctx[\'instituteName\'], #ctx[\'instituteId\'], ' +
+                    '#ctx[\'enrollmentStatus\'] (SSIGM status: ACTIVE/INVITED/...), ' +
+                    '#ctx[\'enrollmentId\'], #ctx[\'enrolledAt\'], ' +
+                    '#ctx[\'paymentStatus\'] (PAID/PENDING/null), #ctx[\'paymentOrderId\'], ' +
+                    '#ctx[\'paymentAmount\'], #ctx[\'paymentCurrency\'], #ctx[\'paymentVendor\'], ' +
+                    '#ctx[\'paymentDate\'], #ctx[\'hasPayment\'] (boolean).',
+                defaultValue: JSON.stringify(
+                    {
+                        Timestamp: "#ctx['triggerTime']",
+                        Name: "#ctx['user'].fullName",
+                        Phone: "#ctx['user'].mobileNumber",
+                        Email: "#ctx['user'].email",
+                        CourseName: "#ctx['packageName']",
+                        EnrollmentStatus: "#ctx['enrollmentStatus']",
+                        PaymentStatus: "#ctx['paymentStatus']",
+                        PaymentOrderId: "#ctx['paymentOrderId']",
+                        PaymentAmount: "#ctx['paymentAmount']",
+                        PaymentCurrency: "#ctx['paymentCurrency']",
+                    },
+                    null,
+                    2,
+                ),
+            },
+        ],
+        generateWorkflow: (answers, triggerEvent) => {
+            const triggerNode = makeNode('TRIGGER', 'Trigger: Student enrolled', {
+                triggerEvent: triggerEvent ?? 'LEARNER_BATCH_ENROLLMENT',
+            }, 250, 50, true);
+
+            // QUERY node fetches the learner's SSIGM enrollment status + latest
+            // PaymentLog and merges them onto the context (enrollmentStatus,
+            // paymentStatus, paymentOrderId, paymentAmount, paymentCurrency, etc.).
+            // Without this, the trigger context only has user + packageName — payment
+            // & enrollment status would render as literal {{...}} in the webhook body.
+            // The QUERY auto-injects instituteId; userId and packageSessionId are
+            // pulled from the trigger context via SpEL.
+            const enrichNode = makeNode('QUERY', 'Fetch enrollment & payment status', {
+                prebuiltKey: 'fetch_enrollment_details',
+                params: {
+                    userId: "#ctx['user'].id",
+                    packageSessionId: "#ctx['packageSessionIds']",
+                },
+            }, 250, 200);
+
+            // Parse the admin-supplied JSON payload. The wizard validates live, but
+            // be defensive on generate — fall back to a minimal default if the JSON
+            // is somehow unparseable at this point so we don't emit an empty body.
+            let body: Record<string, unknown> = {};
+            try {
+                const raw = (answers.payloadJson as string) ?? '{}';
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    body = parsed as Record<string, unknown>;
+                }
+            } catch {
+                body = {
+                    Timestamp: "#ctx['triggerTime']",
+                    Email: "#ctx['user'].email",
+                    Name: "#ctx['user'].fullName",
+                };
+            }
+
+            // Course-level scoping uses the HTTP_REQUEST node's built-in `condition`
+            // field — the handler evaluates it before firing and skips the request
+            // when false. This avoids needing a separate CONDITION node (and avoids
+            // the wizard's auto-routing inserting wrong goto entries on a CONDITION).
+            // For institute-wide scope, no condition is set.
+            const courseCondition =
+                answers.scope === 'course' && answers.courseId
+                    ? `#ctx['packageId'] == '${String(answers.courseId).replace(/'/g, "\\'")}'`
+                    : undefined;
+
+            const webhookNode = makeNode('HTTP_REQUEST', 'POST enrollment to webhook', {
+                resultKey: 'webhookResponse',
+                config: {
+                    requestType: 'EXTERNAL',
+                    method: 'POST',
+                    url: answers.webhookUrl as string,
+                    ...(courseCondition ? { condition: courseCondition } : {}),
+                    body,
+                },
+            }, 250, 380);
+
+            return {
+                nodes: [triggerNode, enrichNode, webhookNode],
+                edges: [
+                    makeEdge(triggerNode.id, enrichNode.id),
+                    makeEdge(enrichNode.id, webhookNode.id),
+                ],
+                workflowDescription:
+                    answers.scope === 'course' && answers.courseId
+                        ? 'Fetch enrollment + payment status and POST to external webhook — fires only when learners enroll in the selected course.'
+                        : 'Fetch enrollment + payment status and POST to external webhook on every new enrollment in this institute.',
             };
         },
     },

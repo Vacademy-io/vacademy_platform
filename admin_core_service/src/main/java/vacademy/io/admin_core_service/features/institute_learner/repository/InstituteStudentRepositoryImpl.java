@@ -432,6 +432,9 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             public Boolean getTncAccepted() { try { Object v = t.get("tncaccepted"); return v == null ? null : (Boolean) v; } catch (Exception e) { return null; } }
             public String getTncFileId() { return str("tncfileid"); }
             public java.util.Date getTncAcceptedDate() { try { return t.get("tncaccepteddate", java.util.Date.class); } catch (Exception e) { return null; } }
+            // Custom-repo paths (heavy filter combinations) still inner-join ssigm, so audience-only
+            // rows never reach this mapper. Return false rather than null to keep the flag well-typed.
+            public Boolean getIsAudienceOnly() { try { Object v = t.get("isaudienceonly"); return v == null ? Boolean.FALSE : (Boolean) v; } catch (Exception e) { return Boolean.FALSE; } }
         }).collect(java.util.stream.Collectors.toList());
     }
 

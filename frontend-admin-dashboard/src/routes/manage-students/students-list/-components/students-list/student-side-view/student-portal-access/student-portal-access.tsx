@@ -20,6 +20,7 @@ import {
 import { isUserAdmin } from '@/utils/userDetails';
 import { getLearnerPortalAccess, sendResetPasswordEmail } from '@/services/learner-portal-access';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { BatchPicker } from '../BatchPicker';
 
 export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {
     const { selectedStudent } = useStudentSidebar();
@@ -33,6 +34,20 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
         userId: userId || '',
     });
     const password = credentials?.password || (isCredentialsLoading ? 'Loading...' : 'password not found');
+
+    // For multi-enrollment learners: admin picks which batch's package the portal redirect /
+    // reset-password email is scoped to. Defaults to the row's primary (latest) ps_id.
+    // Falls back to the legacy single field when the new array isn't populated.
+    const enrollmentPsIds: string[] = (selectedStudent?.all_package_session_ids?.length
+        ? selectedStudent.all_package_session_ids
+        : selectedStudent?.package_session_id
+          ? [selectedStudent.package_session_id]
+          : []) as string[];
+    const [selectedPsId, setSelectedPsId] = useState<string>(enrollmentPsIds[0] ?? '');
+    useEffect(() => {
+        setSelectedPsId(enrollmentPsIds[0] ?? '');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedStudent?.user_id]);
 
     useEffect(() => {
         const fetchLearnerSettings = async () => {
@@ -73,9 +88,9 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
         // Get packageId from selectedStudent.package_id or derive it from package_session_id
         let packageId = selectedStudent.package_id;
 
-        if (!packageId && selectedStudent.package_session_id) {
+        if (!packageId && selectedPsId) {
             const batchDetails = getDetailsFromPackageSessionId({
-                packageSessionId: selectedStudent.package_session_id,
+                packageSessionId: selectedPsId,
             });
             packageId = batchDetails?.package_dto?.id;
         }
@@ -116,9 +131,9 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
         // Get packageId from selectedStudent.package_id or derive it from package_session_id
         let packageId = selectedStudent.package_id;
 
-        if (!packageId && selectedStudent.package_session_id) {
+        if (!packageId && selectedPsId) {
             const batchDetails = getDetailsFromPackageSessionId({
-                packageSessionId: selectedStudent.package_session_id,
+                packageSessionId: selectedPsId,
             });
             packageId = batchDetails?.package_dto?.id;
         }
@@ -142,6 +157,13 @@ export const StudentPortalAccess = ({ isSubmissionTab }: { isSubmissionTab?: boo
 
     return (
         <div className="space-y-4">
+            <BatchPicker
+                packageSessionIds={enrollmentPsIds}
+                value={selectedPsId}
+                onChange={setSelectedPsId}
+                label="Open portal for"
+            />
+
             {/* Account Credentials Section */}
             {learnerSettings?.allowViewPassword && (
                 <div className="group rounded-lg border border-neutral-200/50 bg-gradient-to-br from-white to-primary-50/30 p-3 transition-all duration-200 hover:scale-[1.01] hover:border-primary-200/50 hover:shadow-md">

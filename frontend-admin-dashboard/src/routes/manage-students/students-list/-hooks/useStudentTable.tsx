@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { StudentFilterRequest } from '@/types/student-table-types';
 import { useStudentList } from '@/routes/manage-students/students-list/-services/getStudentTable';
-import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useStudentSidebar } from '../-context/selected-student-sidebar-context';
 
 export const useStudentTable = (
@@ -15,31 +14,20 @@ export const useStudentTable = (
     const { selectedStudent, setSelectedStudent } = useStudentSidebar();
 
     let localAppliedFilters = appliedFilters;
-    const { instituteDetails } = useInstituteDetailsStore();
 
-    // Check if we have approval statuses that require global search (empty package_session_ids)
-    const hasApprovalStatus = appliedFilters.statuses?.some(s =>
-        ['INVITED', 'PENDING_FOR_APPROVAL'].includes(s)
-    );
-
-    // Check if ABANDONED_CART type is selected (requires empty package_session_ids)
-    const isAbandonedCart = appliedFilters.type === 'ABANDONED_CART';
-
-    // Only override empty package_session_ids if NOT searching for approval statuses or ABANDONED_CART
-    if (appliedFilters.package_session_ids?.length == 0 && !hasApprovalStatus && !isAbandonedCart) {
-        if (package_session_id && package_session_id != null && package_session_id.length > 0) {
-            localAppliedFilters = {
-                ...appliedFilters,
-                package_session_ids: package_session_id,
-            };
-        } else {
-            const psids: string[] =
-                instituteDetails?.batches_for_sessions.map((batch) => batch.id) || [];
-            localAppliedFilters = {
-                ...appliedFilters,
-                package_session_ids: psids,
-            };
-        }
+    // If the URL pinned a specific package_session_id, honour it. Otherwise leave
+    // package_session_ids empty — the backend's combined query returns institute users
+    // + audience-only respondents by default, and a synthetic all-batches filter would
+    // gate audience-only users out.
+    if (
+        appliedFilters.package_session_ids?.length == 0 &&
+        package_session_id &&
+        package_session_id.length > 0
+    ) {
+        localAppliedFilters = {
+            ...appliedFilters,
+            package_session_ids: package_session_id,
+        };
     }
 
     const {

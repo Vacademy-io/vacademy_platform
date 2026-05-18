@@ -31,6 +31,7 @@ import {
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
+import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import { ArrowUp, ArrowDown, GripVertical } from 'lucide-react';
@@ -1849,6 +1850,16 @@ export default function AdminDisplaySettings() {
                     updateSettings((prev) => ({
                         ...prev,
                         studentSideView: next,
+                    }))
+                }
+            />
+
+            <LearnerListColumnsCard
+                settings={settings.learnerListColumns}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        learnerListColumns: next,
                     }))
                 }
             />

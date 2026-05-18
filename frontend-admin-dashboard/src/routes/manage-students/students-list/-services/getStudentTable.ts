@@ -45,6 +45,7 @@ export const useStudentList = (
             sub_org_user_types: filters.sub_org_user_types?.sort() || [],
             type: filters.type || '',
             enroll_invite_ids: filters.enroll_invite_ids?.sort() || [],
+            audience_ids: filters.audience_ids?.sort() || [],
             // Include dynamic custom fields if present - sorting keys to be safe
             ...Object.keys(filters)
                 .filter(key => key.startsWith('customField'))

@@ -143,3 +143,7 @@ auth_service/target/*
 community_service/target/*
 notification_service/target/*
 media_service/target/*
+
+# Helm secret value overlays — real DB hosts/creds, never commit
+vacademy_devops/**/values.secret.yaml
+vacademy_devops/**/values-*.secret.yaml

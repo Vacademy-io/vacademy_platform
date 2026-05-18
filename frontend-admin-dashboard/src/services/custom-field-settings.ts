@@ -531,6 +531,15 @@ export const DEFAULT_SYSTEM_FIELDS: SystemField[] = [
         visibility: true,
     },
     { key: 'STATUS', defaultValue: 'Status', customValue: 'Status', order: 19, visibility: true },
+    // Off by default — the slim list query doesn't populate referral_count today, so the
+    // cell renders `-` until the backend adds it. Toggle keeps the column manageable per role.
+    {
+        key: 'REFERRAL_COUNT',
+        defaultValue: 'Referrals Count',
+        customValue: 'Referrals Count',
+        order: 20,
+        visibility: false,
+    },
     // Filter-driven columns (Batch / Plan Type / Amount Paid / Preferred Batch /
     // Enroll Invite Name) intentionally NOT here. They appear only when their
     // corresponding filter is applied and are appended after the configured

@@ -36,6 +36,7 @@ const SYSTEM_COLUMNS: { accessor: string; label: string }[] = [
     { accessor: 'country', label: 'Country' },
     { accessor: 'expiry_date', label: 'Session Expiry' },
     { accessor: 'status', label: 'Status' },
+    { accessor: 'referral_count', label: 'Referrals Count' },
 ];
 
 interface LearnerListColumnsCardProps {

@@ -8,6 +8,8 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.PackageSessionLearnerInvitationToPaymentOptionRepository;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute.utils.InstituteSettingUtils;
 import vacademy.io.admin_core_service.features.user_subscription.dto.markdown.ApplyMarkdownRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.markdown.MarkdownErrorCode;
 import vacademy.io.admin_core_service.features.user_subscription.dto.markdown.MarkdownLookupItemDTO;
@@ -23,6 +25,7 @@ import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOp
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.Institute;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -57,16 +60,18 @@ public class PaymentPlanMarkdownService {
 
     private final PackageSessionLearnerInvitationToPaymentOptionRepository psLinkRepository;
     private final PaymentPlanRepository paymentPlanRepository;
+    private final InstituteRepository instituteRepository;
 
     @Transactional
     public MarkdownResponseDTO applyMarkdown(ApplyMarkdownRequestDTO request, CustomUserDetails user) {
         validateApplyRequest(request);
         MarkdownMode mode = MarkdownMode.fromString(request.getMode());
         double value = request.getValue();
+        String roundingMode = resolveRoundingMode(request.getInstituteId());
         return process(
                 request.getInstituteId(),
                 request.getPackageSessionIds(),
-                plan -> computeMarkdownPrice(plan, mode, value));
+                plan -> computeMarkdownPrice(plan, mode, value, roundingMode));
     }
 
     @Transactional
@@ -311,29 +316,51 @@ public class PaymentPlanMarkdownService {
         return map;
     }
 
-    private double computeMarkdownPrice(PaymentPlan plan, MarkdownMode mode, double value) {
+    private double computeMarkdownPrice(PaymentPlan plan, MarkdownMode mode, double value, String roundingMode) {
         if (Double.isNaN(value) || Double.isInfinite(value)) {
             throw new IllegalArgumentException("Value must be a finite number.");
         }
         double elevated = plan.getElevatedPrice();
+        double raw;
         if (mode == MarkdownMode.PERCENT) {
             if (value < 0 || value > 100) {
                 throw new IllegalArgumentException("Percent must be between 0 and 100 (got " + value + ").");
             }
-            return roundTo2(elevated * (1.0 - value / 100.0));
+            raw = elevated * (1.0 - value / 100.0);
+        } else {
+            if (value < 0) {
+                throw new IllegalArgumentException("Absolute price must be >= 0 (got " + value + ").");
+            }
+            if (value > elevated) {
+                throw new IllegalArgumentException(
+                        "New price (" + value + ") must not exceed elevated price (" + elevated + ").");
+            }
+            raw = value;
         }
-        if (value < 0) {
-            throw new IllegalArgumentException("Absolute price must be >= 0 (got " + value + ").");
-        }
-        if (value > elevated) {
-            throw new IllegalArgumentException(
-                    "New price (" + value + ") must not exceed elevated price (" + elevated + ").");
-        }
-        return roundTo2(value);
+        return applyRounding(roundTo2(raw), roundingMode);
     }
 
     private static double roundTo2(double v) {
         return Math.round(v * 100.0) / 100.0;
+    }
+
+    /**
+     * Apply the institute's configured whole-unit rounding on top of the 2dp baseline.
+     * CEIL/FLOOR round to the nearest whole currency unit (₹1, $1, etc.);
+     * NONE keeps the 2dp value as-is.
+     */
+    private static double applyRounding(double v, String roundingMode) {
+        if ("CEIL".equals(roundingMode)) return Math.ceil(v);
+        if ("FLOOR".equals(roundingMode)) return Math.floor(v);
+        return v;
+    }
+
+    private String resolveRoundingMode(String instituteId) {
+        if (!StringUtils.hasText(instituteId)) return "NONE";
+        return instituteRepository.findById(instituteId)
+                .map(Institute::getSetting)
+                .map(InstituteSettingUtils::getOfferPricingRounding)
+                .orElse("NONE");
     }
 
     private static void fail(MarkdownResultDTO r, MarkdownErrorCode code, String message) {

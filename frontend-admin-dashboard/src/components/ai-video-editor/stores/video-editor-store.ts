@@ -842,7 +842,42 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         }
     },
 
-    seek: (time) => set({ currentTime: time }),
+    seek: (time) =>
+        set((s) => {
+            // Auto-follow: whichever shot the playhead is now inside becomes
+            // the selected entry, so the right-side Properties panel
+            // automatically matches what the user is looking at. Branding
+            // intro/outro are excluded — the user almost never wants to
+            // edit those by scrubbing through them.
+            //
+            // In time_driven navigation the entry's [inTime, exitTime) range
+            // owns the playhead; in user_driven/self_contained the playhead
+            // is an integer index into entries[].
+            let nextSelected = s.selectedEntryId;
+            if (s.meta.navigation === 'time_driven') {
+                const containing = s.entries
+                    .filter((e) => !e.id?.startsWith('branding-'))
+                    .filter((e) => {
+                        const start = e.inTime ?? e.start ?? 0;
+                        const end = e.exitTime ?? e.end ?? Infinity;
+                        return time >= start && time < end;
+                    })
+                    .sort((a, b) => (a.z ?? 0) - (b.z ?? 0));
+                const base = containing[0];
+                if (base) nextSelected = base.id;
+            } else {
+                const idx = Math.max(0, Math.min(Math.floor(time), s.entries.length - 1));
+                const entry = s.entries[idx];
+                if (entry && !entry.id?.startsWith('branding-')) nextSelected = entry.id;
+            }
+            // If the selection changed, drop the layer path — paths are
+            // scoped to a single entry's HTML.
+            return {
+                currentTime: time,
+                selectedEntryId: nextSelected,
+                selectedLayerPath: nextSelected !== s.selectedEntryId ? null : s.selectedLayerPath,
+            };
+        }),
 
     selectEntry: (id) =>
         set((s) => ({

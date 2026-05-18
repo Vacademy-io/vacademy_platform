@@ -103,6 +103,10 @@ function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
     // to the per-video cost cap). Audio variant gets a slightly different
     // visual; cost is summarized at the PipelinePanel level.
     const isAiVideo = scene.shotType === 'AI_VIDEO_HERO';
+    // v3 intrinsic_only badge — master narration is muted in this shot's
+    // window, so the shot's own audio (Veo audio / source-clip audio) plays
+    // alone. Helps users see why some scenes don't have narration text.
+    const isIntrinsic = scene.audioPolicy === 'intrinsic_only';
 
     return (
         <div
@@ -160,10 +164,41 @@ function SceneNodeInner({ data }: NodeProps<PipelineNodeData>) {
                         ✨ AI
                     </span>
                 )}
+                {isIntrinsic && (
+                    <span
+                        title="audio_policy=intrinsic_only — master narration is muted in this window; the shot plays its own audio (Veo audio / source clip)."
+                        className="shrink-0 rounded bg-amber-100 px-1 text-[9px] font-semibold uppercase tracking-wider text-amber-700"
+                    >
+                        🔇 INTR
+                    </span>
+                )}
                 <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums text-muted-foreground">
                     {scene.durationS.toFixed(1)}s
                 </span>
             </div>
+            {/* v3 intent_role + background_treatment chips — secondary header
+                row, only when populated. Lets reviewers see at a glance how
+                the planner classified this beat in the narrative arc. */}
+            {(scene.intentRole || scene.backgroundTreatment) && (
+                <div className="flex shrink-0 items-center gap-1 px-2 pb-1 text-[9px]">
+                    {scene.intentRole && (
+                        <span
+                            title={`Intent role: ${scene.intentRole}`}
+                            className="rounded bg-sky-50 px-1 font-medium uppercase tracking-wider text-sky-700"
+                        >
+                            {scene.intentRole}
+                        </span>
+                    )}
+                    {scene.backgroundTreatment && (
+                        <span
+                            title={`Background treatment: ${scene.backgroundTreatment}`}
+                            className="rounded bg-slate-100 px-1 font-medium uppercase tracking-wider text-slate-700"
+                        >
+                            {scene.backgroundTreatment.replace(/_/g, ' ')}
+                        </span>
+                    )}
+                </div>
+            )}
 
             {/* Thumbnail (when timeline.json is loaded) — falls back to a
                 placeholder camera icon while parsing or when no media is in

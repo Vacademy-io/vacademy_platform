@@ -292,3 +292,75 @@ When SSE is running and `shot_done` events arrive, scene nodes should flip Sched
 ---
 
 **Last updated**: 2026-05-03 (Phase 2 ship + manual scene positioning workaround)
+
+---
+
+## Update log — what's actually shipped (verified 2026-05-18)
+
+The roadmap above was out of date relative to the code. Verified state:
+
+- **Phase 3 (Talent + Score)**: **shipped**. `TalentNode.tsx`, `ScoreNode.tsx`, the SSE handlers in `VideoConsoleWorkspace.tsx`, the polled `extra_metadata.host.outputs` enrichment in `PipelineFlow.enrichedState`, and the right-rail counters all exist.
+- **Phase 4 (Research + abort + retry)**: **mostly shipped**. `ResearchNode.tsx` + `ResearchDetail` consume `metadata.intent_outcomes` (screenshots, search sources, scraped excerpt). Abort + retry CTAs are wired in `PipelinePanel.tsx`. Per-scene retry endpoint still doesn't exist on the BE — full-pipeline retry only.
+- **Beats node** (v2 BeatPlanner): shipped at `nodes/BeatsNode.tsx`.
+
+---
+
+## Phase 6 — v3 pipeline awareness (shipped 2026-05-18)
+
+**Goal**: render the AI video backend's v3 ShotPlanner-first pipeline as a first-class graph + detail surface. See [AI_VIDEO_ARCHITECTURE_CHANGES.md §12 — "Pipeline Reorder v3"](./AI_VIDEO_ARCHITECTURE_CHANGES.md#pipeline-reorder-v3--shotplanner-first-architecture) for the BE contract.
+
+### Behavior
+
+- On runs with `pipeline_version === 'v3'` (or any positive v3 signal — v3 sub_stages on the wire, or v3 fields on the shot plan), the diagram swaps the v2 `Beats → Screenplay → Narration → Storyboard` chain for `ShotPlanner → NarrationWriter`. v2 runs render the legacy chain unchanged.
+- The stages list in `<PipelinePanel>` follows the same swap and shows a "Pipeline v3 · ShotPlanner-first" footer when active.
+- Scene nodes get a `🔇 INTR` chip when `audio_policy === 'intrinsic_only'` and a per-shot row of `intent_role` + `background_treatment` chips when the planner populated them.
+- The right-rail Production Budget block shows AI-video shot count + credit subtotal pulled from `timeline.json -> meta.shots[]._ai_video_cost_credits`.
+
+### New SSE events handled
+
+| Event | Effect |
+|---|---|
+| `shot_planning` | flips `<ShotPlannerNode>` to in_production; sets `pipelineVersion='v3'` |
+| `shot_planning_done` | captures `shot_plan` + `recurring_motifs`; node wraps |
+| `narration_writing` | flips `<NarrationWriterNode>` to in_production |
+| `narration_writing_done` | captures `narration_word_count` + updated `shot_plan`; node wraps |
+
+### New v3 fields consumed off the shot plan + timeline
+
+- `narration_brief` (planner intent) — surfaced alongside `narration_text` in the scene sheet so reviewers see "what was wanted" vs "what was said"
+- `audio_policy` — drives the intrinsic-only badge on Scene nodes + the "Intrinsic — no narration" empty state in the sheet
+- `background_treatment` + `transition_in` + `intent_role` — surfaced as chips on the scene node and as a per-shot mini-grid inside the ShotPlanner detail sheet
+- `audio_url` / `audio_words_url` / `audio_script_url` / `audio_duration_s` — per-shot TTS files, surfaced as a native `<audio>` element + raw-file links in the scene sheet (v3 only; v2 has only the master narration)
+- `recurring_motifs[]` — surfaced in the ShotPlanner detail sheet's "Recurring motifs" table (description / screen_position / when_visible)
+- `_ai_video_request_id` / `_ai_video_segments` / `_ai_video_cost_credits` / `_ai_video_url` — surfaced in the scene sheet's "AI video telemetry" panel for AI_VIDEO_HERO shots
+
+### Architectural decisions worth knowing
+
+- **Version detection is multi-source.** Prefer `metadata.user_selections.pipeline_version` (or its top-level mirror `metadata.pipeline_version`); fall back to positive signal — any v3 sub_stage in the wire, or any shot with `narration_brief` / `audio_policy`, or any timeline `meta.shots[]` entry — promotes the run to v3. Unknown defaults to v2 so legacy runs render unchanged.
+- **One graph builder, two topologies.** `build-pipeline-graph.ts` branches on `state.pipelineVersion`. Talent / Score / Filming / Final Cut stay common. The "upstream of scenes" anchor (Storyboard on v2 / NarrationWriter on v3) is the same shape in `PipelineFlow.tsx`'s manual scene-positioning code — the layout math doesn't care which node it anchors off.
+- **History rehydration uses `meta.shots[]` as the canonical source for v3 fields**, not `/status.generation_progress.shot_plan` (which today is shape-only). `useTimelineShotMeta()` is the hook; `PipelineFlow.enrichedState` step 2b does the merge into `SceneSlot`. On already-completed v3 runs, this is the only path that surfaces audio_policy / narration_brief / AI-video telemetry.
+- **NarrationWriter ≠ v2 Narration.** Both produce per-shot narration text, but the v2 Narration node represents the monolithic TTS stage (a single `narration.mp3` and word timings) while v3's NarrationWriter is the LLM hop that authors the text per shot before per-shot TTS runs in the html stage. They coexist in `PipelineState` (both slots can be populated on v3 runs) but only one of them shows in the diagram at a time.
+
+### What this PR does NOT change
+
+- Per-scene retry endpoint (still BE-blocked; full-pipeline retry only)
+- `background_music_*` events not firing as `sub_stage` events on the wire — current substring matching unchanged (this is a BE follow-up)
+- `bbox_*` / `vision_review_*` SSE events — not yet handled by the FE (they don't appear as sub_stage events today; check if they fire and add handlers if so)
+- Editor (`PropertiesPanel.tsx`) shot-mode UI rework — distinct from pipeline view; tracked separately
+
+### Files touched
+
+- `pipeline/-utils/stage-vocab.ts` — added `shotPlanner` + `narrationWriter` ids, sub_stage map, NODE_STAGE entries
+- `pipeline/-utils/derive-pipeline-state.ts` — `pipelineVersion`, `ShotPlannerArtifact`, `NarrationWriterArtifact`, v3 fields on `SceneSlot`, v3 slot derivation in both live + status paths
+- `pipeline/-utils/build-pipeline-graph.ts` — branched on `pipelineVersion`; `upstreamOfScenes` parameterizes the scene + branch anchor
+- `pipeline/-utils/parse-timeline-thumbnails.ts` — `TimelineShotMeta` type + `pickShotMetaByIndex` + `pickRecurringMotifs`
+- `pipeline/-utils/use-timeline-json.ts` — `useTimelineShotMeta` + `useTimelineRecurringMotifs` hooks
+- `pipeline/nodes/ShotPlannerNode.tsx` (NEW)
+- `pipeline/nodes/NarrationWriterNode.tsx` (NEW)
+- `pipeline/nodes/SceneNode.tsx` — intrinsic_only badge, intent_role + background_treatment chips
+- `pipeline/PipelineFlow.tsx` — register new nodes; merge v3 meta into scenes; synthesize ShotPlanner + NarrationWriter slots for history-loaded runs; backfill `pipelineVersion`
+- `pipeline/PipelinePanel.tsx` — v3-aware stages list, `ShotPlannerCounter` + `NarrationWriterCounter`, AI-video credit subtotal, pipeline-version footer
+- `pipeline/NodeDetailSheet.tsx` — `ShotPlannerDetail` + `NarrationWriterDetail` sheets; expanded SceneDetail with narration brief/text split, per-shot audio player, AI-video telemetry, v3 chips
+- `routes/video-api-studio/-services/video-generation.ts` — `ShotPlanItem` widening + `pipeline_version` on user_selections/metadata + v3 fields on `SubStageEvent` + `GenerationProgress`
+- `routes/video-api-studio/-components/VideoConsoleWorkspace.tsx` — v3 fields on `CurrentGeneration`; SSE handlers for `shot_planning*` / `narration_writing*`
+

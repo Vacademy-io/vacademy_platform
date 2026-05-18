@@ -108,9 +108,18 @@ INTENT_PRESETS: Dict[str, Dict[str, Any]] = {
     },
     "announcement": {
         "visual_mood": (
-            "the subject of the announcement front-and-center with a strong "
-            "emotional expression (excitement, awe). Warm key light, halo, "
-            "a hint of confetti or motion. No empty scenery"
+            "the subject of the announcement front-and-center — choose the "
+            "RIGHT subject for the actual topic: "
+            "(a) a corporate partnership / merger / new venture → joined brand "
+            "logos, side-by-side wordmarks, a professional handshake, or "
+            "side-by-side founders. NOT a generic excited person; "
+            "(b) a product / launch → the product hero-lit on a clean stage; "
+            "(c) a new program / class / batch → real students / classroom / "
+            "campus, in the relevant cultural context; "
+            "(d) a personal announcement (engagement, milestone) → a real "
+            "person with genuine emotion. "
+            "Warm key light, celebratory framing, optional confetti accents. "
+            "Always photoreal — never a 3D-rendered cartoon character"
         ),
         "type_style": (
             "heavy bold sans-serif with NORMAL letter spacing — fully legible, "
@@ -119,8 +128,9 @@ INTENT_PRESETS: Dict[str, Dict[str, Any]] = {
         ),
         "headline_brief": (
             "Write an electrifying event reveal (3 words max). All caps okay. "
-            "GOOD: 'IT'S FINALLY HERE', 'EVERYTHING JUST CHANGED', "
-            "'WE DID IT'. "
+            "GOOD for partnerships: 'X JOINS Y', 'WE'RE TOGETHER', "
+            "'NEW BATCH LIVE'. "
+            "GOOD for launches: 'IT'S FINALLY HERE', 'WE DID IT'. "
             "BAD: 'New Product Launch', 'Major Update', 'We Are Live'."
         ),
         "max_words": 3,
@@ -473,16 +483,32 @@ def build_recraft_thumbnail_prompt(
         # setting, props, palette).
         f"{topic_anchor_clause}"
         # 3. The mandatory subject + side-composition rule.
+        # The RIGHT subject TYPE depends on the topic — pick from the menu
+        # below. The previous version mandated "human face with emotion"
+        # which made the model default to stock-cartoon-excited-person for
+        # corporate / partnership / coding topics where the actual subject
+        # should be brands, products, code-on-screens, or classrooms.
         "MANDATORY composition: the frame is split into a SUBJECT ZONE and a "
         "TEXT ZONE, side by side. The SUBJECT ZONE (one third or one half of "
         "the frame, your choice of left or right) contains a single clear "
-        "focal subject — strongly prefer a human face with a vivid expression "
-        "(surprise, intensity, awe, focus, fear, joy) framed close enough to "
-        "see emotion. If a person genuinely isn't possible, use a dramatic "
-        "close-up of a hero object, prop, or storytelling element. NEVER an "
-        "empty landscape or wide scenery shot. The TEXT ZONE occupies the "
-        "remainder of the frame and holds the typography — subject and text "
-        "do NOT stack on top of each other; they coexist side by side. "
+        "focal subject. Choose the SUBJECT TYPE from what the topic actually "
+        "calls for: "
+        "(a) a real person captured by a camera with a believable expression "
+        "— best for personal stories, opinion videos, vlogs; "
+        "(b) brand marks / wordmarks / logos / a pair of logos side-by-side "
+        "/ a real professional handshake — best for corporate announcements, "
+        "partnerships, mergers, brand launches; "
+        "(c) a product or hero object under studio light — best for ads, "
+        "product reveals, unboxings; "
+        "(d) a real workspace, classroom, students with books, code on a "
+        "monitor, lab equipment, library, or other scene-from-the-topic — "
+        "best for tutorials, education, coaching, behind-the-scenes; "
+        "(e) a charged documentary location detail — best for news recaps. "
+        "Pick whichever TYPE the topic actually warrants — do NOT default to "
+        "(a) for everything. NEVER an empty landscape or wide scenery shot. "
+        "The TEXT ZONE occupies the remainder of the frame and holds the "
+        "typography — subject and text do NOT stack on top of each other; "
+        "they coexist side by side. "
         # 3. Typography hierarchy — the structural change vs the previous
         # uniform single-line look.
         f"{typography_block} "
@@ -509,14 +535,25 @@ def build_recraft_thumbnail_prompt(
         "darkened backdrop so the typography reads cleanly. "
         # 7. Brand binding (soft).
         f"{brand_clause}"
-        # 8. Anti-patterns.
-        "AVOID at all costs: subject and text stacked on top of each other; "
-        "single line of uniform-sized text spanning the full width; empty "
-        "wide landscapes with no subject; thin tall serif fonts; small text; "
-        "cluttered overlays; generic stock-photo blandness; muted desaturated "
-        "palettes; soft-pastel marketing-brochure energy; OVERLY CONDENSED "
-        "typography where letters bleed into each other (no Bebas-style "
-        "extreme compression that makes an F look like an E). "
+        # 8. Photorealism mandate + anti-patterns.
+        "PHOTOREALISM IS THE DEFAULT: render as realistic photography or "
+        "photoreal editorial illustration. NO 3D-rendered cartoon characters, "
+        "no Pixar / Disney / DreamWorks style, no anime, no rubber-hose "
+        "animation, no plasticky 3D mascots, no toy-like figurines. The only "
+        "exception is when the topic's `visual_style` explicitly says "
+        "'illustration', 'cartoon', or 'animated' — in which case match that "
+        "style consistently across the whole frame, never mix cartoon "
+        "subjects with photoreal scenery. People in frame must look like "
+        "real humans captured by a camera. "
+        "AVOID at all costs: 3D-rendered cartoon mascots with exaggerated "
+        "expressions; stylized 'excited stock character' clip-art; subject "
+        "and text stacked on top of each other; single line of uniform-sized "
+        "text spanning the full width; empty wide landscapes with no "
+        "subject; thin tall serif fonts; small text; cluttered overlays; "
+        "generic stock-photo blandness; muted desaturated palettes; "
+        "soft-pastel marketing-brochure energy; OVERLY CONDENSED typography "
+        "where letters bleed into each other (no Bebas-style extreme "
+        "compression that makes an F look like an E). "
         # 9. Legibility quality bar — hard requirement on letter rendering.
         "LEGIBILITY IS MANDATORY: every letter in every tier must be clearly "
         "distinguishable. Use NORMAL letter spacing — not compressed, not "

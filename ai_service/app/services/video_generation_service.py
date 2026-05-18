@@ -23,6 +23,39 @@ from .s3_service import S3Service
 from . import cancellation_registry
 
 
+def _resolve_pipeline_version(quality_tier: str) -> str:
+    """Resolve the pipeline architecture flag ("v2" | "v3") that will run
+    for this video, BEFORE the pipeline is instantiated.
+
+    Mirrors `VideoGenerationPipeline._pipeline_v3_enabled()` resolution
+    order: env override → per-tier QUALITY_TIERS config → default v2. Used
+    when persisting `user_selections.pipeline_version` so the FE can render
+    the correct graph (ShotPlanner-first vs legacy) on the very first poll —
+    no need to wait for the first v3 SSE event to confirm.
+
+    Imports `QUALITY_TIERS` lazily so a failure to load the pipeline module
+    (e.g. partial deploy, syntax error during refactor) doesn't take down
+    the gen-start request. Falls back to "v2" on any error.
+    """
+    env_val = (os.environ.get("PIPELINE_VERSION") or "").strip().lower()
+    if env_val == "v3":
+        return "v3"
+    try:
+        # Lazy import — the ai-video-gen-main package is a sibling tree
+        # and we don't want gen-start to hard-depend on its load order.
+        import sys as _sys
+        from pathlib import Path as _Path
+        _aigen = str(_Path(__file__).resolve().parent.parent / "ai-video-gen-main")
+        if _aigen not in _sys.path:
+            _sys.path.insert(0, _aigen)
+        from automation_pipeline import QUALITY_TIERS  # type: ignore
+        tier_cfg = QUALITY_TIERS.get(quality_tier) or {}
+        tier_val = (tier_cfg.get("pipeline_version") or "").strip().lower()
+        return "v3" if tier_val == "v3" else "v2"
+    except Exception:
+        return "v2"
+
+
 def _is_pipeline_cancelled(exc: BaseException) -> bool:
     """The pipeline lives in the ``ai-video-gen-main/`` directory (not a
     proper Python package importable from ``app.*``). It defines its own
@@ -1255,6 +1288,14 @@ class VideoGenerationService:
                     # originally picked. Free-text overrides land in
                     # intent_outcomes.visual_preferences_resolved instead.
                     "visual_preferences": visual_prefs_struct,
+                    # Pipeline architecture flag — read up-front so the FE
+                    # renders the right graph (v3 ShotPlanner-first vs v2
+                    # legacy) without waiting for the first v3 SSE event to
+                    # arrive (or, on history rehydration, the timeline). Same
+                    # resolution order as `_pipeline_v3_enabled` in the
+                    # pipeline class (env override → per-tier config →
+                    # default v2).
+                    "pipeline_version": _resolve_pipeline_version(quality_tier),
                 }
                 _emeta["intent_outcomes"] = {
                     "video_type": video_type_plan.model_dump(),

@@ -10,6 +10,7 @@ import {
     Camera,
     Check,
     CheckCircle2,
+    Clapperboard,
     Clock,
     Copy,
     ExternalLink,
@@ -21,9 +22,12 @@ import {
     Mic,
     Music,
     Pause,
+    PenLine,
     Play,
     Sparkles,
     UserSquare2,
+    Volume2,
+    VolumeX,
     Wand2,
     X,
     XCircle,
@@ -74,6 +78,8 @@ const NODE_ICON: Record<PipelineNodeId, React.ReactNode> = {
     screenplay: <FileText className="size-4" />,
     narration: <Mic className="size-4" />,
     storyboard: <Layers className="size-4" />,
+    shotPlanner: <Clapperboard className="size-4" />,
+    narrationWriter: <PenLine className="size-4" />,
     filming: <Camera className="size-4" />,
     talent: <UserSquare2 className="size-4" />,
     score: <Music className="size-4" />,
@@ -366,6 +372,10 @@ function NodeDetailBody({ kind, state }: { kind: PipelineNodeId; state: Pipeline
             return <NarrationDetail state={state} />;
         case 'storyboard':
             return <StoryboardDetail state={state} />;
+        case 'shotPlanner':
+            return <ShotPlannerDetail state={state} />;
+        case 'narrationWriter':
+            return <NarrationWriterDetail state={state} />;
         case 'filming':
             return <FilmingDetail state={state} />;
         case 'talent':
@@ -375,6 +385,350 @@ function NodeDetailBody({ kind, state }: { kind: PipelineNodeId; state: Pipeline
         case 'finalCut':
             return <FinalCutDetail state={state} />;
     }
+}
+
+// ── v3 detail bodies ─────────────────────────────────────────────────────
+
+function ShotPlannerDetail({ state }: { state: PipelineState }) {
+    const slot = state.shotPlanner;
+    if (!slot) {
+        return (
+            <div className="text-sm text-muted-foreground">
+                ShotPlanner didn&apos;t run for this video — this is a v2 (legacy) pipeline run.
+            </div>
+        );
+    }
+    if (slot.state === 'scheduled') {
+        return (
+            <div className="text-sm text-muted-foreground">
+                Awaiting brief lock-in before planning shots.
+            </div>
+        );
+    }
+    if (slot.state === 'in_production') {
+        return (
+            <div className="text-sm text-muted-foreground">
+                ShotPlanner is calling the LLM — emits the full shot list with intent_role,
+                audio_policy, background_treatment, transition_in, and any plan-level
+                recurring_motifs in a single hop.
+            </div>
+        );
+    }
+    if (slot.state === 'cut' || slot.state === 'reshoot') {
+        return <p className="text-sm text-red-700">{slot.error}</p>;
+    }
+    if (slot.state !== 'wrapped') return null;
+    const {
+        shotCount,
+        intrinsicCount,
+        narratedCount,
+        recurringMotifs,
+        intentRoleBreakdown,
+        backgroundBreakdown,
+    } = slot.data;
+    return (
+        <div className="space-y-4">
+            {/* Summary */}
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Plan summary
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-foreground">
+                            {shotCount}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">shots</div>
+                    </div>
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-green-700">
+                            {narratedCount}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">narrated</div>
+                    </div>
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-amber-700">
+                            {intrinsicCount}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">intrinsic</div>
+                    </div>
+                </div>
+            </section>
+
+            {/* Recurring motifs */}
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Recurring motifs
+                </div>
+                {recurringMotifs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                        Planner didn&apos;t register any cross-shot motifs for this video.
+                    </p>
+                ) : (
+                    <ul className="space-y-1.5">
+                        {recurringMotifs.map((m, i) => (
+                            <li key={i} className="rounded-md border bg-card p-2 text-xs">
+                                <div className="font-medium text-foreground">{m.description}</div>
+                                {(m.screenPosition || m.whenVisible) && (
+                                    <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+                                        {m.screenPosition && (
+                                            <span>
+                                                <span className="uppercase tracking-wider">
+                                                    Where:
+                                                </span>{' '}
+                                                {m.screenPosition}
+                                            </span>
+                                        )}
+                                        {m.whenVisible && (
+                                            <span>
+                                                <span className="uppercase tracking-wider">
+                                                    When:
+                                                </span>{' '}
+                                                {m.whenVisible}
+                                            </span>
+                                        )}
+                                    </div>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+
+            {/* Intent role / background breakdown */}
+            {(intentRoleBreakdown || backgroundBreakdown) && (
+                <section className="space-y-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Distribution
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                        {intentRoleBreakdown && (
+                            <div>
+                                <div className="mb-1 text-[10px] text-muted-foreground">
+                                    Intent roles
+                                </div>
+                                <ul className="space-y-0.5">
+                                    {Object.entries(intentRoleBreakdown).map(([role, n]) => (
+                                        <li
+                                            key={role}
+                                            className="flex items-center justify-between gap-2"
+                                        >
+                                            <span className="truncate text-foreground">{role}</span>
+                                            <span className="font-mono tabular-nums text-muted-foreground">
+                                                {n}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                        {backgroundBreakdown && (
+                            <div>
+                                <div className="mb-1 text-[10px] text-muted-foreground">
+                                    Backgrounds (≤2 contract)
+                                </div>
+                                <ul className="space-y-0.5">
+                                    {Object.entries(backgroundBreakdown).map(([bg, n]) => (
+                                        <li
+                                            key={bg}
+                                            className="flex items-center justify-between gap-2"
+                                        >
+                                            <span className="truncate text-foreground">
+                                                {bg.replace(/_/g, ' ')}
+                                            </span>
+                                            <span className="font-mono tabular-nums text-muted-foreground">
+                                                {n}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                </section>
+            )}
+
+            {/* Per-shot mini-grid */}
+            <ShotPlannerShotList state={state} />
+        </div>
+    );
+}
+
+function ShotPlannerShotList({ state }: { state: PipelineState }) {
+    if (state.scenes.length === 0) return null;
+    return (
+        <section className="space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Shot grid ({state.scenes.length})
+            </div>
+            <ol className="space-y-1">
+                {state.scenes.map((s) => (
+                    <li
+                        key={s.index}
+                        className="flex items-start gap-1.5 rounded-md border bg-card p-2 text-[11px]"
+                    >
+                        <span className="font-mono tabular-nums text-muted-foreground">
+                            {String(s.index + 1).padStart(2, '0')}
+                        </span>
+                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                            <span className="rounded bg-muted px-1 text-[9px] font-medium uppercase tracking-wider text-foreground">
+                                {s.shotType.replace(/_/g, ' ')}
+                            </span>
+                            {s.intentRole && (
+                                <span className="rounded bg-sky-50 px-1 text-[9px] font-medium uppercase tracking-wider text-sky-700">
+                                    {s.intentRole}
+                                </span>
+                            )}
+                            {s.backgroundTreatment && (
+                                <span className="rounded bg-slate-100 px-1 text-[9px] font-medium uppercase tracking-wider text-slate-700">
+                                    {s.backgroundTreatment.replace(/_/g, ' ')}
+                                </span>
+                            )}
+                            {s.transitionIn && (
+                                <span className="rounded bg-violet-50 px-1 text-[9px] font-medium uppercase tracking-wider text-violet-700">
+                                    ↗ {s.transitionIn.replace(/_/g, ' ')}
+                                </span>
+                            )}
+                            {s.audioPolicy === 'intrinsic_only' && (
+                                <span className="rounded bg-amber-100 px-1 text-[9px] font-semibold uppercase tracking-wider text-amber-700">
+                                    🔇 INTR
+                                </span>
+                            )}
+                        </div>
+                        <span className="ml-auto shrink-0 font-mono text-[9px] tabular-nums text-muted-foreground">
+                            {s.durationS.toFixed(1)}s
+                        </span>
+                    </li>
+                ))}
+            </ol>
+        </section>
+    );
+}
+
+function NarrationWriterDetail({ state }: { state: PipelineState }) {
+    const slot = state.narrationWriter;
+    if (!slot) {
+        return (
+            <div className="text-sm text-muted-foreground">
+                NarrationWriter didn&apos;t run — this is a v2 pipeline run (the monolithic
+                Narration node covers the same surface).
+            </div>
+        );
+    }
+    if (slot.state === 'scheduled') {
+        return (
+            <p className="text-sm text-muted-foreground">
+                Writers&apos; room is waiting for the shot plan.
+            </p>
+        );
+    }
+    if (slot.state === 'in_production') {
+        return (
+            <p className="text-sm text-muted-foreground">
+                NarrationWriter is authoring per-shot narration in one LLM call. Each shot gets a
+                line budgeted at ~150 wpm × duration; intrinsic_only shots get an empty string and
+                skip per-shot TTS.
+            </p>
+        );
+    }
+    if (slot.state === 'cut' || slot.state === 'reshoot') {
+        return <p className="text-sm text-red-700">{slot.error}</p>;
+    }
+    if (slot.state !== 'wrapped') return null;
+    const {
+        totalWords,
+        perShotWordCounts,
+        skippedIntrinsicCount,
+        narrationMp3Url,
+        narrationWordsUrl,
+    } = slot.data;
+    const writtenShots = perShotWordCounts.filter((n) => n > 0).length;
+    const avgWords = writtenShots > 0 ? Math.round(totalWords / writtenShots) : 0;
+    const maxWords = Math.max(...perShotWordCounts, 1);
+
+    return (
+        <div className="space-y-4">
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Authored copy
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-foreground">
+                            {totalWords}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">total words</div>
+                    </div>
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-foreground">
+                            {writtenShots}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">shots voiced</div>
+                    </div>
+                    <div className="rounded-md border bg-card p-2 text-center">
+                        <div className="text-lg font-semibold tabular-nums text-foreground">
+                            {avgWords}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">avg w/shot</div>
+                    </div>
+                </div>
+                {skippedIntrinsicCount > 0 && (
+                    <p className="flex items-center gap-1.5 text-[11px] text-amber-700">
+                        <VolumeX className="size-3" />
+                        {skippedIntrinsicCount} shot{skippedIntrinsicCount === 1 ? '' : 's'} left
+                        silent (intrinsic_only — Veo audio / source clip plays alone).
+                    </p>
+                )}
+            </section>
+
+            <section className="space-y-2">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Per-shot word count
+                </div>
+                {perShotWordCounts.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No shots authored yet.</p>
+                ) : (
+                    <ul className="space-y-0.5 text-[10px]">
+                        {perShotWordCounts.map((n, i) => (
+                            <li key={i} className="flex items-center gap-1.5">
+                                <span className="w-5 shrink-0 font-mono tabular-nums text-muted-foreground">
+                                    {String(i + 1).padStart(2, '0')}
+                                </span>
+                                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                                    <div
+                                        className={
+                                            n === 0 ? 'h-full bg-amber-300' : 'h-full bg-blue-500'
+                                        }
+                                        style={{
+                                            width: `${
+                                                n === 0 ? 100 : Math.max(5, (n / maxWords) * 100)
+                                            }%`,
+                                            opacity: n === 0 ? 0.4 : 1,
+                                        }}
+                                    />
+                                </div>
+                                <span className="w-10 shrink-0 text-right font-mono tabular-nums text-muted-foreground">
+                                    {n === 0 ? '—' : `${n}w`}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </section>
+
+            {(narrationMp3Url || narrationWordsUrl) && (
+                <section className="space-y-1.5">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Master concat
+                    </div>
+                    {narrationMp3Url && <ArtifactRow label="narration.mp3" url={narrationMp3Url} />}
+                    {narrationWordsUrl && (
+                        <ArtifactRow label="narration_raw.json" url={narrationWordsUrl} />
+                    )}
+                </section>
+            )}
+        </div>
+    );
 }
 
 function BeatsDetail({ state }: { state: PipelineState }) {
@@ -1170,13 +1524,38 @@ function SceneDetail({
     const narrationAudioUrl = narration.state === 'wrapped' ? narration.data.audioUrl : undefined;
 
     const isAiVideoScene = scene.shotType === 'AI_VIDEO_HERO';
+    const isIntrinsic = scene.audioPolicy === 'intrinsic_only';
     return (
         <div className="space-y-4">
-            {/* Header row: shot type + duration / time range */}
+            {/* Header row: shot type + duration / time range + v3 chips */}
             <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded bg-muted px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-foreground">
                     {scene.shotType.replace(/_/g, ' ')}
                 </span>
+                {scene.intentRole && (
+                    <span
+                        title={`Intent role: ${scene.intentRole}`}
+                        className="rounded bg-sky-50 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-sky-700"
+                    >
+                        {scene.intentRole}
+                    </span>
+                )}
+                {scene.backgroundTreatment && (
+                    <span
+                        title={`Background treatment: ${scene.backgroundTreatment}`}
+                        className="rounded bg-slate-100 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-slate-700"
+                    >
+                        bg · {scene.backgroundTreatment.replace(/_/g, ' ')}
+                    </span>
+                )}
+                {scene.transitionIn && (
+                    <span
+                        title={`Transition in: ${scene.transitionIn}`}
+                        className="rounded bg-violet-50 px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-violet-700"
+                    >
+                        ↗ {scene.transitionIn.replace(/_/g, ' ')}
+                    </span>
+                )}
                 {isAiVideoScene && (
                     <span
                         className="rounded bg-violet-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet-700"
@@ -1185,7 +1564,15 @@ function SceneDetail({
                         ✨ AI VIDEO
                     </span>
                 )}
-                <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                {isIntrinsic && (
+                    <span
+                        className="rounded bg-amber-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-700"
+                        title="audio_policy=intrinsic_only — master narration is silenced in this window; the shot's own audio plays alone."
+                    >
+                        🔇 INTRINSIC AUDIO
+                    </span>
+                )}
+                <span className="ml-auto font-mono text-xs tabular-nums text-muted-foreground">
                     {scene.startTime.toFixed(1)}s – {scene.endTime.toFixed(1)}s ·{' '}
                     {scene.durationS.toFixed(1)}s
                 </span>
@@ -1197,6 +1584,21 @@ function SceneDetail({
                     <div className="text-violet-700">
                         This shot was generated with fal.ai Veo. Cost contributes to the per-video
                         AI video cap. Editing inside the editor re-runs the Veo call.
+                    </div>
+                </div>
+            )}
+
+            {isIntrinsic && (
+                <div className="rounded-md border border-amber-200 bg-amber-50/60 p-3 text-xs text-amber-900">
+                    <div className="mb-1 flex items-center gap-1.5 font-medium">
+                        <VolumeX className="size-3.5" />
+                        Intrinsic-only audio policy
+                    </div>
+                    <div className="text-amber-800">
+                        Master narration is muted in this scene&apos;s [{scene.startTime.toFixed(1)}
+                        s, {scene.endTime.toFixed(1)}s] window. The shot plays its own audio (
+                        {isAiVideoScene ? 'Veo-generated audio' : 'source clip audio'}) alone.
+                        Per-shot TTS was skipped — re-narrate via the source asset, not this panel.
                     </div>
                 </div>
             )}
@@ -1261,17 +1663,14 @@ function SceneDetail({
                 />
             )}
 
-            {/* Narration excerpt */}
-            {scene.narrationExcerpt && (
-                <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                        Narration
-                    </div>
-                    <p className="rounded-lg border bg-muted/20 p-3 text-sm italic leading-relaxed text-foreground">
-                        &ldquo;{scene.narrationExcerpt}&rdquo;
-                    </p>
-                </div>
-            )}
+            {/* Narration — brief (planner intent) + text (what gets said) */}
+            <SceneNarrationSection scene={scene} />
+
+            {/* Per-shot TTS audio (v3) — distinct from master narration. */}
+            <ScenePerShotAudio scene={scene} />
+
+            {/* AI-video telemetry — request_id, segments, cost. */}
+            <SceneAiVideoSection scene={scene} />
 
             {/* Asset links */}
             {(scene.imageUrl || scene.videoUrl) && (
@@ -1291,6 +1690,227 @@ function SceneDetail({
                 </div>
             )}
         </div>
+    );
+}
+
+/**
+ * Narration section for a scene. On v3 runs we have both `narrationBrief`
+ * (what the planner wanted said) and `narrationText` (what NarrationWriter
+ * actually wrote). On intrinsic_only shots the text is empty by design —
+ * show an explanatory empty state instead of a blank box.
+ */
+function SceneNarrationSection({ scene }: { scene: SceneSlot }) {
+    const isIntrinsic = scene.audioPolicy === 'intrinsic_only';
+    const brief = scene.narrationBrief;
+    const text = scene.narrationText ?? scene.narrationExcerpt;
+    if (!brief && !text && !isIntrinsic) return null;
+    return (
+        <section className="space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Narration
+            </div>
+            {brief && (
+                <div>
+                    <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Planner brief
+                    </div>
+                    <p className="rounded-lg border bg-sky-50/40 p-2.5 text-xs leading-relaxed text-foreground">
+                        {brief}
+                    </p>
+                </div>
+            )}
+            {isIntrinsic ? (
+                <div>
+                    <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                        Spoken narration
+                    </div>
+                    <p className="rounded-lg border border-dashed bg-muted/20 p-2.5 text-xs italic text-muted-foreground">
+                        Intrinsic-only shot — no per-shot narration was authored. The shot&apos;s
+                        own audio plays alone.
+                    </p>
+                </div>
+            ) : (
+                text && (
+                    <div>
+                        <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Spoken narration
+                        </div>
+                        <p className="rounded-lg border bg-muted/20 p-2.5 text-sm italic leading-relaxed text-foreground">
+                            &ldquo;{text}&rdquo;
+                        </p>
+                    </div>
+                )
+            )}
+        </section>
+    );
+}
+
+/**
+ * Per-shot TTS audio (v3 only). On v2 runs there's no per-shot mp3; the
+ * master narration covers everything. On v3, each non-intrinsic shot has a
+ * dedicated mp3 the editor (and future per-shot regenerate flow) can swap
+ * in isolation.
+ */
+function ScenePerShotAudio({ scene }: { scene: SceneSlot }) {
+    if (!scene.audioUrl) return null;
+    return (
+        <section className="space-y-1.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <Volume2 className="size-3" />
+                Per-shot voiceover
+                {scene.audioDurationS != null && (
+                    <span className="font-mono normal-case tracking-normal text-muted-foreground/70">
+                        ({scene.audioDurationS.toFixed(2)}s)
+                    </span>
+                )}
+            </div>
+            <audio controls preload="none" className="w-full">
+                <source src={scene.audioUrl} type="audio/mpeg" />
+            </audio>
+            <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                <a
+                    href={scene.audioUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                >
+                    <ExternalLink className="size-3" />
+                    mp3
+                </a>
+                {scene.audioWordsUrl && (
+                    <a
+                        href={scene.audioWordsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                    >
+                        <ExternalLink className="size-3" />
+                        word timings
+                    </a>
+                )}
+                {scene.audioScriptUrl && (
+                    <a
+                        href={scene.audioScriptUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                    >
+                        <ExternalLink className="size-3" />
+                        script.txt
+                    </a>
+                )}
+            </div>
+        </section>
+    );
+}
+
+/**
+ * AI-video (Veo) telemetry for a scene, shown when the scene was generated
+ * via the AI video orchestrator. Surfaces request_id, segment list, cost,
+ * audio flag — everything the orchestrator wrote to the timeline entry.
+ */
+function SceneAiVideoSection({ scene }: { scene: SceneSlot }) {
+    const hasTelemetry =
+        scene.aiVideoRequestId ||
+        scene.aiVideoUrl ||
+        scene.aiVideoSegments?.length ||
+        scene.aiVideoCostCredits != null ||
+        scene.aiVideoCostUsd != null;
+    if (!hasTelemetry) return null;
+    return (
+        <section className="space-y-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                AI video telemetry
+            </div>
+            <div className="space-y-1 rounded-md border bg-violet-50/30 p-2.5 text-[11px]">
+                {scene.aiVideoRequestId && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">request_id</span>
+                        <span className="truncate font-mono text-foreground">
+                            {scene.aiVideoRequestId}
+                        </span>
+                    </div>
+                )}
+                {scene.aiVideoCostCredits != null && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">cost</span>
+                        <span className="font-mono tabular-nums text-violet-700">
+                            {formatCredits(scene.aiVideoCostCredits, { precision: 1 })}
+                            {scene.aiVideoCostUsd != null && (
+                                <span className="ml-1 text-muted-foreground">
+                                    (${scene.aiVideoCostUsd.toFixed(3)})
+                                </span>
+                            )}
+                        </span>
+                    </div>
+                )}
+                {scene.aiVideoElapsedS != null && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">elapsed</span>
+                        <span className="font-mono tabular-nums text-foreground">
+                            {scene.aiVideoElapsedS.toFixed(1)}s
+                        </span>
+                    </div>
+                )}
+                {scene.aiVideoOn != null && (
+                    <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Veo audio</span>
+                        <span className="text-foreground">{scene.aiVideoOn ? 'on' : 'off'}</span>
+                    </div>
+                )}
+                {scene.aiVideoUrl && (
+                    <a
+                        href={scene.aiVideoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                    >
+                        <ExternalLink className="size-3" />
+                        Open Veo output
+                    </a>
+                )}
+                {scene.aiVideoSegments && scene.aiVideoSegments.length > 0 && (
+                    <div className="mt-1.5 border-t border-violet-200/60 pt-1.5">
+                        <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                            Segments ({scene.aiVideoSegments.length})
+                        </div>
+                        <ul className="space-y-0.5">
+                            {scene.aiVideoSegments.map((seg) => (
+                                <li
+                                    key={seg.segIdx}
+                                    className="flex items-center gap-2 text-[10px]"
+                                >
+                                    <span className="font-mono tabular-nums text-muted-foreground">
+                                        seg {seg.segIdx}
+                                    </span>
+                                    {seg.durationS != null && (
+                                        <span className="font-mono tabular-nums text-foreground">
+                                            {seg.durationS.toFixed(1)}s
+                                        </span>
+                                    )}
+                                    {seg.cacheHit && (
+                                        <span className="rounded bg-emerald-100 px-1 text-[9px] font-medium uppercase tracking-wider text-emerald-700">
+                                            cached
+                                        </span>
+                                    )}
+                                    {seg.videoUrl && (
+                                        <a
+                                            href={seg.videoUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="ml-auto inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+                                        >
+                                            <ExternalLink className="size-3" />
+                                            mp4
+                                        </a>
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                )}
+            </div>
+        </section>
     );
 }
 

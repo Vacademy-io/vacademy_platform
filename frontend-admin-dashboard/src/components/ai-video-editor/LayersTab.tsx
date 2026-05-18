@@ -208,6 +208,7 @@ function LayerRow({
     const Icon = display.icon;
     const isSelected = pathsEqual(node.path, selectedPath);
     const isCollapsed = collapsed[node.id] ?? false;
+    const preview = nodePreview(node);
     // In simple mode, filter advanced children (SVG filter primitives etc.)
     // out of the visible tree. Capability is preserved — switch to developer
     // mode to see and edit them, or use the entry's HTML/Code tab.
@@ -260,7 +261,25 @@ function LayerRow({
 
                 <Icon className="size-3 shrink-0 text-gray-400" />
 
-                <span className="flex-1 truncate">{display.label}</span>
+                {/* Label + content preview. The label tells the user what
+                    kind of node this is ("Text", "Image", "Heading"); the
+                    preview shows *which one* — the actual words for text,
+                    the file name / alt for media — so a tree of half a
+                    dozen "Text" rows can be told apart at a glance. */}
+                <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                    <span className="shrink-0">{display.label}</span>
+                    {preview && (
+                        <span
+                            className={[
+                                'min-w-0 flex-1 truncate text-[10px]',
+                                isSelected ? 'text-indigo-500' : 'text-gray-400',
+                            ].join(' ')}
+                            title={preview.full}
+                        >
+                            {preview.short}
+                        </span>
+                    )}
+                </span>
 
                 {/* Tag-name badge — only shown in developer mode. Layman users
                     don't need to know whether something is a `div` or a `span`. */}
@@ -819,4 +838,39 @@ function StyleInput({
             className="w-full rounded border border-gray-300 px-2 py-1 font-mono text-[11px]"
         />
     );
+}
+
+/**
+ * Compute a short content preview for a layer-tree row so the user can tell
+ * which "Text" or "Image" node is which.
+ *
+ * Text     → first few words of the visible text
+ * Image    → alt attribute, or basename of src
+ * Video    → basename of src
+ * Group/SVG/other → no preview; the label alone is enough
+ *
+ * Returns `null` when no useful preview is available, so the renderer can
+ * skip the muted-snippet span entirely.
+ */
+function nodePreview(node: LayerNode): { short: string; full: string } | null {
+    const PREVIEW_MAX = 32;
+    const truncate = (s: string) =>
+        s.length > PREVIEW_MAX ? s.slice(0, PREVIEW_MAX - 1).trimEnd() + '…' : s;
+
+    if (node.kind === 'text') {
+        const text = (node.textContent ?? '').trim().replace(/\s+/g, ' ');
+        if (!text) return null;
+        return { short: `"${truncate(text)}"`, full: text };
+    }
+
+    if (node.kind === 'image' || node.kind === 'video') {
+        const alt = node.attrs.alt?.trim();
+        const src = node.attrs.src ?? '';
+        const basename = src.split(/[?#]/)[0]?.split('/').pop() ?? '';
+        const label = alt || basename;
+        if (!label) return null;
+        return { short: truncate(label), full: alt ? `${alt} (${src})` : src };
+    }
+
+    return null;
 }

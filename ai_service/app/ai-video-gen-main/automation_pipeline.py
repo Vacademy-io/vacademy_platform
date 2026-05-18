@@ -2056,6 +2056,214 @@ class VideoGenerationPipeline:
             return bool(override)
         return bool(self._tier_config.get("background_music_enabled", False))
 
+    def _run_audio_mix_pass(
+        self,
+        *,
+        run_dir: "Path",
+        narration_path: "Path",
+        entries: List[Dict[str, Any]],
+        video_id: str,
+        audio_duration: float,
+    ) -> None:
+        """Compose VO + music + SFX + transition stingers into a single
+        broadcast-LUFS mastered audio file, then atomically swap it in
+        as the new `narration.mp3`.
+
+        This is the entry point for the "Apple-keynote tier" audio mix
+        added in the music-library upgrade. The mixer module
+        (`audio_mixer.py`) builds an ffmpeg filter graph that handles
+        sidechain ducking, layer placement, and loudnorm in one pass.
+
+        Atomic-swap protocol:
+          1. Render `final_mix.mp3` next to narration.
+          2. On success: move narration.mp3 → narration_unmixed.mp3 (backup);
+             move final_mix.mp3 → narration.mp3.
+          3. Clear `self._background_music_track` and per-entry
+             `sound_cues` so the timeline JSON / render worker don't
+             double-attach layers already baked into the new narration.
+          4. On any failure: no swap, original narration.mp3 stays, the
+             timeline ships with VO + (separately-attached) music + SFX
+             — i.e. legacy behavior. The render does NOT abort.
+        """
+        # Imports are deferred so this module doesn't pay startup cost
+        # on free-tier renders that skip audio mixing entirely.
+        from pathlib import Path as _PathL
+        try:
+            from audio_mixer import (  # type: ignore
+                MixCue, MixSpec, build_mix,
+            )
+            from transition_stinger_planner import (  # type: ignore
+                enrich_transitions_with_fresh_stingers,
+            )
+        except Exception as _imp_err:
+            print(f"⚠️ Audio mix skipped — module import failed: {_imp_err}")
+            return
+
+        if not narration_path or not _PathL(narration_path).exists():
+            print(f"⚠️ Audio mix skipped — narration not found: {narration_path}")
+            return
+
+        # ── 1. Refresh transition stingers (opt-in, tier-gated) ────
+        try:
+            n_stingers = enrich_transitions_with_fresh_stingers(
+                entries,
+                tier_config=self._tier_config,
+                cost_tracker=getattr(self, "_cost_events", None),
+                run_dir=run_dir,
+                video_id=video_id,
+                # No s3_uploader passed → mixer uses local paths, which
+                # is fine because the mix runs locally before the
+                # timeline ships. The S3 upload happens after the swap
+                # via the regular narration.mp3 upload path.
+            )
+        except Exception as _se:
+            print(f"⚠️ Stinger enrichment errored (non-fatal): {_se}")
+            n_stingers = 0
+
+        # ── 2. Resolve music local path (download from S3 if needed) ──
+        music_local: Optional[Path] = None
+        bgm_track = getattr(self, "_background_music_track", None)
+        if isinstance(bgm_track, dict) and bgm_track.get("url"):
+            music_local = self._download_music_for_mix(
+                bgm_track["url"], run_dir,
+            )
+            if music_local is None:
+                print(f"⚠️ Could not localize music URL — mix proceeds VO+SFX only")
+
+        # ── 3. Flatten sound_cues across entries → MixCue list ─────
+        sfx_cues: List[MixCue] = []
+        stinger_cues: List[MixCue] = []
+        for entry in entries:
+            entry_start = float(entry.get("start", 0.0))
+            for cue in (entry.get("sound_cues") or []):
+                role = (cue.get("role") or "").lower()
+                t_rel = float(cue.get("t", 0.0))
+                t_abs = entry_start + t_rel
+                vol = float(cue.get("volume", 0.5))
+                url = (cue.get("url") or "").strip()
+                if not url:
+                    continue
+                mix_cue = MixCue(url=url, t_s=t_abs, volume=vol,
+                                  label=str(cue.get("id") or role))
+                if role == "transition_whoosh":
+                    stinger_cues.append(mix_cue)
+                else:
+                    sfx_cues.append(mix_cue)
+
+        if not sfx_cues and not stinger_cues and music_local is None:
+            print("ℹ️ Audio mix skipped — only VO available, nothing to mix")
+            return
+
+        # ── 4. Build mix spec ──────────────────────────────────────
+        music_vol = 0.10
+        if isinstance(bgm_track, dict):
+            try:
+                music_vol = float(bgm_track.get("volume", 0.10))
+            except (TypeError, ValueError):
+                pass
+
+        spec = MixSpec(
+            vo_path=_PathL(narration_path),
+            video_duration_s=max(0.5, float(audio_duration)),
+            music_path=music_local,
+            music_volume=music_vol,
+            sfx_cues=sfx_cues,
+            stinger_cues=stinger_cues,
+            enable_ducking=music_local is not None,
+            enable_loudnorm=True,
+        )
+
+        print(
+            f"🎚  Audio mix: vo + {'music' if music_local else 'no-music'} "
+            f"+ {len(sfx_cues)} SFX + {len(stinger_cues)} stingers "
+            f"({'fresh' if n_stingers else 'static'} whooshes)"
+        )
+
+        result = build_mix(spec, run_dir=run_dir, output_filename="final_mix.mp3")
+        if not result.ok or not result.output_path:
+            print(
+                f"⚠️ Audio mix failed (layers_used={result.layers_used}): "
+                f"{result.error[:200]}"
+            )
+            return
+
+        # ── 5. Atomic swap: final_mix.mp3 becomes the new narration ──
+        try:
+            backup_path = run_dir / "narration_unmixed.mp3"
+            if backup_path.exists():
+                backup_path.unlink()
+            _PathL(narration_path).rename(backup_path)
+            result.output_path.rename(_PathL(narration_path))
+        except OSError as _swap_err:
+            print(f"⚠️ Audio mix swap failed: {_swap_err} — reverting")
+            # Best-effort recovery: if the rename half-succeeded, restore.
+            try:
+                if not _PathL(narration_path).exists():
+                    backup_path.rename(_PathL(narration_path))
+            except OSError:
+                pass
+            return
+
+        # ── 6. Null out timeline music + SFX so we don't double-attach ──
+        self._background_music_track = None
+        for entry in entries:
+            entry["sound_cues"] = []
+
+        # Cost-ledger entry for the music side (per-cue stinger cost was
+        # already recorded inside transition_stinger_planner).
+        try:
+            tracker = getattr(self, "_cost_events", None)
+            if tracker is not None and isinstance(bgm_track, dict):
+                # Use the music_generator's recorded URL+duration as proxy
+                # for cost; this is an estimate since the real charge is
+                # in music_generator (Lyria) or fal_elevenlabs_client (fal).
+                tracker.record_anomaly(
+                    f"audio-mix: swap applied. layers={result.layers_used} "
+                    f"stingers={n_stingers}"
+                )
+        except Exception:
+            pass
+
+        print(
+            f"✅ Audio mix complete — narration.mp3 now mastered "
+            f"(layers={result.layers_used})"
+        )
+
+    def _download_music_for_mix(
+        self, music_url: str, run_dir: "Path",
+    ) -> Optional["Path"]:
+        """Download a remote music URL to `run_dir/_mix_music.mp3` so the
+        local audio_mixer can read it. Returns the local Path on success
+        or None on any failure (mixer degrades to VO + SFX)."""
+        if not music_url:
+            return None
+        # Check if it's already a local path
+        from pathlib import Path as _PathL
+        p = _PathL(music_url)
+        if p.exists():
+            return p
+        if not music_url.startswith(("http://", "https://")):
+            return None
+        local = run_dir / "_mix_music.mp3"
+        try:
+            req = urllib.request.Request(
+                music_url,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                if resp.status != 200:
+                    print(f"⚠️ Music download HTTP {resp.status}: {music_url[:80]}")
+                    return None
+                data = resp.read()
+            if not data or len(data) < 1024:
+                print(f"⚠️ Music download tiny ({len(data)}B): {music_url[:80]}")
+                return None
+            local.write_bytes(data)
+            return local
+        except Exception as e:
+            print(f"⚠️ Music download error: {e}")
+            return None
+
     def _check_stop(self) -> None:
         """Raise ``PipelineCancelled`` if the cooperative stop flag has been
         set by the cancel endpoint. Called at safe checkpoints — between
@@ -2396,18 +2604,63 @@ class VideoGenerationPipeline:
                         FalVeoClient, get_fal_api_key_from_env,
                     )
                 except (ModuleNotFoundError, ImportError) as _err2:
-                    # Surface BOTH paths' errors so debugging shows what was
-                    # tried (the original error message was opaque).
-                    _imp_err = _err2
-                    print(
-                        f"⚠️  AI video enabled but fal_veo_client import failed:"
-                        f"\n      tried `app.services.fal_veo_client` → {type(_err1).__name__}: {_err1}"
-                        f"\n      tried `fal_veo_client`              → {type(_err2).__name__}: {_err2}"
-                        f"\n      hint: ensure either ai_service/ OR ai_service/app/services/ is on sys.path"
-                        f"\n      disabling AI video."
-                    )
-                    self._ai_video_run_enabled = False
-                    self._ai_video_audio_run_enabled = False
+                    # Path 3 — direct file load from the known relative location.
+                    # `app/services/` may not be on sys.path at all (only
+                    # `app/ai-video-gen-main/` is, for the orchestrator). We
+                    # know this file's location, so compute the sibling
+                    # `services/fal_veo_client.py` path and load it via
+                    # importlib. Register the loaded module in `sys.modules`
+                    # under both names so the subsequent
+                    # `from app.services.fal_veo_client import …` in
+                    # `ai_video_orchestrator.py` (and `ai_video_composer.py`)
+                    # also succeeds — otherwise the pipeline init passes but
+                    # the orchestrator's per-shot runtime imports re-fail.
+                    import importlib.util as _ilu
+                    import sys as _sys
+                    from pathlib import Path as _Path
+                    _err3: Optional[Exception] = None
+                    try:
+                        _this_file = _Path(__file__).resolve()
+                        # this file lives in app/ai-video-gen-main/, sibling
+                        # of app/services/. Two parents up + services/ +
+                        # fal_veo_client.py is the canonical location.
+                        _fal_path = _this_file.parent.parent / "services" / "fal_veo_client.py"
+                        if not _fal_path.exists():
+                            raise FileNotFoundError(str(_fal_path))
+                        _spec = _ilu.spec_from_file_location(
+                            "fal_veo_client", _fal_path
+                        )
+                        if _spec is None or _spec.loader is None:
+                            raise ImportError(f"spec_from_file_location returned None for {_fal_path}")
+                        _mod = _ilu.module_from_spec(_spec)
+                        # Register BEFORE exec so any internal self-reference
+                        # resolves. Also alias under `app.services.fal_veo_client`
+                        # so future `from app.services.fal_veo_client import …`
+                        # works without re-loading.
+                        _sys.modules["fal_veo_client"] = _mod
+                        _sys.modules["app.services.fal_veo_client"] = _mod
+                        _spec.loader.exec_module(_mod)
+                        FalVeoClient = _mod.FalVeoClient
+                        get_fal_api_key_from_env = _mod.get_fal_api_key_from_env
+                        print(
+                            f"   ℹ️  fal_veo_client loaded from disk: {_fal_path}"
+                        )
+                    except Exception as _err3_:
+                        _err3 = _err3_
+                        # Surface ALL THREE paths' errors so debugging shows
+                        # everything that was tried.
+                        _imp_err = _err3
+                        print(
+                            f"⚠️  AI video enabled but fal_veo_client import failed:"
+                            f"\n      tried `app.services.fal_veo_client` → {type(_err1).__name__}: {_err1}"
+                            f"\n      tried `fal_veo_client`              → {type(_err2).__name__}: {_err2}"
+                            f"\n      tried direct file load              → {type(_err3).__name__}: {_err3}"
+                            f"\n      hint: ensure ai_service/app/services/fal_veo_client.py exists,"
+                            f"\n            or that ai_service/ is on sys.path"
+                            f"\n      disabling AI video."
+                        )
+                        self._ai_video_run_enabled = False
+                        self._ai_video_audio_run_enabled = False
             if _imp_err is None and self._ai_video_run_enabled:
                 try:
                     from ai_video_orchestrator import AiVideoCostTracker
@@ -4365,6 +4618,7 @@ class VideoGenerationPipeline:
                         audio_duration=float(_seg_audio_dur),
                         video_id=run_name or run_dir.name,
                         run_dir=run_dir,
+                        cost_tracker=getattr(self, "_cost_events", None),
                         progress_callback=self._progress_callback,
                     )
                     if _music_result and _music_result.get("url"):
@@ -4424,6 +4678,30 @@ class VideoGenerationPipeline:
                     f"(content_type={content_type}, has_music_plan="
                     f"{bool(_music_plan_to_use)}, audio_dur={_seg_audio_dur:.1f}s)"
                 )
+
+            # ── Audio mix pass ────────────────────────────────────────
+            # Compose narration + (optional) music underbed + SFX cues
+            # + transition stingers into ONE mastered audio file. The
+            # mixer applies sidechain ducking (music under VO) and
+            # LUFS normalization to broadcast standard (-16 LUFS).
+            #
+            # When the mix succeeds we ATOMICALLY swap:
+            #   narration.mp3                 → narration_unmixed.mp3  (backup)
+            #   final_mix.mp3 (mastered)      → narration.mp3
+            # And we NULL OUT self._background_music_track + per-entry
+            # sound_cues so the timeline JSON / render worker doesn't
+            # double-attach the music & SFX layers that are already
+            # baked into the swapped narration.mp3.
+            #
+            # On any failure the original narration.mp3 stays in place
+            # and the timeline ships unchanged (legacy behavior).
+            self._run_audio_mix_pass(
+                run_dir=run_dir,
+                narration_path=audio_path,
+                entries=html_segments,
+                video_id=run_name or run_dir.name,
+                audio_duration=float(_seg_audio_dur or 0.0),
+            )
 
             print("🧾 Writing timeline JSON ...")
             timeline_path = self._write_timeline(
@@ -18567,12 +18845,37 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
         Used by the reference path (Bug 4b belt-and-braces) to drop
         landscape URLs being committed against portrait canvases (the
-        Chanakya shot-10 Bloomberg case)."""
+        Chanakya shot-10 Bloomberg case).
+
+        Logo exemption: square / near-square images (aspect 0.75..1.33)
+        are ALWAYS accepted regardless of canvas orientation. Logos
+        (Vacademy 512×512, brand marks, app icons) are nearly always
+        used as small overlays — watermark in a corner, hero badge at
+        fixed size — not as canvas backgrounds. The orientation gate
+        was designed to catch landscape Bloomberg URLs being committed
+        as full-canvas backgrounds; rejecting logos here causes the
+        replacer to leave `src='placeholder.png'` in the rendered HTML,
+        producing blank shots where the logo should be.
+
+        Small-image exemption: images whose long-side is < 800px are
+        also accepted — they're inset assets (icons, badges, small
+        watermarks), not full-canvas backgrounds, and the renderer
+        sizes them via CSS at their use site.
+        """
         try:
             w, h = self._probe_image_dimensions(url)
         except Exception:
             return True
         if not w or not h:
+            return True
+        ar = w / h
+        # Logo / icon exemption — square-ish images skip the gate entirely.
+        # 0.75..1.33 covers perfect squares plus the slight asymmetry
+        # common in real-world logo crops (e.g. 500×450, 480×512).
+        if 0.75 <= ar <= 1.33:
+            return True
+        # Small-asset exemption — small inset images skip too.
+        if max(w, h) < 800:
             return True
         canvas_w = int(getattr(self, "video_width", 1920) or 1920)
         canvas_h = int(getattr(self, "video_height", 1080) or 1080)
@@ -18585,9 +18888,9 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # is technically "landscape" but crops to a thin horizontal strip).
         # 0.45..2.2 covers all the standard editorial / stock aspect ratios.
         if canvas_portrait:
-            ar_ok = 0.45 <= (w / h) <= 0.85
+            ar_ok = 0.45 <= ar <= 0.85
         else:
-            ar_ok = 1.2 <= (w / h) <= 2.4
+            ar_ok = 1.2 <= ar <= 2.4
         return ar_ok
 
     # ── Brand-asset + prefetch binding (Fix 2 + Fix 3) ──────────────────
@@ -18937,7 +19240,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         # ── AI generation — last resort. Cultural context woven into the prompt. ──
         ai_prompt = prompt if is_cutout else self._inject_cultural_into_ai_prompt(prompt)
         print(f"    🎨 [pipeline] Generating image{' (cutout)' if is_cutout else ''}: {ai_prompt[:60]}...")
-        image_bytes, usage_meta = self._call_image_generation_llm(ai_prompt)
+        image_bytes, usage_meta = self._call_image_generation_llm(ai_prompt, is_cutout=is_cutout)
         if not image_bytes:
             # Seedream returned nothing — cascade through Pexels/Pixabay → SVG
             # placeholder so the shot doesn't ship with a broken `placeholder.png`.
@@ -19184,7 +19487,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         ai_prompt = self._inject_cultural_into_ai_prompt(ai_prompt)
                     except Exception:
                         pass  # If enhancement fails, send the bare prompt.
-                ai_bytes, _usage = self._call_image_generation_llm(ai_prompt, reference_image_url=None)
+                ai_bytes, _usage = self._call_image_generation_llm(ai_prompt, reference_image_url=None, is_cutout=is_cutout)
                 if ai_bytes:
                     if is_cutout:
                         try:
@@ -20671,7 +20974,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             # re-claim or proceed without a reference.
             try:
                 image_bytes, usage_meta = self._call_image_generation_llm(
-                    prompt, reference_image_url=_seedream_ref
+                    prompt, reference_image_url=_seedream_ref, is_cutout=is_cutout
                 )
             except _ImageGenRateLimitError:
                 if _is_first_for_subject and _sub_id:
@@ -21020,14 +21323,113 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         print(f"    🎯 Cached reference for subject '{subject_id}': {url}")
         return url
 
+    @staticmethod
+    def _enforce_image_orientation(
+        image_bytes: bytes,
+        target_orient: str,
+        canvas_w: int,
+        canvas_h: int,
+        prompt_preview: str = "",
+    ) -> bytes:
+        """Verify AI-gen image orientation matches canvas; cover-crop on miss.
+
+        Recraft (via OpenRouter) treats orientation hints in the prompt as
+        suggestions. In i2i mode it especially tends to inherit the reference
+        image's aspect ratio. Result: portrait videos ship with landscape
+        images that get cover-cropped at render time, losing content from
+        either side.
+
+        This helper does that cover-crop UPSTREAM (in our artifact pipeline)
+        so the crop decision is logged, the cropped bytes are the source
+        of truth, and downstream Ken Burns / object-fit:cover sees a
+        canvas-aspect image with the subject (hopefully) centered.
+
+        On any failure (PIL not installed, decode error, bad bytes) the
+        original bytes are returned untouched — orientation enforcement is
+        best-effort, not a hard requirement.
+        """
+        try:
+            from PIL import Image
+            from io import BytesIO
+        except ImportError:
+            return image_bytes
+        try:
+            img = Image.open(BytesIO(image_bytes))
+            img.load()
+        except Exception as e:
+            print(f"    ⚠️  Could not probe AI-gen image dimensions: {e}")
+            return image_bytes
+        img_w, img_h = img.size
+        if not img_w or not img_h:
+            return image_bytes
+        # Classify actual orientation.
+        if img_w < img_h:
+            actual = "portrait"
+        elif img_w > img_h:
+            actual = "landscape"
+        else:
+            actual = "square"
+        if actual == target_orient:
+            # Aspect MAY still not exactly match (e.g. portrait 9:14 vs 9:16).
+            # Compute target aspect vs actual aspect; if within 10%, leave it.
+            try:
+                target_ar = canvas_w / canvas_h
+                img_ar = img_w / img_h
+                if target_ar > 0 and abs(img_ar - target_ar) / target_ar < 0.10:
+                    return image_bytes
+            except ZeroDivisionError:
+                return image_bytes
+        # Mismatch — log and cover-crop.
+        print(
+            f"    [aigen-orientation-mismatch] requested={target_orient} "
+            f"got={actual} {img_w}x{img_h} canvas={canvas_w}x{canvas_h} "
+            f"prompt='{prompt_preview[:60]}' → center-cropping"
+        )
+        try:
+            target_ar = canvas_w / canvas_h
+            img_ar = img_w / img_h
+            if img_ar > target_ar:
+                # Image too wide — crop sides.
+                new_w = max(1, int(round(img_h * target_ar)))
+                left = (img_w - new_w) // 2
+                box = (left, 0, left + new_w, img_h)
+            else:
+                # Image too tall — crop top/bottom.
+                new_h = max(1, int(round(img_w / target_ar)))
+                top = (img_h - new_h) // 2
+                box = (0, top, img_w, top + new_h)
+            cropped = img.crop(box)
+            out_buf = BytesIO()
+            # Preserve original format when possible (PNG / JPEG / WebP);
+            # default to PNG so transparency is preserved if present.
+            fmt = (img.format or "PNG").upper()
+            if fmt not in ("PNG", "JPEG", "WEBP"):
+                fmt = "PNG"
+            # JPEG can't carry alpha — flatten if the source had it.
+            if fmt == "JPEG" and cropped.mode in ("RGBA", "LA", "P"):
+                cropped = cropped.convert("RGB")
+            cropped.save(out_buf, format=fmt)
+            return out_buf.getvalue()
+        except Exception as e:
+            print(f"    ⚠️  Cover-crop failed; returning AI bytes unchanged: {e}")
+            return image_bytes
+
     def _call_image_generation_llm(
         self,
         prompt: str,
         width: Optional[int] = None,
         height: Optional[int] = None,
         reference_image_url: Optional[str] = None,
+        is_cutout: bool = False,
     ) -> Tuple[Optional[bytes], Optional[Dict[str, Any]]]:
         """Generate image via OpenRouter (recraft/recraft-v4.1).
+
+        `is_cutout=True` overrides aspect to 1:1 (logos / isolated subjects
+        are naturally square; forcing 9:16 portrait wastes most of the
+        canvas on empty transparent padding around a small logo). Also
+        skips the post-gen cover-crop because cutouts get sized via CSS at
+        their use site, not composited as canvas backgrounds — cropping
+        a square cutout to 9:16 would clip the logo's sides.
 
         Returns (image_bytes, usage_metadata). 429 raises _ImageGenRateLimitError
         so the executor thread is freed and the main thread handles requeue.
@@ -21044,20 +21446,44 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         width = width or getattr(self, 'video_width', 1920)
         height = height or getattr(self, 'video_height', 1080)
 
+        # Cutout override — isolated subjects (logos, product cutouts) are
+        # naturally square. Generating them at canvas aspect (e.g. 9:16
+        # portrait) wastes the bulk of the canvas on empty padding around
+        # a small object, and downstream the cover-crop would clip the
+        # subject's sides. Force 1:1 here so target_orient becomes "square",
+        # the prompt directive says "square", and the post-gen cover-crop
+        # is a no-op on a square output.
+        if is_cutout:
+            width = height = 1024
+
         api_key = getattr(self.script_client, "api_key", None)
         if not api_key:
             print(f"    ⚠️ No OpenRouter API key for image gen. Cannot generate: {prompt[:50]}...")
             return None, None
 
-        # Recraft (like Seedream before it) doesn't accept a structured
-        # aspect-ratio param via OpenRouter — hint textually.
+        # Orientation control. OpenRouter's image-generation API supports a
+        # structured `image_config.aspect_ratio` parameter (per
+        # https://openrouter.ai/docs/guides/overview/multimodal/image-generation)
+        # — values: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9.
+        # We send this as the PRIMARY orientation signal, with the textual
+        # directive as defense-in-depth (some model implementations honor
+        # the prompt more than the param, or vice versa).
         if width < height:
-            aspect_hint = "9:16 vertical framing"
+            aspect_ratio  = "9:16"
+            orient_lead   = "PORTRAIT ORIENTATION 9:16 vertical (image taller than wide). "
+            orient_trail  = "9:16 vertical portrait orientation — tall, not wide"
+            target_orient = "portrait"
         elif width > height:
-            aspect_hint = "16:9 widescreen framing"
+            aspect_ratio  = "16:9"
+            orient_lead   = "LANDSCAPE ORIENTATION 16:9 widescreen (image wider than tall). "
+            orient_trail  = "16:9 widescreen landscape orientation — wide, not tall"
+            target_orient = "landscape"
         else:
-            aspect_hint = "1:1 square framing"
-        full_prompt = f"{prompt}\n\n({aspect_hint})"
+            aspect_ratio  = "1:1"
+            orient_lead   = "SQUARE ORIENTATION 1:1. "
+            orient_trail  = "1:1 square orientation"
+            target_orient = "square"
+        full_prompt = f"{orient_lead}{prompt}\n\n({orient_trail})"
 
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {
@@ -21074,10 +21500,17 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         #     prior generated image. The model uses it as the visual reference
         #     so the subject (character, product, etc.) looks consistent.
         if reference_image_url:
+            # IMPORTANT: when the reference is landscape but the canvas is
+            # portrait (or vice-versa), Recraft tends to inherit the
+            # reference's aspect — producing a wrong-orientation output
+            # that the renderer then cover-crops, losing content. Tell
+            # the model EXPLICITLY to override the reference's aspect.
             i2i_prompt = (
                 f"{full_prompt}\n\nReference: match the subject's identity, "
                 f"colors, and proportions from the attached image. Same subject, "
-                f"new pose / angle / context as described."
+                f"new pose / angle / context as described. "
+                f"IGNORE the reference image's aspect ratio — generate in "
+                f"{orient_trail} regardless of the reference's shape."
             )
             content: Any = [
                 {"type": "text", "text": i2i_prompt},
@@ -21090,6 +21523,16 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             "model": "recraft/recraft-v4.1",
             "messages": [{"role": "user", "content": content}],
             "modalities": ["image"],
+            # Structured aspect-ratio param per OpenRouter image-gen docs:
+            # https://openrouter.ai/docs/guides/overview/multimodal/image-generation
+            # Supported values: 1:1, 2:3, 3:2, 3:4, 4:3, 4:5, 5:4, 9:16, 16:9, 21:9.
+            # We compute the value above based on the canvas dimensions.
+            # This is the PRIMARY orientation signal — the textual hint in
+            # `full_prompt` is defense-in-depth, and the post-gen cover-crop
+            # in `_enforce_image_orientation` is the last-resort safety net.
+            "image_config": {
+                "aspect_ratio": aspect_ratio,
+            },
         }
 
         max_retries = 3
@@ -21119,10 +21562,24 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         else:
                             b64 = image_url
                         try:
-                            return base64.b64decode(b64), usage_metadata
+                            img_bytes = base64.b64decode(b64)
                         except (ValueError, base64.binascii.Error) as e:
                             print(f"    ⚠️  Could not decode image from Recraft response: {e}")
                             return None, None
+                        # Post-gen orientation enforcement. Recraft frequently
+                        # ignores the textual aspect hint — especially in i2i
+                        # mode where it inherits the reference's aspect. Probe
+                        # the returned image's actual dimensions; if the
+                        # orientation doesn't match the canvas, cover-crop
+                        # to the target aspect ratio. This is deterministic
+                        # and free (no extra API call), and matches what the
+                        # renderer would have done anyway via object-fit:cover
+                        # — but doing it here keeps the cropped image in our
+                        # artifact pipeline and surfaces the mismatch in logs.
+                        img_bytes = self._enforce_image_orientation(
+                            img_bytes, target_orient, width, height, prompt
+                        )
+                        return img_bytes, usage_metadata
 
                 print(f"    ⚠️  Recraft response had no image payload for '{prompt[:50]}...'")
                 return None, None

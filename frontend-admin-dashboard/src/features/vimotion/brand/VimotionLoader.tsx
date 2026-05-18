@@ -22,7 +22,7 @@ export function VimotionLoader({ className, size = 56, label = 'Loading' }: Vimo
     return (
         <svg
             xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 200 200"
+            viewBox="18 12 164 176"
             fill="currentColor"
             role="img"
             aria-label={label}

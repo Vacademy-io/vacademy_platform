@@ -330,6 +330,7 @@ def build_recraft_thumbnail_prompt(
     visual_style: Optional[str],
     brand_color_hex: Optional[str] = None,
     topic_context: Optional[Dict[str, Any]] = None,
+    orientation: str = "landscape",
 ) -> str:
     """Compose a Recraft prompt for a single thumbnail with text baked in.
 
@@ -482,17 +483,35 @@ def build_recraft_thumbnail_prompt(
         # every other downstream choice (subject's identity, clothing,
         # setting, props, palette).
         f"{topic_anchor_clause}"
-        # 3. The mandatory subject + side-composition rule.
+        # 3. The mandatory subject + composition rule.
         # The RIGHT subject TYPE depends on the topic — pick from the menu
         # below. The previous version mandated "human face with emotion"
         # which made the model default to stock-cartoon-excited-person for
         # corporate / partnership / coding topics where the actual subject
         # should be brands, products, code-on-screens, or classrooms.
-        "MANDATORY composition: the frame is split into a SUBJECT ZONE and a "
-        "TEXT ZONE, side by side. The SUBJECT ZONE (one third or one half of "
-        "the frame, your choice of left or right) contains a single clear "
-        "focal subject. Choose the SUBJECT TYPE from what the topic actually "
-        "calls for: "
+        # The SPLIT AXIS depends on the canvas orientation:
+        #   - landscape (16:9): split LEFT/RIGHT (wide frame → two columns work)
+        #   - portrait  (9:16): split TOP/BOTTOM (tall frame → left/right would
+        #     squeeze both zones into narrow strips, killing legibility)
+        + (
+            "MANDATORY composition for this PORTRAIT (9:16) canvas: split the "
+            "frame TOP/BOTTOM, NOT left/right. The SUBJECT ZONE occupies "
+            "either the TOP ~55-60% or the BOTTOM ~55-60% (your choice), and "
+            "the TEXT ZONE occupies the opposite portion of the frame. Do "
+            "NOT split left/right on a portrait canvas — that squeezes the "
+            "text into a narrow column and the subject into a tall strip, "
+            "destroying legibility on a phone feed. "
+            if (orientation or "landscape").strip().lower() == "portrait"
+            else
+            "MANDATORY composition for this LANDSCAPE (16:9) canvas: split "
+            "the frame LEFT/RIGHT. The SUBJECT ZONE occupies one third or "
+            "one half of the frame (your choice of left or right), and the "
+            "TEXT ZONE occupies the opposite portion. Do NOT split "
+            "top/bottom on a landscape canvas — wide frames work for "
+            "side-by-side. "
+        )
+        + "The SUBJECT ZONE contains a single clear focal subject. Choose "
+        "the SUBJECT TYPE from what the topic actually calls for: "
         "(a) a real person captured by a camera with a believable expression "
         "— best for personal stories, opinion videos, vlogs; "
         "(b) brand marks / wordmarks / logos / a pair of logos side-by-side "
@@ -506,9 +525,9 @@ def build_recraft_thumbnail_prompt(
         "(e) a charged documentary location detail — best for news recaps. "
         "Pick whichever TYPE the topic actually warrants — do NOT default to "
         "(a) for everything. NEVER an empty landscape or wide scenery shot. "
-        "The TEXT ZONE occupies the remainder of the frame and holds the "
-        "typography — subject and text do NOT stack on top of each other; "
-        "they coexist side by side. "
+        "Subject and text occupy DIFFERENT zones of the frame; they do NOT "
+        "stack directly on top of each other (the headline must not "
+        "overlap the subject's face). "
         # 3. Typography hierarchy — the structural change vs the previous
         # uniform single-line look.
         f"{typography_block} "

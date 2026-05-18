@@ -2920,6 +2920,87 @@ DO NOT inject `<style>` rules that override the built-in classes globally (e.g. 
 DO NOT hardcode fonts other than the four loaded above — anything else triggers a flash-of-unstyled-text in the rendered video.
 """
 
+    def _lookup_shot_html_model(
+        self,
+        video_id: str,
+        target_frame: Optional[Dict[str, Any]],
+        raw_timeline: Optional[Dict[str, Any]],
+        status: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """Find the model that authored this shot's HTML, if persisted.
+
+        Checks in order:
+          1. target_frame['html_model']            (direct on the frame)
+          2. raw_timeline['meta']['shots'][i]['html_model']
+                                                    (v3 meta.shots[])
+          3. S3 director_plan.json / shot_plan.json shot entry's html_model
+                                                    (initial-gen artifact)
+
+        `status` is the result of `self.get_video_status(video_id)` — passed
+        in by the caller to avoid a second roundtrip when regenerate already
+        called it. If omitted, this method calls it itself.
+
+        Returns None if no persisted model is found (caller falls back).
+        """
+        if target_frame and target_frame.get("html_model"):
+            return target_frame["html_model"]
+
+        # Try both field names — the codebase mixes `shot_idx` (newer entries)
+        # and `shot_index` (older paths via _coerce_shot_index).
+        shot_idx = None
+        if target_frame:
+            shot_idx = target_frame.get("shot_idx")
+            if shot_idx is None:
+                shot_idx = target_frame.get("shot_index")
+
+        def _shot_key(s: Dict[str, Any]) -> Any:
+            return s.get("shot_idx") if s.get("shot_idx") is not None else s.get("shot_index")
+
+        # 2. meta.shots[] (pipeline v3) or meta.sentences[]-keyed lookup
+        if raw_timeline and isinstance(raw_timeline.get("meta"), dict):
+            meta_shots = raw_timeline["meta"].get("shots") or []
+            for s in meta_shots:
+                if not isinstance(s, dict):
+                    continue
+                if shot_idx is not None and _shot_key(s) == shot_idx:
+                    if s.get("html_model"):
+                        return s["html_model"]
+
+        # 3. Director plan / shot plan on S3 — last resort.
+        try:
+            if status is None:
+                status = self.get_video_status(video_id)
+            s3_urls = (status or {}).get("s3_urls", {}) if status else {}
+            plan_url = s3_urls.get("shot_plan") or s3_urls.get("director_plan")
+            if not plan_url:
+                return None
+            with tempfile.TemporaryDirectory() as td:
+                plan_path = Path(td) / "plan.json"
+                if not self.s3_service.download_file(plan_url, plan_path):
+                    return None
+                plan = json.loads(plan_path.read_text(encoding="utf-8"))
+                shots = plan.get("shots") if isinstance(plan, dict) else None
+                if not shots:
+                    return None
+                # Positional lookup first (cheapest, accurate for v3 plans
+                # where shots[] indexes line up with shot_idx).
+                if (
+                    shot_idx is not None
+                    and isinstance(shot_idx, int)
+                    and 0 <= shot_idx < len(shots)
+                ):
+                    hit = (shots[shot_idx] or {}).get("html_model")
+                    if hit:
+                        return hit
+                # Fallback: scan by either field name.
+                for s in shots:
+                    if isinstance(s, dict) and _shot_key(s) == shot_idx:
+                        if s.get("html_model"):
+                            return s["html_model"]
+        except Exception:
+            return None
+        return None
+
     def _build_regen_context(
         self,
         timeline_data: Any,
@@ -3032,15 +3113,72 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             )
             return system, user
 
-        # Rich context path — build a designer-grade system prompt
+        # Rich context path — build a designer-grade system prompt.
+        #
+        # Until 2026-05 this method maintained its own per-shot teaching block
+        # in parallel with the one initial-gen uses. The May audit (rubric v3,
+        # bbox-lint, pacing profile, background_treatment, whitespace-safe
+        # accent words, branded easing, 3D perspective layers, SVG filter
+        # teaching, second-beat motion) only landed in `shot_type_cards.
+        # build_per_shot_system_prompt` — regen never saw those fixes, which
+        # is the single largest reason regen output was visibly worse than
+        # initial-gen output.
+        #
+        # We now call the canonical builder first, then append regen-specific
+        # context (run brand tokens, neighbours, original HTML, edit
+        # instruction). One prompt builder, two callers.
         sections: List[str] = []
+
+        target_shot_type = context.get("target_shot_type", "")
+        dims = context.get("dimensions") or {}
+        _w = int(dims.get("width", 1920) or 1920)
+        _h = int(dims.get("height", 1080) or 1080)
+
+        # Always use the aspirational preamble for regen. Per the May 2026
+        # audit, both CORE_PREAMBLE and CORE_PREAMBLE_ASPIRATIONAL carry the
+        # foundational rules (whitespace-safe accent words, background
+        # contract, second-beat motion). Aspirational only differs by
+        # relaxing some stylistic bans — which is the right trade for an
+        # edit where the user may want exactly that kind of break. Earlier
+        # tier-heuristic was a dead branch (`context['run']` was never set).
+        canonical_block: Optional[str] = None
+        if target_shot_type:
+            try:
+                if str(self.video_gen_root) not in sys.path:
+                    sys.path.insert(0, str(self.video_gen_root))
+                from shot_type_cards import (  # type: ignore
+                    build_per_shot_system_prompt as _bpssp,
+                )
+                canonical_block = _bpssp(
+                    target_shot_type, _w, _h,
+                    aspirational=True,
+                )
+            except Exception as _bpssp_err:
+                # Best-effort: regen continues with the legacy inlined block
+                # below if the canonical builder isn't importable for any
+                # reason. Log so the gap is visible in stage logs instead of
+                # silently degrading regen quality.
+                import logging as _lg
+                _lg.getLogger(__name__).warning(
+                    "[VideoGenService] Frame regen could not import "
+                    f"build_per_shot_system_prompt (continuing with legacy "
+                    f"teaching block): {_bpssp_err}"
+                )
+
         sections.append(
             "You are the editor for an existing AI-generated educational video. "
-            "A specific frame needs to be modified. The rest of the timeline is "
+            "A specific shot needs to be modified. The rest of the timeline is "
             "FROZEN — your edit must look stylistically continuous with its "
-            "neighbours. Use the run's brand tokens, motion strategy, and "
-            "neighbour context below to stay on-brand."
+            "neighbours. Honor the canonical teaching block (CORE_PREAMBLE / "
+            "shot type card / DO-NOT rules / TEXT BOUND BOX / OUTPUT FORMAT) "
+            "exactly as initial generation does — regen is held to the same "
+            "post-render rubric (bbox-lint + vision review v3 + brand-asset + "
+            "animation density). Your output will be graded on those gates."
         )
+
+        if canonical_block:
+            sections.append("\n## CANONICAL SHOT TEACHING (same block as initial gen)\n")
+            sections.append(canonical_block)
 
         sections.append("\n## RUN CONTEXT (do not violate)")
 
@@ -3162,18 +3300,83 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             except Exception:
                 pass  # registry import / catalog build is best-effort
 
+        # ── REGEN DELTA BLOCK ────────────────────────────────────────────
+        # Things the LLM needs to know about EDITING (not authoring) a shot.
+        # These don't belong in the canonical per-shot teaching (initial gen
+        # has no "original HTML" to edit), so they live here.
+        regen_delta: List[str] = []
+        regen_delta.append("\n## REGEN-SPECIFIC RULES (editing an existing shot)")
+
+        # 1. Tell the LLM about SVG <filter>/<defs> IDs already in the HTML so
+        #    it doesn't redeclare them (which silently overrides the originals
+        #    if IDs collide) and doesn't strip them (which breaks any element
+        #    that references them via filter="url(#…)").
+        try:
+            svg_filter_ids = sorted(set(
+                re.findall(
+                    r'<(?:filter|linearGradient|radialGradient|symbol|clipPath|mask|pattern)\s+[^>]*\bid=["\']([^"\']+)["\']',
+                    original_html or "",
+                )
+            ))
+        except Exception:
+            svg_filter_ids = []
+        if svg_filter_ids:
+            regen_delta.append(
+                "\n**SVG defs already declared in the original HTML** (do NOT "
+                "redeclare; reference via `url(#id)` if needed; do NOT strip "
+                "unless replacing the consuming element):"
+            )
+            for sid in svg_filter_ids[:24]:
+                regen_delta.append(f"  - #{sid}")
+            if len(svg_filter_ids) > 24:
+                regen_delta.append(f"  - …and {len(svg_filter_ids) - 24} more")
+
+        # 2. The shot has its own scoped id prefix (e.g. `s3_panel`, `s3_w1`).
+        #    Tell the LLM to keep that prefix — the timeline-wide CSS scoping
+        #    assumes per-shot id namespaces.
+        try:
+            id_prefix_match = re.search(r'id=["\']([a-zA-Z]+\d+)_', original_html or "")
+            id_prefix = id_prefix_match.group(1) if id_prefix_match else None
+        except Exception:
+            id_prefix = None
+        if id_prefix:
+            regen_delta.append(
+                f"\n**ID prefix in use**: `{id_prefix}_*` — keep this prefix on "
+                "any new elements you add. Other shots in the timeline use "
+                "different prefixes; do NOT collide."
+            )
+
+        regen_delta.append(
+            "\n**Edit discipline**\n"
+            "- Make the smallest change that fulfils the user instruction. "
+            "Rewriting unaffected sections raises drift risk and gets caught "
+            "by the post-regen vision reviewer.\n"
+            "- Preserve element IDs that already exist in the HTML. The "
+            "render harness, audio-sync layer, and editor's transform overlay "
+            "all key off these IDs.\n"
+            "- If the user instruction is ambiguous (\"the image\", \"the "
+            "text\"), prefer the element that occupies the largest screen "
+            "area in the original HTML."
+        )
+
+        sections.append("\n".join(regen_delta))
+
         sections.append(
             "\n## OUTPUT RULES\n"
-            "1. PRESERVE existing `<img src=\"...\">` tags exactly — do not change image URLs.\n"
-            "2. PRESERVE `data-img-prompt`, `data-video-query`, and `data-subject-id` attributes — "
-            "they drive downstream image/video selection.\n"
-            "3. Use the brand CSS variables from RUN CONTEXT — never hardcode brand colors.\n"
-            "4. Reuse the shot pack's font_scale and spacing tokens — never pick your own.\n"
-            "5. Keep the outer wrapper as `<div id=\"shot-root\" style=\"position:relative;width:100%;height:100%;overflow:hidden\">…</div>`.\n"
-            "6. Use named GSAP eases (power3.out / back.out / expo.out) — never `linear` unless intentional.\n"
-            "7. Never use `setTimeout`. Use `gsap.delayedCall` or tween `delay:` values.\n"
-            "8. Never wrap inline scripts in `window.addEventListener('load', …)` — won't fire in the render server's shadow DOM.\n"
-            "9. Return ONLY the new HTML code. No markdown fences, no commentary."
+            "1. PRESERVE existing `<img src=\"...\">` and `<video src=\"...\">` tags exactly — "
+            "do not change `src`, `data-img-source`, `data-reference-url`, "
+            "`data-img-prompt`, `data-video-query`, `data-subject-id`, "
+            "`data-skill`, or `data-aivideo` attributes unless the user "
+            "instruction explicitly asks for it. These attributes drive "
+            "downstream asset resolution; reordering or removing them "
+            "silently breaks the image/video cascade.\n"
+            "2. Use the brand CSS variables from RUN CONTEXT — never hardcode brand colors.\n"
+            "3. Reuse the shot pack's font_scale and spacing tokens — never pick your own.\n"
+            "4. Keep the outer wrapper as `<div id=\"shot-root\" style=\"position:relative;width:100%;height:100%;overflow:hidden\">…</div>`.\n"
+            "5. Use named GSAP eases (power3.out / back.out / expo.out) — never `linear` unless intentional.\n"
+            "6. Never use `setTimeout`. Use `gsap.delayedCall` or tween `delay:` values.\n"
+            "7. Never wrap inline scripts in `window.addEventListener('load', …)` — won't fire in the render server's shadow DOM.\n"
+            "8. Return ONLY the new HTML code. No markdown fences, no commentary."
         )
 
         # Append the preloaded-runtime catalog so the LLM knows what's
@@ -3304,7 +3507,8 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         timestamp: float,
         user_prompt: str,
         db_session: Optional[Session] = None,
-        institute_id: Optional[str] = None
+        institute_id: Optional[str] = None,
+        model_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Regenerate HTML content for a specific frame based on user prompt.
@@ -3415,10 +3619,132 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
 
             import requests
             settings = get_settings()
-            
+
             if not settings.openrouter_api_key:
                 raise ValueError("OpenRouter API key not configured")
-                
+
+            # ── DOM-PATCH FAST PATH ─────────────────────────────────────
+            # Before paying the price of a full LLM call, classify the user's
+            # intent. If they want a small targeted edit (image swap, text
+            # change, color tweak), apply it deterministically with no LLM —
+            # the deterministic patcher is faster, cheaper, and doesn't
+            # introduce the kind of drift that made Flash regen output worse
+            # than the original on full-HTML rewrites.
+            #
+            # On any failure (classifier down, classifier says "full_remake",
+            # patcher couldn't apply the op, parsing failed), we fall through
+            # to the canonical LLM path unchanged.
+            classification: Optional[Dict[str, Any]] = None
+            applied_ops: Optional[List[Dict[str, Any]]] = None
+            try:
+                from .regen_intent_classifier import (
+                    classify_intent as _classify_intent,
+                    build_shot_summary as _build_summary,
+                    is_patch_safe_to_apply as _patch_safe,
+                )
+                from .regen_dom_patcher import (
+                    build_shot_summary_from_html as _summary_from_html,
+                    apply as _dom_apply,
+                )
+                _summary_kwargs = _summary_from_html(
+                    original_html,
+                    shot_type=regen_context.get("target_shot_type"),
+                )
+                _shot_summary = _build_summary(**_summary_kwargs)
+                classification = _classify_intent(
+                    user_instruction=user_prompt,
+                    shot_summary=_shot_summary,
+                    openrouter_api_key=settings.openrouter_api_key,
+                )
+                if classification:
+                    logger.info(
+                        f"🧭 Regen intent={classification['intent']} "
+                        f"confidence={classification.get('confidence')} "
+                        f"ops={len(classification.get('patch_ops') or [])} "
+                        f"frame={frame_index}"
+                    )
+                if classification and _patch_safe(classification):
+                    patch_result = _dom_apply(
+                        original_html, classification["patch_ops"]
+                    )
+                    if patch_result:
+                        new_html_patched, applied_ops = patch_result
+                        logger.info(
+                            f"⚡ Regen DOM-patched frame={frame_index} "
+                            f"ops_applied={len(applied_ops)} "
+                            f"(skipped full LLM)"
+                        )
+                        return {
+                            "video_id": video_id,
+                            "frame_index": frame_index,
+                            "timestamp": timestamp,
+                            "original_html": original_html,
+                            "new_html": new_html_patched,
+                            "resolved_model": None,  # no LLM used
+                            "regen_path": "dom_patch",
+                            "classification": classification,
+                            "applied_ops": applied_ops,
+                        }
+            except Exception as _fast_path_err:
+                logger.warning(
+                    "[VideoGenService] Regen fast path failed, falling through "
+                    f"to LLM: {_fast_path_err}"
+                )
+                # classification may still be partially populated; the LLM
+                # path will echo whatever we have back in the response.
+
+            # ── Model resolution (4-step, in priority order) ──
+            # 1. Explicit request override (FE "Advanced > Model" dropdown).
+            # 2. Per-shot html_model persisted at initial-gen time, so a regen
+            #    uses the SAME model that authored the shot. Looked up on the
+            #    target frame, then on the matching shot in director_plan/
+            #    shot_plan if the frame doesn't carry it.
+            # 3. Registry default for use_case='video_regenerate' from
+            #    ai_model_defaults (admin-tunable; see migrations).
+            # 4. Hard fallback — Gemini 2.5 Flash (matches initial-gen tier,
+            #    NOT gpt-4o which was the previous broken default).
+            resolved_model: Optional[str] = None
+            model_source = "fallback"
+
+            if model_override:
+                resolved_model = model_override
+                model_source = "request_override"
+
+            if not resolved_model:
+                persisted = target_frame.get("html_model") if target_frame else None
+                if not persisted:
+                    persisted = self._lookup_shot_html_model(
+                        video_id,
+                        target_frame,
+                        raw if isinstance(raw, dict) else None,
+                        status=status,  # reuse — get_video_status already called above
+                    )
+                if persisted:
+                    resolved_model = persisted
+                    model_source = "persisted_at_gen"
+
+            if not resolved_model and db_session is not None:
+                try:
+                    from .ai_models_service import AIModelsService
+                    registry = AIModelsService(db_session)
+                    registry_default = registry.get_default_model_id_for_use_case(
+                        "video_regenerate"
+                    )
+                    if registry_default:
+                        resolved_model = registry_default
+                        model_source = "registry_default"
+                except Exception as e:
+                    logger.warning(f"Regen model registry lookup failed: {e}")
+
+            if not resolved_model:
+                resolved_model = settings.llm_default_model or "google/gemini-2.5-flash"
+                model_source = "hard_fallback"
+
+            logger.info(
+                f"🎨 Regen frame={frame_index} model={resolved_model} "
+                f"source={model_source}"
+            )
+
             response = requests.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={
@@ -3427,7 +3753,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                     "HTTP-Referer": "https://vacademy.io",
                 },
                 json={
-                    "model": settings.llm_default_model or "openai/gpt-4o",
+                    "model": resolved_model,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_message}
@@ -3451,12 +3777,24 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
             else:
                 new_html = new_html.strip()
             
+            # If the classifier wanted a patch but no op was applicable
+            # (e.g. animation-span text target → patcher correctly bailed),
+            # surface that distinction in regen_path so the FE can show a
+            # more accurate toast.
+            _path = "full_remake"
+            if classification and classification.get("intent") == "targeted_patch":
+                _path = "full_remake_fallback"
+
             return {
                 "video_id": video_id,
                 "frame_index": frame_index,
                 "timestamp": timestamp,
                 "original_html": original_html,
-                "new_html": new_html
+                "new_html": new_html,
+                "resolved_model": resolved_model,
+                "regen_path": _path,
+                "classification": classification,
+                "applied_ops": None,
             }
 
     async def update_video_frame(
@@ -3469,6 +3807,7 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
         z: int | None = None,
         entry_id: str | None = None,
         entry_meta: Dict[str, Any] | None = None,
+        html_model: str | None = None,
     ) -> Dict[str, Any]:
         """
         Update a specific frame's HTML in the timeline and save back to S3.
@@ -3523,6 +3862,13 @@ DO NOT hardcode fonts other than the four loaded above — anything else trigger
                 entry["exitTime"] = exit_time
             if z is not None:
                 entry["z"] = z
+            # Persist the model that authored the HTML, when sent. Editor
+            # uses this to make "Remake with AI" sticky — next regen on this
+            # entry resolves to the same model the user picked this time.
+            # None = leave existing value untouched (raw HTML edits / Code
+            # tab saves don't change which model authored the shot).
+            if html_model is not None:
+                entry["html_model"] = html_model
             # Merge entry_meta (free-form per-entry metadata) — preserve any
             # keys the caller didn't include so we don't clobber unrelated
             # state set by other tools writing into the same entry.

@@ -342,8 +342,10 @@ def _resolve_music_provider() -> str:
 
       1. `MUSIC_PROVIDER` env var (explicit override): `fal_elevenlabs`,
          `lyria`, or `fallback`.
-      2. Auto-detect: if FAL_API_KEY is set → `fal_elevenlabs`.
-      3. Else if Google credentials present → `lyria`.
+      2. Auto-detect: if Google credentials present → `lyria` (default —
+         real music composer, broadcast-quality background score).
+      3. Else if FAL_API_KEY set → `fal_elevenlabs` (fallback only; the
+         model is a SFX generator and cannot compose coherent music).
       4. Else `fallback` — degrade to silent music (caller handles).
 
     Returns the provider name. Never raises; defaults safely.
@@ -355,14 +357,15 @@ def _resolve_music_provider() -> str:
         return "lyria"
     if explicit == "fallback":
         return "fallback"
-    # Auto-detect — prefer fal when its key is set (matches the user's
-    # stated migration target).
-    if os.environ.get("FAL_API_KEY") or os.environ.get("FAL_KEY"):
-        return "fal_elevenlabs"
-    # Lyria check: any Google creds available?
+    # Auto-detect — Lyria is the music composer; prefer it whenever
+    # Google creds are available.
     if (os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
             or (Path(__file__).resolve().parent / "google_credentials.json").exists()):
         return "lyria"
+    # fal-elevenlabs is a SFX model, not a music composer — keep it as
+    # last-resort fallback when no Lyria creds exist.
+    if os.environ.get("FAL_API_KEY") or os.environ.get("FAL_KEY"):
+        return "fal_elevenlabs"
     return "fallback"
 
 
@@ -750,4 +753,10 @@ def generate_background_music(
         except Exception:
             pass
 
-    return {"url": final_url, "chunks": chunk_records, "duration": audio_duration}
+    return {
+        "url": final_url,
+        "chunks": chunk_records,
+        "duration": audio_duration,
+        "provider": provider,
+        "model": (_DEFAULT_MODEL if provider == "lyria" else provider),
+    }

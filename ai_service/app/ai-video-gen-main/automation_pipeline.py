@@ -99,6 +99,53 @@ def _extract_visual_intent_block(prompt_text: Optional[str]) -> Optional[str]:
     return block
 
 
+# BPM extraction patterns. The Director writes music prompts in natural
+# language with hints like "~84 bpm", "around 72 bpm", "(118 bpm)", etc.
+# We parse the first plausible value out of all chunk prompts and average
+# if multiple are present. Returns None when nothing matches — the cue
+# beat-snap pass then no-ops (cues keep their raw times).
+_BPM_PATTERNS: List[re.Pattern] = [
+    re.compile(r"(?:^|[^0-9])(?:~|around|approximately|approx\.?\s*|at\s+)?\s*"
+               r"(\d{2,3})\s*bpm\b", re.IGNORECASE),
+    re.compile(r"(?:^|[^0-9])(\d{2,3})\s*(?:beats?\s*per\s*minute|bpm)", re.IGNORECASE),
+]
+
+
+def _extract_bpm_from_music_plan(plan: Optional[Dict[str, Any]]) -> Optional[float]:
+    """Pull a numeric BPM hint out of a music_plan dict. Looks at every
+    chunk's `timestamped_prompt` and the top-level `overall_mood` /
+    `overall_genre` text. Averages all unique values found. Returns None
+    when nothing parses to a plausible BPM (40–200)."""
+    if not isinstance(plan, dict):
+        return None
+    text_blobs: List[str] = []
+    for key in ("overall_mood", "overall_genre", "bed_prompt", "audio_mood"):
+        v = plan.get(key)
+        if isinstance(v, str):
+            text_blobs.append(v)
+    for chunk in (plan.get("chunks") or []):
+        if isinstance(chunk, dict):
+            tp = chunk.get("timestamped_prompt")
+            if isinstance(tp, str):
+                text_blobs.append(tp)
+    found: List[int] = []
+    for blob in text_blobs:
+        for pat in _BPM_PATTERNS:
+            for m in pat.finditer(blob):
+                try:
+                    v = int(m.group(1))
+                except (ValueError, IndexError):
+                    continue
+                if 40 <= v <= 200:
+                    found.append(v)
+    if not found:
+        return None
+    # Use median to shrug off outliers from incidental numbers nearby.
+    found.sort()
+    median = found[len(found) // 2]
+    return float(median)
+
+
 class PipelineCancelled(Exception):
     """Raised at a safe checkpoint when the cooperative stop flag has been
     set by ``POST /cancel/{video_id}``. Caught by ``video_generation_service``
@@ -757,6 +804,8 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_max_cues_per_video": 20,
         "background_music_enabled": True,
         "background_music_default_volume": 0.10,
+        "sfx_generation_enabled": True,
+        "audio_density_mode": "normal",
         # Use stock where available; AI for hero/conceptual shots
         "stock_preference": "stock_first",
         # Vision reviewer — see "standard" tier comment.
@@ -844,6 +893,8 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_max_cues_per_video": 40,
         "background_music_enabled": True,
         "background_music_default_volume": 0.10,
+        "sfx_generation_enabled": True,
+        "audio_density_mode": "normal",
         # Use stock where available; AI for motion-biased hero shots that need precise visuals
         "stock_preference": "stock_first",
         # Vision reviewer — see "standard" tier comment.
@@ -2056,6 +2107,52 @@ class VideoGenerationPipeline:
             return bool(override)
         return bool(self._tier_config.get("background_music_enabled", False))
 
+    def _snap_cues_to_beat(
+        self,
+        entries: List[Dict[str, Any]],
+        bpm: Optional[float],
+        *,
+        window_s: float = 0.12,
+    ) -> int:
+        """B2 — beat-snap cue absolute times to the nearest beat within
+        ±`window_s` of the Director-emitted BPM. Returns count snapped.
+
+        Treats t=0 as beat 0 (phase=0). This is a coarse assumption —
+        Lyria isn't guaranteed to start on the downbeat — but for cues
+        that already land roughly on a beat (within 120ms), snapping
+        sharpens rhythmic feel without risking large displacement that
+        would desync from the visual event.
+
+        Cues outside the window are left untouched. Transition cues
+        (which must land sample-accurately on the visual cut) are NOT
+        snapped — they have a no_natural_offset constraint upstream.
+        """
+        if not bpm or bpm <= 0:
+            return 0
+        beat_s = 60.0 / float(bpm)
+        snapped = 0
+        for entry in entries:
+            entry_start = float(entry.get("start", 0.0))
+            for cue in entry.get("sound_cues") or []:
+                role = (cue.get("role") or "").lower()
+                if role.startswith("transition_"):
+                    continue  # never displace transitions
+                try:
+                    t_rel = float(cue.get("t", 0.0))
+                except (TypeError, ValueError):
+                    continue
+                abs_t = entry_start + t_rel
+                # Nearest beat to abs_t.
+                beat_idx = round(abs_t / beat_s)
+                beat_t = beat_idx * beat_s
+                delta = beat_t - abs_t
+                if abs(delta) <= window_s and abs(delta) > 0.005:
+                    # Apply the shift in cue-relative space.
+                    new_t = max(0.0, t_rel + delta)
+                    cue["t"] = new_t
+                    snapped += 1
+        return snapped
+
     def _run_audio_mix_pass(
         self,
         *,
@@ -2092,8 +2189,9 @@ class VideoGenerationPipeline:
             from audio_mixer import (  # type: ignore
                 MixCue, MixSpec, build_mix,
             )
-            from transition_stinger_planner import (  # type: ignore
-                enrich_transitions_with_fresh_stingers,
+            from sfx_palette_planner import (  # type: ignore
+                enrich_cues as _enrich_sfx_palette,
+                resolve_mood as _resolve_sfx_mood,
             )
         except Exception as _imp_err:
             print(f"⚠️ Audio mix skipped — module import failed: {_imp_err}")
@@ -2103,22 +2201,35 @@ class VideoGenerationPipeline:
             print(f"⚠️ Audio mix skipped — narration not found: {narration_path}")
             return
 
-        # ── 1. Refresh transition stingers (opt-in, tier-gated) ────
+        # ── 1. Refresh full SFX palette (opt-in, tier-gated) ───────
+        # Handles ALL cue roles (transition_whoosh, ui_chime, ui_positive,
+        # impact, data_reveal, etc.) via fal-elevenlabs. Mood resolved
+        # from the script (or heuristic fallback).
+        sfx_palette_counts: Dict[str, int] = {}
+        # Prefer the full script_plan dict (carries Director's `audio_mood`
+        # if it emitted one); fall back to the raw script_text string for
+        # heuristic mood inference when the dict isn't around.
+        _script_for_mood: Any = (
+            getattr(self, "_current_script_plan", None)
+            or getattr(self, "_current_script_text", None)
+        )
         try:
-            n_stingers = enrich_transitions_with_fresh_stingers(
+            sfx_palette_counts = _enrich_sfx_palette(
                 entries,
+                script=_script_for_mood,
                 tier_config=self._tier_config,
                 cost_tracker=getattr(self, "_cost_events", None),
                 run_dir=run_dir,
                 video_id=video_id,
-                # No s3_uploader passed → mixer uses local paths, which
-                # is fine because the mix runs locally before the
-                # timeline ships. The S3 upload happens after the swap
-                # via the regular narration.mp3 upload path.
+                # No s3_uploader → mixer uses local paths, which is fine
+                # because the mix runs locally before the timeline ships.
+                # The S3 upload happens after the swap via the regular
+                # narration.mp3 upload path.
             )
         except Exception as _se:
-            print(f"⚠️ Stinger enrichment errored (non-fatal): {_se}")
-            n_stingers = 0
+            print(f"⚠️ SFX palette enrichment errored (non-fatal): {_se}")
+        n_stingers = (sfx_palette_counts.get("transition_whoosh", 0)
+                      + sfx_palette_counts.get("transition_riser", 0))
 
         # ── 2. Resolve music local path (download from S3 if needed) ──
         music_local: Optional[Path] = None
@@ -2129,6 +2240,29 @@ class VideoGenerationPipeline:
             )
             if music_local is None:
                 print(f"⚠️ Could not localize music URL — mix proceeds VO+SFX only")
+
+        # ── 2b. Beat-snap cues to music BPM (B2) ───────────────────
+        # Only trusted when the music provider follows tempo tightly.
+        # Lyria-3 does; Lyria-2 and fal-elevenlabs sound-effects do NOT
+        # — snapping cues to a wrong beat grid would shift them away
+        # from the visual event and make the mix feel worse. We gate
+        # on `provider` and narrow the window to 80ms to limit damage
+        # when BPM is off by a few BPM.
+        _bpm = (bgm_track or {}).get("bpm") if isinstance(bgm_track, dict) else None
+        _provider = (bgm_track or {}).get("provider", "") if isinstance(bgm_track, dict) else ""
+        # Trusted = Lyria 3 family (lyria-3-pro-preview etc.). The
+        # provider string may be "lyria" (resolver name) or a model id
+        # like "lyria-3-pro-preview" — accept both forms that mean Lyria 3.
+        _bpm_trusted = bool(_bpm) and (
+            "lyria-3" in _provider.lower()
+            or _provider.lower() == "lyria"  # auto-resolved → default model is lyria-3
+        )
+        if _bpm_trusted:
+            n_snapped = self._snap_cues_to_beat(entries, float(_bpm), window_s=0.08)
+            if n_snapped:
+                print(f"🥁 Beat-snap: {n_snapped} cues aligned to {_bpm:.0f} bpm")
+        elif _bpm:
+            print(f"🥁 Beat-snap skipped: provider={_provider} (BPM hint not trustworthy)")
 
         # ── 3. Flatten sound_cues across entries → MixCue list ─────
         sfx_cues: List[MixCue] = []
@@ -2162,6 +2296,16 @@ class VideoGenerationPipeline:
             except (TypeError, ValueError):
                 pass
 
+        # Reuse the same mood the SFX planner picked so the post-process
+        # reverb on the bus matches the timbre of the generated samples.
+        # Uses the same script source so mood resolution stays consistent
+        # across planner and mixer (otherwise SFX prompts and reverb
+        # could disagree about the video's tone).
+        try:
+            _mix_mood = _resolve_sfx_mood(script=_script_for_mood)
+        except Exception:
+            _mix_mood = "default"
+
         spec = MixSpec(
             vo_path=_PathL(narration_path),
             video_duration_s=max(0.5, float(audio_duration)),
@@ -2171,12 +2315,16 @@ class VideoGenerationPipeline:
             stinger_cues=stinger_cues,
             enable_ducking=music_local is not None,
             enable_loudnorm=True,
+            reverb_mood=_mix_mood,
         )
 
+        n_fresh_sfx = sum(sfx_palette_counts.values())
         print(
             f"🎚  Audio mix: vo + {'music' if music_local else 'no-music'} "
             f"+ {len(sfx_cues)} SFX + {len(stinger_cues)} stingers "
-            f"({'fresh' if n_stingers else 'static'} whooshes)"
+            f"({'fresh' if n_fresh_sfx else 'static'} palette: "
+            f"{sfx_palette_counts or 'static-lib'}) "
+            f"mood={_mix_mood}"
         )
 
         result = build_mix(spec, run_dir=run_dir, output_filename="final_mix.mp3")
@@ -3813,6 +3961,10 @@ class VideoGenerationPipeline:
                 print("🎨 Designing Visual Style Guide ...")
                 # Stash script text for the Sound Planner's topic-aware palette.
                 self._current_script_text = str(script_plan.get("script_text", "") or "")
+                # Keep the full script_plan dict around for downstream
+                # audio passes that need richer fields (audio_mood, music_plan,
+                # etc.) than the raw script_text string carries.
+                self._current_script_plan = script_plan
                 style_guide = self._generate_style_guide(script_plan["script_text"], run_dir, background_type=background_type, style_config=self._current_style_config)
             
             # CHECK FOR INTERACTIVE CONTENT TYPES
@@ -4627,6 +4779,21 @@ class VideoGenerationPipeline:
                             if self._background_music_volume_override is not None
                             else float(self._tier_config.get("background_music_default_volume", 0.10))
                         )
+                        # Best-effort BPM extraction from the music_plan
+                        # prompts so the SFX-snap pass can beat-align cues
+                        # (Phase B2). Cheap regex parse — no extra deps.
+                        _bpm = _extract_bpm_from_music_plan(_music_plan_to_use)
+                        # Provider drives whether we TRUST the BPM enough
+                        # to snap cues. Lyria-3 follows tempo tightly;
+                        # Lyria-2 and fal-elevenlabs do not — snapping to
+                        # a wrong beat grid would make things WORSE than
+                        # not snapping. The audio mix pass checks this
+                        # before invoking _snap_cues_to_beat.
+                        _music_provider = (
+                            _music_result.get("provider")
+                            or _music_result.get("model")
+                            or ""
+                        )
                         self._background_music_track = {
                             "id": "background-music",
                             "label": "Background Music",
@@ -4635,8 +4802,14 @@ class VideoGenerationPipeline:
                             "delay": 0.0,
                             "fadeIn": 2.0,
                             "fadeOut": 3.0,
+                            "bpm": _bpm,
+                            "provider": str(_music_provider),
                         }
-                        print(f"🎼 Background music ready: {_music_result['url']}")
+                        print(
+                            f"🎼 Background music ready: {_music_result['url']}"
+                            + (f" (bpm≈{_bpm}, provider={_music_provider})"
+                               if _bpm else "")
+                        )
                 except Exception as _mus_err:
                     print(f"⚠️ Background music generation failed: {_mus_err}")
                     # Curated-bed fallback. Picks a royalty-free track from the
@@ -16056,6 +16229,22 @@ class VideoGenerationPipeline:
             # Estimate USD cost for this shot (best-effort; None if model pricing unknown)
             _model_id = getattr(self.html_client, 'current_model',
                                 getattr(self.html_client, 'default_model', ''))
+
+            # Stamp the resolved html_model onto every timeline entry produced
+            # by this shot. Read at regen time by `_lookup_shot_html_model` so
+            # "Remake with AI" uses the SAME model that authored the shot,
+            # instead of a generic default. Also written onto the shot record
+            # in the director/shot plan via the same field so resume-from-
+            # checkpoint regen still works.
+            if _model_id:
+                for _e in entries:
+                    if isinstance(_e, dict) and not _e.get("html_model"):
+                        _e["html_model"] = _model_id
+                try:
+                    if isinstance(shot, dict) and not shot.get("html_model"):
+                        shot["html_model"] = _model_id
+                except Exception:
+                    pass
             _shot_cost_usd: float | None = None
             try:
                 from constants.models import get_model_pricing as _gmp  # type: ignore
@@ -16170,11 +16359,32 @@ class VideoGenerationPipeline:
                 from sound_planner import plan_sounds
                 video_id = getattr(self, "_current_video_id", "") or str(run_dir.name)
                 _script_text = getattr(self, "_current_script_text", "") or ""
+
+                # Resolve mood ONCE here so all downstream audio passes
+                # (sound_planner density, sfx_palette prompts, mixer reverb)
+                # agree on the same value. Director's `audio_mood` field
+                # wins when present; falls back to heuristic.
+                _mood_for_planner = "default"
+                try:
+                    from sfx_palette_planner import resolve_mood as _resolve_mood
+                    _script_for_mood = (
+                        getattr(self, "_current_script_plan", None)
+                        or _script_text
+                    )
+                    _mood_for_planner = _resolve_mood(script=_script_for_mood)
+                except Exception:
+                    pass
+
+                # Shallow-copy tier_config so we can inject audio_mood
+                # without mutating the shared dict (other callers read it).
+                _tc_for_planner = dict(self._tier_config or {})
+                _tc_for_planner["audio_mood"] = _mood_for_planner
+
                 plan_sounds(
                     entries=all_entries,
                     shots=shots,
                     words=words,
-                    tier_config=self._tier_config,
+                    tier_config=_tc_for_planner,
                     video_id=video_id,
                     script_text=_script_text,
                 )
@@ -21953,6 +22163,15 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 if entry.get("sound_cues"):
                     clean_entry["sound_cues"] = entry["sound_cues"]
 
+                # Regen plumbing — html_model identifies which LLM authored
+                # this shot's HTML so "Remake with AI" can use the SAME model
+                # (read by `_lookup_shot_html_model` in regen). shot_idx keys
+                # back into director/shot plans when needed.
+                if entry.get("html_model"):
+                    clean_entry["html_model"] = entry["html_model"]
+                if entry.get("shot_idx") is not None:
+                    clean_entry["shot_idx"] = entry["shot_idx"]
+
                 timeline_entries.append(clean_entry)
             
             content_max_end = 0.0
@@ -22033,6 +22252,15 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                         enriched["absolute_time"] = round(adjusted_in_time + cue_t, 3)
                         offset_cues.append(enriched)
                     timeline_entry["sound_cues"] = offset_cues
+
+                # Regen plumbing — html_model identifies which LLM authored
+                # this shot's HTML so "Remake with AI" can use the SAME model
+                # (read by `_lookup_shot_html_model` in regen). shot_idx keys
+                # back into director/shot plans when needed.
+                if entry.get("html_model"):
+                    timeline_entry["html_model"] = entry["html_model"]
+                if entry.get("shot_idx") is not None:
+                    timeline_entry["shot_idx"] = entry["shot_idx"]
 
                 timeline_entries.append(timeline_entry)
                 

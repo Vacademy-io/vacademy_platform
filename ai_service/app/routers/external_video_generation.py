@@ -1159,7 +1159,8 @@ async def regenerate_frame_external(
             timestamp=payload.timestamp,
             user_prompt=payload.user_prompt,
             db_session=db,
-            institute_id=institute_id
+            institute_id=institute_id,
+            model_override=payload.model,
         )
         return RegenerateFrameResponse(**result)
     except ValueError as e:
@@ -1235,6 +1236,7 @@ async def update_frame_external(
             z=payload.z,
             entry_id=payload.entry_id,
             entry_meta=payload.entry_meta,
+            html_model=payload.html_model,
         )
         return result
     except ValueError as e:

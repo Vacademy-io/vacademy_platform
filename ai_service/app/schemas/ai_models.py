@@ -39,6 +39,7 @@ class UseCaseEnum(str, Enum):
     CONTENT = "content"
     OUTLINE = "outline"
     VIDEO = "video"
+    VIDEO_REGENERATE = "video_regenerate"
     IMAGE = "image"
     EVALUATION = "evaluation"
     EMBEDDING = "embedding"

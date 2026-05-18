@@ -358,6 +358,9 @@ def run(
         )
 
         # Build the Recraft prompt with the structured headline baked in.
+        # `orientation` flows through so the prompt picks the right split axis:
+        # left/right for landscape, top/bottom for portrait. The old global
+        # left/right rule produced narrow squeezed columns on 9:16 canvases.
         prompt = tp.build_recraft_thumbnail_prompt(
             intent=intent,
             headline=headline_pkg,
@@ -365,6 +368,7 @@ def run(
             visual_style=visual_style,
             brand_color_hex=brand_color_hex,
             topic_context=topic_context,
+            orientation=orientation,
         )
 
         try:

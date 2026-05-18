@@ -710,6 +710,14 @@ class RegenerateFrameRequest(BaseModel):
     timestamp: float = Field(..., description="Timestamp of the frame in seconds")
     user_prompt: str = Field(..., description="User's instruction for modification")
     institute_id: Optional[str] = Field(None, description="Institute ID (optional)")
+    model: Optional[str] = Field(
+        None,
+        description=(
+            "Optional model_id override (e.g. 'google/gemini-2.5-pro'). When omitted, "
+            "the service resolves in order: per-shot html_model persisted at gen time → "
+            "ai_model_defaults['video_regenerate'] → hard fallback."
+        ),
+    )
 
 
 class RegenerateFrameResponse(BaseModel):
@@ -719,6 +727,42 @@ class RegenerateFrameResponse(BaseModel):
     timestamp: float
     original_html: str
     new_html: str
+    resolved_model: Optional[str] = Field(
+        None,
+        description=(
+            "The model_id actually used for this regeneration. Named "
+            "`resolved_model` not `model_used` because Pydantic v2 reserves "
+            "the `model_*` namespace."
+        ),
+    )
+    regen_path: Optional[str] = Field(
+        None,
+        description=(
+            "How the regen was produced: 'dom_patch' (deterministic, no LLM), "
+            "'full_remake' (canonical LLM path), or 'full_remake_fallback' "
+            "(classifier wanted a patch but no op was applicable). FE uses "
+            "this to show 'Updated background video' vs 'Rewriting whole shot' "
+            "toasts."
+        ),
+    )
+    classification: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Output of the intent classifier when it ran. Shape: "
+            "{ intent: 'targeted_patch'|'full_remake', confidence: 0-1, "
+            "rationale: str, patch_ops: [{target, selector_hint, new_value, "
+            "confidence}] }. Omitted when classifier was skipped (e.g. legacy "
+            "timeline) or failed."
+        ),
+    )
+    applied_ops: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        description=(
+            "Patch operations actually applied on the `dom_patch` path. "
+            "Each entry: { target, selector, before, after, ok }. Used by "
+            "the editor to show what changed (e.g. for the undo stack)."
+        ),
+    )
 
 
 class UpdateFrameRequest(BaseModel):
@@ -736,6 +780,15 @@ class UpdateFrameRequest(BaseModel):
             "Free-form per-entry metadata (e.g. {'display_name': 'Welcome'}). "
             "Merged into the entry's existing entry_meta — keys not present in "
             "the payload are preserved. Pass an empty object to no-op."
+        ),
+    )
+    html_model: Optional[str] = Field(
+        None,
+        description=(
+            "Optional model_id that authored this HTML. Sent by the editor "
+            "when accepting a regen so the next 'Remake with AI' on this "
+            "entry resolves to the same model. Stored on the timeline entry "
+            "alongside `html`. None = leave existing value untouched."
         ),
     )
 

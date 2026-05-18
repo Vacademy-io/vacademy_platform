@@ -303,6 +303,42 @@ class AIModelsService:
             all_compatible_models=all_compatible,
         )
 
+    def get_default_model_id_for_use_case(
+        self, use_case: str, *, prefer_free: bool = False
+    ) -> Optional[str]:
+        """Fast lookup: return just the default model_id string for a use_case.
+
+        Reads `ai_model_defaults` and falls back to the highest-scoring active
+        model whose `recommended_for` array contains the use_case. Returns
+        None if nothing matches — callers should apply their own hard fallback.
+
+        prefer_free=True returns the free_tier_model_id first (for free-tier
+        institutes that should not be billed for premium regen models).
+        """
+        defaults_query = text("""
+            SELECT default_model_id, fallback_model_id, free_tier_model_id
+            FROM ai_model_defaults
+            WHERE use_case = :use_case
+        """)
+        row = self.db.execute(defaults_query, {"use_case": use_case}).fetchone()
+        if row:
+            if prefer_free and row.free_tier_model_id:
+                return row.free_tier_model_id
+            if row.default_model_id:
+                return row.default_model_id
+            if row.fallback_model_id:
+                return row.fallback_model_id
+
+        # No row in ai_model_defaults — pick the top-scored recommended model.
+        rec_query = text("""
+            SELECT model_id FROM ai_models
+            WHERE :use_case = ANY(recommended_for) AND is_active = TRUE
+            ORDER BY quality_score DESC, speed_score DESC
+            LIMIT 1
+        """)
+        rec_row = self.db.execute(rec_query, {"use_case": use_case}).fetchone()
+        return rec_row.model_id if rec_row else None
+
     def _get_model_summary(self, model_id: str) -> Optional[AIModelSummary]:
         """Get a model summary by ID."""
         query = text("""

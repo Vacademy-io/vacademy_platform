@@ -113,6 +113,38 @@ _SHORT_SHOT = 2.0
 _MIN_CUE_GAP = 0.30
 _SILENCE_GAP_MIN = 0.60
 
+# Density restraint — what separates "designed" from "every cut has a whoosh."
+# Pro mixes leave negative space; consecutive cues within a tight window read
+# as cheap. Density is tuned per-mood by `_DENSITY_TARGETS`:
+#   - "max_in_window" / "_DENSITY_WINDOW_S": no more than N cues in any rolling
+#     window of W seconds. Dense modes allow more.
+#   - "min_avg_gap_s": after the window pass, drop the lowest-priority cues
+#     until total_cues * min_avg_gap_s <= video_duration_s.
+#
+# Transition cues (role == "transition_whoosh"/"transition_riser") are protected
+# from drops — they're tied to cuts. Other roles are dropped first.
+_DENSITY_WINDOW_S = 5.0
+# Retuned 2026-05 after the first end-to-end test showed "normal" was
+# too aggressive — a 30s video with 7 meaningful events was getting
+# trimmed to 4 cues, including dropping data_reveal on the punchline
+# shot. New targets aim for ~1 cue per 4-5s on "normal" so meaningful
+# beats survive, while still solving the every-3-second over-cueing.
+_DENSITY_TARGETS: Dict[str, Dict[str, float]] = {
+    "sparse":      {"max_in_window": 1, "min_avg_gap_s": 8.0},
+    "educational": {"max_in_window": 2, "min_avg_gap_s": 6.0},
+    "normal":      {"max_in_window": 3, "min_avg_gap_s": 4.5},
+    "default":     {"max_in_window": 3, "min_avg_gap_s": 4.5},
+    "celebratory": {"max_in_window": 3, "min_avg_gap_s": 4.0},
+    "cinematic":   {"max_in_window": 3, "min_avg_gap_s": 4.0},
+    "dense":       {"max_in_window": 4, "min_avg_gap_s": 3.0},
+}
+
+# Stage 2 protected-cue priority: only drop cues with priority STRICTLY
+# below this floor unless we're drastically over budget (>1.5× target).
+# Keeps impact / ui_positive / data_reveal — the punchline cues — even
+# when the gap floor is exceeded. Background chimes / clicks get cut first.
+_STAGE2_PRIORITY_FLOOR = 40
+
 
 # ---------------------------------------------------------------------------
 # Public entry point
@@ -233,24 +265,42 @@ def plan_sounds(
                         prev_entry["sound_cues"].append(_public_cue(t_cue))
                         total_cues += 1
 
-        # ── Rule 2: Shot-type signature cue (one per shot, at sync[0] or fixed time) ──
-        sig = SHOT_TYPE_CUE.get(shot_type)
-        if sig is not None:
-            role, placement, volume_mul = sig
-            sig_cues = _resolve_signature_cue(
-                palette=palette,
-                role=role,
-                placement=placement,
-                volume_mul=volume_mul,
-                shot=director_shot,
-                start_time=start_time,
-                duration=duration,
-                shot_idx=shot_idx,
-                # Title/impact hits must be sample-accurate so the punch
-                # lands on the visual frame, not 30-80ms after it.
-                no_natural_offset=(role in ("impact", "transition_whoosh")),
-            )
-            cues.extend(sig_cues)
+        # ── Rule 2a: Event-driven cues from sync_points (B1) ─────────
+        # When the Director emits sync_points with `action` text (e.g.
+        # "annotate title with underline", "fadeIn subtitle"), use those
+        # as the cue anchors with action-derived roles. This is what
+        # separates "sounds at shot boundaries" from "sounds ON the
+        # visual event" — the picture-perfect placement.
+        event_cues = _resolve_event_cues_from_sync_points(
+            palette=palette,
+            shot=director_shot,
+            start_time=start_time,
+            duration=duration,
+            shot_idx=shot_idx,
+        )
+        # ── Rule 2b: Signature fallback when no event-driven cues ────
+        # Existing behavior — only fires when sync_points were missing
+        # or had no actionable text. Avoids double-cueing.
+        if event_cues:
+            cues.extend(event_cues)
+        else:
+            sig = SHOT_TYPE_CUE.get(shot_type)
+            if sig is not None:
+                role, placement, volume_mul = sig
+                sig_cues = _resolve_signature_cue(
+                    palette=palette,
+                    role=role,
+                    placement=placement,
+                    volume_mul=volume_mul,
+                    shot=director_shot,
+                    start_time=start_time,
+                    duration=duration,
+                    shot_idx=shot_idx,
+                    # Title/impact hits must be sample-accurate so the punch
+                    # lands on the visual frame, not 30-80ms after it.
+                    no_natural_offset=(role in ("impact", "transition_whoosh")),
+                )
+                cues.extend(sig_cues)
 
         # ── Rule 3: Skill-derived audio events ──
         skill_events = entry.get("_skill_audio_events") or []
@@ -316,8 +366,226 @@ def plan_sounds(
     for e in ordered:
         e["sound_cues"].sort(key=lambda c: float(c.get("t", 0)))
 
+    # ── Context attach: narration excerpt + shot type per cue ──────
+    # Gives downstream sfx_palette_planner enough to build content-aware
+    # fal-elevenlabs prompts (e.g. "warm uplifting bell for a milestone
+    # number reveal" instead of the generic "warm bell tone"). Cheap —
+    # one O(words × cues) scan but words and cues both stay small.
+    _attach_cue_context(ordered, words)
+
+    # ── Density restraint (the "negative-space" pass) ──────────────
+    # Walks the video globally and drops over-dense cues. Transitions
+    # are protected; impact/positive/data_reveal cues are protected from
+    # stage-2 drops unless drastically over budget.
+    #
+    # Density mode is resolved in priority order:
+    #   1. tier_config["audio_density_mode"] when explicitly set to a
+    #      non-default value ("sparse", "dense", etc.)
+    #   2. tier_config["audio_mood"] when set (mirrors the SFX palette
+    #      planner — celebratory video → celebratory density)
+    #   3. "normal" as the safe default
+    _explicit_mode = str(tier_config.get("audio_density_mode") or "").lower()
+    _mood_for_density = str(tier_config.get("audio_mood") or "").lower()
+    if _explicit_mode in _DENSITY_TARGETS and _explicit_mode not in ("normal", "default"):
+        density_mode = _explicit_mode
+    elif _mood_for_density in _DENSITY_TARGETS:
+        density_mode = _mood_for_density
+    else:
+        density_mode = _explicit_mode or "default"
+    dropped = _enforce_density(ordered, density_mode)
+    if dropped:
+        # Recompute total for the log line.
+        total_cues = sum(len(e["sound_cues"]) for e in ordered)
+        try:
+            import logging as _lg
+            _lg.getLogger(__name__).info(
+                "[sound] density pass: mode=%s dropped=%d remaining=%d",
+                density_mode, dropped, total_cues,
+            )
+        except Exception:
+            pass
+
     # Log palette summary
     _log_palette(palette, total_cues, len(ordered))
+
+
+def _attach_cue_context(
+    entries: List[Dict[str, Any]],
+    words: List[Dict[str, Any]],
+) -> None:
+    """Stash per-cue context on each cue: shot_type + narration window text.
+
+    Window: ±1.5s around the cue's absolute time. The downstream SFX
+    palette planner uses this to build content-aware fal prompts so each
+    cue's sound is purpose-built for what's actually happening on screen
+    instead of a generic role-only prompt.
+
+    Words list is the same the planner consumes for emphasis anchors;
+    each entry has `time` (absolute) and `word` (text). Robust to either
+    shape (some upstream code uses `text` instead).
+    """
+    if not entries:
+        return
+    # Pre-sort words by time for O(log N) lookup later if it ever matters.
+    safe_words: List[Tuple[float, str]] = []
+    for w in (words or []):
+        try:
+            t_abs = float(w.get("time", w.get("start", 0.0)))
+        except (TypeError, ValueError):
+            continue
+        txt = (w.get("word") or w.get("text") or "").strip()
+        if txt:
+            safe_words.append((t_abs, txt))
+    safe_words.sort(key=lambda x: x[0])
+
+    def _window_text(abs_t: float, half_s: float = 1.5) -> str:
+        lo, hi = abs_t - half_s, abs_t + half_s
+        toks: List[str] = []
+        for t_w, txt in safe_words:
+            if t_w < lo:
+                continue
+            if t_w > hi:
+                break
+            toks.append(txt)
+        return " ".join(toks)[:200]
+
+    for entry in entries:
+        e_start = float(entry.get("start", 0.0))
+        shot_type = str(entry.get("_shot_type", "") or "")
+        for cue in entry.get("sound_cues") or []:
+            try:
+                t_rel = float(cue.get("t", 0.0))
+            except (TypeError, ValueError):
+                t_rel = 0.0
+            abs_t = e_start + t_rel
+            cue["context"] = {
+                "shot_type": shot_type,
+                "text": _window_text(abs_t),
+            }
+
+
+def _enforce_density(entries: List[Dict[str, Any]], mode: str) -> int:
+    """Drop over-dense cues video-globally. Returns count dropped.
+
+    Two-stage:
+      1. Sliding-window: no more than `max_in_window` cues in any
+         `_DENSITY_WINDOW_S` window.
+      2. Average-gap floor: total cues × `min_avg_gap_s` <= video_dur.
+
+    Transition cues (transition_whoosh, transition_riser) are protected
+    in stage 1 — a cut without a whoosh reads as a bug. Other roles are
+    dropped first.
+    """
+    target = _DENSITY_TARGETS.get(mode, _DENSITY_TARGETS["default"])
+    max_in_window = int(target["max_in_window"])
+    min_avg_gap_s = float(target["min_avg_gap_s"])
+
+    # Flatten to (abs_t, entry_idx, cue_idx_in_entry, cue) sorted by abs_t.
+    flat: List[Tuple[float, int, int, Dict[str, Any]]] = []
+    for ei, e in enumerate(entries):
+        e_start = float(e.get("start", 0.0))
+        for ci, cue in enumerate(e.get("sound_cues") or []):
+            abs_t = e_start + float(cue.get("t", 0.0))
+            flat.append((abs_t, ei, ci, cue))
+    flat.sort(key=lambda x: x[0])
+    if not flat:
+        return 0
+
+    def _is_transition(c: Dict[str, Any]) -> bool:
+        return (c.get("role") or "").lower() in (
+            "transition_whoosh", "transition_riser",
+        )
+
+    def _priority(c: Dict[str, Any]) -> int:
+        # Higher = more important (less likely to drop).
+        role = (c.get("role") or "").lower()
+        if role.startswith("transition_"):
+            return 100
+        if role == "impact":
+            return 60
+        if role in ("ui_positive", "data_reveal"):
+            return 40
+        return 20
+
+    keep_flags = [True] * len(flat)
+
+    # ── Stage 1: sliding-window cap ────────────────────────────────
+    for i, (t_i, _, _, cue_i) in enumerate(flat):
+        if not keep_flags[i]:
+            continue
+        # Count kept neighbors in [t_i - WIN, t_i + WIN].
+        window_indices = []
+        for j in range(len(flat)):
+            if not keep_flags[j]:
+                continue
+            if abs(flat[j][0] - t_i) <= _DENSITY_WINDOW_S:
+                window_indices.append(j)
+        if len(window_indices) <= max_in_window:
+            continue
+        # Over budget — drop lowest priority non-transition first.
+        sorted_for_drop = sorted(
+            window_indices,
+            key=lambda j: (_priority(flat[j][3]),
+                           -float(flat[j][3].get("volume") or 0)),
+        )
+        n_drop = len(window_indices) - max_in_window
+        for j in sorted_for_drop:
+            if n_drop <= 0:
+                break
+            if _is_transition(flat[j][3]):
+                continue  # never drop transitions in stage 1
+            if not keep_flags[j]:
+                continue
+            keep_flags[j] = False
+            n_drop -= 1
+
+    # ── Stage 2: average-gap floor across the whole video ──────────
+    video_dur = max(0.5, flat[-1][0] - flat[0][0]) if len(flat) >= 2 else 1.0
+    # Use full video duration if we can derive it from entries.
+    if entries:
+        last_e = entries[-1]
+        possible_end = float(last_e.get("end") or last_e.get("start") or 0.0)
+        if possible_end > video_dur:
+            video_dur = possible_end
+    kept_count = sum(1 for k in keep_flags if k)
+    # round() (not int()) so we don't floor 30/6.5 = 4.6 down to 4.
+    # Adds one cue of slack for content-dense videos.
+    max_total = round(video_dur / min_avg_gap_s) if min_avg_gap_s > 0 else kept_count
+    # Hard-over budget: we'd need to drop more than the priority floor allows.
+    # In that case stage 2 will drop ALL low-priority cues then start cutting
+    # impacts/positives. Below this threshold we leave impacts/positives alone.
+    drastically_over = kept_count > int(max_total * 1.5)
+
+    if kept_count > max_total:
+        kept_indices = [i for i, k in enumerate(keep_flags) if k]
+        # Sort ascending by priority, then descending by volume (i.e. drop
+        # low-priority quiet cues first).
+        kept_indices.sort(key=lambda i: (_priority(flat[i][3]),
+                                          -float(flat[i][3].get("volume") or 0)))
+        to_drop = kept_count - max_total
+        for i in kept_indices:
+            if to_drop <= 0:
+                break
+            # Protect punchline cues unless drastically over budget.
+            if (not drastically_over
+                    and _priority(flat[i][3]) >= _STAGE2_PRIORITY_FLOOR):
+                continue
+            keep_flags[i] = False
+            to_drop -= 1
+
+    # ── Write back: rebuild each entry's sound_cues ───────────────
+    new_cues_per_entry: Dict[int, List[Tuple[int, Dict[str, Any]]]] = {}
+    dropped = 0
+    for idx, (_, ei, ci, cue) in enumerate(flat):
+        if keep_flags[idx]:
+            new_cues_per_entry.setdefault(ei, []).append((ci, cue))
+        else:
+            dropped += 1
+    for ei, e in enumerate(entries):
+        kept = new_cues_per_entry.get(ei, [])
+        kept.sort(key=lambda x: x[0])
+        e["sound_cues"] = [c for _, c in kept]
+    return dropped
 
 
 # ---------------------------------------------------------------------------
@@ -505,6 +773,120 @@ def _resolve_signature_cue(
     return []
 
 
+# ---------------------------------------------------------------------------
+# B1 — Visual-event-driven cueing (action keyword → role)
+# ---------------------------------------------------------------------------
+
+# Each sync_point may carry an `action` string describing what happens
+# on screen at that time (e.g. "fadeIn subtitle", "annotate title with
+# underline", "highlight callout"). Map keywords → cue role so the
+# sound matches the visual event, not the shot-type bucket.
+#
+# Order matters — first match wins. The patterns prefer specific events
+# over generic ones (so "annotate title with underline" picks `impact`
+# from "annotate", not `ui_chime` from a later "title" pattern).
+_ACTION_TO_ROLE: List[Tuple[re.Pattern, str, float]] = [
+    # Hard punctuating events — emphasis on a specific word/element.
+    (re.compile(r"\b(annotate|underline|highlight\s*callout|emphas)\b", re.I),
+     "impact", 0.90),
+    # Numbers/data appearing — bar grows, counter ticks, chart enters.
+    (re.compile(r"\b(chart|graph|bar|number|count\s*up|counter|stat|data|percent)\b", re.I),
+     "data_reveal", 0.85),
+    # Positive milestones / celebratory beats.
+    (re.compile(r"\b(checkmark|tick|approve|confirm|success|done|complete|won|winner|celebr)\b", re.I),
+     "ui_positive", 0.85),
+    # Negative / error cues.
+    (re.compile(r"\b(error|fail|cross|x\s*mark|wrong|incorrect|warning|deny)\b", re.I),
+     "ui_negative", 0.75),
+    # Type-in / split-reveal / typewriter — energetic text appear.
+    (re.compile(r"\b(splitreveal|split\s*reveal|typewrite|typewriter|type\s*in)\b", re.I),
+     "ui_positive", 0.80),
+    # Buttons / UI clicks / select.
+    (re.compile(r"\b(button|click|tap|select|toggle|switch)\b", re.I),
+     "ui_click", 0.65),
+    # Soft reveals — fadeIn, slideIn, appear, show.
+    (re.compile(r"\b(fadein|fade\s*in|slidein|slide\s*in|appear|reveal|show|enter|popin|pop\s*in)\b", re.I),
+     "ui_chime", 0.80),
+    # Camera/scene moves — zoom, push-in, dolly. Treat as gentle impact.
+    (re.compile(r"\b(zoom|push\s*in|dolly|pan\s*to)\b", re.I),
+     "impact", 0.70),
+]
+
+
+def _action_to_role(action: str) -> Optional[Tuple[str, float]]:
+    """Map a sync_point.action string to (role, volume_mul). Returns
+    None when no keyword matches — caller falls back to a default."""
+    if not action or not isinstance(action, str):
+        return None
+    for pat, role, vol in _ACTION_TO_ROLE:
+        if pat.search(action):
+            return (role, vol)
+    return None
+
+
+def _resolve_event_cues_from_sync_points(
+    *,
+    palette: Dict[str, Any],
+    shot: Dict[str, Any],
+    start_time: float,
+    duration: float,
+    shot_idx: int,
+) -> List[Dict[str, Any]]:
+    """Emit one cue per Director-provided sync_point whose `action` text
+    maps to a known role. Returns [] when sync_points are missing or
+    every action is empty/unmapped — caller then falls back to the
+    shot-type signature rule.
+
+    Each sync_point is treated as a discrete visual event with its own
+    role. The downstream density restraint will trim if a single shot
+    over-emits.
+    """
+    sync_points = shot.get("sync_points") or []
+    if not sync_points:
+        return []
+
+    out: List[Dict[str, Any]] = []
+    seen_t: List[float] = []  # de-dup very-close events within this shot
+    for sp in sync_points:
+        try:
+            abs_t = float(sp.get("time", 0))
+        except (TypeError, ValueError):
+            continue
+        rel = abs_t - start_time
+        # Allow tiny negative slop (-0.05) the same way _shot_relative_sync_times does.
+        if rel < -0.05 or rel > duration - 0.05:
+            continue
+        rel = max(0.0, rel)
+
+        # Within-shot de-dup: ignore points within MIN_GAP of one we already kept.
+        if any(abs(rel - prev) < _MIN_CUE_GAP for prev in seen_t):
+            continue
+
+        action = str(sp.get("action") or "").strip()
+        mapped = _action_to_role(action)
+        if mapped is None:
+            # No actionable text — skip (signature fallback in caller).
+            # We could emit a default ui_chime here, but that would
+            # double-cue with the signature rule. Prefer letting the
+            # signature path handle the "no events" case cleanly.
+            continue
+        role, volume_mul = mapped
+        if role not in palette:
+            continue
+        cue = _cue_from_palette(
+            palette, role,
+            shot_idx, f"event:{action[:40]}",
+            t=rel, volume_mul=volume_mul,
+            # Event cues should land sample-accurately on the visual
+            # frame — disable the natural-offset wobble.
+            no_natural_offset=True,
+        )
+        if cue:
+            out.append(cue)
+            seen_t.append(rel)
+    return out
+
+
 def _shot_relative_sync_times(
     sync_points: List[Dict[str, Any]],
     start_time: float,
@@ -608,4 +990,8 @@ def _public_cue(cue: Dict[str, Any]) -> Dict[str, Any]:
         "volume": cue.get("volume"),
         "role": cue.get("role"),
         "duration": cue.get("duration"),
+        # context for downstream sfx_palette_planner — drives content-aware
+        # prompts so this specific moment's chime/whoosh sounds purpose-built.
+        # Populated by _attach_cue_context after density pass.
+        "context": cue.get("context"),
     }

@@ -126,6 +126,20 @@ class MixSpec:
     stinger_cues: List[MixCue] = field(default_factory=list)
     enable_ducking: bool = True
     enable_loudnorm: bool = True
+    # A4 — VO-RMS-aware per-cue volume. When True, the mixer pre-analyses
+    # the narration's per-100ms RMS curve and shifts each cue's volume so
+    # it sits `vo_aware_target_db` above VO level at that exact moment.
+    # Result: a chime over a loud word punches through; a chime over a
+    # breath doesn't blast. Costs one extra ffmpeg pass at start.
+    enable_vo_aware_volume: bool = True
+    vo_aware_target_db: float = 4.0
+    vo_aware_max_offset_db: float = 6.0
+    # A5 — mood-driven reverb on the SFX bus. Adds spatial depth that
+    # matches the video's tone — "cinematic" gets a lush hall tail,
+    # "celebratory" gets a medium room, "educational"/"default" stays
+    # mostly dry. Set to None to disable post-process reverb (relying
+    # on whatever tail the fal-gen prompt produced).
+    reverb_mood: Optional[str] = None
 
 
 @dataclass
@@ -234,6 +248,169 @@ def download_cues_to_disk(
 
 
 # ---------------------------------------------------------------------------
+# A4: VO RMS analysis + per-cue gain adjustment
+# ---------------------------------------------------------------------------
+
+# Per-100ms RMS bucket width. Tight enough to catch syllable-level
+# loudness changes; coarse enough to keep the parse cheap.
+_VO_RMS_BUCKET_S = 0.10
+
+
+def _analyze_vo_rms_curve(vo_path: Path) -> List[Tuple[float, float]]:
+    """Return [(t_s, rms_dbfs), ...] sampled every _VO_RMS_BUCKET_S
+    across the narration. Failure returns [] (caller falls back to
+    cue.volume as-is).
+
+    Uses ffmpeg's `astats` filter with `reset=0.1`, which emits a
+    per-100ms RMS measurement to the ametadata stream. We parse the
+    stderr where `lavfi.astats.Overall.RMS_level` lines appear in
+    time order.
+    """
+    ffmpeg = shutil.which("ffmpeg") or "ffmpeg"
+    # `astats=metadata=1:reset=0.1` resets stats every 0.1s, giving a
+    # per-bucket RMS. `ametadata=mode=print:key=lavfi.astats.Overall.RMS_level`
+    # prints those values to stderr where we can read them.
+    cmd = [
+        ffmpeg, "-hide_banner", "-loglevel", "info",
+        "-i", str(vo_path),
+        "-af", "astats=metadata=1:reset=0.1,"
+               "ametadata=mode=print:key=lavfi.astats.Overall.RMS_level",
+        "-f", "null", "-",
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        logger.warning("[mixer] VO RMS analysis failed: %s", e)
+        return []
+    if proc.returncode != 0:
+        logger.warning("[mixer] VO RMS analysis non-zero exit: %s",
+                       proc.stderr[-300:] if proc.stderr else "(no stderr)")
+        return []
+
+    # ametadata emits blocks like:
+    #   [Parsed_ametadata_1 @ 0x...] frame:0    pts:0       pts_time:0
+    #   [Parsed_ametadata_1 @ 0x...] lavfi.astats.Overall.RMS_level=-23.456
+    # We pair pts_time with the next RMS_level entry. Each line is
+    # prefixed by ffmpeg's filter identifier, so we substring-search
+    # instead of startswith.
+    curve: List[Tuple[float, float]] = []
+    current_t: Optional[float] = None
+    for line in (proc.stderr or "").splitlines():
+        if "pts_time:" in line:
+            try:
+                t_str = line.split("pts_time:")[1].split()[0]
+                current_t = float(t_str)
+            except (IndexError, ValueError):
+                current_t = None
+        elif "lavfi.astats.Overall.RMS_level=" in line and current_t is not None:
+            try:
+                v = line.rsplit("=", 1)[-1].strip()
+                # ffmpeg emits "-inf" for silent buckets — treat as floor.
+                rms_db = -90.0 if v.lower() in ("-inf", "inf", "nan") else float(v)
+                curve.append((float(current_t), rms_db))
+            except ValueError:
+                continue
+            current_t = None
+    return curve
+
+
+def _vo_rms_at(curve: List[Tuple[float, float]], t: float) -> float:
+    """Lookup RMS dBFS at time t via bisect (curve is monotonic in t).
+    Returns -30 (a quiet-but-present default) when curve is empty — this
+    makes the offset close to zero so unanalyzed cues keep their original
+    volume.
+
+    Curve is variable-rate (ffmpeg emits per-frame, not per-100ms), so
+    we can't index by bucket — must search by time."""
+    if not curve:
+        return -30.0
+    import bisect
+    times = [pt[0] for pt in curve]
+    idx = bisect.bisect_left(times, t)
+    if idx <= 0:
+        return curve[0][1]
+    if idx >= len(curve):
+        return curve[-1][1]
+    # Pick the closer of (idx-1, idx) to t.
+    left_t, left_db = curve[idx - 1]
+    right_t, right_db = curve[idx]
+    return left_db if (t - left_t) < (right_t - t) else right_db
+
+
+def _apply_vo_aware_volume(
+    cue_files: List[Tuple[Path, float, float, str]],
+    vo_curve: List[Tuple[float, float]],
+    *,
+    target_above_vo_db: float,
+    max_offset_db: float,
+) -> List[Tuple[Path, float, float, str]]:
+    """Adjust each cue's volume so it sits `target_above_vo_db` louder than
+    the VO RMS at the cue's time. Offset is clamped to `±max_offset_db`
+    so a quiet breath bucket doesn't blast the cue to silly levels.
+
+    Volume is linear [0..1]. Conversion: gain_db = target + ref_db - rms_db,
+    where ref_db is a "typical" VO RMS of -23 dBFS — anything quieter than
+    this we boost, anything louder we cut. Net effect: cues track VO
+    level instead of having one flat gain across the video.
+    """
+    if not vo_curve:
+        return cue_files
+    # REF_VO_DB is the "typical" narration RMS the planner's base
+    # cue.volume was implicitly calibrated against. A VO bucket quieter
+    # than REF means the cue can sit at the same gain (or quieter still);
+    # a bucket louder than REF means the cue needs to push up to keep
+    # its perceptual headroom above the VO. The cue's intrinsic loudness
+    # is treated as constant — only the *delta* between this bucket's
+    # RMS and REF_VO_DB matters. target_above_vo_db informs the clamp:
+    # we never push more than +target above the nominal, since beyond
+    # that the cue starts dominating the mix.
+    REF_VO_DB = -23.0
+    out: List[Tuple[Path, float, float, str]] = []
+    for (path, t_s, base_vol, label) in cue_files:
+        rms_db = _vo_rms_at(vo_curve, float(t_s))
+        # Two components:
+        #   1. Tracking: loud VO bucket → push cue up; quiet bucket → pull
+        #      cue down. 70% strength so we don't over-correct on tiny
+        #      RMS noise between syllables.
+        #   2. Headroom bias: every cue gets +target_above_vo_db so the
+        #      bus sits proud of VO on average (the user-tunable knob).
+        tracking_db = (rms_db - REF_VO_DB) * 0.7
+        offset_db = tracking_db + float(target_above_vo_db)
+        offset_db = max(-max_offset_db, min(max_offset_db, offset_db))
+        gain_lin = 10.0 ** (offset_db / 20.0)
+        new_vol = max(0.0, min(1.5, base_vol * gain_lin))
+        out.append((path, t_s, new_vol, label))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# A5: mood-driven reverb send on the SFX bus
+# ---------------------------------------------------------------------------
+
+# Each entry: (aecho_filter_string, wet_amount_0_to_1). When the wet
+# amount is 0 OR the entry is None, reverb post-processing is skipped
+# entirely and only the dry SFX bus continues. The aecho params are
+# tuned to taste — multiple taps + decays simulate the shape of an
+# early-reflection + tail without needing a true convolution reverb.
+_REVERB_BY_MOOD: Dict[str, Optional[Tuple[str, float]]] = {
+    # educational: stay dry — clarity over space. No post-process verb.
+    "educational": None,
+    # default: very mild room — barely perceptible. Skip to keep mix tight.
+    "default": None,
+    # celebratory: medium room — adds warmth and uplift to chimes/whooshes.
+    "celebratory": (
+        "aecho=0.85:0.4:120|240|420:0.4|0.28|0.18",
+        0.25,
+    ),
+    # cinematic: lush hall — long tails, atmospheric, dramatic.
+    "cinematic": (
+        "aecho=0.80:0.5:180|360|600|1000:0.5|0.4|0.3|0.2",
+        0.35,
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
 # ffmpeg filter graph builder
 # ---------------------------------------------------------------------------
 
@@ -330,12 +507,65 @@ def _build_filter_graph(
             f"input count mismatch: declared {n_total_inputs}, wired {next_input}"
         )
 
+    # ── SFX bus: glue layer for consistent punch ───────────────────
+    # Pros mix SFX through a bus compressor + limiter so cues don't have
+    # wildly varying loudness (one whoosh poking 6 dB above the next).
+    # We amix all sfx into [sfx_bus], compress with a gentle 3:1 ratio
+    # tuned for transient-rich material (fast attack, moderate release),
+    # then alimiter-cap so the busiest moment can't clip into the master.
+    # When only one SFX exists, skip the amix step (acompressor still
+    # runs — it shapes the single cue's envelope just the same).
+    sfx_bus_label: Optional[str] = None
+    if sfx_labels:
+        if len(sfx_labels) == 1:
+            bus_input = sfx_labels[0]
+        else:
+            parts.append(
+                f"{''.join(sfx_labels)} amix=inputs={len(sfx_labels)}:"
+                f"duration=longest:normalize=0 [sfx_premix]"
+            )
+            bus_input = "[sfx_premix]"
+        # acompressor: gentle glue, fast attack to catch transients,
+        # moderate release for natural decay. makeup=2 (≈+6 dB) restores
+        # average level after gain reduction so the bus sits proud in
+        # the final mix instead of being squashed below VO.
+        parts.append(
+            f"{bus_input} acompressor=threshold=-18dB:ratio=3:"
+            f"attack=5:release=80:makeup=2 [sfx_comp]"
+        )
+
+        # A5 — mood-driven reverb send. Compression first (so the tail
+        # isn't crushed), then split into dry + wet, apply aecho on wet,
+        # mix back, then alimiter. When the mood doesn't want post-process
+        # verb (default/educational/None), skip the split and limiter-only
+        # the compressed signal.
+        reverb_cfg = (_REVERB_BY_MOOD.get(spec.reverb_mood)
+                      if spec.reverb_mood else None)
+        if reverb_cfg is not None:
+            verb_chain, wet_amount = reverb_cfg
+            parts.append("[sfx_comp] asplit=2 [sfx_dry][sfx_wet_in]")
+            parts.append(f"[sfx_wet_in] {verb_chain} [sfx_wet]")
+            # amix weights: dry=1.0, wet=wet_amount. normalize=0 keeps
+            # the dry sound at its full level and adds wet on top.
+            parts.append(
+                f"[sfx_dry][sfx_wet] amix=inputs=2:"
+                f"weights=1 {wet_amount:.2f}:"
+                f"duration=longest:normalize=0 [sfx_verbed]"
+            )
+            parts.append(
+                "[sfx_verbed] alimiter=limit=-2dB [sfx_bus]"
+            )
+        else:
+            parts.append("[sfx_comp] alimiter=limit=-2dB [sfx_bus]")
+        sfx_bus_label = "[sfx_bus]"
+
     # ── amix all layers ─────────────────────────────────────────────
     mix_inputs: List[str] = []
     if music_label:
         mix_inputs.append(music_label)
     mix_inputs.append(vo_label)
-    mix_inputs.extend(sfx_labels)
+    if sfx_bus_label:
+        mix_inputs.append(sfx_bus_label)
     k = len(mix_inputs)
     # If only VO is present, skip amix entirely — VO is already labeled.
     if k == 1:
@@ -418,6 +648,22 @@ def build_mix(
         cue_files.sort(key=lambda r: r[1])
         if cue_files:
             layers_used.append("sfx")
+            # A4 — VO-RMS-aware cue volumes. One quick analysis pass over
+            # narration.mp3, then shift each cue's gain so loud-VO buckets
+            # push cues up and quiet-VO buckets pull them down. Skips
+            # silently if the analysis fails (cues keep base volumes).
+            if spec.enable_vo_aware_volume:
+                vo_curve = _analyze_vo_rms_curve(Path(spec.vo_path))
+                if vo_curve:
+                    cue_files = _apply_vo_aware_volume(
+                        cue_files, vo_curve,
+                        target_above_vo_db=spec.vo_aware_target_db,
+                        max_offset_db=spec.vo_aware_max_offset_db,
+                    )
+                    logger.info(
+                        "[mixer] VO-aware volume applied (%d buckets, %d cues)",
+                        len(vo_curve), len(cue_files),
+                    )
     else:
         cue_files = []
 

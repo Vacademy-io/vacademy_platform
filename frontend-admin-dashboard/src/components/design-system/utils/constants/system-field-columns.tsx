@@ -28,6 +28,7 @@ const SYSTEM_FIELD_KEY_TO_ACCESSOR: Record<string, string> = {
     PREFFERED_BATCH: 'preffered_batch',
     EXPIRY_DATE: 'expiry_date',
     STATUS: 'status',
+    REFERRAL_COUNT: 'referral_count',
 };
 
 /**

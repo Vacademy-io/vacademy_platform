@@ -174,6 +174,14 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                 AND psli.status = 'ACTIVE'
                 AND psli.package_session_id IN (:packageSessionIds)
             ))
+        AND NOT EXISTS (
+              SELECT 1
+              FROM package_session_learner_invitation_to_payment_option psli_int
+              JOIN package_session ps_int ON psli_int.package_session_id = ps_int.id
+              JOIN package p_int ON ps_int.package_id = p_int.id
+              WHERE psli_int.enroll_invite_id = ei.id
+                AND p_int.package_type IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')
+            )
       """, countQuery = """
       SELECT COUNT(DISTINCT pl.id)
       FROM payment_log pl
@@ -193,6 +201,14 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                 AND psli.status = 'ACTIVE'
                 AND psli.package_session_id IN (:packageSessionIds)
             ))
+        AND NOT EXISTS (
+              SELECT 1
+              FROM package_session_learner_invitation_to_payment_option psli_int
+              JOIN package_session ps_int ON psli_int.package_session_id = ps_int.id
+              JOIN package p_int ON ps_int.package_id = p_int.id
+              WHERE psli_int.enroll_invite_id = ei.id
+                AND p_int.package_type IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')
+            )
       """, nativeQuery = true)
   Page<PaymentLogWithUserPlanProjection> findPaymentLogsByFiltersNative(
       @Param("instituteId") String instituteId,

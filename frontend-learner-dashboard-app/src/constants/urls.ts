@@ -183,6 +183,7 @@ export const ENROLLMENT_PAYMENT_GATEWAY_DETAILS = `${BASE_URL}/admin-core-servic
 export const ENROLLMENT_INVITE_DETAILS = `${BASE_URL}/admin-core-service/v1/enroll-invite`;
 export const ENROLLMENT_PAYMENT_INITIATION = `${BASE_URL}/admin-core-service/v1/learner/enroll`;
 export const ENROLLMENT_PAYMENT_INITIATION_V2 = `${BASE_URL}/admin-core-service/v2/learner/enroll`;
+export const PAYMENT_LOGS_URL = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs`;
 export const COLLECT_PUBLIC_USER_DATA = `${BASE_URL}/admin-core-service/v1/learner/enroll/detail`;
 
 export const GENERATE_CERTIFICATE = `${BASE_URL}/admin-core-service/institute/v1/certificate/learner/get`;

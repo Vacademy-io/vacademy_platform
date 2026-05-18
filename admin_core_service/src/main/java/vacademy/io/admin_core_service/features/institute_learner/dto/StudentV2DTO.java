@@ -70,4 +70,11 @@ public class StudentV2DTO {
     // True for audience-only respondents (no enrollment in this institute). Frontend
     // renders an "Audience" badge next to the name and tolerates the null ssigm-side fields.
     private Boolean isAudienceOnly;
+
+    // Every package_session_id the user is enrolled in at this institute. The row's
+    // primary `packageSessionId` is the latest one (deterministic via ORDER BY enrolled_date
+    // DESC in the slim query). Side-view tabs that fetch batch-scoped data iterate this
+    // list so a user with multiple enrollments sees data from all batches, not just the
+    // latest one. Empty for audience-only respondents.
+    private java.util.List<String> allPackageSessionIds;
 }

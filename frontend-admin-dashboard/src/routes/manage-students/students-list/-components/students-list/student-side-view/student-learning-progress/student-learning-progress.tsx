@@ -3,6 +3,7 @@ import { SubjectProgress } from './chapter-details/subject-progress';
 import { useStudentSubjectsProgressQuery } from '@/routes/manage-students/students-list/-services/getStudentSubjects';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
+import { BatchPicker } from '../BatchPicker';
 import {
     ModulesWithChaptersProgressType,
     SubjectWithDetails,
@@ -33,6 +34,22 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
     const [percentageCompleted, setPercentageCompleted] = useState<number>(0);
     const router = useRouter();
 
+    // Multi-enrollment: admin scopes the progress view to a specific batch.
+    // Defaults to the row's primary (latest) ps_id; falls back to the legacy single field.
+    const enrollmentPsIds: string[] = (selectedStudent?.all_package_session_ids?.length
+        ? selectedStudent.all_package_session_ids
+        : selectedStudent?.package_session_id
+          ? [selectedStudent.package_session_id]
+          : []) as string[];
+    const [selectedPsId, setSelectedPsId] = useState<string>(enrollmentPsIds[0] ?? '');
+    useEffect(() => {
+        setSelectedPsId(enrollmentPsIds[0] ?? '');
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedStudent?.user_id]);
+    const activePsId = isSubmissionTab
+        ? selectedStudent?.package_id || ''
+        : selectedPsId;
+
     // Initialize the form and its methods
     const formMethods = useForm({
         defaultValues: {
@@ -43,13 +60,9 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
 
     useEffect(() => {
         setBatch(
-            getDetailsFromPackageSessionId({
-                packageSessionId: isSubmissionTab
-                    ? selectedStudent?.package_id || ''
-                    : selectedStudent?.package_session_id || '',
-            })
+            getDetailsFromPackageSessionId({ packageSessionId: activePsId })
         );
-    }, [selectedStudent]);
+    }, [selectedStudent, activePsId]);
 
     const {
         data: subjectsWithChapters,
@@ -58,9 +71,7 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
         error,
     } = useStudentSubjectsProgressQuery({
         userId: isSubmissionTab ? selectedStudent?.id || '' : selectedStudent?.user_id || '',
-        packageSessionId: isSubmissionTab
-            ? selectedStudent?.package_id || ''
-            : selectedStudent?.package_session_id || '',
+        packageSessionId: activePsId,
     });
 
     useEffect(() => {
@@ -113,15 +124,43 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
     };
 
     if (selectedStudent == null) return <p>Student details unavailable</p>;
-    if (isLoading) return <DashboardLoader />;
-    if (isError || error) return <p>Error loading subject details</p>;
+
+    // Picker stays visible across loading/error/empty so admin can still switch batches.
+    const picker = !isSubmissionTab && (
+        <BatchPicker
+            packageSessionIds={enrollmentPsIds}
+            value={selectedPsId}
+            onChange={setSelectedPsId}
+            label="View progress for"
+        />
+    );
+
+    if (isLoading)
+        return (
+            <div>
+                {picker}
+                <DashboardLoader />
+            </div>
+        );
+    if (isError || error)
+        return (
+            <div>
+                {picker}
+                <p>Error loading subject details</p>
+            </div>
+        );
     if (
         subjectsWithChapters == null ||
         subjectsWithChapters == undefined ||
         subjectsWithChapters.length == 0 ||
         subjectsWithChapters[0] == undefined
     )
-        return <p>No subject has been created</p>;
+        return (
+            <div>
+                {picker}
+                <p>No subject has been created</p>
+            </div>
+        );
 
     // Prepare options for subject dropdown
     const subjectOptions = subjectsWithChapters.map((subject) => ({
@@ -178,6 +217,7 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
     return (
         <FormProvider {...formMethods}>
             <div className="flex flex-col gap-6">
+                {picker}
                 <div className="flex items-center gap-10">
                     <div className="flex flex-col gap-6">
                         <p className="text-title font-semibold text-primary-500">

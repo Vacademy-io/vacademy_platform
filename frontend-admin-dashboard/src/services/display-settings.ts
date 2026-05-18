@@ -517,6 +517,21 @@ function mergeDisplayWithDefaults(
             defLearnerManagement.showApprovalToggle,
     };
 
+    // Learner-list column visibility (per-role overlay). Passes through whatever
+    // the role has saved. Empty/missing = institute defaults apply at render time:
+    // system columns visible, custom fields hidden until admin opts in.
+    if (incoming?.learnerListColumns || defaults.learnerListColumns) {
+        merged.learnerListColumns = {
+            hiddenColumns:
+                incoming?.learnerListColumns?.hiddenColumns ??
+                defaults.learnerListColumns?.hiddenColumns ??
+                [],
+            enabledCustomFields:
+                incoming?.learnerListColumns?.enabledCustomFields ??
+                defaults.learnerListColumns?.enabledCustomFields,
+        };
+    }
+
     // Live class scheduling (role-level overlay on top of institute-level
     // Live Session Settings). Both flags default ON so existing roles aren't
     // suddenly locked out of either flow.

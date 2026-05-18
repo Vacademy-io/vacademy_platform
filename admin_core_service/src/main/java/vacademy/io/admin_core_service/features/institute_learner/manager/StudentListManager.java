@@ -398,15 +398,37 @@ public class StudentListManager {
                 studentListFilter.getInstituteIds(),
                 List.of(StatusEnum.ACTIVE.name()));
 
+        // First-wins map collapses multi-enrollment users to one row. The slim query
+        // is ORDERed by ssigm.enrolled_date DESC so the latest enrollment lands first.
         Map<String, StudentListV2Projection> projMap = projections.stream()
                 .filter(p -> p.getUserId() != null)
                 .collect(Collectors.toMap(StudentListV2Projection::getUserId, p -> p, (a, b) -> a));
+
+        // Aggregate every enrollment's package_session_id per user BEFORE collapsing,
+        // so side-view tabs that fetch batch-scoped data can iterate every ps_id, not
+        // just the latest one. Latest-first because the slim query ORDERs by enrolled_date DESC.
+        Map<String, List<String>> allPsIdsByUser = new LinkedHashMap<>();
+        for (StudentListV2Projection p : projections) {
+            if (p.getUserId() == null) continue;
+            String psId = p.getPackageSessionId();
+            if (psId != null) {
+                allPsIdsByUser
+                        .computeIfAbsent(p.getUserId(), k -> new ArrayList<>())
+                        .add(psId);
+            }
+        }
+
         List<StudentListV2Projection> ordered = pagedUserIds.stream()
                 .map(projMap::get)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
         List<StudentV2DTO> content = mapProjectionsToDTOs(ordered);
+        // Attach the per-user enrollment fan-out, dedup preserving order.
+        for (StudentV2DTO dto : content) {
+            List<String> psIds = allPsIdsByUser.getOrDefault(dto.getUserId(), new ArrayList<>());
+            dto.setAllPackageSessionIds(psIds.stream().distinct().collect(Collectors.toList()));
+        }
         // No enrichWithUserCredentials on the slim path — password isn't shown in the list.
 
         long totalElements = idPage.getTotalElements();

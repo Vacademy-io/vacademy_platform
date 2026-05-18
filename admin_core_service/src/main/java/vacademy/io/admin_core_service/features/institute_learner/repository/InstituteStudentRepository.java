@@ -1935,6 +1935,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                ssigm.source, ssigm.type, ssigm.type_id, ssigm.desired_level_id,
                ssigm.sub_org_id, sub_org.name, ssigm.comma_separated_org_roles,
                s.tnc_accepted, s.tnc_file_id, s.tnc_accepted_date
+      ORDER BY s.user_id, ssigm.enrolled_date DESC NULLS LAST
       """)
   List<StudentListV2Projection> getStudentSlimDataForUserIds(
       @Param("userIds") List<String> userIds,

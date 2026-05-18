@@ -203,7 +203,16 @@ export interface LearnerManagementSettings {
 //   2. Role hiddenColumns — forces those accessors hidden.
 //   3. Institute-wide system field setting — admin-level defaults.
 export interface LearnerListColumnSettings {
+    // System field accessors this role has EXPLICITLY HIDDEN. Missing/empty list = role
+    // sees all system columns. Default semantics: visible unless listed here.
     hiddenColumns: string[];
+
+    // Custom field accessors (custom_field UUIDs) this role has EXPLICITLY ENABLED for
+    // the learner-list table. Missing/empty = no custom fields visible for this role.
+    // Default semantics: hidden unless listed here. (Opposite of hiddenColumns above.)
+    // Admins opt in per role; new custom fields added later default to hidden until
+    // an admin toggles them on.
+    enabledCustomFields?: string[];
 }
 
 export interface LiveClassSchedulingSettings {

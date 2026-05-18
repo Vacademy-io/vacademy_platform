@@ -88,6 +88,10 @@ export interface StudentTable {
     // True for audience-only respondents (user filled an audience form but isn't enrolled).
     // ssigm-derived fields (status, batch, expiry, enrollment_number, etc.) come back null.
     is_audience_only?: boolean | null;
+    // Every package_session_id the user is enrolled in at this institute, latest first.
+    // The row's `package_session_id` is the latest one; side-view tabs that fetch
+    // batch-scoped data should iterate this list to cover all enrollments.
+    all_package_session_ids?: string[];
 }
 
 export interface StudentListResponse {

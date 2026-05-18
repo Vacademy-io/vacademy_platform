@@ -46,6 +46,12 @@ interface LearnerListColumnsCardProps {
 export const LearnerListColumnsCard = ({ settings, onChange }: LearnerListColumnsCardProps) => {
     const learnerLabel = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
     const hidden = useMemo(() => new Set(settings?.hiddenColumns ?? []), [settings?.hiddenColumns]);
+    // Custom fields default OFF — admin opts in per role. enabledCustomFields is the
+    // explicit allow-list; missing/empty means no custom fields visible for this role.
+    const enabledCustom = useMemo(
+        () => new Set(settings?.enabledCustomFields ?? []),
+        [settings?.enabledCustomFields]
+    );
 
     // Source the custom-field catalogue from the institute settings. Cache-first; if it's
     // missing (admin landed here without hitting the Custom Fields page first), fetch.
@@ -83,14 +89,29 @@ export const LearnerListColumnsCard = ({ settings, onChange }: LearnerListColumn
         return Array.from(byId.values());
     }, [fieldData]);
 
-    const setVisible = (accessor: string, visible: boolean) => {
+    // System columns: toggling off ADDS to hiddenColumns (default visible).
+    const setSystemVisible = (accessor: string, visible: boolean) => {
         const nextHidden = new Set(hidden);
         if (visible) nextHidden.delete(accessor);
         else nextHidden.add(accessor);
-        onChange({ hiddenColumns: Array.from(nextHidden) });
+        onChange({
+            hiddenColumns: Array.from(nextHidden),
+            enabledCustomFields: settings?.enabledCustomFields,
+        });
     };
 
-    const renderRow = ({ accessor, label }: { accessor: string; label: string }) => {
+    // Custom fields: toggling on ADDS to enabledCustomFields (default hidden).
+    const setCustomVisible = (accessor: string, visible: boolean) => {
+        const nextEnabled = new Set(enabledCustom);
+        if (visible) nextEnabled.add(accessor);
+        else nextEnabled.delete(accessor);
+        onChange({
+            hiddenColumns: settings?.hiddenColumns ?? [],
+            enabledCustomFields: Array.from(nextEnabled),
+        });
+    };
+
+    const renderSystemRow = ({ accessor, label }: { accessor: string; label: string }) => {
         const visible = !hidden.has(accessor);
         return (
             <div
@@ -98,7 +119,20 @@ export const LearnerListColumnsCard = ({ settings, onChange }: LearnerListColumn
                 className="flex items-center justify-between border-b border-neutral-100 py-2 last:border-b-0"
             >
                 <Label className="text-sm text-neutral-700">{label}</Label>
-                <Switch checked={visible} onCheckedChange={(v) => setVisible(accessor, v)} />
+                <Switch checked={visible} onCheckedChange={(v) => setSystemVisible(accessor, v)} />
+            </div>
+        );
+    };
+
+    const renderCustomRow = ({ accessor, label }: { accessor: string; label: string }) => {
+        const visible = enabledCustom.has(accessor);
+        return (
+            <div
+                key={accessor}
+                className="flex items-center justify-between border-b border-neutral-100 py-2 last:border-b-0"
+            >
+                <Label className="text-sm text-neutral-700">{label}</Label>
+                <Switch checked={visible} onCheckedChange={(v) => setCustomVisible(accessor, v)} />
             </div>
         );
     };
@@ -116,21 +150,24 @@ export const LearnerListColumnsCard = ({ settings, onChange }: LearnerListColumn
             <CardContent className="flex flex-col gap-6">
                 <div>
                     <h4 className="mb-2 text-sm font-semibold text-neutral-600">System columns</h4>
-                    <div className="flex flex-col">{SYSTEM_COLUMNS.map(renderRow)}</div>
+                    <div className="flex flex-col">{SYSTEM_COLUMNS.map(renderSystemRow)}</div>
                 </div>
                 <div>
                     <h4 className="mb-2 text-sm font-semibold text-neutral-600">
                         Custom field columns
                     </h4>
+                    <p className="mb-2 text-xs text-neutral-400">
+                        Custom field columns are hidden by default. Toggle on the ones this role
+                        should see in the learner list.
+                    </p>
                     {fieldData == null ? (
                         <p className="text-xs text-neutral-400">Loading custom fields…</p>
                     ) : customColumns.length > 0 ? (
-                        <div className="flex flex-col">{customColumns.map(renderRow)}</div>
+                        <div className="flex flex-col">{customColumns.map(renderCustomRow)}</div>
                     ) : (
                         <p className="text-xs text-neutral-500">
                             No custom fields configured for this institute yet. Add them in the
-                            Custom Fields settings, then come back here to control which roles can
-                            see them.
+                            Custom Fields settings, then come back here to enable them per role.
                         </p>
                     )}
                 </div>

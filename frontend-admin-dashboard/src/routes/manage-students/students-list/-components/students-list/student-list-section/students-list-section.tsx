@@ -26,6 +26,7 @@ import { useQuery } from '@tanstack/react-query';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { getCurrentInstituteId, getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
 import { DashboardLoader, ErrorBoundary } from '@/components/core/dashboard-loader';
 import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -123,6 +124,27 @@ export const StudentsListSection = () => {
         const cached = getDisplaySettingsFromCache(roleKey);
         return new Set(cached?.learnerListColumns?.hiddenColumns ?? []);
     }, []);
+    // Custom fields are hidden by default. Admin opts a custom field IN per role by
+    // adding its accessor (custom_field_id) to enabledCustomFields. Anything NOT in
+    // this set is force-hidden in the table.
+    const roleEnabledCustomFields = useMemo(() => {
+        const roleKey = getActiveRoleDisplaySettingsKey();
+        const cached = getDisplaySettingsFromCache(roleKey);
+        return new Set(cached?.learnerListColumns?.enabledCustomFields ?? []);
+    }, []);
+
+    // Full set of custom field accessors known for this institute (any source).
+    // Anything in this set that's NOT in roleEnabledCustomFields gets force-hidden.
+    const allCustomFieldAccessors = useMemo(() => {
+        const cache = getCustomFieldSettingsFromCache();
+        if (!cache) return new Set<string>();
+        const all = [
+            ...cache.instituteFields,
+            ...cache.customFields,
+            ...cache.fieldGroups.flatMap((g) => g.fields),
+        ];
+        return new Set(all.map((f) => f.id).filter(Boolean));
+    }, []);
 
     // Filter-id → column accessors it controls. A filter chip is omitted when ALL its
     // mapped columns are role-hidden. Filters not in this map (Approval Status, Cart
@@ -149,7 +171,9 @@ export const StudentsListSection = () => {
         const fixed = FILTER_TO_COLUMNS[f.id];
         if (fixed) return fixed.some((accessor) => !roleHiddenColumns.has(accessor));
         const customColAccessor = customFieldIdByKey.get(f.id);
-        if (customColAccessor) return !roleHiddenColumns.has(customColAccessor);
+        // Custom field filter chips follow the same opt-in rule as their columns:
+        // visible only if the role has enabled this custom field.
+        if (customColAccessor) return roleEnabledCustomFields.has(customColAccessor);
         return true; // unmapped filters (approval/cart/role/audience) survive
     });
 
@@ -446,15 +470,25 @@ export const StudentsListSection = () => {
                                             })()}
                                             tableState={{
                                                 columnVisibility: (() => {
-                                                    // Three layers, highest precedence first:
+                                                    // Layers, highest precedence first:
                                                     //   1. Filter-driven (Batch/Invite/Plan/Amount) — when the filter
                                                     //      is active these MUST show so admin sees what they filtered.
-                                                    //   2. Role hidden columns — force hidden for accessors in the role's
-                                                    //      hiddenColumns list (set by admin in role display settings).
-                                                    //   3. Institute-wide system field visibility from CustomFieldsSettings.
+                                                    //   2. Role hidden columns — force hidden for system accessors in
+                                                    //      hiddenColumns (admin's explicit hide for this role).
+                                                    //   3. Custom field default-hide — every custom field accessor not
+                                                    //      in enabledCustomFields is force-hidden. Custom fields are
+                                                    //      hidden by default; admin opts in per role.
+                                                    //   4. Institute-wide system field visibility from CustomFieldsSettings.
                                                     const base = getColumnsVisibility();
                                                     roleHiddenColumns.forEach((accessor) => {
                                                         base[accessor] = false;
+                                                    });
+                                                    // Hide every custom field accessor that isn't explicitly enabled
+                                                    // for this role — custom fields are opt-in via display-settings.
+                                                    allCustomFieldAccessors.forEach((accessor) => {
+                                                        if (!roleEnabledCustomFields.has(accessor)) {
+                                                            base[accessor] = false;
+                                                        }
                                                     });
 
                                                     const batchFilterApplied =

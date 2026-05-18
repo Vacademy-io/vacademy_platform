@@ -3,6 +3,7 @@ import { FilterConfig } from '@/routes/manage-students/students-list/-types/stud
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { InstituteDetailsType } from '@/schemas/student/student-list/institute-schema';
 import { removeDefaultPrefix } from '@/utils/helpers/removeDefaultPrefix';
+import { ALL_SESSIONS_ID } from '@/routes/manage-students/students-list/-hooks/useStudentFilters';
 
 export const GetFilterData = (
     instituteDetails: InstituteDetailsType,
@@ -29,18 +30,25 @@ export const GetFilterData = (
         (batch) => batch.is_org_associated === true
     );
 
+    // When the "all sessions" sentinel is selected (or no session yet), don't filter
+    // batches by session — that filter is the reason the batch chip used to show empty
+    // on first load. The chip's own async autocomplete (PACKAGE_AUTOCOMPLETE_URL) still
+    // takes over once admin types a search term.
+    const showAllSessionsBatches = !_currentSession || _currentSession === ALL_SESSIONS_ID;
+    const batchesInScope = (instituteDetails?.batches_for_sessions || []).filter((batch) =>
+        showAllSessionsBatches ? true : batch.session.id === _currentSession
+    );
+
     const filterData: FilterConfig[] = [
         {
             id: 'batch',
             title: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
-            filterList: (
-                instituteDetails?.batches_for_sessions
-                    ?.filter((batch) => batch.session.id === _currentSession)
-                    .map((batch) => ({
-                        id: batch.id,
-                        label: `${removeDefaultPrefix(batch.package_dto.package_name)}${batch.level.level_name && batch.level.level_name !== 'DEFAULT' ? ` - ${removeDefaultPrefix(batch.level.level_name)}` : ''}`.trim(),
-                    })) || []
-            ).slice(0, 10),
+            filterList: batchesInScope
+                .map((batch) => ({
+                    id: batch.id,
+                    label: `${removeDefaultPrefix(batch.package_dto.package_name)}${batch.level.level_name && batch.level.level_name !== 'DEFAULT' ? ` - ${removeDefaultPrefix(batch.level.level_name)}` : ''}`.trim(),
+                }))
+                .slice(0, 10),
         },
         {
             id: 'statuses',

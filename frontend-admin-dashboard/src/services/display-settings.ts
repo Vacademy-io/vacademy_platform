@@ -360,6 +360,7 @@ function mergeDisplayWithDefaults(
         directEditPublishedCourse: false,
         canEditCourseStructure: false,
         canDeleteCourseStructure: false,
+        showAdvancedCourseIds: false,
     };
     merged.coursePage = {
         viewInviteLinks: incoming?.coursePage?.viewInviteLinks ?? defCoursePage.viewInviteLinks,
@@ -386,6 +387,10 @@ function mergeDisplayWithDefaults(
         canDeleteCourseStructure:
             incoming?.coursePage?.canDeleteCourseStructure ??
             defCoursePage.canDeleteCourseStructure ??
+            false,
+        showAdvancedCourseIds:
+            incoming?.coursePage?.showAdvancedCourseIds ??
+            defCoursePage.showAdvancedCourseIds ??
             false,
     };
 

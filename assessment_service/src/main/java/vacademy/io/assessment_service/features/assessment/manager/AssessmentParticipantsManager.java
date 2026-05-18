@@ -148,14 +148,22 @@ public class AssessmentParticipantsManager {
             assessmentRepository.save(assessmentOptional.get());
         }
 
-        preRegisterBatches(assessmentRegistrationsDto.getAddedPreRegisterBatchesDetails(), instituteId,
-                assessmentOptional.get());
-        preRegisterParticipant(user, assessmentRegistrationsDto.getAddedPreRegisterStudentsDetails(), instituteId,
-                assessmentOptional);
-        removeBatches(assessmentRegistrationsDto.getDeletedPreRegisterBatchesDetails(), instituteId,
-                assessmentOptional.get());
-        removeParticipants(assessmentRegistrationsDto.getDeletedPreRegisterStudentsDetails(), instituteId,
-                assessmentOptional.get());
+        preRegisterBatches(
+                assessmentRegistrationsDto.getAddedPreRegisterBatchesDetails() == null ? Collections.emptyList()
+                        : assessmentRegistrationsDto.getAddedPreRegisterBatchesDetails(),
+                instituteId, assessmentOptional.get());
+        preRegisterParticipant(user,
+                assessmentRegistrationsDto.getAddedPreRegisterStudentsDetails() == null ? Collections.emptyList()
+                        : assessmentRegistrationsDto.getAddedPreRegisterStudentsDetails(),
+                instituteId, assessmentOptional);
+        removeBatches(
+                assessmentRegistrationsDto.getDeletedPreRegisterBatchesDetails() == null ? Collections.emptyList()
+                        : assessmentRegistrationsDto.getDeletedPreRegisterBatchesDetails(),
+                instituteId, assessmentOptional.get());
+        removeParticipants(
+                assessmentRegistrationsDto.getDeletedPreRegisterStudentsDetails() == null ? Collections.emptyList()
+                        : assessmentRegistrationsDto.getDeletedPreRegisterStudentsDetails(),
+                instituteId, assessmentOptional.get());
         handleOpenRegistration(assessmentRegistrationsDto.getOpenTestDetails(), assessmentOptional.get());
         handleJoinUrlChange(assessmentRegistrationsDto.getUpdatedJoinLink(), assessmentOptional.get(), instituteId);
         handleAssessmentParticipantNotification(assessmentRegistrationsDto.getNotifyStudent(),
@@ -287,8 +295,9 @@ public class AssessmentParticipantsManager {
 
     private void removeAddedFieldsIfAny(AssessmentRegistrationsDto.OpenTestDetails openTestDetails,
             Assessment assessment) {
-        List<String> deletedFieldKeys = openTestDetails.getRegistrationFormDetails().getRemovedCustomAddedFields()
-                .stream().map(RegistrationFieldDto::getKey).toList();
+        List<RegistrationFieldDto> removed = openTestDetails.getRegistrationFormDetails().getRemovedCustomAddedFields();
+        if (removed == null || removed.isEmpty()) return;
+        List<String> deletedFieldKeys = removed.stream().map(RegistrationFieldDto::getKey).toList();
         if (!deletedFieldKeys.isEmpty()) {
             assessmentCustomFieldRepository.softDeleteByAssessmentIdAndFieldKeys(assessment.getId(), deletedFieldKeys);
         }

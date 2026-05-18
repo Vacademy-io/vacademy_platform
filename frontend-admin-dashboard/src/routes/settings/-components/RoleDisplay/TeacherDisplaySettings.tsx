@@ -481,6 +481,8 @@ export default function TeacherDisplaySettings() {
                                                 prev.coursePage?.canEditCourseStructure ?? false,
                                             canDeleteCourseStructure:
                                                 prev.coursePage?.canDeleteCourseStructure ?? false,
+                                            showAdvancedCourseIds:
+                                                prev.coursePage?.showAdvancedCourseIds ?? false,
                                             [key]: checked,
                                         },
                                     }))
@@ -488,6 +490,40 @@ export default function TeacherDisplaySettings() {
                             />
                         </div>
                     ))}
+                    <div className="flex items-center justify-between rounded border p-3">
+                        <div className="text-sm">
+                            Show advanced IDs menu on Course Details (course / package session /
+                            session / level)
+                        </div>
+                        <Switch
+                            checked={settings.coursePage?.showAdvancedCourseIds === true}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    coursePage: {
+                                        viewInviteLinks: prev.coursePage?.viewInviteLinks ?? true,
+                                        viewShortInviteLinks:
+                                            prev.coursePage?.viewShortInviteLinks ?? false,
+                                        viewCourseConfiguration:
+                                            prev.coursePage?.viewCourseConfiguration ?? true,
+                                        viewCourseOverviewItem:
+                                            prev.coursePage?.viewCourseOverviewItem ?? true,
+                                        viewContentNumbering:
+                                            prev.coursePage?.viewContentNumbering ?? true,
+                                        allowViewSlidesInReadOnly:
+                                            prev.coursePage?.allowViewSlidesInReadOnly ?? true,
+                                        directEditPublishedCourse:
+                                            prev.coursePage?.directEditPublishedCourse ?? false,
+                                        canEditCourseStructure:
+                                            prev.coursePage?.canEditCourseStructure ?? false,
+                                        canDeleteCourseStructure:
+                                            prev.coursePage?.canDeleteCourseStructure ?? false,
+                                        showAdvancedCourseIds: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
                 </CardContent>
             </Card>
 
@@ -524,6 +560,8 @@ export default function TeacherDisplaySettings() {
                                             prev.coursePage?.canEditCourseStructure ?? false,
                                         canDeleteCourseStructure:
                                             prev.coursePage?.canDeleteCourseStructure ?? false,
+                                        showAdvancedCourseIds:
+                                            prev.coursePage?.showAdvancedCourseIds ?? false,
                                         directEditPublishedCourse: checked,
                                     },
                                 }))
@@ -581,6 +619,8 @@ export default function TeacherDisplaySettings() {
                                             prev.coursePage?.directEditPublishedCourse ?? false,
                                         canDeleteCourseStructure:
                                             prev.coursePage?.canDeleteCourseStructure ?? false,
+                                        showAdvancedCourseIds:
+                                            prev.coursePage?.showAdvancedCourseIds ?? false,
                                         canEditCourseStructure: checked,
                                     },
                                 }))
@@ -610,6 +650,8 @@ export default function TeacherDisplaySettings() {
                                             prev.coursePage?.directEditPublishedCourse ?? false,
                                         canEditCourseStructure:
                                             prev.coursePage?.canEditCourseStructure ?? false,
+                                        showAdvancedCourseIds:
+                                            prev.coursePage?.showAdvancedCourseIds ?? false,
                                         canDeleteCourseStructure: checked,
                                     },
                                 }))

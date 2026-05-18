@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.learner_tracking.repository;
 
+
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -314,7 +316,14 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             WHERE a.slide_id = :slideId
             GROUP BY s.user_id, s.full_name
             ORDER BY lastActive DESC
-            """, nativeQuery = true)
+             """,
+            countQuery = """
+            SELECT COUNT(DISTINCT a.user_id)
+            FROM activity_log a
+            JOIN student s ON a.user_id = s.user_id
+            WHERE a.slide_id = :slideId
+            """,
+            nativeQuery = true)
     Page<LearnerActivityProjection> findStudentActivityBySlideId(@Param("slideId") String slideId, Pageable pageable);
 
     @Query(value = """

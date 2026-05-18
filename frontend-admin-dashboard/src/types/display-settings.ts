@@ -277,6 +277,10 @@ export interface DisplaySettingsData {
         // When true, Delete buttons on Subject / Module / Chapter rows are
         // visible regardless of course status.
         canDeleteCourseStructure?: boolean;
+        // When true, the Course Details header shows a "..." menu exposing
+        // raw IDs (course / package session / session / level) with copy.
+        // Off by default — intended for admins debugging configuration.
+        showAdvancedCourseIds?: boolean;
     };
 
     // 10) Slide view action visibility toggles

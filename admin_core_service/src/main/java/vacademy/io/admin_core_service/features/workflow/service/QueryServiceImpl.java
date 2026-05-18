@@ -1934,6 +1934,14 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
             // scheduled email workflow path.
             String fromParam = (String) params.get("from");
             String toParam = (String) params.get("to");
+            // Optional: when true, the upper bound of the daysBack window is shifted to
+            // yesterday so today's (still-in-progress) classes don't appear in the report.
+            // Used by morning-email workflows so the snapshot the email summarised stays
+            // consistent with what a learner sees when they click "View Full Report" later
+            // in the day after more classes have happened. Only applied to the daysBack
+            // fallback — explicit from/to from a deep link is always honored as-is.
+            boolean excludeToday = Boolean.TRUE.equals(params.get("excludeToday"))
+                    || "true".equalsIgnoreCase(String.valueOf(params.get("excludeToday")));
             java.time.LocalDate start;
             java.time.LocalDate end;
             if (fromParam != null && !fromParam.isBlank() && toParam != null && !toParam.isBlank()) {
@@ -1950,11 +1958,22 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                     log.warn("Invalid from/to date params (from={}, to={}); falling back to daysBack={}",
                             fromParam, toParam, daysBack);
                     end = java.time.LocalDate.now();
-                    start = end.minusDays(daysBack);
+                    if (excludeToday) end = end.minusDays(1);
+                    start = end.minusDays(daysBack - 1);
                 }
             } else {
                 end = java.time.LocalDate.now();
-                start = end.minusDays(daysBack);
+                if (excludeToday) {
+                    // Shift end to yesterday and compute start so the window spans
+                    // exactly `daysBack` calendar days (e.g. daysBack=7 → 7 full days
+                    // ending yesterday). Without excludeToday the original semantic
+                    // (today minus daysBack days, inclusive on both ends, so daysBack+1
+                    // days total) is preserved for backwards compat.
+                    end = end.minusDays(1);
+                    start = end.minusDays(daysBack - 1);
+                } else {
+                    start = end.minusDays(daysBack);
+                }
             }
 
             // Three cases:

@@ -21,7 +21,6 @@ import {
     getQuestionSlideActivityLogs,
     getAssignmentSlideActivityLogs,
     getUserVideoResponseSlideActivityLogs,
-    fetchAssignmentSlideLogs,
     gradeAssignmentSubmission,
 } from '@/services/study-library/slide-operations/user-slide-activity-logs';
 import { ActivityContent } from '@/types/study-library/user-slide-activity-response-type';
@@ -36,8 +35,7 @@ import { TokenKey } from '@/constants/auth/tokens';
 import { DownloadSimple, Eye, File, FilePdf, Spinner, UploadSimple, X as XIcon, ClipboardText, CheckCircle, Clock as ClockIcon } from '@phosphor-icons/react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import SimplePDFViewer from '@/components/common/simple-pdf-viewer';
-import { fetchSlideActivityStats } from '@/services/study-library/slide-operations/slide-activity-stats';
-import { UserActivity } from '@/types/study-library/activity-stats-response-type';
+import { downloadAllAssignmentSubmissions } from '@/services/study-library/slide-operations/download-assignment-submissions';
 import { useRouter } from '@tanstack/react-router';
 
 interface AssignmentFileInfo {
@@ -717,52 +715,7 @@ export const ActivityLogDialog = ({
 
         setIsDownloadingAll(true);
         try {
-            // Step 1: Fetch all users from activity stats (paginate through all)
-            const allUsers: UserActivity[] = [];
-            let currentPage = 0;
-            let lastPage = false;
-            while (!lastPage) {
-                const statsPage = await fetchSlideActivityStats(slideId, currentPage, 50);
-                allUsers.push(...statsPage.content);
-                lastPage = statsPage.last;
-                currentPage++;
-            }
-
-            // Step 2: For each user, fetch all assignment logs
-            const csvRows = ['Student Name,User ID,Upload Date,Upload Time,File URL'];
-            for (const user of allUsers) {
-                let logPage = 0;
-                let logLast = false;
-                while (!logLast) {
-                    const logs = await fetchAssignmentSlideLogs(user.userId, slideId, logPage, 50);
-                    for (const item of logs.content as ActivityContent[]) {
-                        if (!item.assignment_slides?.length) continue;
-                        for (const submission of item.assignment_slides) {
-                            if (!submission.comma_separated_file_ids) continue;
-                            const dateInfo = extractDateTime(
-                                convertToLocalDateTime(submission.date_submitted || '')
-                            );
-                            const fileIds = submission.comma_separated_file_ids.split(',').filter(Boolean);
-                            for (const fid of fileIds) {
-                                const fileUrl = await getPublicUrl(fid.trim());
-                                csvRows.push(
-                                    `"${user.fullName}","${user.userId}","${dateInfo.date}","${dateInfo.time}","${fileUrl}"`
-                                );
-                            }
-                        }
-                    }
-                    logLast = logs.last;
-                    logPage++;
-                }
-            }
-
-            const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = 'all_assignment_submissions.csv';
-            link.click();
-            URL.revokeObjectURL(url);
+            await downloadAllAssignmentSubmissions(slideId);
         } catch (err) {
             console.error('Failed to download all submissions:', err);
         } finally {
@@ -918,13 +871,15 @@ export const ActivityLogDialog = ({
                                                 currentPage={page}
                                             />
 
-                                            <div className="mt-6">
-                                                <MyPagination
-                                                    currentPage={page}
-                                                    totalPages={tableData.total_pages}
-                                                    onPageChange={handlePageChange}
-                                                />
-                                            </div>
+                                            {tableData.total_pages > 1 && (
+                                                <div className="mt-6">
+                                                    <MyPagination
+                                                        currentPage={page}
+                                                        totalPages={tableData.total_pages}
+                                                        onPageChange={handlePageChange}
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     </TabsContent>
                                     <TabsContent value="responses">
@@ -937,13 +892,15 @@ export const ActivityLogDialog = ({
                                                 columnWidths={ACTIVITY_RESPONSE_COLUMN_WIDTHS}
                                                 currentPage={page}
                                             />
-                                            <div className="mt-6">
-                                                <MyPagination
-                                                    currentPage={page}
-                                                    totalPages={tableDataVideoResponse.total_pages}
-                                                    onPageChange={handlePageChange}
-                                                />
-                                            </div>
+                                            {tableDataVideoResponse.total_pages > 1 && (
+                                                <div className="mt-6">
+                                                    <MyPagination
+                                                        currentPage={page}
+                                                        totalPages={tableDataVideoResponse.total_pages}
+                                                        onPageChange={handlePageChange}
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     </TabsContent>
                                 </Tabs>
@@ -959,13 +916,15 @@ export const ActivityLogDialog = ({
                                         columnWidths={ACTIVITY_RESPONSE_COLUMN_WIDTHS}
                                         currentPage={page}
                                     />
-                                    <div className="my-6">
-                                        <MyPagination
-                                            currentPage={page}
-                                            totalPages={tableData.total_pages}
-                                            onPageChange={handlePageChange}
-                                        />
-                                    </div>
+                                    {tableData.total_pages > 1 && (
+                                        <div className="my-6">
+                                            <MyPagination
+                                                currentPage={page}
+                                                totalPages={tableData.total_pages}
+                                                onPageChange={handlePageChange}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -1006,13 +965,15 @@ export const ActivityLogDialog = ({
                                             </div>
                                         </>
                                     )}
-                                    <div className="my-6">
-                                        <MyPagination
-                                            currentPage={page}
-                                            totalPages={tableData.total_pages}
-                                            onPageChange={handlePageChange}
-                                        />
-                                    </div>
+                                    {tableData.total_pages > 1 && (
+                                        <div className="my-6">
+                                            <MyPagination
+                                                currentPage={page}
+                                                totalPages={tableData.total_pages}
+                                                onPageChange={handlePageChange}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
@@ -1026,13 +987,15 @@ export const ActivityLogDialog = ({
                                         columnWidths={ACTIVITY_LOG_COLUMN_WIDTHS}
                                         currentPage={page}
                                     />
-                                    <div className="my-6">
-                                        <MyPagination
-                                            currentPage={page}
-                                            totalPages={tableData.total_pages}
-                                            onPageChange={handlePageChange}
-                                        />
-                                    </div>
+                                    {tableData.total_pages > 1 && (
+                                        <div className="my-6">
+                                            <MyPagination
+                                                currentPage={page}
+                                                totalPages={tableData.total_pages}
+                                                onPageChange={handlePageChange}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </>

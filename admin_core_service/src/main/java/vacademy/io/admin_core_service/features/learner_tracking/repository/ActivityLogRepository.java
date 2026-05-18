@@ -310,9 +310,19 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             SELECT s.user_id AS userId,
                    s.full_name AS fullName,
                    SUM(EXTRACT(EPOCH FROM (a.end_time - a.start_time))) AS totalTimeSpent,
-                   MAX(a.updated_at) AS lastActive
+                   MAX(a.updated_at) AS lastActive,
+                   CASE
+                     WHEN COUNT(ast.id) = 0 THEN NULL
+                     WHEN BOOL_OR(
+                            (ast.marks IS NOT NULL AND ast.marks > 0)
+                            OR ast.feedback IS NOT NULL
+                            OR ast.checked_file_id IS NOT NULL
+                          ) THEN 'REVIEWED'
+                     ELSE 'PENDING'
+                   END AS reviewStatus
             FROM activity_log a
             JOIN student s ON a.user_id = s.user_id
+            LEFT JOIN assignment_slide_tracked ast ON ast.activity_id = a.id
             WHERE a.slide_id = :slideId
             GROUP BY s.user_id, s.full_name
             ORDER BY lastActive DESC

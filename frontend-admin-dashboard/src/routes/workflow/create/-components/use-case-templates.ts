@@ -1438,7 +1438,10 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                     : undefined;
 
             const webhookNode = makeNode('HTTP_REQUEST', 'POST enrollment to webhook', {
-                resultKey: 'webhookResponse',
+                // SpEL-evaluated at runtime — must be wrapped in single quotes to
+                // be a STRING LITERAL. Bare 'webhookResponse' would be interpreted
+                // as a context-variable lookup and fail with EL1008E.
+                resultKey: "'webhookResponse'",
                 config: {
                     requestType: 'EXTERNAL',
                     method: 'POST',

@@ -20,7 +20,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 _log = logging.getLogger(__name__)
 
@@ -256,116 +256,6 @@ def _call_lyria(prompt: str, credentials, project_id: str,
                           negative_prompt=negative_prompt, seed=seed)
 
 
-# ── fal-ai/elevenlabs/sound-effects/v2 provider ─────────────────────────
-# Selected when MUSIC_PROVIDER=fal_elevenlabs (or auto when Lyria creds are
-# absent and FAL_API_KEY is set). Generates a looping musical bed via the
-# new fal_elevenlabs_client. Max 22s per call — caller clamps chunk
-# duration before invoking.
-
-FAL_MAX_DURATION_S = 22.0
-
-
-def _call_fal_elevenlabs(
-    prompt: str,
-    duration_s: float,
-    *,
-    loop: bool = True,
-    cache_dir: Optional[Path] = None,
-) -> Tuple[bytes, float, bool]:
-    """Generate one music chunk via fal-ai/elevenlabs/sound-effects/v2.
-
-    Returns (mp3_bytes, cost_usd, cache_hit).
-
-    Imports the client lazily because the module lives in `app/services/`
-    and we may run music_generator standalone without the full FastAPI
-    sys.path. Mirrors the lazy-import pattern in `automation_pipeline.py`.
-    """
-    # Lazy import — the client module needs `app.services.` OR direct path.
-    try:
-        from app.services.fal_elevenlabs_client import (  # type: ignore
-            FalElevenLabsClient, get_fal_api_key_from_env, MAX_DURATION_S,
-        )
-    except ImportError:
-        # Direct file load — when ai-video-gen-main/ is on sys.path but
-        # app/services/ isn't, we still need to find the client. Mirrors
-        # the fal_veo_client recovery path in automation_pipeline.py.
-        import importlib.util as _ilu
-        import sys as _sys
-
-        services_dir = Path(__file__).resolve().parent.parent / "services"
-        fal_path = services_dir / "fal_elevenlabs_client.py"
-        if not fal_path.exists():
-            raise RuntimeError(
-                f"fal_elevenlabs_client not importable and not at {fal_path}"
-            )
-        spec = _ilu.spec_from_file_location("fal_elevenlabs_client", fal_path)
-        mod = _ilu.module_from_spec(spec)  # type: ignore
-        _sys.modules.setdefault("fal_elevenlabs_client", mod)
-        _sys.modules.setdefault("app.services.fal_elevenlabs_client", mod)
-        spec.loader.exec_module(mod)  # type: ignore
-        FalElevenLabsClient = mod.FalElevenLabsClient
-        get_fal_api_key_from_env = mod.get_fal_api_key_from_env
-        MAX_DURATION_S = mod.MAX_DURATION_S
-
-    api_key = get_fal_api_key_from_env()
-    if not api_key:
-        raise RuntimeError(
-            "FAL_API_KEY not set — required for MUSIC_PROVIDER=fal_elevenlabs"
-        )
-
-    # Clamp to the model's hard cap; longer chunks must be split upstream.
-    capped = min(float(duration_s), MAX_DURATION_S)
-    if capped < float(duration_s):
-        _log.info(
-            "fal-elevenlabs clamping chunk %.1fs → %.1fs (model max)",
-            duration_s, capped,
-        )
-
-    client = FalElevenLabsClient(api_key=api_key, cache_dir=cache_dir)
-    result = client.submit(
-        prompt,
-        duration_s=capped,
-        loop=loop,
-        prompt_influence=0.55,
-        output_format="mp3_44100_128",
-        proactively_download=True,
-    )
-    if not result.audio_bytes:
-        raise RuntimeError(
-            f"fal-elevenlabs returned empty audio (url={result.url[:80]})"
-        )
-    return result.audio_bytes, result.cost_usd, result.cache_hit
-
-
-def _resolve_music_provider() -> str:
-    """Pick the music backend for this run. Priority:
-
-      1. `MUSIC_PROVIDER` env var (explicit override): `fal_elevenlabs`,
-         `lyria`, or `fallback`.
-      2. Auto-detect: if FAL_API_KEY is set → `fal_elevenlabs`.
-      3. Else if Google credentials present → `lyria`.
-      4. Else `fallback` — degrade to silent music (caller handles).
-
-    Returns the provider name. Never raises; defaults safely.
-    """
-    explicit = (os.environ.get("MUSIC_PROVIDER") or "").strip().lower()
-    if explicit in ("fal_elevenlabs", "fal", "elevenlabs"):
-        return "fal_elevenlabs"
-    if explicit == "lyria":
-        return "lyria"
-    if explicit == "fallback":
-        return "fallback"
-    # Auto-detect — prefer fal when its key is set (matches the user's
-    # stated migration target).
-    if os.environ.get("FAL_API_KEY") or os.environ.get("FAL_KEY"):
-        return "fal_elevenlabs"
-    # Lyria check: any Google creds available?
-    if (os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-            or (Path(__file__).resolve().parent / "google_credentials.json").exists()):
-        return "lyria"
-    return "fallback"
-
-
 def _format_mmss(seconds: float) -> str:
     s = max(0, int(round(seconds)))
     return f"[{s // 60:02d}:{s % 60:02d}]"
@@ -546,7 +436,6 @@ def generate_background_music(
     video_id: str,
     run_dir: Optional[Path] = None,
     progress_callback: Optional[Any] = None,
-    cost_tracker: Optional[Any] = None,
 ) -> Optional[Dict[str, Any]]:
     """Generate background music for a video.
 
@@ -569,134 +458,54 @@ def generate_background_music(
         _log.info("No music chunks after normalization — skipping background music.")
         return None
 
-    provider = _resolve_music_provider()
     _log.info(
-        "🎼 Generating background music via provider=%s: %d chunk(s) covering %.1fs",
-        provider, len(chunks), audio_duration,
+        "🎼 Generating background music: %d chunk(s) covering %.1fs",
+        len(chunks), audio_duration,
     )
-
-    # For fal-ElevenLabs, the model caps at 22s per call and produces
-    # seamless loopable beds. Rather than tile N short chunks (more API
-    # spend, more concat seams), we collapse the Director's multi-chunk
-    # plan into ONE 22s loopable bed using the first chunk's mood prompt.
-    # The downstream audio_mixer's `aloop` filter then extends the bed
-    # to fill the full video duration without audible seam. If the user
-    # later wants real mood-shifts mid-video, we revisit by generating
-    # N short beds and concatenating via the existing render_worker path
-    # (the rest of this function already supports multi-chunk concat).
-    if provider == "fal_elevenlabs":
-        # Collapse to a single representative chunk. Preserves the first
-        # mood prompt; the mixer's loop covers the rest of the video.
-        first_chunk = chunks[0]
-        prompt = str(first_chunk.get("timestamped_prompt") or "").strip()
-        target_duration = min(FAL_MAX_DURATION_S, max(2.0, audio_duration))
-        chunks = [{
-            "start_time": 0.0,
-            "end_time": target_duration,
-            "timestamped_prompt": prompt,
-            "_fal_loop": True,
-        }]
-        _log.info(
-            "   fal_elevenlabs: collapsed %d Director chunks → 1 loopable bed (%.1fs)",
-            len(_normalize_to_chunks(music_plan, audio_duration)), target_duration,
-        )
-
     if progress_callback:
         try:
             progress_callback({
                 "type": "sub_stage",
                 "sub_stage": "background_music_start",
-                "message": f"Generating background music ({len(chunks)} chunk(s), provider={provider})",
+                "message": f"Generating background music ({len(chunks)} chunk(s))",
                 "chunks": len(chunks),
-                "provider": provider,
             })
         except Exception:
             pass
 
-    # Lyria needs Google creds; fal needs FAL_API_KEY. Resolve only the
-    # ones the chosen provider actually uses to avoid spurious credential
-    # errors on machines that have only one set of secrets.
-    credentials = None
-    project_id = ""
-    if provider == "lyria":
-        credentials = _load_google_credentials()
-        project_id = _get_project_id(credentials)
-
-    # fal-ElevenLabs cache lives under the run_dir so repeat renders of
-    # the same project (same prompt + duration) skip the API call.
-    fal_cache_dir = (run_dir / "_music_cache") if run_dir is not None else None
+    credentials = _load_google_credentials()
+    project_id = _get_project_id(credentials)
 
     chunk_records: List[Dict[str, Any]] = []
     for i, chunk in enumerate(chunks):
         prompt = str(chunk.get("timestamped_prompt") or "").strip()
         chunk_dur = float(chunk["end_time"]) - float(chunk["start_time"])
-        _log.info(
-            "   Chunk %d/%d (%.1fs, provider=%s): %s",
-            i + 1, len(chunks), chunk_dur, provider, prompt[:160],
-        )
+        _log.info("   Chunk %d/%d (%.1fs): %s", i + 1, len(chunks), chunk_dur, prompt[:160])
         if progress_callback:
             try:
                 progress_callback({
                     "type": "sub_stage",
                     "sub_stage": "background_music_segment",
-                    "message": f"{provider} generating chunk {i + 1}/{len(chunks)}",
+                    "message": f"Lyria generating chunk {i + 1}/{len(chunks)}",
                     "segment_index": i,
                     "segment_total": len(chunks),
                 })
             except Exception:
                 pass
 
-        # Provider dispatch. Each path is wrapped in retry; on persistent
-        # failure we raise so the caller can fall back to music_fallback_library.
+        # Simple retry — Lyria occasionally 429s or 503s.
         last_err: Optional[Exception] = None
         audio_bytes: Optional[bytes] = None
-        chunk_cost_usd: float = 0.0
-        chunk_cache_hit: bool = False
         for attempt in range(3):
             try:
-                if provider == "fal_elevenlabs":
-                    audio_bytes, chunk_cost_usd, chunk_cache_hit = _call_fal_elevenlabs(
-                        prompt,
-                        chunk_dur,
-                        loop=bool(chunk.get("_fal_loop", True)),
-                        cache_dir=fal_cache_dir,
-                    )
-                elif provider == "lyria":
-                    audio_bytes = _call_lyria(prompt, credentials, project_id)
-                    # Lyria pricing isn't computed locally (no public per-call
-                    # rate via Vertex AI). Caller can compute from token usage
-                    # logs; we record 0 here so the ledger entry exists.
-                    chunk_cost_usd = 0.0
-                else:  # fallback — caller is expected to use music_fallback_library
-                    raise RuntimeError(
-                        "No music provider available. Set FAL_API_KEY for "
-                        "fal_elevenlabs, or Google credentials for lyria, or "
-                        "use music_fallback_library.pick_fallback_bed."
-                    )
+                audio_bytes = _call_lyria(prompt, credentials, project_id)
                 break
             except Exception as exc:
                 last_err = exc
-                _log.warning(
-                    "   %s attempt %d failed: %s", provider, attempt + 1, exc,
-                )
+                _log.warning("   Lyria attempt %d failed: %s", attempt + 1, exc)
                 time.sleep(2 ** attempt)
         if audio_bytes is None:
-            raise RuntimeError(f"{provider} failed after retries: {last_err}")
-
-        # Cost ledger: one entry per chunk. Cache hits cost $0 but still
-        # get an entry so the run report shows the cache was effective.
-        if cost_tracker is not None:
-            try:
-                cost_tracker.record_music(
-                    stage="background_music",
-                    model=provider,
-                    duration_s=chunk_dur,
-                    cost_usd=chunk_cost_usd,
-                    outcome="cache_hit" if chunk_cache_hit else "ok",
-                )
-            except Exception:
-                # Don't let ledger problems break the render.
-                pass
+            raise RuntimeError(f"Lyria failed after retries: {last_err}")
 
         ext, content_type = _sniff_audio_format(audio_bytes)
         key = f"ai-videos/{video_id}/background_music/chunk_{i:02d}.{ext}"
@@ -713,7 +522,6 @@ def generate_background_music(
             "end_time": float(chunk["end_time"]),
             "url": chunk_url,
             "prompt": prompt,
-            "provider": provider,
         })
 
     if len(chunk_records) == 1:

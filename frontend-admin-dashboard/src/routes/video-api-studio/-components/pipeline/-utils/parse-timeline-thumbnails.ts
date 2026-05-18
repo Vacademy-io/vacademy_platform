@@ -51,57 +51,11 @@ export interface TimelinePalette {
     accent?: string;
 }
 
-/**
- * Per-shot metadata `_write_timeline` writes to `meta.shots[]` when a plan
- * exists. Carries the v3 ShotPlanner + NarrationWriter fields plus the
- * per-shot AI video (Veo) telemetry the orchestrator stamped onto the entry.
- * All fields optional — older runs only populate the base subset.
- */
-export interface TimelineShotMeta {
-    shot_idx?: number;
-    shot_type?: string;
-    intent_role?: string;
-    narration_brief?: string;
-    narration_text?: string;
-    audio_policy?: 'narration_only' | 'intrinsic_only';
-    background_treatment?: string;
-    transition_in?: string;
-    start_time?: number;
-    duration?: number;
-    audio_url?: string;
-    audio_words_url?: string;
-    audio_script_url?: string;
-    audio_duration_s?: number;
-    audio_skipped?: boolean;
-    // ── AI video (Veo) per-shot telemetry ──
-    _ai_video_audio_on?: boolean;
-    _ai_video_request_id?: string;
-    _ai_video_url?: string;
-    _ai_video_cost_usd?: number;
-    _ai_video_cost_credits?: number;
-    _ai_video_elapsed_s?: number;
-    _ai_video_segments?: Array<{
-        seg_idx?: number;
-        video_url?: string;
-        duration_s?: number;
-        request_id?: string;
-        cache_hit?: boolean;
-    }>;
-}
-
 export interface TimelineJson {
     entries?: TimelineEntry[];
     meta?: {
         audio_tracks?: TimelineAudioTrack[];
         palette?: TimelinePalette;
-        /** v3 + AI-video runs: per-shot metadata, written by `_write_timeline`. */
-        shots?: TimelineShotMeta[];
-        /** v3 only: plan-level recurring motifs. */
-        recurring_motifs?: Array<{
-            description: string;
-            screen_position?: string;
-            when_visible?: string;
-        }>;
         [key: string]: unknown;
     };
 }
@@ -169,32 +123,6 @@ export function pickPalette(
     timeline: TimelineJson | null | undefined
 ): TimelinePalette | undefined {
     return timeline?.meta?.palette;
-}
-
-/**
- * Pull the v3 per-shot meta map out of `timeline.json -> meta.shots[]`. Keyed
- * by `shot_idx` (or array position when missing) so the caller can merge it
- * into the `SceneSlot` array by index lookup.
- */
-export function pickShotMetaByIndex(
-    timeline: TimelineJson | null | undefined
-): Record<number, TimelineShotMeta> {
-    const shots = timeline?.meta?.shots;
-    if (!Array.isArray(shots)) return {};
-    const out: Record<number, TimelineShotMeta> = {};
-    shots.forEach((shot, position) => {
-        const idx = typeof shot?.shot_idx === 'number' ? shot.shot_idx : position;
-        out[idx] = shot;
-    });
-    return out;
-}
-
-/** Pull plan-level recurring motifs out of `meta.recurring_motifs`. */
-export function pickRecurringMotifs(
-    timeline: TimelineJson | null | undefined
-): Array<{ description: string; screen_position?: string; when_visible?: string }> {
-    const motifs = timeline?.meta?.recurring_motifs;
-    return Array.isArray(motifs) ? motifs : [];
 }
 
 /**

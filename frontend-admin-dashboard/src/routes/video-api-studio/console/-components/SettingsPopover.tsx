@@ -94,7 +94,12 @@ import { VimSavedAvatarSelect } from '@/features/vimotion/composer/VimSavedAvata
 import type { StudioAvatar } from '@/features/vimotion/api/dashboardTypes';
 import { useEffectiveCreditRatio } from '@/services/ai-credits/use-credit-rate';
 import { formatCredits, usdToCredits } from '../../-utils/credits';
-import type { AIModel } from '@/types/ai-models';
+
+interface AiModel {
+    model_id: string;
+    name: string;
+    is_free?: boolean;
+}
 
 interface SettingsPopoverProps {
     options: Omit<GenerateVideoRequest, 'prompt'>;
@@ -112,8 +117,8 @@ interface SettingsPopoverProps {
     videoBranding: VideoBrandingConfig;
     onVideoBrandingChange: React.Dispatch<React.SetStateAction<VideoBrandingConfig>>;
     videoTemplates: VideoTemplate[];
-    /** Curated AI model list for the current content type (use-case). */
-    models: AIModel[];
+    /** AI model list (filtered by quality_tier). */
+    models: AiModel[];
     /**
      * Vim-only mode: swaps the Branding tab's free-form Style/Branding
      * accordions for a saved-Brand-Kit picker (request.brand_kit_id), and

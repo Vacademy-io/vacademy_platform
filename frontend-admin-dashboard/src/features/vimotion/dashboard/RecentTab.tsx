@@ -6,9 +6,9 @@ import {
     CheckCircle2,
     Clapperboard,
     Clock,
+    Loader2,
     PlayCircle,
 } from 'lucide-react';
-import { VimotionLoader } from '../brand/VimotionLoader';
 import { getInstituteId } from '@/constants/helper';
 import {
     getRemoteHistory,
@@ -80,28 +80,32 @@ export function RecentTab() {
     );
 }
 
-function HistoryCard({ item, brandKit }: { item: HistoryItem; brandKit: BrandKit | null }) {
-    // Any video with a video_id is openable — the dashboard route renders
-    // `<VideoConsoleWorkspace initialVideoId={videoId}>` which handles every
-    // status: completed → final-cut player, generating/pending → live
-    // PipelineLayout polling /status, failed → halted banner with Retry.
-    // Only the play-button hover overlay is gated to `completed` since
-    // that's specifically a "play video" cue.
-    const canOpen = !!item.video_id;
-    const isPlayable = item.status === 'completed' && !!item.html_url;
+function HistoryCard({
+    item,
+    brandKit,
+}: {
+    item: HistoryItem;
+    brandKit: BrandKit | null;
+}) {
+    // Only completed videos have artifacts to render in the production view.
+    // Generating/pending/failed items aren't clickable here — users wait or
+    // retry from the workspace itself (once we wire that into Recent later).
+    const isViewable = item.status === 'completed' && !!item.html_url;
     const ts = formatTimestamp(item.created_at);
     const title = (item.prompt || '').trim() || 'Untitled video';
 
     const cardClasses = cn(
         'group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white transition-colors',
-        canOpen ? 'hover:border-neutral-300' : 'cursor-default'
+        isViewable ? 'hover:border-neutral-300' : 'cursor-default'
     );
 
     // Pick the selected thumbnail (or fall back to the first option if the
     // selected_id has drifted somehow).
     const thumbs = item.thumbnails;
     const selectedThumb =
-        thumbs?.options.find((o) => o.id === thumbs.selected_id) || thumbs?.options[0] || null;
+        thumbs?.options.find((o) => o.id === thumbs.selected_id) ||
+        thumbs?.options[0] ||
+        null;
     const orientation =
         (thumbs?.orientation as 'landscape' | 'portrait' | undefined) ?? 'landscape';
 
@@ -120,7 +124,7 @@ function HistoryCard({ item, brandKit }: { item: HistoryItem; brandKit: BrandKit
                         <Clapperboard className="size-8" />
                     </div>
                 )}
-                {isPlayable && (
+                {isViewable && (
                     <div className="absolute inset-0 flex items-center justify-center opacity-0 transition-opacity group-hover:opacity-100">
                         <div className="flex size-12 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm">
                             <PlayCircle className="size-6" />
@@ -136,7 +140,7 @@ function HistoryCard({ item, brandKit }: { item: HistoryItem; brandKit: BrandKit
         </>
     );
 
-    if (!canOpen) {
+    if (!isViewable) {
         return <div className={cardClasses}>{inner}</div>;
     }
 
@@ -156,7 +160,7 @@ function StatusBadge({ status }: { status: HistoryItem['status'] }) {
         },
         generating: {
             label: 'Generating',
-            Icon: CheckCircle2,
+            Icon: Loader2,
             className: 'bg-blue-50 text-blue-700 border-blue-200',
         },
         pending: {
@@ -178,11 +182,7 @@ function StatusBadge({ status }: { status: HistoryItem['status'] }) {
                 className
             )}
         >
-            {status === 'generating' ? (
-                <VimotionLoader size={12} className="text-blue-700" label="Generating" />
-            ) : (
-                <Icon className="size-3" />
-            )}
+            <Icon className={cn('size-3', status === 'generating' && 'animate-spin')} />
             {label}
         </span>
     );

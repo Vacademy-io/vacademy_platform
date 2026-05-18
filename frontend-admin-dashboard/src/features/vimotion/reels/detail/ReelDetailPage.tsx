@@ -19,6 +19,7 @@ import {
     ChevronLeft,
     Download,
     Edit3,
+    Loader2,
     PlayCircle,
     Scissors,
     Trash2,
@@ -30,7 +31,6 @@ import { getInstituteId } from '@/constants/helper';
 import { useVimotionApiKey } from '../../dashboard/hooks/useVimotionApiKey';
 import { useReel } from '../hooks/useReel';
 import { deleteReel, type ReelResponse } from '../services/reels-api';
-import { VimotionLoader } from '../../brand/VimotionLoader';
 import { StageProgressList } from './StageProgressList';
 
 interface ReelDetailPageProps {
@@ -102,7 +102,7 @@ function RunningBody({ reel }: { reel: ReelResponse }) {
             <div className="lg:col-span-2 space-y-5">
                 <header>
                     <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-100">
-                        <VimotionLoader size={12} className="text-blue-700" label="Rendering" />
+                        <Loader2 className="size-3 animate-spin" />
                         Rendering · {reel.progress}%
                     </span>
                     <h2 className="mt-3 text-xl font-semibold text-neutral-900">{title}</h2>
@@ -469,7 +469,7 @@ function buildEditorSearch(
 function CenteredLoader({ message }: { message: string }) {
     return (
         <div className="flex flex-col items-center justify-center gap-3 py-24 text-sm text-neutral-500">
-            <VimotionLoader size={56} className="text-neutral-900" label={message} />
+            <Loader2 className="size-6 animate-spin" />
             <p>{message}</p>
         </div>
     );

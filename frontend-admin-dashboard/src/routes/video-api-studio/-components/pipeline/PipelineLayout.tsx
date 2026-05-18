@@ -1,17 +1,10 @@
 import { PipelineFlow } from './PipelineFlow';
 import { PipelinePanel } from './PipelinePanel';
-import type { PipelineEventLogEntry, PipelineState } from './-utils/derive-pipeline-state';
+import type { PipelineState } from './-utils/derive-pipeline-state';
 
 interface PipelineLayoutProps {
     state: PipelineState;
     apiKey?: string;
-    /**
-     * In-memory SSE event log from the live session, used by the Developer /
-     * Audit drawer to show the chronological pipeline path. Absent on
-     * history-loaded runs (the audit drawer synthesizes a coarse path from
-     * `state` instead).
-     */
-    eventLog?: PipelineEventLogEntry[];
     /**
      * Cancel an in-flight production. Wired to the console's `abortRef` —
      * surfaced from the right panel only when the run is `in_production`.
@@ -45,14 +38,7 @@ interface PipelineLayoutProps {
  * Left 2/3 = React Flow production diagram. Right 1/3 = stages list,
  * production budget, asset URLs, actions.
  */
-export function PipelineLayout({
-    state,
-    apiKey,
-    eventLog,
-    onAbort,
-    onRetry,
-    onEdit,
-}: PipelineLayoutProps) {
+export function PipelineLayout({ state, apiKey, onAbort, onRetry, onEdit }: PipelineLayoutProps) {
     return (
         <div className="flex size-full min-h-[600px] flex-col gap-4 xl:flex-row">
             {/* Left: flow diagram (2/3 on desktop) */}
@@ -77,7 +63,6 @@ export function PipelineLayout({
                 <PipelinePanel
                     state={state}
                     apiKey={apiKey}
-                    eventLog={eventLog}
                     onAbort={onAbort}
                     onRetry={onRetry}
                     onEdit={onEdit}

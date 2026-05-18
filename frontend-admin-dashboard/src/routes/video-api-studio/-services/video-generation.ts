@@ -519,72 +519,23 @@ export interface CancelledEvent {
     video_id?: string;
 }
 
-/**
- * Per-shot plan entry. Carries the union of v2 (Director) + v3 (ShotPlanner +
- * NarrationWriter) fields. v2 runs only populate the first six fields; v3
- * runs add `narration_brief`, `audio_policy`, `background_treatment`,
- * `transition_in`, `intent_role`, and the pre-computed per-shot audio URLs.
- * The FE consumes both shapes uniformly — every v3 field is optional.
- *
- * `audio_policy` controls how the master narration interacts with the shot
- * during render: `narration_only` (default) plays the voiceover normally;
- * `intrinsic_only` mutes the voiceover in the shot's window so the shot's
- * own audio (Veo-generated, source clip) plays alone.
- */
-export interface ShotPlanItem {
-    shot_index: number;
-    shot_type: string;
-    start_time: number;
-    end_time: number;
-    duration_s: number;
-    /** Truncated narration the Director / NarrationWriter assigned. */
-    narration_excerpt?: string;
-    // ── v3 fields (ShotPlanner + NarrationWriter) ──
-    /** What the planner wants this shot to say — distinct from `narration_text`. */
-    narration_brief?: string;
-    /** Full per-shot narration authored by NarrationWriter. Empty on intrinsic_only shots. */
-    narration_text?: string;
-    audio_policy?: 'narration_only' | 'intrinsic_only';
-    /** brand_solid | brand_textured | brand_gradient | media_hero | etc. */
-    background_treatment?: string;
-    /** transition_picker.py key — `crossfade`, `circle_iris`, `slide_left`, etc. */
-    transition_in?: string;
-    /** ShotPlanner intent role — `hook`, `body`, `close`, `product_proof`, etc. */
-    intent_role?: string;
-    /** Pre-computed per-shot TTS mp3 URL. Absent on `intrinsic_only` (audio_skipped). */
-    audio_url?: string;
-    /** Pre-computed per-shot word timings JSON URL. */
-    audio_words_url?: string;
-    /** Pre-computed per-shot narration script (plain text) URL. */
-    audio_script_url?: string;
-    /** Per-shot audio duration in seconds, as reported by the TTS pass. */
-    audio_duration_s?: number;
-    /** True when the shot is `intrinsic_only` and no per-shot TTS was generated. */
-    audio_skipped?: boolean;
-}
-
 /** Sub-stage progress event emitted during long phases (e.g. director_planning, shot_done) */
 export interface SubStageEvent {
     type: 'sub_stage';
     sub_stage: string;
     message?: string;
     video_id?: string;
-    /** Director / ShotPlanner shot count — present on `director_done` or `shot_planning_done`. */
+    /** Director shot count — only present when sub_stage === 'director_done' */
     shot_count?: number;
-    /** Full plan — present on `director_done` (v2) or `shot_planning_done` (v3). */
-    shot_plan?: ShotPlanItem[];
-    /**
-     * v3 only: plan-level recurring visual motifs (logo placement, repeated
-     * UI element, etc.) that span multiple shots. Emitted on
-     * `shot_planning_done`.
-     */
-    recurring_motifs?: Array<{
-        description: string;
-        screen_position?: string;
-        when_visible?: string;
+    /** Full Director shot plan — only present when sub_stage === 'director_done' */
+    shot_plan?: Array<{
+        shot_index: number;
+        shot_type: string;
+        start_time: number;
+        end_time: number;
+        duration_s: number;
+        narration_excerpt?: string;
     }>;
-    /** v3 only: total words in the authored narration, emitted on `narration_writing_done`. */
-    narration_word_count?: number;
     /** Per-shot index for avatar_* sub-stages */
     shot_index?: number;
     /** Per-shot total for avatar_* sub-stages */
@@ -687,23 +638,14 @@ export interface GenerationProgress {
     sub_stage?: string;
     shots_completed?: number;
     shots_total?: number;
-    /**
-     * Full per-shot plan. v2 runs populate the legacy fields only; v3 runs
-     * include the richer ShotPlanner + NarrationWriter metadata (audio_policy,
-     * narration_brief, background_treatment, etc.). See `ShotPlanItem`.
-     */
-    shot_plan?: ShotPlanItem[];
-    /**
-     * v3 only — plan-level recurring motifs the ShotPlanner emitted.
-     * Surfaced in the ShotPlanner detail sheet for cross-shot continuity.
-     */
-    recurring_motifs?: Array<{
-        description: string;
-        screen_position?: string;
-        when_visible?: string;
+    shot_plan?: Array<{
+        shot_index: number;
+        shot_type: string;
+        duration_s: number;
+        start_time: number;
+        end_time: number;
+        narration_excerpt?: string;
     }>;
-    /** v3 only — total words NarrationWriter authored across all shots. */
-    narration_word_count?: number;
     shots_history?: Array<{
         shot_index: number;
         shot_type: string;
@@ -861,14 +803,6 @@ export interface VideoStatusUserSelections {
         raw?: Record<string, unknown>;
     };
     visual_preferences?: Record<string, unknown> | null;
-    /**
-     * Which AI video pipeline architecture this run used: `'v2'` (legacy:
-     * BeatPlanner → ScriptGenerator → Director → per-shot HTML) or `'v3'`
-     * (ShotPlanner-first: ShotPlanner → NarrationWriter → per-shot TTS →
-     * per-shot HTML). v3 is opt-in via env or tier override; absent / unknown
-     * is treated as v2 by the FE for back-compat.
-     */
-    pipeline_version?: 'v2' | 'v3';
 }
 
 /**
@@ -885,11 +819,6 @@ export interface VideoStatusMetadata {
      *  to metadata. Not populated today — comes online when Phase 3 BE work
      *  flushes music outputs to /status. Read defensively. */
     audio_tracks?: Array<{ id?: string; url?: string; label?: string }>;
-    /**
-     * Top-level mirror of `user_selections.pipeline_version` — BE may write
-     * it here too. Either source is authoritative; FE checks both.
-     */
-    pipeline_version?: 'v2' | 'v3';
     [key: string]: unknown;
 }
 

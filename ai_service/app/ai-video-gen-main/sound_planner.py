@@ -156,18 +156,7 @@ def plan_sounds(
             idx = 0
         shots_by_index[idx] = s
 
-    # Per-shot cap (`sound_max_cues_per_shot` in tier_config) is no longer
-    # honored as a hard ceiling. The video-level cap + _MIN_CUE_GAP + the
-    # planner's own role-selection logic do the anti-clutter work. The
-    # _SHORT_SHOT clamp below still applies: any shot < _SHORT_SHOT (1.8s
-    # by default) gets at most 1 cue regardless of content, so a 0.5s
-    # transition doesn't get 3 chimes stacked into it. The tier_config
-    # field is read for back-compat logging only.
-    _legacy_per_shot_cap = tier_config.get("sound_max_cues_per_shot")
-    if _legacy_per_shot_cap is not None:
-        # Silent ignore — no warning spam, just record that the legacy
-        # value was present in case ops needs to audit.
-        pass
+    max_per_shot: int = int(tier_config.get("sound_max_cues_per_shot", 2))
     max_per_video: int = int(tier_config.get("sound_max_cues_per_video", 20))
 
     prev_shot_type: Optional[str] = None
@@ -221,14 +210,9 @@ def plan_sounds(
                     no_natural_offset=True,
                 )
                 if t_cue:
-                    # Per-shot cap removed (2026-05) — only the short-shot
-                    # clamp and global video budget gate this. A busy long
-                    # shot can now accept a transition cue from the next
-                    # shot without dropping it; min-gap + dedup still
-                    # prevent stacking.
-                    prev_cap = 1 if prev_dur < _SHORT_SHOT else max_per_video
-                    remaining = max(0, max_per_video - total_cues)
-                    prev_cap = min(prev_cap, remaining)
+                    # Respect the previous entry's per-shot cap so a long
+                    # busy shot at its limit doesn't go over.
+                    prev_cap = 1 if prev_dur < _SHORT_SHOT else max_per_shot
                     if len(prev_entry["sound_cues"]) < prev_cap:
                         prev_entry["sound_cues"].append(_public_cue(t_cue))
                         total_cues += 1
@@ -284,14 +268,8 @@ def plan_sounds(
         # ── Rule 6: Dedup (same-role cues within MIN_GAP) ──
         cues = _dedup_and_space(cues, min_gap=_MIN_CUE_GAP)
 
-        # ── Rule 5: Caps ──
-        # Per-shot cap removed (2026-05). Only two clamps remain:
-        #   1. Short-shot clamp: shots < _SHORT_SHOT get max 1 cue so a
-        #      0.5s transition doesn't get 3 chimes stacked.
-        #   2. Global video budget: max_per_video stays as the real ceiling.
-        # _MIN_CUE_GAP (applied above in _dedup_and_space) handles
-        # within-shot pacing — no need for an artificial per-shot count.
-        shot_cap = 1 if duration < _SHORT_SHOT else max_per_video
+        # ── Rule 5: Tier caps ──
+        shot_cap = 1 if duration < _SHORT_SHOT else max_per_shot
         remaining = max(0, max_per_video - total_cues)
         cap = min(shot_cap, remaining)
         if len(cues) > cap:

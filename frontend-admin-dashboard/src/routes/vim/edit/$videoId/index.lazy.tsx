@@ -4,14 +4,12 @@ import { VideoEditorPage } from '@/components/ai-video-editor/VideoEditorPage';
 import { useVideoEditorStore } from '@/components/ai-video-editor/stores/video-editor-store';
 import { getInstituteId } from '@/constants/helper';
 import { VimTourProvider, useVimTour } from '@/features/vimotion/tour/VimTourProvider';
-import { useVimotionDocumentChrome } from '@/features/vimotion/brand/useVimotionDocumentChrome';
 
 export const Route = createLazyFileRoute('/vim/edit/$videoId/')({
     component: VimVideoEditorRoute,
 });
 
 function VimVideoEditorRoute() {
-    useVimotionDocumentChrome();
     const instituteId = getInstituteId();
     return (
         <VimTourProvider instituteId={instituteId}>

@@ -20,6 +20,8 @@ import { useNavigate } from '@tanstack/react-router';
 import {
     AlertCircle,
     CheckCircle2,
+    Loader2,
+    Sparkles,
     X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -30,7 +32,6 @@ import type {
 } from '../services/reels-api';
 import { usePreview } from '../hooks/usePreview';
 import { useRender } from '../hooks/useRender';
-import { VimotionLoader } from '../../brand/VimotionLoader';
 import { WordImportanceTimeline } from './WordImportanceTimeline';
 import {
     DEFAULT_RENDER_CONFIG,
@@ -257,12 +258,15 @@ function PreviewTrayBody({
     if (preview.isPending) {
         return (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-sm text-neutral-500">
-                <VimotionLoader size={56} className="text-neutral-900" label="Enriching with AI" />
+                <div className="flex size-12 items-center justify-center rounded-xl bg-primary-50 ring-1 ring-primary-100">
+                    <Sparkles className="size-5 text-primary-500" />
+                </div>
                 <p className="font-medium text-neutral-900">Enriching with AI…</p>
                 <p className="max-w-md text-center text-xs">
                     Generating titles, rationales, and surgical cut plans for each clip.
                     Usually takes a couple seconds.
                 </p>
+                <Loader2 className="size-5 animate-spin text-neutral-400" />
             </div>
         );
     }
@@ -398,7 +402,7 @@ function EnrichedCard({
                     )}
                 >
                     {isRenderingThis ? (
-                        <VimotionLoader size={16} className="text-white" label="Starting" />
+                        <Loader2 className="size-4 animate-spin" />
                     ) : (
                         <CheckCircle2 className="size-4" />
                     )}

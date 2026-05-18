@@ -15,8 +15,7 @@
  * exploration flow — hiding it behind an extra click would be friction.
  */
 import { useState } from 'react';
-import { Clock, Hash, ListChecks, X } from 'lucide-react';
-import { VimotionLoader } from '../../brand/VimotionLoader';
+import { Clock, Hash, ListChecks, Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ScanSettingsStripProps {
@@ -103,7 +102,7 @@ export function ScanSettingsStrip({
 
                 {busy && (
                     <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-neutral-500">
-                        <VimotionLoader size={12} className="text-neutral-500" label="Re-scanning" />
+                        <Loader2 className="size-3 animate-spin" />
                         Re-scanning…
                     </span>
                 )}

@@ -9,7 +9,6 @@
 import type {
     ContentType,
     GenerateVideoRequest,
-    ShotPlanItem,
     TokenUsage,
     VideoOrientation,
     VideoStage,
@@ -106,51 +105,6 @@ export interface NarrationArtifact {
     wordsUrl?: string;
     wordCount?: number;
 }
-
-// ── v3 slot shapes ──────────────────────────────────────────────────────
-//
-// v3 pipeline collapses the Beats/Script/Director chain into two LLM hops:
-// ShotPlanner (does everything Director did + plan-level recurring motifs +
-// per-shot intent_role/background_treatment/transition_in/audio_policy) and
-// NarrationWriter (authors the per-shot narration text; intrinsic_only shots
-// get an empty string and skip TTS).
-
-/** Plan-level recurring motif emitted by ShotPlanner (v3 only). */
-export interface RecurringMotif {
-    description: string;
-    screenPosition?: string;
-    whenVisible?: string;
-}
-
-export interface ShotPlannerArtifact {
-    /** Total shot count the planner emitted. */
-    shotCount: number;
-    /** Shots with `audio_policy=intrinsic_only` (Veo audio / source clip). */
-    intrinsicCount: number;
-    /** Shots with `audio_policy=narration_only`. */
-    narratedCount: number;
-    /** Cross-shot continuity contracts the planner wrote. May be empty. */
-    recurringMotifs: RecurringMotif[];
-    /** Distribution by intent_role (`hook`, `body`, `close`, etc.). */
-    intentRoleBreakdown?: Record<string, number>;
-    /** Distribution by background_treatment (`brand_solid`, etc.). */
-    backgroundBreakdown?: Record<string, number>;
-    /** Raw `shot_plan.json` S3 URL when persisted. Absent today; planned. */
-    shotPlanUrl?: string;
-}
-
-export interface NarrationWriterArtifact {
-    /** Total words NarrationWriter authored across all shots. */
-    totalWords: number;
-    /** Per-shot word counts (index → words). 0 for skipped intrinsic shots. */
-    perShotWordCounts: number[];
-    /** Number of shots whose narration_text was empty (intrinsic_only). */
-    skippedIntrinsicCount: number;
-    /** Master narration mp3 (the concat). */
-    narrationMp3Url?: string;
-    /** Master word timings JSON. */
-    narrationWordsUrl?: string;
-}
 export interface StoryboardArtifact {
     scenes: Array<{
         index: number;
@@ -183,43 +137,6 @@ export interface SceneSlot {
     imageUrl?: string;
     videoUrl?: string;
     error?: string;
-    // ── v3 metadata (optional; absent on v2 runs) ─────────────────────
-    /** Planner's intent for this shot's narration — distinct from `narrationText`. */
-    narrationBrief?: string;
-    /** Full per-shot narration NarrationWriter authored. */
-    narrationText?: string;
-    /** Render-time audio routing: drives the per-window narration mute. */
-    audioPolicy?: 'narration_only' | 'intrinsic_only';
-    /** ShotPlanner background classification (drives cross-shot contract). */
-    backgroundTreatment?: string;
-    /** Pre-picked transition keyword (`crossfade`, `circle_iris`, …). */
-    transitionIn?: string;
-    /** Role in the narrative arc (`hook`, `body`, `close`, `product_proof`). */
-    intentRole?: string;
-    /** Per-shot mp3 URL (v3 only). Absent when `audioPolicy === 'intrinsic_only'`. */
-    audioUrl?: string;
-    /** Per-shot word-timings JSON URL. */
-    audioWordsUrl?: string;
-    /** Per-shot narration plain-text URL. */
-    audioScriptUrl?: string;
-    /** Per-shot audio duration (sec) from the TTS pass. */
-    audioDurationS?: number;
-    /** True on intrinsic_only shots — no per-shot TTS was generated. */
-    audioSkipped?: boolean;
-    // ── AI video (Veo) metadata, populated from timeline.json meta.shots[] ──
-    aiVideoOn?: boolean;
-    aiVideoRequestId?: string;
-    aiVideoUrl?: string;
-    aiVideoCostCredits?: number;
-    aiVideoCostUsd?: number;
-    aiVideoElapsedS?: number;
-    aiVideoSegments?: Array<{
-        segIdx: number;
-        videoUrl?: string;
-        durationS?: number;
-        requestId?: string;
-        cacheHit?: boolean;
-    }>;
 }
 /**
  * One avatar take rendered for a host shot. Sourced from
@@ -271,13 +188,6 @@ export interface PipelineState {
     prompt: string;
     contentType: ContentType;
     orientation: VideoOrientation;
-    /**
-     * Which pipeline architecture this run used. v3 replaces the
-     * Beats/Screenplay/Narration/Storyboard chain with ShotPlanner +
-     * NarrationWriter; the diagram + stages list swap node sets accordingly.
-     * Defaults to v2 when the BE doesn't surface it.
-     */
-    pipelineVersion: 'v2' | 'v3';
     pitch: NodeSlot<PitchArtifact>;
     research?: NodeSlot<ResearchArtifact>;
     /**
@@ -290,17 +200,6 @@ export interface PipelineState {
     screenplay: NodeSlot<ScreenplayArtifact>;
     narration: NodeSlot<NarrationArtifact>;
     storyboard: NodeSlot<StoryboardArtifact>;
-    /**
-     * v3-only stage — ShotPlanner replaces Director (+ absorbs BeatPlanner +
-     * Script Generator). Populated when `pipelineVersion === 'v3'`. On v2
-     * runs this slot is absent and the v2 chain renders instead.
-     */
-    shotPlanner?: NodeSlot<ShotPlannerArtifact>;
-    /**
-     * v3-only stage — NarrationWriter authors per-shot narration in a single
-     * LLM hop after the plan is locked.
-     */
-    narrationWriter?: NodeSlot<NarrationWriterArtifact>;
     /**
      * Per-scene slots — populated when the Director's shot plan is known.
      * When empty (free / standard tier without a director), the diagram
@@ -371,45 +270,14 @@ export interface LiveCurrentGeneration {
         error: string;
         retrying: boolean;
     }>;
-    shotPlan?: ShotPlanItem[];
-    /**
-     * v3 only — plan-level recurring motifs from the ShotPlanner. Captured
-     * from the `shot_planning_done` sub_stage event.
-     */
-    recurringMotifs?: Array<{
-        description: string;
-        screen_position?: string;
-        when_visible?: string;
+    shotPlan?: Array<{
+        shot_index: number;
+        shot_type: string;
+        start_time: number;
+        end_time: number;
+        duration_s: number;
+        narration_excerpt?: string;
     }>;
-    /** v3 only — words NarrationWriter authored. From `narration_writing_done`. */
-    narrationWordCount?: number;
-    /**
-     * v3 only — pipeline version snapshot, captured from the request's
-     * options.pipeline_version (when the FE sent one) or backfilled from
-     * /status.metadata.pipeline_version on history rehydration.
-     */
-    pipelineVersion?: 'v2' | 'v3';
-    /** Latest `shot_planning*` sub_stage seen on the wire. */
-    shotPlannerSubStage?: string;
-    /** Latest `narration_writing*` sub_stage seen on the wire. */
-    narrationWriterSubStage?: string;
-    /**
-     * Universal "latest sub_stage on the wire" — set by the SSE handler on
-     * every `sub_stage` event, regardless of which family it belongs to.
-     * Replaces the substring-match-on-`message` lookup that
-     * `detectActiveSubStage` used to do (which broke because the message
-     * had underscores replaced with spaces). Consumers should prefer this
-     * field; `detectActiveSubStage` is kept as a fallback only.
-     */
-    currentSubStage?: string;
-    /**
-     * In-memory append-only log of every SSE event seen during this
-     * session. Capped at `EVENT_LOG_CAP` entries on the writer side.
-     * Drives the Developer / Audit drawer; persists only for the duration
-     * of the tab session (resume from history reconstructs from BE
-     * snapshots instead).
-     */
-    eventLog?: PipelineEventLogEntry[];
     /** Avatar-host counters captured from SSE — see CurrentGeneration in the console. */
     hostShotCount?: number;
     hostShotCompleted?: number;
@@ -425,39 +293,6 @@ export interface LiveCurrentGeneration {
      *  inside derivation to keep it pure). */
     startedAtMs?: number;
 }
-
-/**
- * One captured SSE event for the Developer / Audit drawer. The shape is
- * intentionally loose so any event type can be persisted without a new
- * variant; the drawer renders whichever fields are present.
- */
-export interface PipelineEventLogEntry {
-    /** Monotonic timestamp (ms since session start, not epoch). */
-    tsMs: number;
-    /** SSE `type` field (`progress` | `sub_stage` | `shot_done` | …). */
-    eventType: string;
-    /** SSE `sub_stage` field when `eventType === 'sub_stage'`. */
-    subStage?: string;
-    /** Pipeline stage from the event when present. */
-    stage?: string;
-    /** Human-readable message — the prefixed form the console wrote. */
-    message?: string;
-    /** Shot index when the event is per-shot (`shot_done`, `shot_error`, `avatar_*`). */
-    shotIndex?: number;
-    /** When the event carried a token delta, the prompt/completion totals. */
-    tokenDelta?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        estimated_cost_usd?: number | null;
-    };
-    /** When the event carried a shot_count (director_done / shot_planning_done). */
-    shotCount?: number;
-    /** Capture an error message verbatim. */
-    error?: string;
-}
-
-/** Soft cap to keep `eventLog` from ballooning on chatty long runs. */
-export const EVENT_LOG_CAP = 500;
 
 /**
  * Match the freshest sub_stage hint out of `currentGeneration.message`. The
@@ -640,131 +475,6 @@ function derivedTalent(args: {
     return { state: 'scheduled' };
 }
 
-// ── v3 helpers ───────────────────────────────────────────────────────────
-
-/**
- * Detect v3 from any signal we have: an explicit `pipeline_version`, the
- * presence of v3 sub_stages, or v3-shaped fields in a shot plan item. Returns
- * `'v3'` only on positive signal — unknown defaults to `'v2'` so the existing
- * graph keeps rendering for legacy runs.
- */
-function detectPipelineVersion(args: {
-    explicit?: 'v2' | 'v3';
-    activeSubStage?: string | null;
-    shotPlan?: ShotPlanItem[];
-}): 'v2' | 'v3' {
-    if (args.explicit === 'v3' || args.explicit === 'v2') return args.explicit;
-    const sub = args.activeSubStage ?? '';
-    if (sub.startsWith('shot_planning') || sub.startsWith('narration_writing')) {
-        return 'v3';
-    }
-    if (args.shotPlan?.some((s) => s.narration_brief != null || s.audio_policy != null)) {
-        return 'v3';
-    }
-    return 'v2';
-}
-
-function shotPlannerArtifactFromShots(
-    shots: ShotPlanItem[],
-    motifs?: Array<{ description: string; screen_position?: string; when_visible?: string }>
-): ShotPlannerArtifact {
-    let intrinsic = 0;
-    let narrated = 0;
-    const intentRoleBreakdown: Record<string, number> = {};
-    const backgroundBreakdown: Record<string, number> = {};
-    for (const s of shots) {
-        if (s.audio_policy === 'intrinsic_only') intrinsic++;
-        else narrated++;
-        if (s.intent_role) {
-            intentRoleBreakdown[s.intent_role] = (intentRoleBreakdown[s.intent_role] ?? 0) + 1;
-        }
-        if (s.background_treatment) {
-            backgroundBreakdown[s.background_treatment] =
-                (backgroundBreakdown[s.background_treatment] ?? 0) + 1;
-        }
-    }
-    return {
-        shotCount: shots.length,
-        intrinsicCount: intrinsic,
-        narratedCount: narrated,
-        recurringMotifs: (motifs ?? []).map((m) => ({
-            description: m.description,
-            screenPosition: m.screen_position,
-            whenVisible: m.when_visible,
-        })),
-        intentRoleBreakdown: Object.keys(intentRoleBreakdown).length
-            ? intentRoleBreakdown
-            : undefined,
-        backgroundBreakdown: Object.keys(backgroundBreakdown).length
-            ? backgroundBreakdown
-            : undefined,
-    };
-}
-
-function narrationWriterArtifactFromShots(
-    shots: ShotPlanItem[],
-    totalWordsOverride?: number,
-    masterMp3?: string,
-    masterWords?: string
-): NarrationWriterArtifact {
-    const perShotWordCounts: number[] = [];
-    let skippedIntrinsic = 0;
-    let totalWords = 0;
-    for (const s of shots) {
-        if (s.audio_skipped || s.audio_policy === 'intrinsic_only') {
-            perShotWordCounts.push(0);
-            skippedIntrinsic++;
-            continue;
-        }
-        const text = (s.narration_text ?? s.narration_excerpt ?? '').trim();
-        const n = text ? text.split(/\s+/).length : 0;
-        perShotWordCounts.push(n);
-        totalWords += n;
-    }
-    return {
-        totalWords: totalWordsOverride ?? totalWords,
-        perShotWordCounts,
-        skippedIntrinsicCount: skippedIntrinsic,
-        narrationMp3Url: masterMp3,
-        narrationWordsUrl: masterWords,
-    };
-}
-
-/**
- * Build a fully-populated `SceneSlot` from a single `ShotPlanItem` + the
- * derived scene `state`. Handles both v2 (only the base fields) and v3
- * (all the extra metadata). Pure — caller decides the scene's NodeState.
- */
-function sceneFromShot(
-    s: ShotPlanItem,
-    arrayIdx: number,
-    state: NodeState,
-    err?: string
-): SceneSlot {
-    const idx = typeof s.shot_index === 'number' ? s.shot_index : arrayIdx;
-    return {
-        state,
-        index: idx,
-        shotType: s.shot_type,
-        narrationExcerpt: s.narration_excerpt ?? s.narration_text,
-        durationS: s.duration_s,
-        startTime: s.start_time,
-        endTime: s.end_time,
-        narrationBrief: s.narration_brief,
-        narrationText: s.narration_text,
-        audioPolicy: s.audio_policy,
-        backgroundTreatment: s.background_treatment,
-        transitionIn: s.transition_in,
-        intentRole: s.intent_role,
-        audioUrl: s.audio_url,
-        audioWordsUrl: s.audio_words_url,
-        audioScriptUrl: s.audio_script_url,
-        audioDurationS: s.audio_duration_s,
-        audioSkipped: s.audio_skipped,
-        error: state === 'cut' ? err : undefined,
-    };
-}
-
 function derivedScore(args: {
     sawStage: boolean;
     runWrapped: boolean;
@@ -806,14 +516,7 @@ export function derivePipelineFromLive(
     nowMs: number = Date.now()
 ): PipelineState {
     const pipelineStage = (cg.stage as PipelineStage) ?? 'PENDING';
-    // Prefer the universal `currentSubStage` field that the SSE handler
-    // writes on every `sub_stage` event. Fall back to the legacy
-    // substring-match-on-`message` for resilience with older event shapes
-    // — but the substring path is structurally broken (the console
-    // replaces underscores with spaces when prefixing messages, so
-    // `shot_planning` never matches "🎬 shot planning"). Once every
-    // call site is migrated, the fallback can be deleted.
-    const activeSub = cg.currentSubStage ?? detectActiveSubStage(cg.message);
+    const activeSub = detectActiveSubStage(cg.message);
     const halted = isPipelineHaltedFromErrors(cg.recentErrors);
     const orientation: VideoOrientation = cg.orientation ?? 'landscape';
 
@@ -935,10 +638,13 @@ export function derivePipelineFromLive(
 
     // Per-scene slots — only populated when shotPlan is known. Each scene's
     // state is derived from its index relative to `done` + any matching
-    // `recentErrors`. v3 metadata (narration_brief, audio_policy, etc.) is
-    // carried through `sceneFromShot` automatically. Thumbnails are merged
-    // post-derivation via `PipelineFlow.enrichedState`.
+    // `recentErrors`. Phase 2 doesn't enrich with thumbnails; that happens
+    // post-derivation via `enrichScenesWithTimelineThumbnails`.
     const scenes: SceneSlot[] = (cg.shotPlan ?? []).map((s, arrayIdx) => {
+        // Defensive fallback: when the BE omits shot_index (older payloads
+        // or partial plans), use the array position so the UI never
+        // renders a chain of scenes labeled "01" / "01" / "01" or collapses
+        // them to a single position via colliding ids.
         const idx = typeof s.shot_index === 'number' ? s.shot_index : arrayIdx;
         const errEntry = cg.recentErrors?.find((e) => e.shot_index === idx);
         let sceneState: NodeState = 'scheduled';
@@ -947,7 +653,16 @@ export function derivePipelineFromLive(
         else if (errEntry && errEntry.retrying) sceneState = 'reshoot';
         else if (idx < done) sceneState = 'wrapped';
         else if (idx === done && inHtmlStage) sceneState = 'in_production';
-        return sceneFromShot(s, arrayIdx, sceneState, errEntry?.error);
+        return {
+            state: sceneState,
+            index: idx,
+            shotType: s.shot_type,
+            narrationExcerpt: s.narration_excerpt,
+            durationS: s.duration_s,
+            startTime: s.start_time,
+            endTime: s.end_time,
+            error: sceneState === 'cut' ? errEntry?.error : undefined,
+        };
     });
 
     // Final Cut wraps when timeline + audio (when needed) are present —
@@ -1036,80 +751,12 @@ export function derivePipelineFromLive(
           ? 'wrapped'
           : 'in_production';
 
-    // ── v3 slot derivation ───────────────────────────────────────────────
-    // Pipeline version is positively detected from the request payload OR
-    // from v3-only signals (v3 sub_stages or v3 fields on the shot plan).
-    // Defaults to v2 — the legacy chain stays the rendered fallback.
-    const pipelineVersion = detectPipelineVersion({
-        explicit: cg.pipelineVersion,
-        activeSubStage: activeSub,
-        shotPlan: cg.shotPlan,
-    });
-    const isV3 = pipelineVersion === 'v3';
-
-    let shotPlanner: NodeSlot<ShotPlannerArtifact> | undefined;
-    let narrationWriter: NodeSlot<NarrationWriterArtifact> | undefined;
-    if (isV3) {
-        const haveShots = !!cg.shotPlan?.length;
-        // Use the dedicated SSE-captured sub_stage fields, not the
-        // substring-match-on-`message` derivation. The console replaces
-        // underscores with spaces when building the prefixed message
-        // (`🎬 shot planning`), so `detectActiveSubStage` would miss
-        // `shot_planning` in the message string. Same pattern as the
-        // avatar/music branches, which use `hostSubStage` / `musicSubStage`.
-        const plannerSub = cg.shotPlannerSubStage;
-        const plannerActive = plannerSub === 'shot_planning';
-        const plannerDone = plannerSub === 'shot_planning_done' || haveShots;
-        if (plannerDone) {
-            shotPlanner = {
-                state: 'wrapped',
-                data: shotPlannerArtifactFromShots(cg.shotPlan ?? [], cg.recurringMotifs),
-            };
-        } else if (plannerActive) {
-            shotPlanner = { state: 'in_production' };
-        } else if (halted) {
-            shotPlanner = { state: 'cut', error: 'Shot planning cut from production' };
-        } else {
-            shotPlanner = { state: 'scheduled' };
-        }
-
-        const writerSub = cg.narrationWriterSubStage;
-        const writerActive = writerSub === 'narration_writing';
-        const writerDone =
-            writerSub === 'narration_writing_done' ||
-            (cg.shotPlan?.some(
-                (s) => typeof s.narration_text === 'string' && s.narration_text.length > 0
-            ) ??
-                false);
-        if (writerDone || runWrapped) {
-            narrationWriter = {
-                state: 'wrapped',
-                data: narrationWriterArtifactFromShots(
-                    cg.shotPlan ?? [],
-                    cg.narrationWordCount,
-                    cg.audioUrl,
-                    cg.wordsUrl
-                ),
-            };
-        } else if (writerActive) {
-            narrationWriter = { state: 'in_production' };
-        } else if (halted) {
-            narrationWriter = { state: 'cut', error: 'Narration writing cut from production' };
-        } else if (plannerDone) {
-            // Planner done but writer hasn't started — scheduled.
-            narrationWriter = { state: 'scheduled' };
-        } else {
-            narrationWriter = { state: 'scheduled' };
-        }
-    }
-
     return {
         status,
         videoId: cg.videoId,
         prompt: cg.prompt,
         contentType: cg.contentType,
         orientation,
-        pipelineVersion,
         pitch,
         screenplay,
         narration,
@@ -1118,8 +765,6 @@ export function derivePipelineFromLive(
         filming,
         ...(research ? { research } : {}),
         ...(beats ? { beats } : {}),
-        ...(shotPlanner ? { shotPlanner } : {}),
-        ...(narrationWriter ? { narrationWriter } : {}),
         ...(talent ? { talent } : {}),
         ...(score ? { score } : {}),
         finalCut,
@@ -1275,7 +920,16 @@ export function derivePipelineFromStatus(
         else if (errEntry && errEntry.retrying) sceneState = 'reshoot';
         else if (idx < shotsCompleted) sceneState = 'wrapped';
         else if (idx === shotsCompleted && pipelineStage === 'HTML') sceneState = 'in_production';
-        return sceneFromShot(s, arrayIdx, sceneState, errEntry?.error);
+        return {
+            state: sceneState,
+            index: idx,
+            shotType: s.shot_type,
+            narrationExcerpt: s.narration_excerpt,
+            durationS: s.duration_s,
+            startTime: s.start_time,
+            endTime: s.end_time,
+            error: sceneState === 'cut' ? errEntry?.error : undefined,
+        };
     });
 
     // ── Final Cut ─────────────────────────────────────────────────────
@@ -1344,75 +998,12 @@ export function derivePipelineFromStatus(
             ? 'wrapped'
             : 'in_production';
 
-    // ── Pipeline version + v3 slots ───────────────────────────────────
-    // Either user_selections OR top-level metadata may carry it. Falls back
-    // to v3 detection from v3-shaped shot plan items / sub_stage so older
-    // BE builds that don't expose pipeline_version still render correctly.
-    const explicitVersion = userSel.pipeline_version ?? meta?.pipeline_version ?? undefined;
-    const pipelineVersion = detectPipelineVersion({
-        explicit: explicitVersion,
-        activeSubStage: gp?.sub_stage,
-        shotPlan: shotPlan,
-    });
-    const isV3 = pipelineVersion === 'v3';
-
-    let shotPlanner: NodeSlot<ShotPlannerArtifact> | undefined;
-    let narrationWriter: NodeSlot<NarrationWriterArtifact> | undefined;
-    if (isV3) {
-        const haveShots = shotPlan.length > 0;
-        const sub = gp?.sub_stage ?? '';
-        const plannerActive = sub === 'shot_planning';
-        const plannerDone =
-            sub === 'shot_planning_done' ||
-            haveShots ||
-            STAGE_ORDER.indexOf(pipelineStage) >= STAGE_ORDER.indexOf('TTS');
-        if (halted && !plannerDone) {
-            shotPlanner = { state: 'cut', error: 'Shot planning cut from production' };
-        } else if (plannerDone) {
-            shotPlanner = {
-                state: 'wrapped',
-                data: shotPlannerArtifactFromShots(shotPlan, gp?.recurring_motifs),
-            };
-        } else if (plannerActive) {
-            shotPlanner = { state: 'in_production' };
-        } else {
-            shotPlanner = { state: 'scheduled' };
-        }
-
-        const writerActive = sub === 'narration_writing';
-        const writerDone =
-            sub === 'narration_writing_done' ||
-            shotPlan.some(
-                (s) => typeof s.narration_text === 'string' && s.narration_text.length > 0
-            ) ||
-            !!audioUrl ||
-            runWrapped;
-        if (halted && !writerDone) {
-            narrationWriter = { state: 'cut', error: 'Narration writing cut from production' };
-        } else if (writerDone) {
-            narrationWriter = {
-                state: 'wrapped',
-                data: narrationWriterArtifactFromShots(
-                    shotPlan,
-                    gp?.narration_word_count,
-                    audioUrl,
-                    wordsUrl
-                ),
-            };
-        } else if (writerActive) {
-            narrationWriter = { state: 'in_production' };
-        } else {
-            narrationWriter = { state: 'scheduled' };
-        }
-    }
-
     return {
         status: pipelineStatus,
         videoId: status.video_id,
         prompt,
         contentType,
         orientation,
-        pipelineVersion,
         pitch,
         screenplay,
         narration,
@@ -1420,8 +1011,6 @@ export function derivePipelineFromStatus(
         scenes,
         filming,
         ...(research ? { research } : {}),
-        ...(shotPlanner ? { shotPlanner } : {}),
-        ...(narrationWriter ? { narrationWriter } : {}),
         ...(talent ? { talent } : {}),
         ...(score ? { score } : {}),
         finalCut,

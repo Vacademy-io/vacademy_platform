@@ -5,10 +5,10 @@ import {
     CheckCircle2,
     Clock,
     Film,
+    Loader2,
     Plus,
     Scissors,
 } from 'lucide-react';
-import { VimotionLoader } from '../brand/VimotionLoader';
 import { cn } from '@/lib/utils';
 import { getInstituteId } from '@/constants/helper';
 import { useVimotionApiKey } from './hooks/useVimotionApiKey';
@@ -208,7 +208,7 @@ function ReelStatusBadge({ status, progress }: { status: ReelStatus; progress: n
         },
         IN_PROGRESS: {
             label: `${progress || 0}%`,
-            Icon: CheckCircle2,
+            Icon: Loader2,
             cls: 'bg-blue-50 text-blue-700 border-blue-200',
         },
         PENDING: {
@@ -231,11 +231,7 @@ function ReelStatusBadge({ status, progress }: { status: ReelStatus; progress: n
                 cls
             )}
         >
-            {spinning ? (
-                <VimotionLoader size={12} className="text-blue-700" label="Rendering" />
-            ) : (
-                <Icon className="size-3" />
-            )}
+            <Icon className={cn('size-3', spinning && 'animate-spin')} />
             {label}
         </span>
     );

@@ -14,10 +14,8 @@ import { OnboardingBanner } from './OnboardingBanner';
 import { isTab, type DashboardTab } from './tabsConfig';
 import { VimTourProvider, useVimTour } from '../tour/VimTourProvider';
 import { useVimotionRole } from '../auth/useVimotionRole';
-import { useVimotionDocumentChrome } from '../brand/useVimotionDocumentChrome';
 
 export function DashboardLayout() {
-    useVimotionDocumentChrome();
     const instituteId = getInstituteId();
     return (
         <VimTourProvider instituteId={instituteId}>

@@ -11,8 +11,7 @@
  * `stages[]` data yet). It matches `STAGE_PIPELINE` in the backend
  * orchestrator — if a stage gets added there, this list must be updated.
  */
-import { AlertCircle, Check, Circle } from 'lucide-react';
-import { VimotionLoader } from '../../brand/VimotionLoader';
+import { AlertCircle, Check, Circle, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ReelResponse } from '../services/reels-api';
 
@@ -128,7 +127,7 @@ function StageIcon({ state }: { state: StageState }) {
     if (state === 'active') {
         return (
             <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-                <VimotionLoader size={14} className="text-blue-700" />
+                <Loader2 className="size-3.5 animate-spin" />
             </span>
         );
     }

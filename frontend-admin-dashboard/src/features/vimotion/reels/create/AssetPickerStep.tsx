@@ -8,8 +8,7 @@
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { AlertCircle, Clapperboard, Mic } from 'lucide-react';
-import { VimotionLoader } from '../../brand/VimotionLoader';
+import { AlertCircle, Clapperboard, Mic, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
     listInputAssets,
@@ -156,7 +155,7 @@ function LoadingGrid() {
     return (
         <div>
             <div className="mb-5 flex items-center gap-2 text-sm text-neutral-500">
-                <VimotionLoader size={16} className="text-neutral-500" label="Loading" />
+                <Loader2 className="size-4 animate-spin" />
                 Loading your videos…
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">

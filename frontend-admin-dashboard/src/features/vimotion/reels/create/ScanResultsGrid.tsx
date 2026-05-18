@@ -6,8 +6,7 @@
  * PreviewTray drawer off it.
  */
 import { useState } from 'react';
-import { ChevronLeft, Sparkles } from 'lucide-react';
-import { VimotionLoader } from '../../brand/VimotionLoader';
+import { ChevronLeft, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ReelCandidate } from '../services/reels-api';
 import { ReelCandidateCard } from './ReelCandidateCard';
@@ -167,7 +166,7 @@ export function ScanResultsGrid({
                                     : 'bg-neutral-900 hover:bg-neutral-800'
                             )}
                         >
-                            {busy ? <VimotionLoader size={16} className="text-white" /> : null}
+                            {busy ? <Loader2 className="size-4 animate-spin" /> : null}
                             Preview selected
                         </button>
                     </div>

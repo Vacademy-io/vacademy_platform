@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Sparkles } from 'lucide-react';
 import { useVimotionOnboardingStore } from './store';
 import type { OnboardingStep } from './store';
 import { ContactStep } from './steps/ContactStep';
@@ -7,8 +8,6 @@ import { AccountTypeStep } from './steps/AccountTypeStep';
 import { StudioDetailsStep } from './steps/StudioDetailsStep';
 import { Stepper } from './Stepper';
 import { BrandPanel } from './BrandPanel';
-import { VimotionLogoMark } from '../brand/VimotionLogoMark';
-import { useVimotionDocumentChrome } from '../brand/useVimotionDocumentChrome';
 
 const STEP_META: Record<OnboardingStep, { title: string; description: string }> = {
     contact: {
@@ -32,7 +31,6 @@ const STEP_META: Record<OnboardingStep, { title: string; description: string }> 
 const STEP_ORDER: OnboardingStep[] = ['contact', 'otp', 'account-type', 'studio-details'];
 
 export function OnboardingWizard() {
-    useVimotionDocumentChrome();
     const { step, signupToken, setStep } = useVimotionOnboardingStore();
 
     // Guard: a fresh refresh on a later step without a token sends the user
@@ -54,7 +52,7 @@ export function OnboardingWizard() {
                 {/* Mobile-only top bar with the wordmark */}
                 <div className="flex items-center gap-2 px-6 pt-6 lg:hidden">
                     <div className="flex size-8 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
-                        <VimotionLogoMark size={18} className="text-neutral-900" />
+                        <Sparkles className="size-4 text-primary-500" />
                     </div>
                     <span className="text-lg font-semibold tracking-tight text-neutral-900">
                         Vimotion

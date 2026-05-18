@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { X, ArrowRight } from 'lucide-react';
+import { Sparkles, X, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { getInstituteId } from '@/constants/helper';
 import { getDefaultBrandKit } from '../api/brandKits';
-import { VimotionLogoMark } from '../brand/VimotionLogoMark';
 import { BrandKitDrawer } from './BrandKitDrawer';
 
 const SKIPPED_KEY_PREFIX = 'vimotion_onboarding_skipped_';
@@ -57,7 +56,7 @@ export function OnboardingBanner() {
 
                 <div className="relative flex items-start gap-4">
                     <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
-                        <VimotionLogoMark size={22} className="text-neutral-900" />
+                        <Sparkles className="size-5 text-primary-500" />
                     </div>
                     <div className="flex-1">
                         <h2 className="text-base font-semibold text-neutral-900">

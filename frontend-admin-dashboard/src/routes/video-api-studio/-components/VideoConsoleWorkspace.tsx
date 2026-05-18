@@ -20,7 +20,6 @@ import {
     VideoOrientation,
     TokenUsage,
     RoutingOverrides,
-    ShotPlanItem,
     generateVideo,
     resumeVideo,
     retryVideo,
@@ -36,9 +35,7 @@ import { ScriptReview } from './ScriptReview';
 import { PipelineLayout } from './pipeline/PipelineLayout';
 import {
     derivePipelineFromLive,
-    EVENT_LOG_CAP,
     type LiveCurrentGeneration,
-    type PipelineEventLogEntry,
 } from './pipeline/-utils/derive-pipeline-state';
 import { CenteredHero } from '../console/-components/CenteredHero';
 import { IntentChips } from '../console/-components/IntentChips';
@@ -127,20 +124,6 @@ function computeHtmlPercentage(
 /** Unified cap for the "live" recent-errors list shown in the progress UI. */
 const RECENT_ERRORS_CAP = 10;
 
-/**
- * Append an entry to the in-memory SSE event log, applying the
- * `EVENT_LOG_CAP` slice on overflow. Used by every SSE branch that wants to
- * record an event for the Developer / Audit drawer. Pure — caller owns the
- * `prev` array and assignment.
- */
-function appendEventLog(
-    prev: PipelineEventLogEntry[] | undefined,
-    entry: PipelineEventLogEntry
-): PipelineEventLogEntry[] {
-    const next = prev ? [...prev, entry] : [entry];
-    return next.length > EVENT_LOG_CAP ? next.slice(-EVENT_LOG_CAP) : next;
-}
-
 /** Map backend uppercase status to HistoryItem.status used by the sidebar. */
 function mapVideoStatusToRow(status: string): HistoryItem['status'] {
     switch (status.toUpperCase()) {
@@ -191,51 +174,14 @@ interface CurrentGeneration {
         error: string;
         retrying: boolean;
     }>;
-    /**
-     * Per-shot plan. Carries both v2 (Director) and v3 (ShotPlanner +
-     * NarrationWriter) field sets — the v3 fields (narration_brief,
-     * audio_policy, background_treatment, transition_in, intent_role, plus
-     * pre-computed per-shot audio URLs) are optional. Both pipelines emit
-     * the plan via the `shot_plan` payload on either `director_done` (v2)
-     * or `shot_planning_done` (v3) sub_stage events.
-     */
-    shotPlan?: ShotPlanItem[];
-    /**
-     * v3 only — pipeline architecture flag captured from the request body
-     * (when the FE sent `pipeline_version`) so the diagram swaps to the
-     * ShotPlanner-first graph immediately, before the first SSE event.
-     */
-    pipelineVersion?: 'v2' | 'v3';
-    /**
-     * v3 only — plan-level recurring motifs captured from
-     * `shot_planning_done`. Drives the ShotPlanner detail sheet.
-     */
-    recurringMotifs?: Array<{
-        description: string;
-        screen_position?: string;
-        when_visible?: string;
+    shotPlan?: Array<{
+        shot_index: number;
+        shot_type: string;
+        start_time: number;
+        end_time: number;
+        duration_s: number;
+        narration_excerpt?: string;
     }>;
-    /** v3 only — total words NarrationWriter authored. From `narration_writing_done`. */
-    narrationWordCount?: number;
-    /** Latest `shot_planning*` sub_stage seen — used as the node's active sub-status. */
-    shotPlannerSubStage?: string;
-    /** Latest `narration_writing*` sub_stage seen — used as the node's active sub-status. */
-    narrationWriterSubStage?: string;
-    /**
-     * Universal "latest sub_stage on the wire" — set on every `sub_stage`
-     * event regardless of family. Replaces the substring-match-on-`message`
-     * lookup that `detectActiveSubStage` was doing (and silently failing
-     * at for every sub_stage whose message text used spaces). Consumers
-     * read this field via `LiveCurrentGeneration.currentSubStage`.
-     */
-    currentSubStage?: string;
-    /**
-     * Append-only log of every SSE event seen during this session. Powers
-     * the Developer / Audit drawer's "Pipeline path" timeline so users can
-     * see exactly which events fired in what order with what payload. Lives
-     * in memory only — on tab reload the BE-persisted state takes over.
-     */
-    eventLog?: PipelineEventLogEntry[];
     /**
      * Avatar-host counters captured from `avatar_*` sub_stage events. The BE
      * doesn't push these on `progress`/`completed` events — only on per-shot
@@ -970,12 +916,6 @@ export function VideoConsoleWorkspace({
                 quality_tier: request.quality_tier,
             };
 
-            // Pinned at SSE-callback creation so every event log entry shares
-            // the same t0. Drives the Developer / Audit drawer's relative
-            // timestamps ("00:03.456 ShotPlanner started"). Survives across
-            // setCurrentGeneration callbacks via closure.
-            const genStartMs = Date.now();
-
             const { abort, videoId } = generateVideo(
                 finalRequest,
                 activeApiKey,
@@ -991,12 +931,6 @@ export function VideoConsoleWorkspace({
                         // recentErrors/shotPlan` set by other event branches survive
                         // a stage-transition `progress` event.
                         setCurrentGeneration((prev) => {
-                            const newEntry: PipelineEventLogEntry = {
-                                tsMs: Date.now() - genStartMs,
-                                eventType: 'progress',
-                                stage: event.stage,
-                                message: event.message,
-                            };
                             if (!prev) {
                                 return {
                                     videoId,
@@ -1014,8 +948,6 @@ export function VideoConsoleWorkspace({
                                     wordsUrl,
                                     scriptUrl,
                                     options: pendingOptions,
-                                    startedAtMs: genStartMs,
-                                    eventLog: [newEntry],
                                 };
                             }
                             return {
@@ -1027,7 +959,6 @@ export function VideoConsoleWorkspace({
                                 audioUrl: audioUrl || prev.audioUrl,
                                 wordsUrl: wordsUrl || prev.wordsUrl,
                                 scriptUrl: scriptUrl || prev.scriptUrl,
-                                eventLog: appendEventLog(prev.eventLog, newEntry),
                             };
                         });
 
@@ -1091,11 +1022,6 @@ export function VideoConsoleWorkspace({
                                       audioUrl: prev.audioUrl || event.files?.audio,
                                       wordsUrl: prev.wordsUrl || event.files?.words,
                                       scriptUrl: prev.scriptUrl || event.files?.script,
-                                      eventLog: appendEventLog(prev.eventLog, {
-                                          tsMs: Date.now() - genStartMs,
-                                          eventType: 'completed',
-                                          message: 'pipeline wrapped',
-                                      }),
                                   }
                                 : null
                         );
@@ -1117,36 +1043,6 @@ export function VideoConsoleWorkspace({
                         setCurrentGeneration((prev) => {
                             if (!prev) return null;
                             const updates: Partial<CurrentGeneration> = {};
-                            // Universal "current sub_stage" — drives the
-                            // derive layer without the broken substring
-                            // match. Append-only event log captures the
-                            // raw event so the Developer / Audit drawer
-                            // can show the pathway chronologically.
-                            if (event.sub_stage) {
-                                updates.currentSubStage = event.sub_stage;
-                            }
-                            updates.eventLog = appendEventLog(prev.eventLog, {
-                                tsMs: Date.now() - genStartMs,
-                                eventType: 'sub_stage',
-                                subStage: event.sub_stage,
-                                message: event.message,
-                                shotIndex:
-                                    typeof event.shot_index === 'number'
-                                        ? event.shot_index
-                                        : undefined,
-                                shotCount:
-                                    typeof event.shot_count === 'number'
-                                        ? event.shot_count
-                                        : undefined,
-                                tokenDelta: event.token_delta
-                                    ? {
-                                          prompt_tokens: event.token_delta.prompt_tokens,
-                                          completion_tokens: event.token_delta.completion_tokens,
-                                          estimated_cost_usd: event.token_delta.estimated_cost_usd,
-                                      }
-                                    : undefined,
-                                error: typeof event.error === 'string' ? event.error : undefined,
-                            });
                             // Avatar-host sub-stages live INSIDE the HTML stage. Pin
                             // the stage so the progress UI doesn't regress, and
                             // prefix the message with 🎙️ so host work reads
@@ -1154,47 +1050,7 @@ export function VideoConsoleWorkspace({
                             const sub = event.sub_stage || '';
                             const isHostSubStage = sub.startsWith('avatar_');
                             const isMusicSubStage = sub.startsWith('background_music_');
-                            const isShotPlannerSubStage = sub.startsWith('shot_planning');
-                            const isNarrationWriterSubStage = sub.startsWith('narration_writing');
-                            if (isShotPlannerSubStage) {
-                                // v3 ShotPlanner — runs in the SCRIPT stage.
-                                // Promote the run to v3 the moment we see this
-                                // (so the diagram swaps even if the request body
-                                // didn't carry pipeline_version explicitly).
-                                updates.stage = 'SCRIPT';
-                                updates.message = event.message
-                                    ? `🎬 ${event.message}`
-                                    : `🎬 ${sub.replace(/_/g, ' ')}`;
-                                updates.shotPlannerSubStage = sub;
-                                updates.pipelineVersion = 'v3';
-                                if (event.shot_plan) {
-                                    updates.shotPlan = event.shot_plan;
-                                }
-                                if (event.recurring_motifs) {
-                                    updates.recurringMotifs = event.recurring_motifs;
-                                }
-                                if (typeof event.shot_count === 'number') {
-                                    updates.shotsTotal = event.shot_count;
-                                }
-                            } else if (isNarrationWriterSubStage) {
-                                // v3 NarrationWriter — still SCRIPT-stage, runs
-                                // right after ShotPlanner. The done event carries
-                                // a final shot_plan with `narration_text` filled
-                                // (one of two stages that can update the plan
-                                // mid-run; the other is shot_planning_done).
-                                updates.stage = 'SCRIPT';
-                                updates.message = event.message
-                                    ? `✍️ ${event.message}`
-                                    : `✍️ ${sub.replace(/_/g, ' ')}`;
-                                updates.narrationWriterSubStage = sub;
-                                updates.pipelineVersion = 'v3';
-                                if (event.shot_plan) {
-                                    updates.shotPlan = event.shot_plan;
-                                }
-                                if (typeof event.narration_word_count === 'number') {
-                                    updates.narrationWordCount = event.narration_word_count;
-                                }
-                            } else if (isHostSubStage) {
+                            if (isHostSubStage) {
                                 updates.stage = 'HTML';
                                 updates.percentage = computeHtmlPercentage(
                                     prev.shotsCompleted,
@@ -1264,15 +1120,8 @@ export function VideoConsoleWorkspace({
                                     },
                                 ].slice(-RECENT_ERRORS_CAP);
                             }
-                            // director_done (v2) carries shot_count and shot_plan
-                            // and marks the boundary into the HTML stage. v3
-                            // shot_planning_done / narration_writing_done also
-                            // carry these fields but stay in SCRIPT — handled
-                            // in their own branches above, so we explicitly
-                            // skip the v2-style HTML promotion for them.
-                            const isV3PlanningSubStage =
-                                isShotPlannerSubStage || isNarrationWriterSubStage;
-                            if (event.shot_count != null && !isV3PlanningSubStage) {
+                            // director_done carries shot_count and shot_plan
+                            if (event.shot_count != null) {
                                 updates.shotsTotal = event.shot_count;
                                 updates.stage = 'HTML';
                                 updates.percentage = computeHtmlPercentage(
@@ -1280,7 +1129,7 @@ export function VideoConsoleWorkspace({
                                     event.shot_count
                                 );
                             }
-                            if (event.shot_plan && !isV3PlanningSubStage) {
+                            if (event.shot_plan) {
                                 updates.shotPlan = event.shot_plan;
                             }
                             return { ...prev, ...updates };
@@ -1301,23 +1150,6 @@ export function VideoConsoleWorkspace({
                                 shotsCompleted: completed,
                                 shotsTotal: total,
                                 cumulativeTokens: event.cumulative_tokens ?? prev.cumulativeTokens,
-                                eventLog: appendEventLog(prev.eventLog, {
-                                    tsMs: Date.now() - genStartMs,
-                                    eventType: 'shot_done',
-                                    shotIndex: event.shot_index,
-                                    message: event.shot_type
-                                        ? `shot ${event.shot_index} · ${event.shot_type}`
-                                        : `shot ${event.shot_index} wrapped`,
-                                    tokenDelta: event.token_delta
-                                        ? {
-                                              prompt_tokens: event.token_delta.prompt_tokens,
-                                              completion_tokens:
-                                                  event.token_delta.completion_tokens,
-                                              estimated_cost_usd:
-                                                  event.token_delta.estimated_cost_usd,
-                                          }
-                                        : undefined,
-                                }),
                             };
                         });
                     } else if (event.type === 'shot_error') {
@@ -1335,13 +1167,6 @@ export function VideoConsoleWorkspace({
                                 message:
                                     event.retrying && event.message ? event.message : prev.message,
                                 recentErrors: [...existing, errEntry].slice(-RECENT_ERRORS_CAP),
-                                eventLog: appendEventLog(prev.eventLog, {
-                                    tsMs: Date.now() - genStartMs,
-                                    eventType: 'shot_error',
-                                    shotIndex: event.shot_index,
-                                    error: event.error || '',
-                                    message: event.retrying ? 'retrying' : 'permanent failure',
-                                }),
                             };
                         });
                     } else if (event.type === 'cancelled') {
@@ -2210,7 +2035,6 @@ export function VideoConsoleWorkspace({
                                     currentGeneration satisfies LiveCurrentGeneration
                                 )}
                                 apiKey={activeApiKey ?? undefined}
-                                eventLog={currentGeneration.eventLog}
                                 onAbort={consoleState === 'generating' ? handleAbort : undefined}
                                 onRetry={
                                     currentGeneration?.videoId

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { VimotionLogoMark } from '../brand/VimotionLogoMark';
 
 const CLOUD = 'https://res.cloudinary.com/dn9snfizy/video/upload';
 const VIDEO_TX = 'f_auto,q_auto';
@@ -83,7 +83,7 @@ export function OutputShowcase({
                 <header>
                     <div className="flex items-center gap-2.5">
                         <div className="flex size-9 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
-                            <VimotionLogoMark size={20} className="text-neutral-900" />
+                            <Sparkles className="size-4 text-primary-500" />
                         </div>
                         <span className="text-xl font-semibold tracking-tight text-neutral-900">
                             Vimotion

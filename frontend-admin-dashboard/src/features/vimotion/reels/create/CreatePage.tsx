@@ -12,13 +12,12 @@
  */
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { AlertCircle, ChevronLeft, Sparkles } from 'lucide-react';
+import { AlertCircle, ChevronLeft, Loader2, Sparkles } from 'lucide-react';
 import { getInstituteId } from '@/constants/helper';
 import { useVimotionApiKey } from '../../dashboard/hooks/useVimotionApiKey';
 import { useScan } from '../hooks/useScan';
 import type { ReelCandidate } from '../services/reels-api';
 import { AssetPickerStep } from './AssetPickerStep';
-import { VimotionLoader } from '../../brand/VimotionLoader';
 import { PreviewTray } from './PreviewTray';
 import { ScanResultsGrid } from './ScanResultsGrid';
 import { ScanSettingsStrip } from './ScanSettingsStrip';
@@ -188,7 +187,7 @@ export function CreatePage() {
 function CenteredLoader({ message }: { message: string }) {
     return (
         <div className="flex flex-col items-center justify-center gap-3 py-24 text-sm text-neutral-500">
-            <VimotionLoader size={56} className="text-neutral-900" label={message} />
+            <Loader2 className="size-6 animate-spin" />
             <p>{message}</p>
         </div>
     );
@@ -208,7 +207,7 @@ function ScanningPanel({ onCancel }: { onCancel: () => void }) {
                 loop-quality. Usually under a second.
             </p>
             <div className="mt-6 flex items-center justify-center gap-2 text-sm text-neutral-500">
-                <VimotionLoader size={16} className="text-neutral-500" label="Scanning" />
+                <Loader2 className="size-4 animate-spin" />
                 Scanning
             </div>
             <button

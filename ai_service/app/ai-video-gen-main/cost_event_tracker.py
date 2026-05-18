@@ -160,57 +160,6 @@ class CostEventTracker:
             outcome=outcome,
         ))
 
-    def record_music(
-        self,
-        stage: str,
-        model: str,
-        duration_s: float,
-        cost_usd: float,
-        phase: str = "base",
-        outcome: str = "ok",
-    ) -> None:
-        """Background music bed generation (Lyria, fal-ElevenLabs, etc.).
-
-        Distinct from `record_sfx` so the ledger can break out music spend
-        from per-cue SFX spend — useful when tuning tier cost budgets.
-        """
-        self._events.append(CostEvent(
-            timestamp=_now_iso(),
-            stage=stage,
-            phase=phase,
-            kind="music",
-            model=model,
-            character_count=int(max(0.0, float(duration_s or 0.0))),  # repurpose as seconds for music
-            cost_usd=float(cost_usd or 0.0),
-            outcome=outcome,
-        ))
-
-    def record_sfx(
-        self,
-        stage: str,
-        model: str,
-        duration_s: float,
-        cost_usd: float,
-        phase: str = "base",
-        outcome: str = "ok",
-    ) -> None:
-        """Sound-effect / stinger / transition-whoosh generation.
-
-        One CostEvent per generated cue. Library hits (sounds_metadata.json)
-        cost $0 and don't go through here — only fresh API-generated audio
-        creates a charge.
-        """
-        self._events.append(CostEvent(
-            timestamp=_now_iso(),
-            stage=stage,
-            phase=phase,
-            kind="sfx",
-            model=model,
-            character_count=int(max(0.0, float(duration_s or 0.0))),
-            cost_usd=float(cost_usd or 0.0),
-            outcome=outcome,
-        ))
-
     def record_anomaly(self, message: str) -> None:
         """Surface a notable run-level observation in the final report
         (e.g. 'bbox-lint calls: 15 succeeded=0 (render worker 500)')."""

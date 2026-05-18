@@ -149,11 +149,7 @@ export function Composer({
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const pdfInputRef = useRef<HTMLInputElement>(null);
     const attachmentInputRef = useRef<HTMLInputElement>(null);
-    // LLMs tagged for the 'video' use-case only. Both filters are AND-ed
-    // server-side so avatar/video-render providers (Kling, VEED Fabric, HeyGen, …)
-    // — which share the 'video' use-case tag but live in non-'general' categories —
-    // never reach the dropdown.
-    const { data: modelsList } = useAIModelsList({ category: 'general', use_case: 'video' });
+    const { data: modelsList } = useAIModelsList({ category: 'general' });
     const { uploadFile, getPublicUrl: getFilePublicUrl } = useFileUpload();
     const { data: credits } = useAiCreditsQuery();
 
@@ -238,25 +234,23 @@ export function Composer({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [indexedVideos]);
 
-    // Auto-select model: prefer an LLM matching the current quality tier;
-    // otherwise fall back to whatever the BE marks is_default.
+    // Auto-select model based on quality tier
     useEffect(() => {
-        const available = modelsList?.models ?? [];
-        if (available.length === 0) return;
+        if (!modelsList?.models || modelsList.models.length === 0) return;
         const tier = options.quality_tier || 'ultra';
 
-        if (options.model && available.some((m) => m.model_id === options.model)) {
+        if (options.model && modelsList.models.some((m) => m.model_id === options.model)) {
             return;
         }
 
-        const tierModels = available.filter((m) => m.tier === tier);
-        const pick =
-            tierModels.find((m) => m.is_default) ??
-            tierModels[0] ??
-            available.find((m) => m.is_default) ??
-            available[0];
-        if (pick) {
-            onOptionsChange({ ...options, model: pick.model_id });
+        const tierModels = modelsList.models.filter((m) => m.tier === tier);
+        const defaultForTier =
+            tierModels.find((m) => m.is_default) ||
+            tierModels[0] ||
+            modelsList.models.find((m) => m.is_default) ||
+            modelsList.models[0];
+        if (defaultForTier) {
+            onOptionsChange({ ...options, model: defaultForTier.model_id });
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [modelsList, options.quality_tier]);
@@ -689,7 +683,7 @@ export function Composer({
         });
     };
 
-    const models = modelsList?.models ?? [];
+    const models = modelsList?.models || [];
 
     return (
         <div className="w-full">

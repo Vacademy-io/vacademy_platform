@@ -2192,7 +2192,7 @@ class VideoGenerationPipeline:
         from pathlib import Path as _PathL
         try:
             from audio_mixer import (  # type: ignore
-                MixCue, MixSpec, build_mix,
+                MixSpec, build_mix,
             )
             from sfx_palette_planner import (  # type: ignore
                 enrich_cues as _enrich_sfx_palette,
@@ -2206,18 +2206,55 @@ class VideoGenerationPipeline:
             print(f"⚠️ Audio mix skipped — narration not found: {narration_path}")
             return
 
-        # ── 1. Refresh full SFX palette (opt-in, tier-gated) ───────
-        # Handles ALL cue roles (transition_whoosh, ui_chime, ui_positive,
-        # impact, data_reveal, etc.) via fal-elevenlabs. Mood resolved
-        # from the script (or heuristic fallback).
+        # ── 1. Refresh SFX palette via cassetteai (opt-in, tier-gated) ─
+        # Each cue's URL gets replaced with a fresh cassetteai-generated
+        # WAV that we UPLOAD TO S3 immediately. The S3 URL goes back on
+        # the cue dict and ships in the timeline JSON so the editor +
+        # render worker can fetch the SFX independently of narration.mp3.
+        #
+        # Architecture (post-3b): SFX is NOT baked into narration.mp3
+        # anymore. The local audio_mix_pass only mixes VO + music. SFX
+        # mixing is delegated to the render worker which already has
+        # working SFX-with-ducking logic in worker.py and uses the
+        # public S3 URLs we set here.
         sfx_palette_counts: Dict[str, int] = {}
-        # Prefer the full script_plan dict (carries Director's `audio_mood`
-        # if it emitted one); fall back to the raw script_text string for
-        # heuristic mood inference when the dict isn't around.
         _script_for_mood: Any = (
             getattr(self, "_current_script_plan", None)
             or getattr(self, "_current_script_text", None)
         )
+
+        # Build an S3 uploader closure so sfx_palette_planner can publish
+        # each generated WAV at a public URL. Pattern mirrors the
+        # vision-review uploader below at line ~20100. When boto3 / creds
+        # aren't available, falls back to None and the planner emits local
+        # file paths (safe for tests / dev where no S3 is configured).
+        _sfx_s3_uploader: Optional[Callable[[bytes, str], str]] = None
+        try:
+            import boto3 as _boto3_sfx
+            _sfx_s3 = _boto3_sfx.client(
+                "s3",
+                aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
+                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+                region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+            )
+            _sfx_bucket = os.environ.get(
+                "AWS_S3_PUBLIC_BUCKET", "vacademy-media-storage-public",
+            )
+
+            def _upload_sfx(data: bytes, key: str) -> str:
+                _sfx_s3.put_object(
+                    Bucket=_sfx_bucket,
+                    Key=key,
+                    Body=data,
+                    ContentType="audio/wav",
+                )
+                return f"https://{_sfx_bucket}.s3.amazonaws.com/{key}"
+
+            _sfx_s3_uploader = _upload_sfx
+        except Exception as _s3_err:
+            print(f"⚠️ SFX S3 uploader unavailable ({_s3_err}) — "
+                  f"cues will use local paths (editor visibility limited)")
+
         try:
             sfx_palette_counts = _enrich_sfx_palette(
                 entries,
@@ -2226,10 +2263,7 @@ class VideoGenerationPipeline:
                 cost_tracker=getattr(self, "_cost_events", None),
                 run_dir=run_dir,
                 video_id=video_id,
-                # No s3_uploader → mixer uses local paths, which is fine
-                # because the mix runs locally before the timeline ships.
-                # The S3 upload happens after the swap via the regular
-                # narration.mp3 upload path.
+                s3_uploader=_sfx_s3_uploader,
             )
         except Exception as _se:
             print(f"⚠️ SFX palette enrichment errored (non-fatal): {_se}")
@@ -2269,31 +2303,28 @@ class VideoGenerationPipeline:
         elif _bpm:
             print(f"🥁 Beat-snap skipped: provider={_provider} (BPM hint not trustworthy)")
 
-        # ── 3. Flatten sound_cues across entries → MixCue list ─────
-        sfx_cues: List[MixCue] = []
-        stinger_cues: List[MixCue] = []
+        # ── 3. Count SFX (for logging only — they are NOT mixed here) ──
+        # Architectural change (2026-05, "3b"): SFX is no longer baked
+        # into narration.mp3. We keep the cues with their S3 URLs in
+        # the timeline JSON so the editor can see + edit + remove them,
+        # and the render worker mixes them at render time from the same
+        # URLs (worker.py:170 already has working SFX+sidechain logic).
+        # Only VO + MUSIC are mixed locally — music is intentionally
+        # NOT exposed as a discrete editor track (different granularity).
+        _sfx_cue_count = 0
         for entry in entries:
-            entry_start = float(entry.get("start", 0.0))
             for cue in (entry.get("sound_cues") or []):
-                role = (cue.get("role") or "").lower()
-                t_rel = float(cue.get("t", 0.0))
-                t_abs = entry_start + t_rel
-                vol = float(cue.get("volume", 0.5))
-                url = (cue.get("url") or "").strip()
-                if not url:
-                    continue
-                mix_cue = MixCue(url=url, t_s=t_abs, volume=vol,
-                                  label=str(cue.get("id") or role))
-                if role == "transition_whoosh":
-                    stinger_cues.append(mix_cue)
-                else:
-                    sfx_cues.append(mix_cue)
+                if (cue.get("url") or "").strip():
+                    _sfx_cue_count += 1
 
-        if not sfx_cues and not stinger_cues and music_local is None:
-            print("ℹ️ Audio mix skipped — only VO available, nothing to mix")
+        if music_local is None:
+            print(
+                f"ℹ️ Audio mix skipped — no music to bake; "
+                f"{_sfx_cue_count} SFX cues remain in timeline for worker mix"
+            )
             return
 
-        # ── 4. Build mix spec ──────────────────────────────────────
+        # ── 4. Build mix spec (VO + MUSIC only — no SFX) ──────────
         music_vol = 0.10
         if isinstance(bgm_track, dict):
             try:
@@ -2301,11 +2332,6 @@ class VideoGenerationPipeline:
             except (TypeError, ValueError):
                 pass
 
-        # Reuse the same mood the SFX planner picked so the post-process
-        # reverb on the bus matches the timbre of the generated samples.
-        # Uses the same script source so mood resolution stays consistent
-        # across planner and mixer (otherwise SFX prompts and reverb
-        # could disagree about the video's tone).
         try:
             _mix_mood = _resolve_sfx_mood(script=_script_for_mood)
         except Exception:
@@ -2316,17 +2342,17 @@ class VideoGenerationPipeline:
             video_duration_s=max(0.5, float(audio_duration)),
             music_path=music_local,
             music_volume=music_vol,
-            sfx_cues=sfx_cues,
-            stinger_cues=stinger_cues,
-            enable_ducking=music_local is not None,
+            sfx_cues=[],       # ← SFX deliberately omitted, see comment above
+            stinger_cues=[],   # ← same
+            enable_ducking=True,  # music ducks under VO
             enable_loudnorm=True,
             reverb_mood=_mix_mood,
         )
 
         n_fresh_sfx = sum(sfx_palette_counts.values())
         print(
-            f"🎚  Audio mix: vo + {'music' if music_local else 'no-music'} "
-            f"+ {len(sfx_cues)} SFX + {len(stinger_cues)} stingers "
+            f"🎚  Local audio mix: vo + music (no-SFX bake) "
+            f"| SFX in timeline: {_sfx_cue_count} cues "
             f"({'fresh' if n_fresh_sfx else 'static'} palette: "
             f"{sfx_palette_counts or 'static-lib'}) "
             f"mood={_mix_mood}"
@@ -2349,7 +2375,6 @@ class VideoGenerationPipeline:
             result.output_path.rename(_PathL(narration_path))
         except OSError as _swap_err:
             print(f"⚠️ Audio mix swap failed: {_swap_err} — reverting")
-            # Best-effort recovery: if the rename half-succeeded, restore.
             try:
                 if not _PathL(narration_path).exists():
                     backup_path.rename(_PathL(narration_path))
@@ -2357,29 +2382,28 @@ class VideoGenerationPipeline:
                 pass
             return
 
-        # ── 6. Null out timeline music + SFX so we don't double-attach ──
+        # ── 6. Null out the MUSIC track only ──────────────────────
+        # Music is baked into narration.mp3 — clearing the music_track
+        # prevents the render worker from double-attaching it.
+        #
+        # SFX cues stay in entries — they ARE the editor's view of SFX
+        # and the worker mixes them from their public S3 URLs.
         self._background_music_track = None
-        for entry in entries:
-            entry["sound_cues"] = []
 
-        # Cost-ledger entry for the music side (per-cue stinger cost was
-        # already recorded inside transition_stinger_planner).
+        # Cost-ledger entry for the music side.
         try:
             tracker = getattr(self, "_cost_events", None)
             if tracker is not None and isinstance(bgm_track, dict):
-                # Use the music_generator's recorded URL+duration as proxy
-                # for cost; this is an estimate since the real charge is
-                # in music_generator (Lyria) or fal_elevenlabs_client (fal).
                 tracker.record_anomaly(
-                    f"audio-mix: swap applied. layers={result.layers_used} "
-                    f"stingers={n_stingers}"
+                    f"audio-mix: vo+music baked into narration. "
+                    f"layers={result.layers_used} sfx_in_timeline={_sfx_cue_count}"
                 )
         except Exception:
             pass
 
         print(
-            f"✅ Audio mix complete — narration.mp3 now mastered "
-            f"(layers={result.layers_used})"
+            f"✅ Audio mix complete — narration.mp3 has vo+music; "
+            f"{_sfx_cue_count} SFX cues ship in timeline for worker mix"
         )
 
     def _download_music_for_mix(
@@ -4365,6 +4389,73 @@ class VideoGenerationPipeline:
                                 })
                         else:
                             print("⚠️ Audio duration unknown — skipping Director stage")
+
+                # ── Host injection (post-hoc) ──────────────────────────────
+                # The user's host_pct config doesn't reliably flow into either:
+                #   • v3 ShotPlanner (no host_pct parameter at all)
+                #   • Resumed plans (Director was skipped — no chance to apply)
+                #   • Even fresh v2 Director output when shot_type rules
+                #     ("VIDEO_HERO stays host_present=false") zero out coverage.
+                # The injector runs against ANY shot plan (v2 or v3, fresh or
+                # cached) and stamps host_present + host_layout + host_image_prompt
+                # to meet the host_pct target. Idempotent — Director-emitted
+                # placements are preserved; we only top up missing ones.
+                if (
+                    _director_plan
+                    and _director_plan.get("shots")
+                    and self._host_enabled
+                    and self._host_type == "avatar"
+                    and self._host_pct > 0
+                ):
+                    try:
+                        from host_injector import (
+                            inject_host_presence,
+                            compute_no_host_indices_from_prompt,
+                        )
+                        _is_portrait_inj = (self.video_height or 1080) > (self.video_width or 1920)
+                        _n_shots = len(_director_plan["shots"])
+                        # Fix A — v3 ShotPlanner never populates
+                        # `_user_authored_no_host_indices` (only v2 Director's
+                        # prep does). Re-scan the base prompt here so deny-list
+                        # works regardless of which planner ran.
+                        _deny_attr = set(
+                            getattr(self, "_user_authored_no_host_indices", []) or []
+                        )
+                        _deny_scan = set(compute_no_host_indices_from_prompt(
+                            getattr(self, "_base_prompt", "") or ""
+                        ))
+                        _valid_range = set(range(_n_shots))
+                        _deny_inj = (_deny_attr | _deny_scan) & _valid_range
+                        # Per-source counts for diagnostic logging (so "why
+                        # was deny=[3] ignored?" can be traced to which input
+                        # produced it).
+                        _deny_attr_valid = _deny_attr & _valid_range
+                        _deny_scan_valid = _deny_scan & _valid_range
+                        _injected = inject_host_presence(
+                            _director_plan["shots"],
+                            host_pct=self._host_pct,
+                            is_portrait=_is_portrait_inj,
+                            no_host_indices=_deny_inj,
+                            default_host_image_prompt=(
+                                (self._host_plan.get("avatar") or {}).get("details_prompt")
+                                or None
+                            ),
+                        )
+                        _total_host = sum(
+                            1 for _s in _director_plan["shots"] if _s.get("host_present")
+                        )
+                        print(
+                            f"🎙️ Host injector: pct={self._host_pct}% "
+                            f"target_total={_total_host}/{_n_shots} shots "
+                            f"(newly_added={_injected}, "
+                            f"deny={sorted(_deny_inj) or '[]'} "
+                            f"[attr:{len(_deny_attr_valid)}, scan:{len(_deny_scan_valid)}])"
+                        )
+                    except Exception as _inj_err:
+                        # Belt-and-braces: never block render on injection
+                        # failure. AvatarBatch will skip the host stage when
+                        # no shots are marked, same as before.
+                        print(f"⚠️ Host injector errored (non-fatal): {_inj_err}")
 
                 # ── Thumbnail batch (Vimotion) ─────────────────────────────
                 # Fire 4 Seedream calls in a background daemon thread the

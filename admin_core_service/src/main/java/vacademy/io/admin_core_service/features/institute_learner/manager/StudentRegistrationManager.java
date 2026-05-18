@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
@@ -951,21 +953,70 @@ public class StudentRegistrationManager {
 
     public void triggerEnrollmentWorkflow(String instituteId, UserDTO userDTO, String packageSessionId,
                                           Institute subOrg) {
-        Map<String, Object> contextData = new HashMap<>();
-        contextData.put("user", userDTO);
-        contextData.put("packageSessionIds", packageSessionId);
-        contextData.put("subOrg", subOrg);
+        // Validate and gather context UP-FRONT while we still have references.
+        // The actual workflow firing is deferred until after the parent transaction
+        // commits (see below) — if it errored later, we still want the validation
+        // failures to surface synchronously to the caller.
         Optional<PackageSession> packageSession = packageSessionRepository.findById(packageSessionId);
         if (packageSession.isEmpty()) {
             throw new VacademyException("Package Session Not Found");
         }
         var pkg = packageSession.get().getPackageEntity();
+
+        final Map<String, Object> contextData = new HashMap<>();
+        contextData.put("user", userDTO);
+        contextData.put("packageSessionIds", packageSessionId);
+        contextData.put("subOrg", subOrg);
         contextData.put("packageId", pkg.getId());
         // Exposed as {{packageName}} on the workflow context so SEND_EMAIL templates
         // and HTTP_REQUEST webhook bodies can reference the course name directly
         // without needing a separate QUERY node to look it up.
         contextData.put("packageName", pkg.getPackageName());
-        workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(),
-                packageSessionId, instituteId, contextData);
+
+        final String eventName = WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name();
+        final String finalInstituteId = instituteId;
+        final String finalPackageSessionId = packageSessionId;
+
+        // Defer firing the workflow until AFTER the parent transaction commits.
+        //
+        // Why: this method is typically called from inside transactions that have
+        // not yet committed their SSIGM / payment_log / user_plan updates — e.g.
+        // the Razorpay webhook flow sets SSIGM=ACTIVE and payment_log=PAID, then
+        // calls triggerEnrollmentWorkflow, then commits. If the workflow runs
+        // synchronously (via REQUIRES_NEW on handleTriggerEvents), the QUERY
+        // node opens a NEW transaction that can't see the parent's uncommitted
+        // writes → enrichment fields (enrollmentStatus, paymentStatus, etc.)
+        // come back null in the webhook body.
+        //
+        // afterCommit guarantees the workflow only fires once the parent's
+        // writes are durable. If the parent rolls back, the workflow never
+        // fires — which is the desired behavior (no false-positive webhooks
+        // for enrollments that didn't actually happen).
+        //
+        // Falls back to running synchronously when there's no active transaction
+        // (test scenarios, async callers without a tx wrapper, etc.).
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    try {
+                        workflowTriggerService.handleTriggerEvents(
+                                eventName, finalPackageSessionId, finalInstituteId, contextData);
+                    } catch (Exception e) {
+                        // Swallow + log: parent tx is already committed, we cannot
+                        // roll back. A workflow failure here must not propagate as
+                        // it would otherwise be silently dropped by Spring's
+                        // afterCommit dispatcher anyway.
+                        log.error("Failed to fire LEARNER_BATCH_ENROLLMENT workflow trigger "
+                                + "after commit for userId={}, packageSessionId={}: {}",
+                                userDTO != null ? userDTO.getId() : null,
+                                finalPackageSessionId, e.getMessage(), e);
+                    }
+                }
+            });
+        } else {
+            workflowTriggerService.handleTriggerEvents(
+                    eventName, packageSessionId, instituteId, contextData);
+        }
     }
 }

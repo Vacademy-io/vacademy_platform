@@ -43,7 +43,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
 import httpx
@@ -384,30 +384,18 @@ def _apply_vo_aware_volume(
 
 
 # ---------------------------------------------------------------------------
-# A5: mood-driven reverb send on the SFX bus
+# Mood-driven reverb (DEPRECATED 2026-05)
 # ---------------------------------------------------------------------------
-
-# Each entry: (aecho_filter_string, wet_amount_0_to_1). When the wet
-# amount is 0 OR the entry is None, reverb post-processing is skipped
-# entirely and only the dry SFX bus continues. The aecho params are
-# tuned to taste — multiple taps + decays simulate the shape of an
-# early-reflection + tail without needing a true convolution reverb.
-_REVERB_BY_MOOD: Dict[str, Optional[Tuple[str, float]]] = {
-    # educational: stay dry — clarity over space. No post-process verb.
-    "educational": None,
-    # default: very mild room — barely perceptible. Skip to keep mix tight.
-    "default": None,
-    # celebratory: medium room — adds warmth and uplift to chimes/whooshes.
-    "celebratory": (
-        "aecho=0.85:0.4:120|240|420:0.4|0.28|0.18",
-        0.25,
-    ),
-    # cinematic: lush hall — long tails, atmospheric, dramatic.
-    "cinematic": (
-        "aecho=0.80:0.5:180|360|600|1000:0.5|0.4|0.3|0.2",
-        0.35,
-    ),
-}
+#
+# Previously applied an aecho reverb to the SFX bus based on `reverb_mood`.
+# That fought the new event-driven cassetteai cues whose prompts already
+# include "dry recording" — adding echo on top sounded artificial. The
+# SFX bus is now fully dry (acompressor + alimiter only).
+#
+# The MixSpec.reverb_mood field is kept on the dataclass so callers don't
+# break, but it's no longer consumed in the filter graph. If a future
+# need for music-bus reverb arises, build it on `[bgm_ducked]` instead
+# of the SFX bus.
 
 
 # ---------------------------------------------------------------------------
@@ -507,14 +495,18 @@ def _build_filter_graph(
             f"input count mismatch: declared {n_total_inputs}, wired {next_input}"
         )
 
-    # ── SFX bus: glue layer for consistent punch ───────────────────
-    # Pros mix SFX through a bus compressor + limiter so cues don't have
-    # wildly varying loudness (one whoosh poking 6 dB above the next).
-    # We amix all sfx into [sfx_bus], compress with a gentle 3:1 ratio
-    # tuned for transient-rich material (fast attack, moderate release),
-    # then alimiter-cap so the busiest moment can't clip into the master.
-    # When only one SFX exists, skip the amix step (acompressor still
-    # runs — it shapes the single cue's envelope just the same).
+    # ── SFX bus: transparent glue, no reverb ────────────────────────
+    # The new event-driven SFX path uses cassetteai-generated cues with
+    # prompts that explicitly say "dry recording". Adding reverb on top
+    # fights that intent — pen-scratches and typewriter clatter don't
+    # need echo. We keep a gentle bus compressor + limiter to even out
+    # loudness across cues, but we no longer split into a wet path.
+    #
+    # Compressor settings (softened vs the previous trailer-tuned ones):
+    #   threshold=-20dB, ratio=2:1, attack=10ms (don't crush transients),
+    #   release=120ms, makeup=1 (no aggressive level push).
+    # The previous chain (3:1 ratio, makeup=2) was tuned for whoosh-
+    # heavy content and would crush physical-source transients.
     sfx_bus_label: Optional[str] = None
     if sfx_labels:
         if len(sfx_labels) == 1:
@@ -525,39 +517,15 @@ def _build_filter_graph(
                 f"duration=longest:normalize=0 [sfx_premix]"
             )
             bus_input = "[sfx_premix]"
-        # acompressor: gentle glue, fast attack to catch transients,
-        # moderate release for natural decay. makeup=2 (≈+6 dB) restores
-        # average level after gain reduction so the bus sits proud in
-        # the final mix instead of being squashed below VO.
         parts.append(
-            f"{bus_input} acompressor=threshold=-18dB:ratio=3:"
-            f"attack=5:release=80:makeup=2 [sfx_comp]"
+            f"{bus_input} acompressor=threshold=-20dB:ratio=2:"
+            f"attack=10:release=120:makeup=1, "
+            f"alimiter=limit=-2dB [sfx_bus]"
         )
-
-        # A5 — mood-driven reverb send. Compression first (so the tail
-        # isn't crushed), then split into dry + wet, apply aecho on wet,
-        # mix back, then alimiter. When the mood doesn't want post-process
-        # verb (default/educational/None), skip the split and limiter-only
-        # the compressed signal.
-        reverb_cfg = (_REVERB_BY_MOOD.get(spec.reverb_mood)
-                      if spec.reverb_mood else None)
-        if reverb_cfg is not None:
-            verb_chain, wet_amount = reverb_cfg
-            parts.append("[sfx_comp] asplit=2 [sfx_dry][sfx_wet_in]")
-            parts.append(f"[sfx_wet_in] {verb_chain} [sfx_wet]")
-            # amix weights: dry=1.0, wet=wet_amount. normalize=0 keeps
-            # the dry sound at its full level and adds wet on top.
-            parts.append(
-                f"[sfx_dry][sfx_wet] amix=inputs=2:"
-                f"weights=1 {wet_amount:.2f}:"
-                f"duration=longest:normalize=0 [sfx_verbed]"
-            )
-            parts.append(
-                "[sfx_verbed] alimiter=limit=-2dB [sfx_bus]"
-            )
-        else:
-            parts.append("[sfx_comp] alimiter=limit=-2dB [sfx_bus]")
         sfx_bus_label = "[sfx_bus]"
+    # NOTE: `spec.reverb_mood` still flows in from automation_pipeline
+    # but no longer drives an SFX-bus reverb. It's preserved on MixSpec
+    # for future use (e.g. a music-bus reverb) without breaking callers.
 
     # ── amix all layers ─────────────────────────────────────────────
     mix_inputs: List[str] = []

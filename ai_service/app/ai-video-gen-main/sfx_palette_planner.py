@@ -1,38 +1,40 @@
-"""Generate a full fresh SFX palette via fal-ai/elevenlabs/sound-effects/v2.
+"""Generate SFX via cassetteai/sound-effects-generator with label-driven
+PROMPTs that describe the physical / on-screen event the cue is matched to.
 
-Runs AFTER `sound_planner.plan_sound_cues` has populated each entry's
-`sound_cues` list from the static library. This module then:
+Background — why this module exists in its current shape:
 
-  1. Inspects every cue's `role` (transition_whoosh, transition_riser,
-     ui_chime, ui_positive, ui_negative, ui_click, impact, data_reveal).
-  2. For each distinct role, generates a small bank of variants via
-     fal-elevenlabs using mood-aware prompts from `SFX_PROMPTS`.
-  3. Rotates the variants across cue positions so consecutive same-role
-     cues don't sound identical.
-  4. Replaces each cue's `url` (static library) with the fresh fal URL
-     (local path or S3).
+Original v1 generated SFX via fal-ai/elevenlabs/sound-effects-v2 with
+role+mood prompts ("Smooth cinematic whoosh, warm uplifting, gentle
+motion"). The output sounded synthetic / funny because the prompts were
+adjective soup with no physical anchor.
 
-This supersedes the previous `transition_stinger_planner.py` which only
-handled transition cues. Background:
+Concurrently sound_planner was demolished (2026-05) — it no longer
+emits cues for transitions or per-shot signatures. Cues come ONLY from:
+  (A) The GSAP scanner — `entry["_sfx_events"]` with concrete event
+      labels: "typewriter", "bar_grow", "counter_tick", "underline_draw",
+      "slide_in", "pop_in", "element_appear", "pulse", "list_reveal".
+  (B) Director sync_points with action text (mapped to a role + the
+      action verb as label).
 
-  The static 4176-entry sounds library is mood-blind — `ui_positive`
-  resolves to "Door — FOLEY, HOTEL, DOOR" on a partnership-announcement
-  video. Generating fresh per-video, mood-aware SFX via the same API
-  used for stingers fixes the tone-mismatch problem at the source.
+This module now:
+  1. Reads each cue's `label` (event kind from scanner OR Director action).
+  2. Looks up a PHYSICAL prompt in LABEL_TO_PROMPT — concrete source-
+     material language ("mechanical typewriter keys clicking", "pen
+     drawing on paper") that cassetteai's model adheres to tightly.
+  3. Calls cassetteai once per (label, duration) combo; SHA256 cache
+     means identical labels across cues reuse the same generation.
+  4. Replaces cue.url with the generated audio URL (or local path).
 
 Tier gating: `sfx_generation_enabled` flag in tier_config. Premium+ only.
 Free/Standard renders fall through to static library URLs (no regression).
 
 Graceful degradation: any failure (missing FAL_API_KEY, network error,
-unrecognized role) preserves the static library URL for that cue.
+unmapped label) preserves the cue's static library URL.
 """
 from __future__ import annotations
 
 import logging
-import os
-import random
 import re
-import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -40,137 +42,17 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 _log = logging.getLogger(__name__)
 
 
-# Hard cap on distinct variants per role per video. Cycle after this.
-MAX_VARIANTS_PER_ROLE = 5
+# ──────────────────────────────────────────────────────────────────────
+# Allowed mood values (kept for back-compat with callers and the
+# Director's optional `audio_mood` field). Mood no longer drives prompt
+# selection — prompts are physical-source-material based — but the
+# audio_mixer still uses it for reverb selection downstream.
+# ──────────────────────────────────────────────────────────────────────
 
-# Default fal-elevenlabs generation duration (seconds). Model floor is
-# 0.5s. Different roles benefit from different lengths; per-role overrides
-# live in `_ROLE_DEFAULT_DURATION_S`.
-DEFAULT_DURATION_S = 0.55
-
-_ROLE_DEFAULT_DURATION_S: Dict[str, float] = {
-    "transition_whoosh": 0.55,
-    "transition_riser":  0.80,
-    "ui_chime":          0.70,
-    "ui_positive":       0.80,
-    "ui_negative":       0.70,
-    "ui_click":          0.50,
-    "impact":            0.65,
-    "data_reveal":       0.60,
-}
-
-# Allowed mood values. Director may emit `audio_mood`; else inferred
-# heuristically. Falls back to "default" when neither path resolves.
 ALLOWED_MOODS = ("default", "celebratory", "educational", "cinematic")
 
-# Per-role × per-mood prompt banks. Each list is rotated across cues so
-# consecutive same-role cues don't sound identical.
-SFX_PROMPTS: Dict[str, Dict[str, List[str]]] = {
-    "transition_whoosh": {
-        "default": [
-            "Smooth cinematic whoosh, mid-frequency air movement, short and clean",
-            "Subtle riser into a soft impact, warm tone, no high-frequency harshness",
-            "Quick swoosh transition, airy, light reverb tail",
-            "Brief tonal sweep, low-to-high, ascending pitch, energetic",
-        ],
-        "celebratory": [
-            "Uplifting whoosh-sparkle, ascending, warm bright tone",
-            "Bright swoosh with brief shimmer tail, encouraging",
-        ],
-        "cinematic": [
-            "Deep airy swoosh, low-mid, dramatic tail",
-            "Cinematic transition pass, sub-low rumble into clean tail",
-        ],
-        "educational": [
-            "Soft clean swoosh, neutral mid-frequency, brief",
-        ],
-    },
-    "transition_riser": {
-        "default": [
-            "Building riser, ascending pitch, 0.8s, no harsh peak",
-            "Smooth ascending tonal sweep, soft tail, clean energy",
-        ],
-        "celebratory": [
-            "Bright ascending sparkle riser, warm, anticipatory",
-        ],
-        "cinematic": [
-            "Deep cinematic riser with sub-low foundation, dramatic",
-        ],
-    },
-    "ui_chime": {
-        "default": [
-            "Warm bell tone, gentle reveal, brief reverb tail",
-            "Soft glockenspiel hit, encouraging, mid-bright",
-            "Clean tonal chime, single mallet strike, warm",
-        ],
-        "celebratory": [
-            "Bright celebratory ding, slight vibrato, warm tail",
-            "Triumphant short bell, ascending overtones",
-        ],
-        "educational": [
-            "Soft confirmation chime, neutral, encouraging",
-        ],
-    },
-    "ui_positive": {
-        "default": [
-            "Warm uplifting chime, soft mallet, brief reverb",
-            "Gentle positive confirmation tone, mid-bright, no harshness",
-            "Soft ascending two-note motif, warm, friendly",
-        ],
-        "celebratory": [
-            "Triumphant short fanfare-chime, warm, no brass",
-            "Bright sparkle reveal, ascending, uplifting",
-        ],
-        "educational": [
-            "Soft positive tone, encouraging, clean and neutral",
-        ],
-    },
-    "ui_negative": {
-        "default": [
-            "Soft descending tone, neutral, not harsh",
-            "Gentle low chime, brief, non-alarming",
-        ],
-    },
-    "ui_click": {
-        "default": [
-            "Crisp short click, neutral UI feel",
-            "Soft tactile click, brief, modern",
-        ],
-    },
-    "impact": {
-        "default": [
-            "Deep cinematic impact, full-spectrum thud, no metallic ring",
-            "Soft punch impact, mid-low body, brief tail",
-        ],
-        "cinematic": [
-            "Heavy sub-thud with brief air, no clang",
-            "Deep cinematic boom with low-end emphasis, short decay",
-        ],
-        "celebratory": [
-            "Warm impact with sparkle overtones, uplifting",
-        ],
-    },
-    "data_reveal": {
-        "default": [
-            "Subtle tonal tick, encouraging, mid-frequency",
-            "Soft data sparkle, ascending pitch, brief",
-            "Clean reveal tone, single note, warm",
-        ],
-        "celebratory": [
-            "Bright sparkle reveal, ascending shimmer, uplifting",
-        ],
-        "educational": [
-            "Soft notification tone, neutral, encouraging",
-        ],
-    },
-}
 
-
-# ──────────────────────────────────────────────────────────────────────
-# Mood resolution
-# ──────────────────────────────────────────────────────────────────────
-
-_MOOD_KEYWORDS: List[tuple] = [
+_MOOD_KEYWORDS: List[Tuple[str, re.Pattern]] = [
     ("celebratory", re.compile(
         r"\b(welcome|partnership|announce|celebrat|launch|introduc|joining|"
         r"family|congrat|exciting|proud|together)\b", re.IGNORECASE)),
@@ -184,7 +66,9 @@ _MOOD_KEYWORDS: List[tuple] = [
 
 
 def _infer_mood(script: Any) -> str:
-    """Heuristic mood inference from script title + brief text."""
+    """Heuristic mood inference from script title + brief text. Falls back
+    to 'default' when no keyword matches. Director's explicit `audio_mood`
+    field always wins over heuristic."""
     if not script:
         return "default"
     text_parts: List[str] = []
@@ -198,7 +82,6 @@ def _infer_mood(script: Any) -> str:
             v = script.get(key)
             if isinstance(v, str):
                 text_parts.append(v)
-        # Sweep narration/vo lines too.
         for key in ("segments", "shots", "scenes"):
             arr = script.get(key)
             if isinstance(arr, list):
@@ -221,419 +104,298 @@ def _infer_mood(script: Any) -> str:
 
 
 def resolve_mood(script: Any = None, explicit: Optional[str] = None) -> str:
-    """Public mood resolver. Priority: explicit param > script.audio_mood >
-    heuristic > 'default'."""
+    """Public mood resolver — explicit param > script.audio_mood > heuristic."""
     if explicit and explicit.strip().lower() in ALLOWED_MOODS:
         return explicit.strip().lower()
     return _infer_mood(script)
 
 
 # ──────────────────────────────────────────────────────────────────────
-# fal client loader
+# Label → physical-prompt map
+# ──────────────────────────────────────────────────────────────────────
+#
+# Each entry describes WHAT IS HAPPENING ON SCREEN in physical-source-
+# material terms. cassetteai/sound-effects-generator (and most modern
+# SFX generators) respond best to:
+#   - explicit source material ("mechanical typewriter", "paper sliding",
+#     "pen on paper", "single bell strike")
+#   - duration hint inside the prompt ("over 1.5 seconds")
+#   - NO abstract adjectives ("cinematic", "celebratory", "warm")
+#
+# Each value: (prompt_text, target_duration_seconds, volume_mul)
+# - duration is an int (cassetteai requires 1-30 seconds)
+# - volume_mul tunes how prominent the SFX is in the mix (0.4 = subtle,
+#   0.7 = noticeable, 0.9 = featured)
+
+LabelDef = Tuple[str, int, float]
+
+
+LABEL_TO_PROMPT: Dict[str, LabelDef] = {
+    # ── Text / typography events ────────────────────────────────────
+    "typewriter": (
+        "Mechanical typewriter typing fast, multiple rapid key clicks, "
+        "tactile keyboard clacks in sequence, no music, dry recording, "
+        "ending on the final keystroke",
+        2, 0.45,
+    ),
+    "type_in": (
+        "Fast computer keyboard typing burst, soft mechanical key clicks, "
+        "dry recording, no music",
+        2, 0.40,
+    ),
+    "split_reveal": (
+        "Soft paper rustle then settle, gentle reveal sound, dry recording",
+        1, 0.50,
+    ),
+
+    # ── Data / numeric / chart events ───────────────────────────────
+    "bar_grow": (
+        "Ascending tonal sweep like a graph bar growing on screen, "
+        "smooth rising pitch, ends on a soft tone, 1 second",
+        1, 0.50,
+    ),
+    "counter_tick": (
+        "Mechanical odometer counting up rapidly, soft rapid clicks, "
+        "ends on a soft final tick, dry recording, 2 seconds",
+        2, 0.55,
+    ),
+    "data_reveal": (
+        "Soft tonal reveal sound, single warm note with brief decay, "
+        "subtle and clean, no music",
+        1, 0.55,
+    ),
+    "count up number": (
+        "Mechanical counter ticking up, rapid sequence of soft clicks, "
+        "ending on a final tick, 1.5 seconds",
+        2, 0.55,
+    ),
+    "chart bars grow": (
+        "Soft rising tonal sweep, like data bars growing, 1 second",
+        1, 0.50,
+    ),
+
+    # ── UI / button / interaction events ────────────────────────────
+    "button_appear": (
+        "Soft pop, single tactile button press, brief and bouncy, "
+        "dry recording, no music",
+        1, 0.45,
+    ),
+    "element_appear": (
+        "Single soft bell tone, gentle reveal, brief decay, dry recording",
+        1, 0.45,
+    ),
+    "pop_in": (
+        "Single soft pop, bouncy and brief, like a UI element appearing, "
+        "dry recording",
+        1, 0.55,
+    ),
+    "pulse": (
+        "Single soft UI click, tactile button feedback, very brief, "
+        "no decay tail",
+        1, 0.40,
+    ),
+    "button": (
+        "Single soft button click, tactile and warm, very brief",
+        1, 0.45,
+    ),
+    "click": (
+        "Single sharp UI click, button press, brief and clean",
+        1, 0.45,
+    ),
+
+    # ── Slide / movement / reveal events ────────────────────────────
+    "slide_in": (
+        "Soft paper sliding sound, gentle whoosh, like a card sliding "
+        "into place, brief, dry recording",
+        1, 0.40,
+    ),
+    "list_reveal": (
+        "Sequence of three soft bell tones in quick succession, "
+        "gentle ascending pitch, dry recording",
+        2, 0.45,
+    ),
+    "fadein": (
+        "Single soft bell tone, very gentle, brief decay",
+        1, 0.40,
+    ),
+
+    # ── Drawing / annotation events ─────────────────────────────────
+    "underline_draw": (
+        "Pen drawing a line on paper, soft graphite scratch, "
+        "ending as the line completes, 1 second, dry recording",
+        1, 0.50,
+    ),
+    "annotate": (
+        "Pen on paper, soft drawing scratch, brief writing sound, "
+        "dry recording",
+        1, 0.50,
+    ),
+    "highlight": (
+        "Soft highlighter marker stroke on paper, brief swoosh, dry recording",
+        1, 0.50,
+    ),
+    "highlight callout": (
+        "Single warm impact, soft and supportive, no metallic ring, "
+        "brief decay, dry recording",
+        1, 0.60,
+    ),
+
+    # ── Positive / confirmation events ──────────────────────────────
+    "checkmark": (
+        "Single warm bell tone, positive confirmation chime, brief tail, "
+        "dry recording, no music",
+        1, 0.55,
+    ),
+    "checkmark appear": (
+        "Single warm bell tone, positive confirmation chime, dry recording",
+        1, 0.55,
+    ),
+    "success": (
+        "Two-note ascending bell motif, warm and positive, brief, "
+        "dry recording, no music",
+        1, 0.55,
+    ),
+
+    # ── Negative / error events ─────────────────────────────────────
+    "error": (
+        "Single low descending tone, gentle negative feedback, brief, "
+        "not harsh, dry recording",
+        1, 0.50,
+    ),
+    "warning": (
+        "Single soft warning tone, mid-frequency, brief, not alarming",
+        1, 0.45,
+    ),
+}
+
+
+# Defaults when label is missing or unmapped — fall back by role.
+ROLE_DEFAULT_PROMPT: Dict[str, LabelDef] = {
+    "ui_click": (
+        "Single soft UI button click, tactile feedback, very brief",
+        1, 0.45,
+    ),
+    "ui_chime": (
+        "Single soft bell tone, brief decay, gentle and clean",
+        1, 0.45,
+    ),
+    "ui_positive": (
+        "Single warm chime, positive confirmation, brief tail",
+        1, 0.55,
+    ),
+    "ui_negative": (
+        "Single low descending tone, gentle, brief, not harsh",
+        1, 0.50,
+    ),
+    "data_reveal": (
+        "Soft tonal reveal, single warm note, brief decay",
+        1, 0.55,
+    ),
+    "impact": (
+        "Single warm impact, soft and supportive, brief decay, "
+        "dry recording, no metallic ring",
+        1, 0.60,
+    ),
+    # Transitions are NO LONGER emitted by sound_planner — the entries
+    # below exist only so a stray legacy cue doesn't crash the planner.
+    "transition_whoosh": (
+        "Soft paper rustle, brief and gentle, dry recording",
+        1, 0.40,
+    ),
+    "transition_riser": (
+        "Soft rising tone, gentle pitch sweep upward, 1 second",
+        1, 0.45,
+    ),
+}
+
+
+def _resolve_prompt_for_cue(cue: Dict[str, Any]) -> Optional[LabelDef]:
+    """Find the cassetteai prompt + duration + volume for a cue.
+
+    Priority:
+      1. Exact `label` match in LABEL_TO_PROMPT (GSAP scanner label like
+         "typewriter" or "bar_grow", or normalized Director action).
+      2. Partial label match (e.g. "annotate title with underline" →
+         starts with "annotate" → use annotate prompt).
+      3. role fallback in ROLE_DEFAULT_PROMPT.
+      4. None → caller keeps the cue's static library URL.
+    """
+    label = (cue.get("label") or "").strip().lower()
+    role = (cue.get("role") or "").strip().lower()
+
+    if label:
+        # Exact match.
+        if label in LABEL_TO_PROMPT:
+            return LABEL_TO_PROMPT[label]
+        # Prefix match — Director actions are free-form ("annotate title
+        # with underline"). Try the first token / phrase.
+        first_word = label.split()[0] if label.split() else ""
+        if first_word and first_word in LABEL_TO_PROMPT:
+            return LABEL_TO_PROMPT[first_word]
+        # Substring match — last resort before role fallback.
+        for key in LABEL_TO_PROMPT:
+            if key in label or label.startswith(key.split()[0]):
+                return LABEL_TO_PROMPT[key]
+
+    if role and role in ROLE_DEFAULT_PROMPT:
+        return ROLE_DEFAULT_PROMPT[role]
+    return None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# fal client loader — lazy + filesystem fallback
 # ──────────────────────────────────────────────────────────────────────
 
 def _load_fal_client():
-    """Lazy-import the fal_elevenlabs_client, with file-path fallback for
-    runs where `app.services` isn't on sys.path."""
+    """Lazy-import the cassetteai client. Returns (ClientClass, api_key_fn)
+    or (None, None) when the module isn't importable (e.g. test runs)."""
     try:
-        from app.services.fal_elevenlabs_client import (  # type: ignore
-            FalElevenLabsClient, get_fal_api_key_from_env,
+        from app.services.fal_cassetteai_client import (  # type: ignore
+            FalCassetteAIClient, get_fal_api_key_from_env,
         )
-        return FalElevenLabsClient, get_fal_api_key_from_env
+        return FalCassetteAIClient, get_fal_api_key_from_env
     except ImportError:
         pass
     import importlib.util as _ilu
     import sys as _sys
     services_dir = Path(__file__).resolve().parent.parent / "services"
-    fal_path = services_dir / "fal_elevenlabs_client.py"
+    fal_path = services_dir / "fal_cassetteai_client.py"
     if not fal_path.exists():
         return None, None
-    spec = _ilu.spec_from_file_location("fal_elevenlabs_client", fal_path)
+    spec = _ilu.spec_from_file_location("fal_cassetteai_client", fal_path)
     mod = _ilu.module_from_spec(spec)  # type: ignore
-    _sys.modules.setdefault("fal_elevenlabs_client", mod)
+    _sys.modules.setdefault("fal_cassetteai_client", mod)
     spec.loader.exec_module(mod)  # type: ignore
-    return mod.FalElevenLabsClient, mod.get_fal_api_key_from_env
-
-
-# ──────────────────────────────────────────────────────────────────────
-# Local persist helper
-# ──────────────────────────────────────────────────────────────────────
-
-def _persist_local(data: bytes, cache_dir: Optional[Path],
-                   role: str, idx: int) -> Optional[str]:
-    if cache_dir is None or not data:
-        return None
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        path = cache_dir / f"sfx_{role}_{idx:02d}.mp3"
-        path.write_bytes(data)
-        return str(path)
-    except OSError as e:
-        _log.warning("[sfx-palette] local persist failed: %s", e)
-        return None
-
-
-# ──────────────────────────────────────────────────────────────────────
-# Variant generation (per role)
-# ──────────────────────────────────────────────────────────────────────
-
-def _generate_variants_for_role(
-    *,
-    role: str,
-    mood: str,
-    n_needed: int,
-    duration_s: float,
-    client: Any,
-    cache_dir: Optional[Path],
-    s3_uploader: Optional[Callable[[bytes, str], str]],
-    video_id: str,
-    cost_tracker: Any,
-    rng: random.Random,
-) -> List[str]:
-    """Returns up to `n_needed` URLs/paths of fresh variants for `role`.
-    Empty list on total failure (caller keeps static URLs)."""
-    bank_for_role = SFX_PROMPTS.get(role) or {}
-    # Mood lookup with fallback chain: requested → default → any available.
-    prompts = (bank_for_role.get(mood)
-               or bank_for_role.get("default")
-               or next(iter(bank_for_role.values()), []))
-    if not prompts:
-        _log.info("[sfx-palette] no prompt bank for role=%s — skipping", role)
-        return []
-
-    if n_needed <= len(prompts):
-        chosen_prompts = rng.sample(prompts, n_needed)
-    else:
-        chosen_prompts = list(prompts)
-        while len(chosen_prompts) < n_needed:
-            chosen_prompts.append(rng.choice(prompts))
-
-    urls: List[str] = []
-    for i, prompt in enumerate(chosen_prompts):
-        try:
-            result = client.submit(
-                prompt,
-                duration_s=duration_s,
-                loop=False,
-                prompt_influence=0.65,
-                output_format="mp3_44100_128",
-                proactively_download=True,
-            )
-        except Exception as e:
-            _log.warning("[sfx-palette] gen failed role=%s i=%d: %s",
-                         role, i, e)
-            continue
-        if not result.audio_bytes and not result.url:
-            continue
-
-        url_out: Optional[str] = None
-        if s3_uploader is not None and result.audio_bytes:
-            try:
-                key = f"ai-videos/{video_id}/sfx/{role}_{i:02d}.mp3"
-                url_out = s3_uploader(result.audio_bytes, key)
-            except Exception as e:
-                _log.warning("[sfx-palette] S3 upload failed role=%s i=%d: %s",
-                             role, i, e)
-        if url_out is None and result.audio_bytes:
-            url_out = _persist_local(result.audio_bytes, cache_dir, role, i)
-        if url_out is None:
-            url_out = result.url
-        if not url_out:
-            continue
-        urls.append(url_out)
-
-        if cost_tracker is not None and not result.cache_hit:
-            try:
-                cost_tracker.record_sfx(
-                    stage=f"sfx_palette_{role}",
-                    model="fal-elevenlabs/sound-effects-v2",
-                    duration_s=duration_s,
-                    cost_usd=result.cost_usd,
-                )
-            except Exception:
-                pass
-
-    return urls
+    return mod.FalCassetteAIClient, mod.get_fal_api_key_from_env
 
 
 # ──────────────────────────────────────────────────────────────────────
 # Public entry point
 # ──────────────────────────────────────────────────────────────────────
 
-# Roles that get layered composites (primary + sub-layer mixed locally
-# via ffmpeg into a single mp3). These are the high-impact moments where
-# pros never use a single sample — a transition is whoosh + sub-thump,
-# a positive reveal is impact + chime, a data appearance is tick + swell.
-_LAYERED_ROLES = {
-    "transition_whoosh",
-    "transition_riser",
-    "ui_positive",
-    "data_reveal",
-    "impact",
-}
-
-# Sub-layer prompt bank — what gets added under the primary layer. Keyed
-# by role. Each sub-layer is a complementary sound that fills a different
-# frequency band than the primary (sub-bass thumps under mid-bright
-# whooshes, sparkle highs over warm bell tones, etc.).
-_SUB_LAYER_PROMPTS: Dict[str, List[str]] = {
-    "transition_whoosh": [
-        "Soft sub-bass thump, very brief, low-frequency body, no transient harshness",
-        "Deep brief rumble underlay, sub-low, supportive bed for a transition",
-    ],
-    "transition_riser": [
-        "Low rumble bed building underneath, sub-bass, supportive foundation",
-    ],
-    "ui_positive": [
-        "Soft high-frequency sparkle tail, brief shimmer, complementary to a chime",
-        "Gentle airy whoosh underlay, supportive, neutral",
-    ],
-    "data_reveal": [
-        "Soft tonal swell underneath, mid-low, supportive bed",
-        "Faint ambient pad swell, neutral, brief",
-    ],
-    "impact": [
-        "Soft air whoosh into the impact, brief, mid-frequency lead-in",
-        "Subtle pre-impact swell, building tension, very brief",
-    ],
-}
-
-# Per-mood content-style modifiers — appended to every prompt so the
-# generated sound matches the video's emotional tone.
-_MOOD_MODIFIERS: Dict[str, str] = {
-    "default":     "clean, broadcast-quality, no distortion, professional",
-    "celebratory": "warm, uplifting, bright but never harsh, polished",
-    "educational": "neutral, clear, focused, minimal reverb",
-    "cinematic":   "wide, deep, atmospheric, lush reverb tail",
-}
-
-
-def _build_content_aware_prompt(
-    *, role: str, mood: str, layer: str,
-    context: Optional[Dict[str, Any]],
-    base_prompt: str,
-) -> str:
-    """Stitch role-base + content cue + mood modifier into one prompt.
-
-    `base_prompt` is the role+mood seed from SFX_PROMPTS (or
-    _SUB_LAYER_PROMPTS for sub layers). We append: (a) a content cue
-    derived from `context.text` if it's salient, and (b) the mood
-    modifier.
-
-    Result example: a `ui_positive` cue at "₹1 billion users joined" with
-    mood=celebratory →
-
-      "Warm uplifting chime, soft mallet, brief reverb — moment of milestone
-       reveal — warm, uplifting, bright but never harsh, polished"
-
-    Length is capped at ~400 chars (fal-elevenlabs accepts up to 2k but
-    longer prompts dilute steering signal).
-    """
-    bits: List[str] = [base_prompt.strip()]
-
-    # Content cue from the surrounding narration text.
-    txt = ""
-    if isinstance(context, dict):
-        txt = str(context.get("text") or "").strip()
-    cue_phrase = _content_phrase_for_role(role, txt, layer=layer)
-    if cue_phrase:
-        bits.append(cue_phrase)
-
-    # Mood modifier.
-    mood_mod = _MOOD_MODIFIERS.get(mood) or _MOOD_MODIFIERS["default"]
-    bits.append(mood_mod)
-
-    return " — ".join(bits)[:400]
-
-
-# Keyword groups for content-phrase detection. Order matters: first match
-# wins. Phrases are crafted to *steer* the model, not to read like English
-# sentences — "for a milestone reveal" works because the model has heard
-# "milestone" in similar SFX captions.
-_CONTENT_KEYWORD_RULES: List[Tuple[re.Pattern, str]] = [
-    (re.compile(r"\b(million|billion|crore|lakh|thousand|\d{3,})\b", re.IGNORECASE),
-     "for a big number reveal"),
-    (re.compile(r"\b(welcome|hello|hi everyone|namaste|greet)\b", re.IGNORECASE),
-     "for a warm greeting moment"),
-    (re.compile(r"\b(partnership|join|family|together|launch|announce)\b", re.IGNORECASE),
-     "for a partnership/launch announcement"),
-    (re.compile(r"\b(introduc|presenting|here is|meet)\b", re.IGNORECASE),
-     "for an introduction beat"),
-    (re.compile(r"\b(achieve|success|complete|done|finish|won|winner)\b", re.IGNORECASE),
-     "for an achievement moment"),
-    (re.compile(r"\b(question|why|how|what if|imagine)\b", re.IGNORECASE),
-     "for a curiosity-inducing beat"),
-    (re.compile(r"\b(important|key|critical|remember|note that)\b", re.IGNORECASE),
-     "for a key-point emphasis"),
-    (re.compile(r"\b(next|first|second|third|step|next up)\b", re.IGNORECASE),
-     "for a step/section transition"),
-    (re.compile(r"\b(result|outcome|finally|conclusion)\b", re.IGNORECASE),
-     "for a result reveal"),
-]
-
-
-def _content_phrase_for_role(role: str, text: str, *, layer: str) -> str:
-    """Pick a short steering phrase that ties the sound to the on-screen
-    content. Returns '' when nothing salient is found (planner falls back
-    to pure role+mood prompt)."""
-    if not text:
-        return ""
-    # Sub-layers are sweeteners — they don't need their own content cue,
-    # they support the primary. Skip the steering phrase for them.
-    if layer == "sub":
-        return ""
-    for pat, phrase in _CONTENT_KEYWORD_RULES:
-        if pat.search(text):
-            return phrase
-    return ""
-
-
-def _ffmpeg_mix_layers(
-    layer_paths: List[Path],
-    layer_volumes: List[float],
-    out_path: Path,
-) -> Optional[Path]:
-    """Mix N local mp3 layers into a single mp3 via ffmpeg amix.
-
-    Used to build composite cues: e.g. whoosh + sub-thump → one bedded
-    transition sound. The mixer's final filter graph then treats the
-    composite as a single cue (no extra amix work per cue at mix time).
-
-    Returns the output path on success, None on failure. Failure is
-    non-fatal — caller falls back to single-layer cue.
-    """
-    import subprocess
-    if not layer_paths or len(layer_paths) != len(layer_volumes):
-        return None
-    if len(layer_paths) == 1:
-        # Nothing to mix — copy the single source through (caller can
-        # also just keep the source path; this branch keeps the contract
-        # of "returns the path you can point a cue at").
-        return layer_paths[0]
-    try:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        return None
-
-    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
-    for p in layer_paths:
-        cmd.extend(["-i", str(p)])
-
-    # Build filter: each input gets its volume scaler, then amix.
-    filter_parts: List[str] = []
-    inputs_for_amix: List[str] = []
-    for i, vol in enumerate(layer_volumes):
-        v = max(0.0, min(2.0, float(vol)))
-        label = f"l{i}"
-        filter_parts.append(f"[{i}:a] volume={v} [{label}]")
-        inputs_for_amix.append(f"[{label}]")
-    filter_parts.append(
-        f"{''.join(inputs_for_amix)} amix=inputs={len(layer_paths)}:"
-        f"duration=longest:normalize=0 [out]"
-    )
-    cmd.extend([
-        "-filter_complex", "; ".join(filter_parts),
-        "-map", "[out]",
-        "-c:a", "libmp3lame",
-        "-b:a", "192k",
-        str(out_path),
-    ])
-    try:
-        result = subprocess.run(cmd, capture_output=True, timeout=30)
-    except (subprocess.TimeoutExpired, OSError) as e:
-        _log.warning("[sfx-palette] composite mix failed: %s", e)
-        return None
-    if result.returncode != 0:
-        _log.warning("[sfx-palette] composite mix ffmpeg returned %d: %s",
-                     result.returncode, result.stderr[-300:].decode("utf-8", "ignore"))
-        return None
-    return out_path
-
-
-def _gen_single_layer(
-    *,
-    role: str, mood: str, layer: str, base_prompt: str,
-    context: Optional[Dict[str, Any]],
-    duration_s: float,
-    client: Any,
-    cache_dir: Optional[Path],
-    file_stem: str,
-    cost_tracker: Any,
-) -> Optional[Tuple[Path, float, bool]]:
-    """Generate one layer's audio via fal. Returns (local_path, cost, cache_hit)
-    or None on failure."""
-    prompt = _build_content_aware_prompt(
-        role=role, mood=mood, layer=layer,
-        context=context, base_prompt=base_prompt,
-    )
-    try:
-        result = client.submit(
-            prompt,
-            duration_s=duration_s,
-            loop=False,
-            prompt_influence=0.70,
-            output_format="mp3_44100_128",
-            proactively_download=True,
-        )
-    except Exception as e:
-        _log.warning("[sfx-palette] gen failed role=%s layer=%s: %s",
-                     role, layer, e)
-        return None
-    if not result.audio_bytes:
-        return None
-    if cache_dir is None:
-        return None
-    try:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        local_path = cache_dir / f"{file_stem}.mp3"
-        local_path.write_bytes(result.audio_bytes)
-    except OSError as e:
-        _log.warning("[sfx-palette] persist failed: %s", e)
-        return None
-
-    if cost_tracker is not None and not result.cache_hit:
-        try:
-            cost_tracker.record_sfx(
-                stage=f"sfx_palette_{role}_{layer}",
-                model="fal-elevenlabs/sound-effects-v2",
-                duration_s=duration_s,
-                cost_usd=result.cost_usd,
-            )
-        except Exception:
-            pass
-
-    return (local_path, float(result.cost_usd or 0.0), bool(result.cache_hit))
-
-
 def enrich_cues(
     entries: List[Dict[str, Any]],
     *,
-    mood: Optional[str] = None,
-    script: Any = None,
+    mood: Optional[str] = None,          # noqa: ARG001  (reserved for future use)
+    script: Any = None,                  # noqa: ARG001  (reserved for future use)
     tier_config: Optional[Dict[str, Any]] = None,
     cost_tracker: Any = None,
     run_dir: Optional[Path] = None,
     s3_uploader: Optional[Callable[[bytes, str], str]] = None,
     video_id: str = "",
-    max_variants_per_role: int = MAX_VARIANTS_PER_ROLE,
-    seed: Optional[int] = None,
+    seed: Optional[int] = None,          # noqa: ARG001  (no rng needed for label-driven)
+    max_variants_per_role: int = 5,      # noqa: ARG001  (legacy back-compat)
 ) -> Dict[str, int]:
-    """Replace static-library URLs with content-aware, optionally-layered
-    fresh fal generations.
+    """Replace static-library URLs with cassetteai-generated SFX matched
+    to each cue's `label` (event kind).
 
-    Each cue gets its OWN generation (not a rotation of shared variants),
-    keyed by (role, mood, content-context). The fal client's SHA256 cache
-    means identical (role, mood, content) across cues collapses back into
-    a single API call automatically — no wasted spend, but every distinct
-    moment in the video gets a purpose-built sound.
+    Caching: identical (label, duration) generates ONCE per video. A
+    typewriter event in shot 2 and another in shot 5 reuse the same audio.
+    Cost: ~$0.01 × unique-labels-in-video. For a typical 6-event video
+    that's $0.03-0.06.
 
-    High-impact roles in `_LAYERED_ROLES` get a 2-layer composite (primary
-    + complementary sub-layer mixed locally via ffmpeg into one mp3).
-    This is the "designed, not stocked" feel — single-sample cues sound
-    thin even when fresh-generated.
-
-    Returns {role: replaced_count}. Returns {} silently when generation
-    isn't applicable (no regression).
+    Returns {label: replaced_count} for observability.
+    Returns {} silently when generation isn't applicable.
     """
     # ── Tier gate ───────────────────────────────────────────────────
     if tier_config is not None:
@@ -644,143 +406,165 @@ def enrich_cues(
             _log.info("[sfx-palette] sfx_generation_enabled=False — static lib")
             return {}
 
-    # ── Collect all eligible cues (role in SFX_PROMPTS) ────────────
-    eligible: List[Tuple[Dict[str, Any], str]] = []  # (cue, role)
+    # ── Collect cues that have a resolvable prompt ─────────────────
+    plan: List[Tuple[Dict[str, Any], LabelDef]] = []  # (cue, prompt_def)
     for entry in entries:
         for cue in entry.get("sound_cues") or []:
-            role = (cue.get("role") or "").strip().lower()
-            if role and role in SFX_PROMPTS:
-                eligible.append((cue, role))
-    if not eligible:
-        _log.info("[sfx-palette] no cues to enrich — skipping")
+            pd = _resolve_prompt_for_cue(cue)
+            if pd is not None:
+                plan.append((cue, pd))
+    if not plan:
+        _log.info("[sfx-palette] no cues with resolvable prompts — skipping")
         return {}
 
     # ── Resolve fal client ─────────────────────────────────────────
-    FalElevenLabsClient, get_fal_api_key_from_env = _load_fal_client()
-    if FalElevenLabsClient is None:
-        _log.info("[sfx-palette] fal client unavailable — keeping static")
+    FalCassetteAIClient, get_fal_api_key_from_env = _load_fal_client()
+    if FalCassetteAIClient is None:
+        _log.info("[sfx-palette] cassetteai client unavailable — keeping static")
         return {}
     api_key = get_fal_api_key_from_env()
     if not api_key:
         _log.info("[sfx-palette] FAL_API_KEY not set — keeping static")
         return {}
 
-    # ── Mood + client setup ───────────────────────────────────────
-    resolved_mood = resolve_mood(script=script, explicit=mood)
-    cache_dir = (run_dir / "_sfx_palette_cache") if run_dir is not None else None
-    composite_dir = (run_dir / "_sfx_composite") if run_dir is not None else None
-    client = FalElevenLabsClient(api_key=api_key, cache_dir=cache_dir)
-    rng = random.Random(seed if seed is not None else int(time.time()) % 100000)
+    cache_dir = (run_dir / "_sfx_cache") if run_dir is not None else None
+    client = FalCassetteAIClient(api_key=api_key, cache_dir=cache_dir)
 
-    _log.info("[sfx-palette] mood=%s cues=%d layered_roles=%s",
-              resolved_mood, len(eligible), sorted(_LAYERED_ROLES))
+    _log.info(
+        "[sfx-palette] cassetteai gen for %d cues; unique labels=%d",
+        len(plan),
+        len({(p[1][0][:40], p[1][1]) for p in plan}),  # dedup by (prompt, duration)
+    )
 
-    # ── Per-cue generation (cache makes identical content cheap) ──
+    # ── Generate (with in-run prompt-level dedup for cost control) ──
+    # In addition to the disk SHA cache inside the client, dedup at THIS
+    # call so two cues with the same prompt+duration share the same
+    # AudioResult without two client.submit calls. The client's hash
+    # cache would catch it too on the second call, but skipping the
+    # network round-trip entirely is cheaper.
+    by_request: Dict[Tuple[str, int], Any] = {}  # (prompt, duration) → AudioResult
     replaced: Dict[str, int] = defaultdict(int)
-    for cue_idx, (cue, role) in enumerate(eligible):
-        ctx = cue.get("context") if isinstance(cue, dict) else None
-        duration_s = _ROLE_DEFAULT_DURATION_S.get(role, DEFAULT_DURATION_S)
-        # Pick the primary prompt seed: mood bank → default → first available.
-        bank = SFX_PROMPTS.get(role) or {}
-        primary_seeds = (bank.get(resolved_mood)
-                         or bank.get("default")
-                         or next(iter(bank.values()), []))
-        if not primary_seeds:
-            continue
-        primary_base = rng.choice(primary_seeds)
 
-        # Primary layer.
-        primary = _gen_single_layer(
-            role=role, mood=resolved_mood, layer="primary",
-            base_prompt=primary_base,
-            context=ctx, duration_s=duration_s,
-            client=client, cache_dir=cache_dir,
-            file_stem=f"primary_{role}_{cue_idx:02d}",
-            cost_tracker=cost_tracker,
-        )
-        if primary is None:
+    # Track per-cue per-prompt failure so a failed (prompt, duration)
+    # doesn't trigger N successive submit calls.
+    failed_keys: set = set()
+    dropped_count = 0
+
+    for cue_idx, (cue, prompt_def) in enumerate(plan):
+        prompt_text, duration_int, vol_mul = prompt_def
+        cache_key_local = (prompt_text, duration_int)
+        result = by_request.get(cache_key_local)
+
+        if cache_key_local in failed_keys:
+            # Previous cue with this exact prompt already failed — don't
+            # retry; drop the cue so the mixer doesn't ship the
+            # original library URL (which is the UI/mouse-button sound
+            # we worked to escape from).
+            cue["url"] = ""
+            dropped_count += 1
             continue
 
-        # Optional sub-layer for high-impact roles.
-        composite_path: Optional[Path] = None
-        if role in _LAYERED_ROLES and composite_dir is not None:
-            sub_bank = _SUB_LAYER_PROMPTS.get(role) or []
-            if sub_bank:
-                sub_base = rng.choice(sub_bank)
-                sub_dur = max(0.4, duration_s * 0.9)  # sub-layer slightly shorter
-                sub = _gen_single_layer(
-                    role=role, mood=resolved_mood, layer="sub",
-                    base_prompt=sub_base,
-                    context=ctx, duration_s=sub_dur,
-                    client=client, cache_dir=cache_dir,
-                    file_stem=f"sub_{role}_{cue_idx:02d}",
-                    cost_tracker=cost_tracker,
-                )
-                if sub is not None:
-                    # Mix primary (full) + sub (60% level) into a single mp3.
-                    composite_out = composite_dir / f"composite_{role}_{cue_idx:02d}.mp3"
-                    composite_path = _ffmpeg_mix_layers(
-                        [primary[0], sub[0]],
-                        [1.0, 0.60],
-                        composite_out,
-                    )
-
-        final_path = composite_path or primary[0]
-
-        # Upload to S3 if a uploader is wired; else keep local path.
-        url_out: Optional[str] = None
-        if s3_uploader is not None:
+        if result is None:
             try:
-                with open(final_path, "rb") as f:
-                    audio_bytes = f.read()
-                key = f"ai-videos/{video_id}/sfx/{role}_{cue_idx:02d}.mp3"
-                url_out = s3_uploader(audio_bytes, key)
+                result = client.submit(
+                    prompt_text,
+                    duration_s=float(duration_int),
+                    proactively_download=True,
+                )
             except Exception as e:
-                _log.warning("[sfx-palette] S3 upload failed cue=%d: %s",
-                             cue_idx, e)
+                _log.warning(
+                    "[sfx-palette] cassetteai submit failed cue=%d label=%r: %s",
+                    cue_idx, cue.get("label"), e,
+                )
+                # Drop the cue rather than keeping the static-library URL
+                # — silence is correct when the intended fresh-gen failed.
+                # Audio_mixer's download_cues_to_disk skips cues with no URL.
+                cue["url"] = ""
+                failed_keys.add(cache_key_local)
+                dropped_count += 1
+                continue
+            by_request[cache_key_local] = result
+
+        if not result.audio_bytes and not result.url:
+            _log.warning(
+                "[sfx-palette] cassetteai returned no audio cue=%d — dropping",
+                cue_idx,
+            )
+            cue["url"] = ""
+            failed_keys.add(cache_key_local)
+            dropped_count += 1
+            continue
+
+        # Resolve a URL (or local path) the mixer can read.
+        url_out: Optional[str] = None
+        if s3_uploader is not None and result.audio_bytes:
+            try:
+                key = f"ai-videos/{video_id}/sfx/{cue.get('id', f'cue_{cue_idx}')}.wav"
+                url_out = s3_uploader(result.audio_bytes, key)
+            except Exception as e:
+                _log.warning(
+                    "[sfx-palette] S3 upload failed cue=%d: %s", cue_idx, e,
+                )
+        if url_out is None and result.audio_bytes and cache_dir is not None:
+            try:
+                cache_dir.mkdir(parents=True, exist_ok=True)
+                local_path = cache_dir / f"sfx_{cue_idx:03d}_{cache_key_local[0][:30].replace(' ', '_')}.wav"
+                local_path.write_bytes(result.audio_bytes)
+                url_out = str(local_path)
+            except OSError as e:
+                _log.warning("[sfx-palette] local persist failed: %s", e)
         if url_out is None:
-            url_out = str(final_path)
+            url_out = result.url
+        if not url_out:
+            # Neither S3 upload, local persist, nor URL fell back —
+            # drop the cue (silence > funny library URL).
+            cue["url"] = ""
+            dropped_count += 1
+            continue
 
         cue["url"] = url_out
-        replaced[role] += 1
+        # Reflect the cassetteai-prescribed volume so the mixer doesn't
+        # use the sound_planner's library-tuned default.
+        cue["volume"] = round(min(1.0, vol_mul), 3)
+        # Tag the cue with the duration so the mixer can plan adelay tails.
+        cue["duration"] = float(duration_int)
+
+        label_key = (cue.get("label") or cue.get("role") or "unknown")
+        replaced[str(label_key)] += 1
+
+        if cost_tracker is not None and not result.cache_hit:
+            try:
+                cost_tracker.record_sfx(
+                    stage=f"sfx_{label_key}",
+                    model="cassetteai/sound-effects-generator",
+                    duration_s=float(duration_int),
+                    cost_usd=float(result.cost_usd or 0.01),
+                )
+            except Exception:
+                pass
 
     total = sum(replaced.values())
-    _log.info("[sfx-palette] replaced %d cues (mood=%s, composites=%d)",
-              total, resolved_mood,
-              sum(1 for _, r in eligible if r in _LAYERED_ROLES))
+    _log.info(
+        "[sfx-palette] replaced %d cues across %d unique labels "
+        "(api_calls=%d, dropped=%d)",
+        total, len(replaced),
+        sum(1 for r in by_request.values() if not r.cache_hit),
+        dropped_count,
+    )
     return dict(replaced)
 
 
 # ──────────────────────────────────────────────────────────────────────
-# Backwards-compatibility shim
+# Back-compat shim — old transition-stinger entry point. Now no-ops
+# since transitions don't get auto-cues anymore. Kept so existing
+# callers don't break.
 # ──────────────────────────────────────────────────────────────────────
 
 def enrich_transitions_with_fresh_stingers(
     entries: List[Dict[str, Any]],
-    *,
-    tier_config: Optional[Dict[str, Any]] = None,
-    cost_tracker: Any = None,
-    run_dir: Optional[Path] = None,
-    s3_uploader: Optional[Callable[[bytes, str], str]] = None,
-    video_id: str = "",
-    max_variants: int = MAX_VARIANTS_PER_ROLE,
-    stinger_duration_s: float = 0.55,
-    seed: Optional[int] = None,
-    mood: Optional[str] = None,
-    script: Any = None,
+    **kwargs: Any,
 ) -> int:
-    """Legacy entrypoint — now delegates to `enrich_cues` for transition
-    roles only. Kept so existing callers don't break during the rename."""
-    counts = enrich_cues(
-        entries,
-        mood=mood,
-        script=script,
-        tier_config=tier_config,
-        cost_tracker=cost_tracker,
-        run_dir=run_dir,
-        s3_uploader=s3_uploader,
-        video_id=video_id,
-        max_variants_per_role=max_variants,
-        seed=seed,
-    )
-    return counts.get("transition_whoosh", 0) + counts.get("transition_riser", 0)
+    """Legacy entrypoint. Transitions are no longer auto-emitted by the
+    planner (2026-05 demolition), so this is a no-op kept for back-compat.
+    Callers should migrate to `enrich_cues`."""
+    return 0

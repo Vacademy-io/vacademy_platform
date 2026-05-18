@@ -329,8 +329,10 @@ def build_recraft_thumbnail_prompt(
     hero_subject_label: Optional[str],
     visual_style: Optional[str],
     brand_color_hex: Optional[str] = None,
+    brand_heading_font: Optional[str] = None,
     topic_context: Optional[Dict[str, Any]] = None,
     orientation: str = "landscape",
+    avatar_face_url: Optional[str] = None,
 ) -> str:
     """Compose a Recraft prompt for a single thumbnail with text baked in.
 
@@ -380,6 +382,25 @@ def build_recraft_thumbnail_prompt(
                 f"the composition; otherwise pick a more eye-catching palette): "
                 f"{color_name}. "
             )
+
+    # Avatar identity lock — when a custom-avatar face image is supplied,
+    # this clause tells Recraft to anchor the SUBJECT ZONE to the same
+    # person. Recraft also receives the face as `reference_image_url` in
+    # the multimodal call (see thumbnail_generator.run → seedream_call),
+    # so this text is a reinforcement, not the sole signal.
+    avatar_identity_clause = ""
+    if isinstance(avatar_face_url, str) and avatar_face_url.strip():
+        avatar_identity_clause = (
+            "IDENTITY LOCK: a reference image of the host's face is attached. "
+            "The person who appears in the SUBJECT ZONE MUST be the SAME "
+            "person as in that reference — same face, same identity, same "
+            "hair, same skin tone. New pose / framing / lighting / outfit "
+            "fitting the topic and intent is fine, but the FACE must read "
+            "as the same individual. This overrides any other subject-type "
+            "suggestion: even for partnership / product / news intents, "
+            "when a face reference is supplied the host's face is the "
+            "primary subject. "
+        )
 
     # Topic anchor — the authoritative grounding signal. Take precedence
     # over the (possibly diluted) hero_subject_label. Strip text-cue
@@ -432,6 +453,20 @@ def build_recraft_thumbnail_prompt(
     if accent_word and accent_word.lower() not in f"{primary} {secondary}".lower():
         accent_word = ""
 
+    # Optional brand font hint — appended to TIER 1 only. Recraft may or
+    # may not honor a specific font-family name, so this is a soft cue
+    # rather than a hard requirement. The per-intent `type_style` still
+    # carries the weight / case / color rules.
+    brand_font_hint = ""
+    if isinstance(brand_heading_font, str) and brand_heading_font.strip():
+        _safe_font = brand_heading_font.strip().replace('"', '').replace("'", "")
+        if _safe_font:
+            brand_font_hint = (
+                f" Brand font preference (soft hint — match its visual character "
+                f"if the model can; ignore if it conflicts with legibility): "
+                f"\"{_safe_font}\"."
+            )
+
     # Build the typography directive block — one tier line per non-empty
     # field so Recraft has explicit hierarchy guidance.
     tier_lines: List[str] = []
@@ -443,7 +478,7 @@ def build_recraft_thumbnail_prompt(
             "is fully legible and not squeezed against its neighbours. If "
             "the words don't fit at that size with normal letter spacing, "
             "break them onto a second line rather than condensing the letters. "
-            f"{type_style}."
+            f"{type_style}.{brand_font_hint}"
         )
     if secondary:
         tier_lines.append(
@@ -478,10 +513,13 @@ def build_recraft_thumbnail_prompt(
         # 1. The job.
         "Create a high-impact viral video thumbnail designed to compel a click. "
         "This is for a top-tier creator's feed, not a stock-photo ad. "
-        # 2. Topic anchor — comes BEFORE composition rules so the model
-        # treats authentic topic-grounding as a hard constraint that shapes
-        # every other downstream choice (subject's identity, clothing,
-        # setting, props, palette).
+        # 2a. Identity lock — comes BEFORE topic anchor and composition so
+        # the face-reference rule wins over the subject-type menu when both
+        # are present. Empty string when no avatar reference is supplied.
+        f"{avatar_identity_clause}"
+        # 2b. Topic anchor — the authoritative grounding signal for any
+        # detail not pinned by the identity lock (setting, clothing, props,
+        # palette).
         f"{topic_anchor_clause}"
         # 3. The mandatory subject + composition rule.
         # The RIGHT subject TYPE depends on the topic — pick from the menu

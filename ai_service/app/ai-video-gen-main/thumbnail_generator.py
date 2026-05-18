@@ -273,6 +273,8 @@ def run(
     orientation: str = "landscape",
     subjects_list: Optional[List[Dict[str, Any]]] = None,
     brand_color_hex: Optional[str] = None,
+    brand_heading_font: Optional[str] = None,
+    avatar_face_url: Optional[str] = None,
     original_prompt: Optional[str] = None,
     llm_chat: Optional[Callable[..., Tuple[str, Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
@@ -361,22 +363,33 @@ def run(
         # `orientation` flows through so the prompt picks the right split axis:
         # left/right for landscape, top/bottom for portrait. The old global
         # left/right rule produced narrow squeezed columns on 9:16 canvases.
+        # `avatar_face_url` is also passed so the prompt can explicitly tell
+        # Recraft to anchor the SUBJECT ZONE to the same person.
         prompt = tp.build_recraft_thumbnail_prompt(
             intent=intent,
             headline=headline_pkg,
             hero_subject_label=hero_label,
             visual_style=visual_style,
             brand_color_hex=brand_color_hex,
+            brand_heading_font=brand_heading_font,
             topic_context=topic_context,
             orientation=orientation,
+            avatar_face_url=avatar_face_url,
         )
 
         try:
+            # If a custom-avatar face URL is available, feed it to Recraft as
+            # an image-to-image reference. Recraft's chat-completions endpoint
+            # treats `reference_image_url` as a visual prior — the rendered
+            # thumbnail will keep the same person's identity (face, build,
+            # hair) and place them in a new pose / framing per the prompt.
+            # Built-in catalog avatars (Argil / VEED) have no face_image_url
+            # to feed and skip this path automatically.
             image_bytes, _img_usage = seedream_call(
                 prompt=prompt,
                 width=out_w,
                 height=out_h,
-                reference_image_url=None,
+                reference_image_url=avatar_face_url,
             )
         except Exception as e:
             print(f"   ⚠️ Thumbnail image-gen call raised: {e}")

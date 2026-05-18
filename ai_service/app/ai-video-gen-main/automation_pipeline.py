@@ -733,6 +733,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "sound_enabled": True,
         "sound_max_cues_per_shot": 1,
         "sound_max_cues_per_video": 10,
+        # Fresh-generation SFX (cassetteai) on real GSAP events. Without
+        # this premium falls back to the static library which produces
+        # the UI-button/multimedia-mouse sounds we worked to eliminate.
+        "sfx_generation_enabled": True,
+        "audio_density_mode": "normal",
         # Prefer stock; Director runs on main model, script+shots use flash
         "stock_preference": "stock_first",
         "preferred_script_model": "google/gemini-3-flash-preview",
@@ -16380,6 +16385,45 @@ class VideoGenerationPipeline:
                 _tc_for_planner = dict(self._tier_config or {})
                 _tc_for_planner["audio_mood"] = _mood_for_planner
 
+                # ── GSAP scanner pass ──────────────────────────────
+                # Parse each shot's generated HTML/JS for on-screen
+                # animation events (typewriter, bar grow, counter tick,
+                # underline draw, button appear, etc.) and attach them
+                # as `entry["_sfx_events"]`. sound_planner Rule A reads
+                # this list as its primary source of cue placement.
+                # This is what makes the audio respond to ACTUAL visual
+                # events instead of marking every transition.
+                try:
+                    from gsap_event_scanner import scan_events as _scan_gsap_events
+                    _gsap_total = 0
+                    _gsap_shots_with_events = 0
+                    for e in all_entries:
+                        html_str = e.get("html") or ""
+                        if not html_str:
+                            e["_sfx_events"] = []
+                            continue
+                        try:
+                            shot_dur = max(
+                                0.5,
+                                float(e.get("end", 0.0)) - float(e.get("start", 0.0)),
+                            )
+                        except (TypeError, ValueError):
+                            shot_dur = 999.0
+                        events = _scan_gsap_events(html_str, shot_duration_s=shot_dur)
+                        e["_sfx_events"] = events
+                        if events:
+                            _gsap_total += len(events)
+                            _gsap_shots_with_events += 1
+                    print(
+                        f"   🎬 GSAP scanner: {_gsap_total} events across "
+                        f"{_gsap_shots_with_events}/{len(all_entries)} shots"
+                    )
+                except Exception as _gsap_err:
+                    print(f"   ⚠️ GSAP scanner error ({_gsap_err}) — "
+                          f"falling through to sync_point-only cueing")
+                    for e in all_entries:
+                        e.setdefault("_sfx_events", [])
+
                 plan_sounds(
                     entries=all_entries,
                     shots=shots,
@@ -23155,6 +23199,22 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
         if not isinstance(_brand_color_hex, str) or not _brand_color_hex.strip():
             _brand_color_hex = None
 
+        # Brand heading font — soft typography hint. Recraft may or may not
+        # honor a specific font name; if it doesn't, the per-intent type_style
+        # directive still drives the look.
+        _brand_heading_font = _style.get("heading_font") if isinstance(_style, dict) else None
+        if not isinstance(_brand_heading_font, str) or not _brand_heading_font.strip():
+            _brand_heading_font = None
+
+        # Custom-avatar face image — used as image-to-image reference so the
+        # thumbnail features the SAME person the video is hosted by. Only
+        # set when the user picked a custom avatar (or a saved vimotion
+        # avatar with provider='custom'); built-in catalog avatars
+        # (Argil/VEED) don't have a face_image_url and skip this path.
+        _avatar_face_url = getattr(self, "_current_avatar_image_url", None)
+        if not isinstance(_avatar_face_url, str) or not _avatar_face_url.strip():
+            _avatar_face_url = None
+
         # Use the script_client for the small headline LLM call — same model
         # the script/director uses, so token usage is accounted for cleanly.
         try:
@@ -23193,6 +23253,8 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                     orientation=_orientation,
                     subjects_list=[],
                     brand_color_hex=_brand_color_hex,
+                    brand_heading_font=_brand_heading_font,
+                    avatar_face_url=_avatar_face_url,
                     original_prompt=base_prompt,
                     llm_chat=_llm_chat,
                 )

@@ -44,8 +44,13 @@ import vacademy.io.admin_core_service.features.fee_management.repository.Student
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionRepository;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.repository.UserRoleRepository;
@@ -71,6 +76,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
     private final AuthService authService;
     private final EnrollInviteRepository enrollInviteRepository;
     private final UserPlanRepository userPlanRepository;
+    private final PaymentLogRepository paymentLogRepository;
+    private final StudentSessionRepository studentSessionRepository;
     private final vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService attendanceReportService;
     private final vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository liveSessionLogsRepository;
     private final vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository instituteStudentRepository;
@@ -126,6 +133,8 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 return fetchLiveSessionAttendance(params);
             case "fetch_institute_admin_emails":
                 return fetchInstituteAdminEmails(params);
+            case "fetch_enrollment_details":
+                return fetchEnrollmentDetails(params);
             default:
                 log.warn("Unknown prebuilt query key: {}", prebuiltKey);
                 return Map.of("error", "Unknown query key: " + prebuiltKey);
@@ -2410,6 +2419,137 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
         if (o == null) return true;
         if (o instanceof String) return ((String) o).trim().isEmpty();
         return false;
+    }
+
+    /**
+     * Joins the learner's SSIGM (enrollment status, user plan) with their latest
+     * PaymentLog (payment status, order ID, amount) for a single (userId, packageSession)
+     * pair. Designed for use inside workflows that fire on LEARNER_BATCH_ENROLLMENT —
+     * the trigger has user.id + packageSessionIds on the context, both of which can be
+     * passed straight through as SpEL params from the QUERY node.
+     * <p>
+     * Returns the full set of fields even when partially missing (status keys = null,
+     * hasPayment = false) so HTTP_REQUEST bodies that reference these keys never
+     * render as literal {{...}}. SafeErrorMessage wraps the catch so an NPE inside
+     * the query doesn't mask the real cause.
+     */
+    private Map<String, Object> fetchEnrollmentDetails(Map<String, Object> params) {
+        try {
+            String userId = (String) params.get("userId");
+            // Accept either packageSessionId (singular) or packageSessionIds (CSV from trigger).
+            // For the CSV form, pick the first ID — a single enrollment event has one batch.
+            String packageSessionIdParam = (String) params.get("packageSessionId");
+            if (packageSessionIdParam == null) {
+                packageSessionIdParam = (String) params.get("packageSessionIds");
+            }
+            String instituteId = (String) params.get("instituteId");
+
+            if (userId == null || packageSessionIdParam == null || instituteId == null) {
+                return Map.of("error", "Missing userId, packageSessionId, or instituteId");
+            }
+
+            String packageSessionId = packageSessionIdParam.split(",")[0].trim();
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("userId", userId);
+            result.put("packageSessionId", packageSessionId);
+
+            // 1) SSIGM (enrollment record). Prefer the ACTIVE row if present, otherwise
+            //    fall back to any status — the workflow may fire during re-enrollment
+            //    where the row briefly has a non-ACTIVE status.
+            Optional<StudentSessionInstituteGroupMapping> ssigm = studentSessionRepository
+                    .findTopByPackageSessionIdAndUserIdAndStatusIn(
+                            packageSessionId, instituteId, userId,
+                            List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+            if (ssigm.isEmpty()) {
+                ssigm = studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
+                        packageSessionId, instituteId, userId,
+                        Arrays.asList("ACTIVE", "INVITED", "TERMINATED", "INACTIVE", "EXPIRED", "ENROLLED"));
+            }
+
+            String userPlanId = null;
+            if (ssigm.isPresent()) {
+                StudentSessionInstituteGroupMapping m = ssigm.get();
+                result.put("enrollmentStatus", m.getStatus());
+                result.put("enrollmentId", m.getId());
+                result.put("userPlanId", m.getUserPlanId());
+                result.put("enrolledAt", m.getCreatedAt() != null ? m.getCreatedAt().toString() : null);
+                userPlanId = m.getUserPlanId();
+            } else {
+                result.put("enrollmentStatus", null);
+                result.put("enrollmentId", null);
+                result.put("userPlanId", null);
+                result.put("enrolledAt", null);
+            }
+
+            // 2) Latest PaymentLog joined by userPlanId. If the SSIGM row had no
+            //    user_plan_id (free enrollments often skip plan creation), report
+            //    hasPayment=false rather than throwing.
+            boolean hasPayment = false;
+            String paymentStatus = null;
+            String paymentOrderId = null;
+            Double paymentAmount = null;
+            String paymentCurrency = null;
+            String paymentVendor = null;
+            String paymentDate = null;
+
+            if (userPlanId != null && !userPlanId.isBlank()) {
+                List<PaymentLog> payments = paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlanId);
+                if (!payments.isEmpty()) {
+                    PaymentLog latest = payments.get(0);
+                    hasPayment = true;
+                    paymentStatus = latest.getPaymentStatus();
+                    paymentAmount = latest.getPaymentAmount();
+                    paymentCurrency = latest.getCurrency();
+                    paymentVendor = latest.getVendor();
+                    paymentDate = latest.getDate() != null ? latest.getDate().toString() : null;
+                    paymentOrderId = extractOrderIdFromPaymentSpecificData(latest.getPaymentSpecificData());
+                    // Fallback to tracking_id when the JSON didn't carry an order id —
+                    // covers payment gateways that store it as a top-level column.
+                    if (paymentOrderId == null && latest.getTrackingId() != null) {
+                        paymentOrderId = latest.getTrackingId();
+                    }
+                }
+            }
+
+            result.put("hasPayment", hasPayment);
+            result.put("paymentStatus", paymentStatus);
+            result.put("paymentOrderId", paymentOrderId);
+            result.put("paymentAmount", paymentAmount);
+            result.put("paymentCurrency", paymentCurrency);
+            result.put("paymentVendor", paymentVendor);
+            result.put("paymentDate", paymentDate);
+
+            return result;
+        } catch (Exception e) {
+            log.error("Error in fetchEnrollmentDetails", e);
+            // Map.of() rejects null values; NPE's getMessage() is often null. Guard so
+            // the catch block itself doesn't NPE and mask the real cause.
+            String msg = e.getMessage();
+            return Map.of("error", msg != null ? msg : e.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * payment_log.payment_specific_data is a free-form JSON column. The order id is
+     * conventionally stored under originalRequest.order_id (PaymentLogService writes
+     * this shape) but may also appear at the root as order_id / orderId for gateway
+     * callbacks. Returns null if none of those paths resolve to a text value.
+     */
+    private String extractOrderIdFromPaymentSpecificData(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            JsonNode root = objectMapper.readTree(json);
+            JsonNode n = root.path("originalRequest").path("order_id");
+            if (n.isTextual()) return n.asText();
+            n = root.path("order_id");
+            if (n.isTextual()) return n.asText();
+            n = root.path("orderId");
+            if (n.isTextual()) return n.asText();
+        } catch (Exception ignored) {
+            // malformed JSON — treat as no order id
+        }
+        return null;
     }
 }
 

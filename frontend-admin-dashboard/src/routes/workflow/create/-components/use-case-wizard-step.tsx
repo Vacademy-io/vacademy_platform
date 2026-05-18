@@ -43,6 +43,35 @@ function useBatchOptions(instituteId: string) {
     });
 }
 
+/**
+ * Distinct courses (packages) for an institute, derived from the same
+ * INIT_INSTITUTE response we already use for batches. Each batch carries its
+ * parent package, so we dedupe on package_dto.id. No new backend endpoint needed.
+ */
+function usePackageOptions(instituteId: string) {
+    return useQuery({
+        queryKey: ['wizard-packages', instituteId],
+        queryFn: async () => {
+            const response = await authenticatedAxiosInstance.get(`${INIT_INSTITUTE}/${instituteId}`);
+            const batches = response.data?.batches_for_sessions ?? [];
+            if (!Array.isArray(batches)) return [];
+            const seen = new Set<string>();
+            const packages: Array<{ value: string; label: string }> = [];
+            for (const batch of batches as Array<Record<string, unknown>>) {
+                const pkg = (batch.package_dto ?? {}) as Record<string, string>;
+                const id = pkg.id;
+                if (id && !seen.has(id)) {
+                    seen.add(id);
+                    packages.push({ value: id, label: pkg.package_name ?? 'Unknown course' });
+                }
+            }
+            return packages.sort((a, b) => a.label.localeCompare(b.label));
+        },
+        staleTime: 5 * 60 * 1000,
+        enabled: !!instituteId,
+    });
+}
+
 function useAudienceOptions(instituteId: string) {
     return useQuery({
         queryKey: ['wizard-audiences', instituteId],
@@ -94,6 +123,7 @@ function QuestionField({
     useCaseId?: string;
 }) {
     const { data: batchOptions = [], isLoading: batchLoading } = useBatchOptions(instituteId);
+    const { data: packageOptions = [], isLoading: packageLoading } = usePackageOptions(instituteId);
     const { data: audienceOptions = [], isLoading: audienceLoading } = useAudienceOptions(instituteId);
     const { data: templateOptions = [], isLoading: templateLoading } = useEmailTemplateOptions();
     const [creatingSample, setCreatingSample] = useState(false);
@@ -313,6 +343,53 @@ function QuestionField({
             {question.type === 'live_session_select' && renderDropdown([], false, '-- Select a live session --', !question.required)}
             {question.type === 'invite_select' && renderDropdown([], false, '-- Select an invite --', !question.required)}
 
+            {question.type === 'package_select' && renderDropdown(
+                packageOptions,
+                packageLoading,
+                '-- Select a course --',
+                !question.required,
+            )}
+
+            {question.type === 'json_payload' && (() => {
+                const raw = (value as string) ?? (question.defaultValue as string) ?? '';
+                // Defer parse-error display until the user has stopped typing — but
+                // since this is a controlled input, we validate live and show inline.
+                let parseError: string | null = null;
+                if (raw.trim()) {
+                    try {
+                        const parsed = JSON.parse(raw);
+                        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                            parseError = 'Payload must be a JSON object (not an array or primitive).';
+                        }
+                    } catch (e) {
+                        parseError = e instanceof Error ? e.message : 'Invalid JSON.';
+                    }
+                }
+                return (
+                    <div className="space-y-1">
+                        {question.jsonPayloadHint && (
+                            <p className="text-[11px] text-gray-500 leading-relaxed">{question.jsonPayloadHint}</p>
+                        )}
+                        <textarea
+                            className={`w-full rounded-lg border bg-white px-3 py-2.5 text-xs font-mono shadow-sm focus:ring-1 ${
+                                parseError
+                                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                                    : 'border-gray-300 focus:border-primary-500 focus:ring-primary-500'
+                            }`}
+                            value={raw}
+                            onChange={(e) => onChange(e.target.value)}
+                            rows={12}
+                            spellCheck={false}
+                        />
+                        {parseError ? (
+                            <p className="text-[11px] text-red-500">⚠ {parseError}</p>
+                        ) : raw.trim() ? (
+                            <p className="text-[11px] text-emerald-600">✓ Valid JSON</p>
+                        ) : null}
+                    </div>
+                );
+            })()}
+
             {question.type === 'select' && (
                 <select
                     className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm shadow-sm"
@@ -382,11 +459,28 @@ export function UseCaseWizardStep({
 
     const canGenerate = selectedTemplate
         ? selectedTemplate.questions
-            .filter((q) => q.required)
+            // Skip required-but-hidden questions (conditional via showIf) — otherwise
+            // a hidden required question would permanently block the Generate button.
+            .filter((q) => {
+                if (!q.required) return false;
+                if (!q.showIf) return true;
+                const depVal = String(answers[q.showIf.questionId] ?? '');
+                return q.showIf.values.includes(depVal);
+            })
             .every((q) => {
                 const val = answers[q.id];
                 if (val === undefined) return false;
                 if (Array.isArray(val)) return val.length > 0;
+                // json_payload: must be non-empty AND valid JSON object.
+                if (q.type === 'json_payload') {
+                    if (typeof val !== 'string' || !val.trim()) return false;
+                    try {
+                        const parsed = JSON.parse(val);
+                        return parsed && typeof parsed === 'object' && !Array.isArray(parsed);
+                    } catch {
+                        return false;
+                    }
+                }
                 return val !== '' && val !== 0;
             })
         : false;

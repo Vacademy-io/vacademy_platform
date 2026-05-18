@@ -53,4 +53,8 @@ public interface StudentListV2Projection {
     Boolean getTncAccepted();
     String getTncFileId();
     java.util.Date getTncAcceptedDate();
+
+    // True when the user has no ssigm row for the requested institute (audience-only respondent).
+    // Computed in the slim enrichment via CASE WHEN ssigm.id IS NULL THEN TRUE ELSE FALSE END.
+    Boolean getIsAudienceOnly();
 }

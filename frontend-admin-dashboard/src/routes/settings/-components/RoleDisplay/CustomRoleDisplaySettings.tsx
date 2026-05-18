@@ -18,6 +18,7 @@ import type { DisplaySettingsData } from '@/types/display-settings';
 import { CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
+import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
@@ -1828,6 +1829,16 @@ export default function CustomRoleDisplaySettings({
                     updateSettings((prev) => ({
                         ...prev,
                         studentSideView: next,
+                    }))
+                }
+            />
+
+            <LearnerListColumnsCard
+                settings={settings.learnerListColumns}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        learnerListColumns: next,
                     }))
                 }
             />

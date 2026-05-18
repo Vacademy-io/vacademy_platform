@@ -13,11 +13,14 @@ interface Pageable {
     sort: Sort;
 }
 
+export type ReviewStatus = 'PENDING' | 'REVIEWED';
+
 export interface UserActivity {
     totalTimeSpent: number;
     lastActive: string;
     userId: string;
     fullName: string;
+    reviewStatus?: ReviewStatus | null;
 }
 
 export interface PaginatedResponse {

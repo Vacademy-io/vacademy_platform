@@ -38,6 +38,10 @@ public class StudentListFilter {
     // User-facing invite filter (from request body)
     private List<String> enrollInviteIds;
 
+    // Audience filter — when set, restrict to learners who have an audience_response
+    // in one of these audiences (and that response isn't OPTED_OUT).
+    private List<String> audienceIds;
+
     // Internal fields - auto-injected by server for faculty ENROLL_INVITE filtering
     @JsonIgnore
     private List<String> serverEnrollInviteIds;

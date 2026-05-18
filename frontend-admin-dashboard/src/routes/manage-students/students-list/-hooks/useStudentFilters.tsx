@@ -259,10 +259,15 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             }
         }
 
-        // Name filter from URL
+        // Name filter from URL — push into appliedFilters immediately so the first API
+        // call uses the name. Without this, only the search input was hydrated and the
+        // "apply" block below (which propagates to appliedFilters) was gated on
+        // initialFilters.length > 0 — which excludes name-only URL loads.
         if (searchParams.name) {
-            setSearchInput(searchParams.name);
-            setSearchFilter(searchParams.name);
+            const name = searchParams.name as string;
+            setSearchInput(name);
+            setSearchFilter(name);
+            setAppliedFilters((prev) => ({ ...prev, name }));
         }
 
         // Payment Status filter from URL
@@ -297,6 +302,35 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 label: learnerType === 'ABANDONED_CART' ? 'Abandoned Cart' : learnerType,
             }];
             initialFilters.push({ id: 'learner_type', value: options });
+        }
+
+        // Audience filter from URL — label falls back to id; the filter chip resolves
+        // the proper campaign name once the campaigns list loads in the parent section.
+        if (searchParams.audienceId) {
+            const audienceIds = Array.isArray(searchParams.audienceId)
+                ? searchParams.audienceId
+                : [searchParams.audienceId];
+            const audienceOptions = [...new Set(audienceIds as string[])].map((id) => ({
+                id,
+                label: id,
+            }));
+            if (audienceOptions.length > 0) {
+                initialFilters.push({ id: 'audience_ids', value: audienceOptions });
+            }
+        }
+
+        // Enroll invite filter from URL — same id-as-label fallback.
+        if (searchParams.enrollInviteId) {
+            const inviteIds = Array.isArray(searchParams.enrollInviteId)
+                ? searchParams.enrollInviteId
+                : [searchParams.enrollInviteId];
+            const inviteOptions = [...new Set(inviteIds as string[])].map((id) => ({
+                id,
+                label: id,
+            }));
+            if (inviteOptions.length > 0) {
+                initialFilters.push({ id: 'enroll_invite_ids', value: inviteOptions });
+            }
         }
 
         // Custom field filters from URL
@@ -420,7 +454,8 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
 
             setAppliedFilters((prev) => ({
                 ...prev,
-                name: searchFilter,
+                // Use URL value directly — searchFilter state hasn't flushed yet within this effect.
+                name: (searchParams.name as string) || searchFilter || '',
                 package_session_ids: pksids,
                 destination_package_session_ids: isAbandonedCart ? destinationPksids : [],
                 gender: gendersToApply,
@@ -590,6 +625,8 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         const rolesToApply = columnFilters.find((filter) => filter.id === 'sub_org_user_types')?.value.map((option) => option.id) || [];
         const enrollInviteFilter = columnFilters.find((filter) => filter.id === 'enroll_invite_ids');
         const enrollInviteIds = enrollInviteFilter?.value.map((opt) => opt.id) || [];
+        const audienceFilter = columnFilters.find((filter) => filter.id === 'audience_ids');
+        const audienceIds = audienceFilter?.value.map((opt) => opt.id) || [];
 
         const newFilters: StudentFilterRequest = {
             name: searchFilter,
@@ -605,6 +642,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             payment_statuses: paymentStatuses,
             type: learnerType,
             ...(enrollInviteIds.length > 0 ? { enroll_invite_ids: enrollInviteIds } : {}),
+            ...(audienceIds.length > 0 ? { audience_ids: audienceIds } : {}),
             ...customFieldParams,
         };
 
@@ -621,6 +659,10 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         currentParams.delete('batch');
         currentParams.delete('sessionExpiry');
         currentParams.delete('learnerType');
+        currentParams.delete('paymentStatus');
+        currentParams.delete('approvalStatus');
+        currentParams.delete('audienceId');
+        currentParams.delete('enrollInviteId');
 
         // Remove old custom field params
         if (instituteDetails?.dropdown_custom_fields) {
@@ -653,9 +695,14 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             [...new Set(statusesToApply)].forEach(status => currentParams.append('status', status));
         }
 
-        // Use finalPackageSessionIds for batch URL params
-        if (finalPackageSessionIds.length > 0 && finalPackageSessionIds.length !== allPackageSessionIds.length) {
-            [...new Set(finalPackageSessionIds)].forEach(batch => currentParams.append('batch', batch));
+        // Persist the user's explicit batch chip selection — not finalPackageSessionIds,
+        // which falls back to session-wide batches when the chip is empty. That fallback
+        // would either bloat the URL with implied IDs or get suppressed by the now-removed
+        // count comparison, neither of which gave a faithful round-trip on reload.
+        if (selectedBatchIds && selectedBatchIds.length > 0) {
+            [...new Set(selectedBatchIds)].forEach((batch) =>
+                currentParams.append('batch', batch)
+            );
         }
 
         if (sessionExpiryDays && sessionExpiryDays.length > 0) {
@@ -672,6 +719,14 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
 
         if (learnerType) {
             currentParams.set('learnerType', learnerType);
+        }
+
+        if (audienceIds.length > 0) {
+            [...new Set(audienceIds)].forEach((id) => currentParams.append('audienceId', id));
+        }
+
+        if (enrollInviteIds.length > 0) {
+            [...new Set(enrollInviteIds)].forEach((id) => currentParams.append('enrollInviteId', id));
         }
 
         // Handle custom field filters
@@ -716,6 +771,8 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         currentParams.delete('paymentStatus');
         currentParams.delete('approvalStatus');
         currentParams.delete('learnerType');
+        currentParams.delete('audienceId');
+        currentParams.delete('enrollInviteId');
 
         // Remove custom field params
         if (instituteDetails?.dropdown_custom_fields) {

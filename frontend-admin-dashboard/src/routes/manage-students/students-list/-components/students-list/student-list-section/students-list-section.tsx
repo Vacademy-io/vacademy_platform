@@ -23,6 +23,10 @@ import { UserCircle } from '@phosphor-icons/react';
 import { BulkActions } from './bulk-actions/bulk-actions';
 import { OnChangeFn, RowSelectionState } from '@tanstack/react-table';
 import { useQuery } from '@tanstack/react-query';
+import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
+import { getCurrentInstituteId, getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
 import { DashboardLoader, ErrorBoundary } from '@/components/core/dashboard-loader';
 import { SmartErrorPage } from '@/components/core/SmartErrorPage';
 import { SidebarProvider } from '@/components/ui/sidebar';
@@ -102,7 +106,76 @@ export const StudentsListSection = () => {
         setColumnFilters,
     } = useStudentFilters({ allowAllSessions: true });
 
-    const filters = GetFilterData(instituteDetails, currentSession.id);
+    // Fetch campaigns once so the audience filter chip can render its options.
+    // The actual audience JOIN only kicks in server-side when the user picks one.
+    const audienceInstituteId = getCurrentInstituteId() || '';
+    const { data: campaignsData } = useQuery(
+        handleFetchCampaignsList({
+            institute_id: audienceInstituteId,
+            page: 0,
+            size: 100,
+        })
+    );
+
+    // Role-based column hiding: read the current role's display settings from cache.
+    // Cache miss → empty hidden set → no role-driven hiding (institute defaults apply).
+    const roleHiddenColumns = useMemo(() => {
+        const roleKey = getActiveRoleDisplaySettingsKey();
+        const cached = getDisplaySettingsFromCache(roleKey);
+        return new Set(cached?.learnerListColumns?.hiddenColumns ?? []);
+    }, []);
+    // Custom fields are hidden by default. Admin opts a custom field IN per role by
+    // adding its accessor (custom_field_id) to enabledCustomFields. Anything NOT in
+    // this set is force-hidden in the table.
+    const roleEnabledCustomFields = useMemo(() => {
+        const roleKey = getActiveRoleDisplaySettingsKey();
+        const cached = getDisplaySettingsFromCache(roleKey);
+        return new Set(cached?.learnerListColumns?.enabledCustomFields ?? []);
+    }, []);
+
+    // Full set of custom field accessors known for this institute (any source).
+    // Anything in this set that's NOT in roleEnabledCustomFields gets force-hidden.
+    const allCustomFieldAccessors = useMemo(() => {
+        const cache = getCustomFieldSettingsFromCache();
+        if (!cache) return new Set<string>();
+        const all = [
+            ...cache.instituteFields,
+            ...cache.customFields,
+            ...cache.fieldGroups.flatMap((g) => g.fields),
+        ];
+        return new Set(all.map((f) => f.id).filter(Boolean));
+    }, []);
+
+    // Filter-id → column accessors it controls. A filter chip is omitted when ALL its
+    // mapped columns are role-hidden. Filters not in this map (Approval Status, Cart
+    // Status, Audience, Role, Audience) never get role-hidden — they don't map to a
+    // single column. Custom-field filter ids are field.fieldKey; their column accessor
+    // is field.id, so we handle them dynamically below.
+    const FILTER_TO_COLUMNS: Record<string, string[]> = {
+        batch: ['package_session_id'],
+        statuses: ['status'],
+        gender: ['gender'],
+        session_expiry_days: ['expiry_date'],
+        payment_statuses: ['plan_type', 'amount_paid'],
+        enroll_invite_ids: ['enroll_invite_name'],
+    };
+
+    const customFieldIdByKey = useMemo(() => {
+        const map = new Map<string, string>();
+        instituteDetails?.dropdown_custom_fields?.forEach((f) => map.set(f.fieldKey, f.id));
+        return map;
+    }, [instituteDetails]);
+
+    const allFilters = GetFilterData(instituteDetails, currentSession.id, campaignsData?.content);
+    const filters = allFilters.filter((f) => {
+        const fixed = FILTER_TO_COLUMNS[f.id];
+        if (fixed) return fixed.some((accessor) => !roleHiddenColumns.has(accessor));
+        const customColAccessor = customFieldIdByKey.get(f.id);
+        // Custom field filter chips follow the same opt-in rule as their columns:
+        // visible only if the role has enabled this custom field.
+        if (customColAccessor) return roleEnabledCustomFields.has(customColAccessor);
+        return true; // unmapped filters (approval/cart/role/audience) survive
+    });
 
     const search = useSearch({ from: Route.id });
 
@@ -396,7 +469,44 @@ export const StudentsListSection = () => {
                                                 return augmented;
                                             })()}
                                             tableState={{
-                                                columnVisibility: getColumnsVisibility(),
+                                                columnVisibility: (() => {
+                                                    // Layers, highest precedence first:
+                                                    //   1. Filter-driven (Batch/Invite/Plan/Amount) — when the filter
+                                                    //      is active these MUST show so admin sees what they filtered.
+                                                    //   2. Role hidden columns — force hidden for system accessors in
+                                                    //      hiddenColumns (admin's explicit hide for this role).
+                                                    //   3. Custom field default-hide — every custom field accessor not
+                                                    //      in enabledCustomFields is force-hidden. Custom fields are
+                                                    //      hidden by default; admin opts in per role.
+                                                    //   4. Institute-wide system field visibility from CustomFieldsSettings.
+                                                    const base = getColumnsVisibility();
+                                                    roleHiddenColumns.forEach((accessor) => {
+                                                        base[accessor] = false;
+                                                    });
+                                                    // Hide every custom field accessor that isn't explicitly enabled
+                                                    // for this role — custom fields are opt-in via display-settings.
+                                                    allCustomFieldAccessors.forEach((accessor) => {
+                                                        if (!roleEnabledCustomFields.has(accessor)) {
+                                                            base[accessor] = false;
+                                                        }
+                                                    });
+
+                                                    const batchFilterApplied =
+                                                        (appliedFilters.package_session_ids?.length ?? 0) > 0;
+                                                    const paymentFilterApplied =
+                                                        (appliedFilters.payment_statuses?.length ?? 0) > 0;
+                                                    const enrollInviteFilterApplied =
+                                                        (appliedFilters.enroll_invite_ids?.length ?? 0) > 0;
+                                                    return {
+                                                        ...base,
+                                                        // Filter-driven overrides win over role hide.
+                                                        package_session_id: batchFilterApplied,
+                                                        enroll_invite_name: enrollInviteFilterApplied,
+                                                        plan_type: paymentFilterApplied,
+                                                        amount_paid: paymentFilterApplied,
+                                                        preffered_batch: false,
+                                                    };
+                                                })(),
                                             }}
                                             isLoading={loadingData}
                                             error={loadingError}

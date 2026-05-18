@@ -191,6 +191,30 @@ export interface LearnerManagementSettings {
     showApprovalToggle: boolean;
 }
 
+// Per-role column visibility on the manage-students learner-list. Holds the
+// set of column accessors (system field accessorKey, e.g. 'mobile_number', or
+// a custom-field UUID) this role must NOT see. Missing/empty list = role
+// inherits the institute-wide defaults configured in CustomFieldsSettings.
+//
+// Precedence at render time:
+//   1. Filter-driven visibility (Batch/Invite/Plan/Amount) ALWAYS wins — when
+//      the filter is active those columns must be visible so the admin can
+//      see what they filtered on.
+//   2. Role hiddenColumns — forces those accessors hidden.
+//   3. Institute-wide system field setting — admin-level defaults.
+export interface LearnerListColumnSettings {
+    // System field accessors this role has EXPLICITLY HIDDEN. Missing/empty list = role
+    // sees all system columns. Default semantics: visible unless listed here.
+    hiddenColumns: string[];
+
+    // Custom field accessors (custom_field UUIDs) this role has EXPLICITLY ENABLED for
+    // the learner-list table. Missing/empty = no custom fields visible for this role.
+    // Default semantics: hidden unless listed here. (Opposite of hiddenColumns above.)
+    // Admins opt in per role; new custom fields added later default to hidden until
+    // an admin toggles them on.
+    enabledCustomFields?: string[];
+}
+
 export interface LiveClassSchedulingSettings {
     /** Whether the "Bulk Schedule" entry point is available for this role. */
     bulkScheduleEnabled: boolean;
@@ -307,6 +331,11 @@ export interface DisplaySettingsData {
 
     // 12) Student portal side-view tab visibility
     studentSideView?: StudentSideViewSettings;
+
+    // 12b) Manage-students learner-list column visibility for this role.
+    //      Independent from the institute-wide custom-field settings — this is the
+    //      per-role overlay that admins use to hide columns from teachers etc.
+    learnerListColumns?: LearnerListColumnSettings;
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;

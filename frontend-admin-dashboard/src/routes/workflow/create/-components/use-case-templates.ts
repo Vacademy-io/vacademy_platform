@@ -396,6 +396,11 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: {
                     ...(batchCsv ? { batchId: batchCsv } : {}),
                     daysBack: answers.daysBack ?? 7,
+                    // Exclude today's date from the window. The email goes out in the
+                    // morning, but more classes happen through the day — without this,
+                    // the deep-link "View Full Report" on the portal would show different
+                    // numbers than the email when clicked later in the same day.
+                    excludeToday: true,
                 },
             }, 250, 50, true);
 
@@ -1097,6 +1102,9 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: {
                     batchId: answers.batchId as string,
                     daysBack: answers.daysBack ?? 7,
+                    // Morning email — exclude today so the deep link stays consistent
+                    // with the email even after more classes happen during the day.
+                    excludeToday: true,
                 },
             }, 250, 50, true);
 
@@ -1148,6 +1156,9 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: {
                     batchId: answers.batchId as string,
                     daysBack: answers.daysBack ?? 7,
+                    // Morning email — exclude today so the deep link stays consistent
+                    // with the email even after more classes happen during the day.
+                    excludeToday: true,
                 },
             }, 250, 50, true);
 

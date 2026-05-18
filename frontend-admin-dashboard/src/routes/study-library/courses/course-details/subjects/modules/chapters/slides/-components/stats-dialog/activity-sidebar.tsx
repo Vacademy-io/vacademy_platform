@@ -6,22 +6,39 @@ import { StudentSearchBox } from '@/components/common/student-search-box';
 import { ActivityLogDialog } from '@/components/common/student-slide-tracking/activity-log-dialog';
 import { Dialog, DialogHeader, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ChartBar, Clock, CalendarBlank, Users, ArrowRight } from '@phosphor-icons/react';
+import { ChartBar, Clock, CalendarBlank, Users, ArrowRight, DownloadSimple, Spinner } from '@phosphor-icons/react';
 import { useRouter } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { getSlideActivityStats } from '@/services/study-library/slide-operations/slide-activity-stats';
+import { downloadAllAssignmentSubmissions } from '@/services/study-library/slide-operations/download-assignment-submissions';
 import { UserActivity } from '@/types/study-library/activity-stats-response-type';
 import { useActivityStatsStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/activity-stats-store';
+import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 
 export const ActivityStatsSidebar = () => {
     const [open, setOpen] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
     const [searchInput, setSearchInput] = useState('');
+
+    const handleDownload = async () => {
+        if (!slideId) return;
+        setIsDownloading(true);
+        try {
+            await downloadAllAssignmentSubmissions(slideId);
+        } catch (err) {
+            console.error('Failed to download all submissions:', err);
+        } finally {
+            setIsDownloading(false);
+        }
+    };
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setSearchInput(e.target.value);
     };
     const router = useRouter();
-    const { slideId } = router.state.location.search;
+    const { slideId: routeSlideId } = router.state.location.search as { slideId?: string };
+    const { activeItem } = useContentStore();
+    const slideId = routeSlideId || activeItem?.id || '';
 
     const { page, pageSize, handlePageChange } = usePaginationState({
         initialPage: 0,
@@ -34,7 +51,7 @@ export const ActivityStatsSidebar = () => {
         error,
     } = useQuery({
         ...getSlideActivityStats({
-            slideId: slideId as string,
+            slideId,
             page,
             size: pageSize,
         }),
@@ -92,6 +109,7 @@ export const ActivityStatsSidebar = () => {
         time_spent: string;
         last_active: string;
         last_active_raw: string;
+        review_status: 'PENDING' | 'REVIEWED' | null;
     };
 
     const students: StudentRow[] = useMemo(() => {
@@ -104,6 +122,7 @@ export const ActivityStatsSidebar = () => {
             time_spent: formatTimeSpent(item.totalTimeSpent),
             last_active: formatLastActive(item.lastActive),
             last_active_raw: item.lastActive,
+            review_status: item.reviewStatus ?? null,
         }));
     }, [activityStats]);
 
@@ -150,6 +169,22 @@ export const ActivityStatsSidebar = () => {
                                 Track student engagement and submissions
                             </p>
                         </div>
+                        {activeItem?.source_type === 'ASSIGNMENT' && (
+                            <button
+                                type="button"
+                                onClick={handleDownload}
+                                disabled={isDownloading || !slideId}
+                                className="ml-auto mr-6 flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                title="Download all submissions (CSV)"
+                            >
+                                {isDownloading ? (
+                                    <Spinner size={14} className="animate-spin" />
+                                ) : (
+                                    <DownloadSimple size={14} />
+                                )}
+                                {isDownloading ? 'Downloading...' : 'Download CSV'}
+                            </button>
+                        )}
                     </div>
 
                     {/* Stat strip */}
@@ -273,6 +308,20 @@ export const ActivityStatsSidebar = () => {
                                                 </span>
                                             </div>
                                         </div>
+
+                                        {student.review_status && (
+                                            <span
+                                                className={`flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${
+                                                    student.review_status === 'REVIEWED'
+                                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                        : 'border-amber-200 bg-amber-50 text-amber-700'
+                                                }`}
+                                            >
+                                                {student.review_status === 'REVIEWED'
+                                                    ? 'Checked'
+                                                    : 'Pending Review'}
+                                            </span>
+                                        )}
 
                                         <div className="flex shrink-0 items-center gap-1.5 rounded-md border border-transparent px-2.5 py-1.5 text-xs font-medium text-primary-600 transition-colors group-hover:border-primary-200 group-hover:bg-primary-50">
                                             View Activity

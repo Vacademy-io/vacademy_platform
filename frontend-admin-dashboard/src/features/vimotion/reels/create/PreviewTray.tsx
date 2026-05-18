@@ -20,7 +20,6 @@ import { useNavigate } from '@tanstack/react-router';
 import {
     AlertCircle,
     CheckCircle2,
-    Loader2,
     X,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -399,7 +398,7 @@ function EnrichedCard({
                     )}
                 >
                     {isRenderingThis ? (
-                        <Loader2 className="size-4 animate-spin" />
+                        <VimotionLoader size={16} className="text-white" label="Starting" />
                     ) : (
                         <CheckCircle2 className="size-4" />
                     )}

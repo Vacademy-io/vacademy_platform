@@ -3,7 +3,8 @@ import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Globe, Loader2, X } from 'lucide-react';
+import { Globe, X } from 'lucide-react';
+import { VimotionLoader } from '../brand/VimotionLoader';
 import { z } from 'zod';
 import {
     Sheet,
@@ -373,7 +374,7 @@ export function BrandKitDrawer({ open, onOpenChange, instituteId, kit }: BrandKi
                                 >
                                     {scrape.isPending ? (
                                         <>
-                                            <Loader2 className="mr-2 size-4 animate-spin" />
+                                            <VimotionLoader size={16} className="mr-2 text-white" label="Scraping" />
                                             Scraping…
                                         </>
                                     ) : (
@@ -391,7 +392,7 @@ export function BrandKitDrawer({ open, onOpenChange, instituteId, kit }: BrandKi
                         </div>
                         {scrape.isPending && (
                             <div className="rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-6 text-center">
-                                <Loader2 className="mx-auto size-5 animate-spin text-neutral-500" />
+                                <VimotionLoader size={40} className="mx-auto text-neutral-900" label="Loading the page" />
                                 <p className="mt-3 text-sm text-neutral-600">
                                     Loading the page, extracting brand signals, and asking the
                                     designer model — usually 15–30 seconds.

@@ -12,7 +12,7 @@
  */
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
-import { AlertCircle, ChevronLeft, Loader2, Sparkles } from 'lucide-react';
+import { AlertCircle, ChevronLeft, Sparkles } from 'lucide-react';
 import { getInstituteId } from '@/constants/helper';
 import { useVimotionApiKey } from '../../dashboard/hooks/useVimotionApiKey';
 import { useScan } from '../hooks/useScan';
@@ -208,7 +208,7 @@ function ScanningPanel({ onCancel }: { onCancel: () => void }) {
                 loop-quality. Usually under a second.
             </p>
             <div className="mt-6 flex items-center justify-center gap-2 text-sm text-neutral-500">
-                <Loader2 className="size-4 animate-spin" />
+                <VimotionLoader size={16} className="text-neutral-500" label="Scanning" />
                 Scanning
             </div>
             <button

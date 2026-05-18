@@ -19,7 +19,6 @@ import {
     ChevronLeft,
     Download,
     Edit3,
-    Loader2,
     PlayCircle,
     Scissors,
     Trash2,
@@ -103,7 +102,7 @@ function RunningBody({ reel }: { reel: ReelResponse }) {
             <div className="lg:col-span-2 space-y-5">
                 <header>
                     <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-100">
-                        <Loader2 className="size-3 animate-spin" />
+                        <VimotionLoader size={12} className="text-blue-700" label="Rendering" />
                         Rendering · {reel.progress}%
                     </span>
                     <h2 className="mt-3 text-xl font-semibold text-neutral-900">{title}</h2>

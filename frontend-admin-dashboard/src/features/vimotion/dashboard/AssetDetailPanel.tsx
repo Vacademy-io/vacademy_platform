@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clapperboard, ExternalLink, Image as ImageIcon, Loader2, Trash2, X } from 'lucide-react';
+import { Clapperboard, ExternalLink, Image as ImageIcon, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
     deleteInputAsset,
@@ -95,7 +95,7 @@ export function AssetDetailPanel({ asset, apiKey, onClose }: AssetDetailPanelPro
                         className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                         {deleteMutation.isPending ? (
-                            <Loader2 className="size-3.5 animate-spin" />
+                            <VimotionLoader size={14} className="text-red-600" label="Deleting" />
                         ) : (
                             <Trash2 className="size-3.5" />
                         )}

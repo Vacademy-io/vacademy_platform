@@ -7,12 +7,12 @@ import {
     Clock,
     FolderOpen,
     Image as ImageIcon,
-    Loader2,
     Mic,
     Monitor,
     Upload,
     X,
 } from 'lucide-react';
+import { VimotionLoader } from '../brand/VimotionLoader';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { getInstituteId } from '@/constants/helper';
@@ -244,7 +244,7 @@ function StatusBadge({ status, progress }: { status: InputAssetStatus; progress:
         },
         PROCESSING: {
             label: `${progress || 0}%`,
-            Icon: Loader2,
+            Icon: CheckCircle2,
             cls: 'bg-blue-50 text-blue-700 border-blue-200',
         },
         QUEUED: {
@@ -272,7 +272,11 @@ function StatusBadge({ status, progress }: { status: InputAssetStatus; progress:
                 cls
             )}
         >
-            <Icon className={cn('size-3', spinning && 'animate-spin')} />
+            {spinning ? (
+                <VimotionLoader size={12} className="text-blue-700" label="Processing" />
+            ) : (
+                <Icon className="size-3" />
+            )}
             {label}
         </span>
     );
@@ -478,7 +482,7 @@ function UploadModal({ apiKey, onClose }: { apiKey: string; onClose: () => void 
                                 disabled={busy || !name.trim()}
                                 className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md bg-neutral-900 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                                {busy ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+                                {busy ? <VimotionLoader size={16} className="text-white" label="Uploading" /> : <Upload className="size-4" />}
                                 {busy ? 'Uploading…' : 'Upload & Index'}
                             </button>
                             <button

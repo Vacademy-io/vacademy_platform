@@ -6,9 +6,9 @@ import {
     CheckCircle2,
     Clapperboard,
     Clock,
-    Loader2,
     PlayCircle,
 } from 'lucide-react';
+import { VimotionLoader } from '../brand/VimotionLoader';
 import { getInstituteId } from '@/constants/helper';
 import {
     getRemoteHistory,
@@ -156,7 +156,7 @@ function StatusBadge({ status }: { status: HistoryItem['status'] }) {
         },
         generating: {
             label: 'Generating',
-            Icon: Loader2,
+            Icon: CheckCircle2,
             className: 'bg-blue-50 text-blue-700 border-blue-200',
         },
         pending: {
@@ -178,7 +178,11 @@ function StatusBadge({ status }: { status: HistoryItem['status'] }) {
                 className
             )}
         >
-            <Icon className={cn('size-3', status === 'generating' && 'animate-spin')} />
+            {status === 'generating' ? (
+                <VimotionLoader size={12} className="text-blue-700" label="Generating" />
+            ) : (
+                <Icon className="size-3" />
+            )}
             {label}
         </span>
     );

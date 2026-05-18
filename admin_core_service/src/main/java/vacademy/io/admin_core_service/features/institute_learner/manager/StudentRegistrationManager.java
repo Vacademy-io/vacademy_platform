@@ -959,7 +959,12 @@ public class StudentRegistrationManager {
         if (packageSession.isEmpty()) {
             throw new VacademyException("Package Session Not Found");
         }
-        contextData.put("packageId", packageSession.get().getPackageEntity().getId());
+        var pkg = packageSession.get().getPackageEntity();
+        contextData.put("packageId", pkg.getId());
+        // Exposed as {{packageName}} on the workflow context so SEND_EMAIL templates
+        // and HTTP_REQUEST webhook bodies can reference the course name directly
+        // without needing a separate QUERY node to look it up.
+        contextData.put("packageName", pkg.getPackageName());
         workflowTriggerService.handleTriggerEvents(WorkflowTriggerEvent.LEARNER_BATCH_ENROLLMENT.name(),
                 packageSessionId, instituteId, contextData);
     }

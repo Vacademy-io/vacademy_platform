@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { MyButton } from "@/components/design-system/button";
-import { Loader2, MapPin, User, Mail, Phone, CreditCard, ChevronRight, CheckCircle2 } from "lucide-react";
+import { Loader2, User, Mail, Phone, ChevronRight, CheckCircle2 } from "lucide-react";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/bootstrap.css";
 import { getCachedPreferredCountries } from "@/services/domain-routing";
@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import axios from "axios";
 import { performFullAuthCycle } from "@/services/auth-cycle-service";
 import { loginEnrolledUser } from "@/services/signup-api";
+import { AddressForm, AddressFormHandle } from "./AddressForm";
 
 interface CheckoutFormProps {
     open: boolean;
@@ -48,8 +49,16 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const [email, setEmail] = useState("");
     const [fullName, setFullName] = useState("");
     const [phone, setPhone] = useState("");
-    const [address, setAddress] = useState("");
     const [otp, setOtp] = useState("");
+    // Pre-fill source for AddressForm — only the 4 backend-indexed fields are
+    // restored from StudentDetails; granular UI fields stay blank because the
+    // stored addressLine is a single concatenated string we can't reliably split.
+    const [initialAddressInputs, setInitialAddressInputs] = useState<{
+        city?: string;
+        region?: string;
+        pinCode?: string;
+    }>({});
+    const addressFormRef = React.useRef<AddressFormHandle>(null);
     const [loading, setLoading] = useState(false);
     const [isInitializing, setIsInitializing] = useState(false);
     const [phoneOtpSent, setPhoneOtpSent] = useState(false);
@@ -70,7 +79,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     }, []);
     const defaultPhoneCountry = preferredCountries[0] ?? "in";
     const [nameError, setNameError] = useState("");
-    const [addressError, setAddressError] = useState("");
 
     const [paymentPlanData, setPaymentPlanData] = useState<any>(null);
     // Per-item plan data: maps enrollInviteId -> { planId, paymentOptionId }
@@ -123,7 +131,11 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                 setEmail(studentDetails.email || studentDetails.username || "");
                                 const phoneNum = studentDetails.mobile_number || studentDetails.phone_number || "";
                                 setPhone(phoneNum);
-                                setAddress(studentDetails.address_line || studentDetails.address || "");
+                                setInitialAddressInputs({
+                                    city: studentDetails.city || undefined,
+                                    region: studentDetails.region || undefined,
+                                    pinCode: studentDetails.pin_code || undefined,
+                                });
                                 
                                 const hasPhone = !!(phoneNum && phoneNum.replace(/\D/g, "").length >= 10);
                                 if (hasPhone) {
@@ -294,7 +306,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         setEmailError("");
         setPhoneError("");
         setNameError("");
-        setAddressError("");
 
         if (showFullForm) {
             if (!fullName.trim()) {
@@ -315,12 +326,14 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             setPhoneError("Phone verification is required");
             hasErrors = true;
         }
-        if (!address.trim()) {
-            setAddressError("Delivery address is required");
+        // AddressForm renders its own field-level errors when validate() runs.
+        if (!addressFormRef.current?.validate()) {
             hasErrors = true;
         }
 
         if (hasErrors) return;
+
+        const addressValue = addressFormRef.current!.getValue();
 
         setLoading(true);
         try {
@@ -336,10 +349,10 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     getTerminology(RoleTerms.Learner, SystemTerms.Learner),
                 email: email.trim() || "student@example.com",
                 mobileNumber: phone,
-                address_line: address,
-                city: "",
-                region: "",
-                pin_code: "",
+                address_line: addressValue.addressLine,
+                city: addressValue.city,
+                region: addressValue.region,
+                pin_code: addressValue.pinCode,
                 date_of_birth: new Date().toISOString(),
                 gender: null,
                 password: "",
@@ -756,20 +769,11 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                 </>
                                 )}
 
-                                {/* Address */}
-                                <div className="space-y-1">
-                                    <label className="text-[11px] font-bold text-gray-900 uppercase flex items-center gap-1.5">
-                                        <MapPin className="h-3 w-3" /> Delivery Address
-                                    </label>
-                                    <textarea
-                                        value={address}
-                                        onChange={(e) => setAddress(e.target.value)}
-                                        rows={2}
-                                        className={`w-full px-3 py-2 bg-gray-50 border rounded-lg transition-all focus:bg-white focus:ring-2 resize-none text-sm font-medium ${addressError ? "border-red-300 focus:ring-red-50" : "border-gray-200 focus:ring-primary-50 focus:border-primary-400"}`}
-                                        placeholder="Full address for delivery"
-                                    />
-                                    {addressError && <p className="text-red-500 text-[10px] font-semibold ml-1">{addressError}</p>}
-                                </div>
+                                {/* Structured address inputs — house no, area, landmark,
+                                    pincode (auto-fills state/district/post office via India
+                                    Post), city. Concats granular fields into addressLine for
+                                    the backend on submit. */}
+                                <AddressForm ref={addressFormRef} initial={initialAddressInputs} />
 
                                 {/* Compact Summary */}
                                 <div className="bg-gray-50 rounded-xl p-3 border border-gray-100 flex items-center justify-between">

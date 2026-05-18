@@ -54,8 +54,9 @@ environment:
   prod: prod
 
 # PgBouncer Configuration
-# IMPORTANT: Override dbHost and dbPassword with your actual Linode DB values
-# Use --set or a separate values-secret.yaml that is NOT committed to git
+# Override these values via a local `values.secret.yaml` overlay (see
+# values.secret.example.yaml). That file is gitignored — never commit real
+# credentials to this file.
 pgbouncer:
   dbHost: "REPLACE_WITH_LINODE_DB_HOST"
   dbReadHost: "REPLACE_WITH_LINODE_READ_REPLICA_HOST"

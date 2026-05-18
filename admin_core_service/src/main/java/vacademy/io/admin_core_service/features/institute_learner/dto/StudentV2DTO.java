@@ -66,4 +66,8 @@ public class StudentV2DTO {
     private Boolean tncAccepted;
     private String tncFileId;
     private Date tncAcceptedDate;
+
+    // True for audience-only respondents (no enrollment in this institute). Frontend
+    // renders an "Audience" badge next to the name and tolerates the null ssigm-side fields.
+    private Boolean isAudienceOnly;
 }

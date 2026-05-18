@@ -4,7 +4,11 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { InstituteDetailsType } from '@/schemas/student/student-list/institute-schema';
 import { removeDefaultPrefix } from '@/utils/helpers/removeDefaultPrefix';
 
-export const GetFilterData = (instituteDetails: InstituteDetailsType, _currentSession: string) => {
+export const GetFilterData = (
+    instituteDetails: InstituteDetailsType,
+    _currentSession: string,
+    campaigns?: { id?: string; campaign_name: string }[]
+) => {
     const statuses = instituteDetails?.student_statuses.map((status, index) => ({
         id: index.toString(),
         label: status,
@@ -91,6 +95,20 @@ export const GetFilterData = (instituteDetails: InstituteDetailsType, _currentSe
             title: 'Role',
             filterList: roles,
         });
+    }
+
+    // Add audience (campaign) filter — joins audience_response when applied
+    if (campaigns && campaigns.length > 0) {
+        const audienceOptions = campaigns
+            .filter((c) => c.id)
+            .map((c) => ({ id: c.id!, label: c.campaign_name }));
+        if (audienceOptions.length > 0) {
+            filterData.push({
+                id: 'audience_ids',
+                title: 'Audience',
+                filterList: audienceOptions,
+            });
+        }
     }
 
     // Add custom field filters

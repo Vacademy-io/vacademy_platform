@@ -132,11 +132,23 @@ deploy_services() {
     print_status "Updating Helm dependencies..."
     helm dependency update ./vacademy-services
 
+    # Auto-include secret overlay if present (real DB hosts; gitignored)
+    SECRET_VALUES_FILE="./vacademy-services/values.secret.yaml"
+    EXTRA_ARGS=""
+    if [ -f "$SECRET_VALUES_FILE" ]; then
+        EXTRA_ARGS="-f $SECRET_VALUES_FILE"
+        print_status "Using secret overlay: $SECRET_VALUES_FILE"
+    else
+        print_warning "No values.secret.yaml found — chart will render with placeholder DB hosts."
+        print_warning "Copy values.secret.example.yaml to values.secret.yaml and fill in real values."
+    fi
+
     # Deploy using Helm
     print_status "Installing/upgrading Helm release..."
     helm upgrade --install $HELM_RELEASE_NAME ./vacademy-services \
         --namespace $NAMESPACE \
         --create-namespace \
+        $EXTRA_ARGS \
         --wait --timeout=600s
     
     print_success "Vacademy services deployed successfully!"

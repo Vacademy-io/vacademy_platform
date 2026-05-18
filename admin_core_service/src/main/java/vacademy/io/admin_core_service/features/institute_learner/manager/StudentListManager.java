@@ -11,6 +11,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
@@ -346,42 +347,41 @@ public class StudentListManager {
             return ResponseEntity.ok(buildResponse(content, page, pageSize, false));
         }
 
-        // Two-phase approach: 1) get IDs (no json_agg, no payment_log join), 2) enrich only this page's IDs
-        Page<String> idPage;
-        if (hasNameSearch) {
-            idPage = instituteStudentRepository.findPagedStudentIdsWithNameSearch(
-                    studentListFilter.getName(),
-                    studentListFilter.getStatuses(),
-                    studentListFilter.getGender(),
-                    studentListFilter.getInstituteIds(),
-                    studentListFilter.getGroupIds(),
-                    studentListFilter.getPackageSessionIds(),
-                    studentListFilter.getSources(),
-                    studentListFilter.getTypes(),
-                    studentListFilter.getTypeIds(),
-                    studentListFilter.getDestinationPackageSessionIds(),
-                    studentListFilter.getLevelIds(),
-                    studentListFilter.getSubOrgUserTypes(),
-                    studentListFilter.getStartDate(),
-                    studentListFilter.getEndDate(),
-                    PageRequest.of(pageNo, pageSize));
-        } else {
-            idPage = instituteStudentRepository.findPagedStudentIdsForV2Filter(
-                    studentListFilter.getStatuses(),
-                    studentListFilter.getGender(),
-                    studentListFilter.getInstituteIds(),
-                    studentListFilter.getGroupIds(),
-                    studentListFilter.getPackageSessionIds(),
-                    studentListFilter.getSources(),
-                    studentListFilter.getTypes(),
-                    studentListFilter.getTypeIds(),
-                    studentListFilter.getDestinationPackageSessionIds(),
-                    studentListFilter.getLevelIds(),
-                    studentListFilter.getSubOrgUserTypes(),
-                    studentListFilter.getStartDate(),
-                    studentListFilter.getEndDate(),
-                    PageRequest.of(pageNo, pageSize));
-        }
+        // The learner-list is a superset: institute-enrolled users + audience-only respondents.
+        // Audience-only rows are dropped the moment any enrollment-scoped filter is active
+        // (status, batch, group, source/type/typeId, destPSID, levelId, subOrgUserType, date range);
+        // gender / audience / name search are user-scoped and do not gate them out.
+        boolean includeAudienceOnly = CollectionUtils.isEmpty(studentListFilter.getStatuses())
+                && CollectionUtils.isEmpty(studentListFilter.getPackageSessionIds())
+                && CollectionUtils.isEmpty(studentListFilter.getGroupIds())
+                && CollectionUtils.isEmpty(studentListFilter.getSources())
+                && CollectionUtils.isEmpty(studentListFilter.getTypes())
+                && CollectionUtils.isEmpty(studentListFilter.getTypeIds())
+                && CollectionUtils.isEmpty(studentListFilter.getDestinationPackageSessionIds())
+                && CollectionUtils.isEmpty(studentListFilter.getLevelIds())
+                && CollectionUtils.isEmpty(studentListFilter.getSubOrgUserTypes())
+                && studentListFilter.getStartDate() == null
+                && studentListFilter.getEndDate() == null;
+
+        // Two-phase approach: 1) get IDs (combined UNION when audience-only included), 2) enrich page IDs
+        Page<String> idPage = instituteStudentRepository.findPagedCombinedUserIdsForLearnerList(
+                studentListFilter.getStatuses(),
+                studentListFilter.getGender(),
+                studentListFilter.getInstituteIds(),
+                studentListFilter.getGroupIds(),
+                studentListFilter.getPackageSessionIds(),
+                studentListFilter.getSources(),
+                studentListFilter.getTypes(),
+                studentListFilter.getTypeIds(),
+                studentListFilter.getDestinationPackageSessionIds(),
+                studentListFilter.getLevelIds(),
+                studentListFilter.getSubOrgUserTypes(),
+                studentListFilter.getStartDate(),
+                studentListFilter.getEndDate(),
+                studentListFilter.getAudienceIds(),
+                hasNameSearch ? studentListFilter.getName() : null,
+                includeAudienceOnly,
+                PageRequest.of(pageNo, pageSize));
 
         List<String> pagedUserIds = idPage.getContent();
         if (pagedUserIds.isEmpty()) {
@@ -390,7 +390,10 @@ public class StudentListManager {
                     .totalElements(0L).totalPages(0).last(true).build());
         }
 
-        List<StudentListV2Projection> projections = instituteStudentRepository.getStudentV2DataForUserIds(
+        // Slim enrichment: skip user_plan/payment_log/enroll_invite joins and the
+        // auth-service credential call. Side-view tabs hydrate plan/payment/credentials
+        // on demand. Heavy path above already handles paymentStatus/enrollInvite/customField filters.
+        List<StudentListV2Projection> projections = instituteStudentRepository.getStudentSlimDataForUserIds(
                 pagedUserIds,
                 studentListFilter.getInstituteIds(),
                 List.of(StatusEnum.ACTIVE.name()));
@@ -404,7 +407,7 @@ public class StudentListManager {
                 .collect(Collectors.toList());
 
         List<StudentV2DTO> content = mapProjectionsToDTOs(ordered);
-        if (!content.isEmpty()) enrichWithUserCredentials(content);
+        // No enrichWithUserCredentials on the slim path — password isn't shown in the list.
 
         long totalElements = idPage.getTotalElements();
         int totalPages = (int) Math.ceil((double) totalElements / pageSize);
@@ -583,6 +586,7 @@ public class StudentListManager {
             dto.setTncAccepted(p.getTncAccepted());
             dto.setTncFileId(p.getTncFileId());
             dto.setTncAcceptedDate(p.getTncAcceptedDate());
+            dto.setIsAudienceOnly(p.getIsAudienceOnly());
 
             dtos.add(dto);
         }

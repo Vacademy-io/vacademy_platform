@@ -491,7 +491,15 @@ export interface VideoEditorState {
      *  override and falls back to the auto-derived friendly name. Persists to
      *  localStorage per video — no backend round-trip required. */
     setEntryDisplayName: (entryId: string, name: string) => void;
-    updateEntryHtml: (entryId: string, newHtml: string) => void;
+    /**
+     * Replace an entry's HTML and optionally stamp the model that produced
+     * it. `htmlModel` is set when accepting a regen — so the next regen on
+     * this entry resolves to the SAME model on the BE side. Pass `null`
+     * (NOT undefined) to explicitly clear the model. Undefined means
+     * "leave the existing html_model alone" — useful for raw HTML edits
+     * (Code tab, transforms) that don't change which model authored it.
+     */
+    updateEntryHtml: (entryId: string, newHtml: string, htmlModel?: string | null) => void;
     /** Remove one scheduled sound effect from an entry. The entry is
      *  marked dirty so the deletion is persisted on the next saveChanges. */
     removeSoundCue: (entryId: string, cueId: string) => void;
@@ -938,10 +946,26 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
         });
     },
 
-    updateEntryHtml: (entryId, newHtml) => {
+    updateEntryHtml: (entryId, newHtml, htmlModel) => {
         set((s) => ({
             ...pushPast(s),
-            entries: s.entries.map((e) => (e.id === entryId ? { ...e, html: newHtml } : e)),
+            entries: s.entries.map((e) =>
+                e.id === entryId
+                    ? {
+                          ...e,
+                          html: newHtml,
+                          // Three states for htmlModel:
+                          //   undefined → leave existing html_model alone
+                          //   null      → explicitly clear it
+                          //   string    → stamp this model
+                          ...(htmlModel === undefined
+                              ? {}
+                              : htmlModel === null
+                                ? { html_model: undefined }
+                                : { html_model: htmlModel }),
+                      }
+                    : e
+            ),
             dirtyEntryIds: s.dirtyEntryIds.includes(entryId)
                 ? s.dirtyEntryIds
                 : [...s.dirtyEntryIds, entryId],
@@ -1580,6 +1604,10 @@ export const useVideoEditorStore = create<VideoEditorState>((set, get) => ({
                             z: entry.z ?? 0,
                             entry_id: entry.id,
                             ...(entryMetaPayload ? { entry_meta: entryMetaPayload } : {}),
+                            // Persist the model that authored this HTML.
+                            // Read at regen time so "Remake with AI" uses
+                            // the same model on next edit.
+                            ...(entry.html_model ? { html_model: entry.html_model } : {}),
                         }),
                     });
                     if (!res.ok) {

@@ -20,8 +20,13 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useVideoEditorStore, DEFAULT_TRANSFORM } from './stores/video-editor-store';
-import { regenerateFrame } from '@/routes/video-api-studio/-services/video-generation';
+import {
+    regenerateFrame,
+    type RegenerateFrameResponse,
+} from '@/routes/video-api-studio/-services/video-generation';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
+import { fetchAllAIModels } from '@/services/aiModelsService';
 import {
     extractTextElements,
     applyTextPatch,
@@ -1498,6 +1503,25 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
     const [remakePrompt, setRemakePrompt] = useState('');
     const [remakeState, setRemakeState] = useState<'idle' | 'loading' | 'preview'>('idle');
     const [remakeNewHtml, setRemakeNewHtml] = useState<string | null>(null);
+    // The model the BE actually ran (echoed back as `resolved_model`). On
+    // accept we stamp this onto the entry's `html_model` so the NEXT regen
+    // resolves to the same model. `null` for the dom_patch path — no LLM
+    // was used, so we leave the existing html_model alone.
+    const [remakeResolvedModel, setRemakeResolvedModel] = useState<string | null>(null);
+    // Advanced controls: model override. Default `null` = "Same as original"
+    // (BE resolves via persisted html_model → registry default → fallback).
+    const [remakeAdvancedOpen, setRemakeAdvancedOpen] = useState(false);
+    const [remakeModelOverride, setRemakeModelOverride] = useState<string | null>(null);
+
+    // Models eligible for regen — populated lazily when Advanced is opened.
+    // `staleTime: 5min` because the registry rarely changes during an editor session.
+    const { data: regenModels } = useQuery({
+        queryKey: ['ai-models', 'video_regenerate'],
+        queryFn: () =>
+            fetchAllAIModels({ use_case: 'video_regenerate', category: 'general' }),
+        enabled: remakeAdvancedOpen,
+        staleTime: 5 * 60 * 1000,
+    });
 
     // Reset remake panel whenever a different entry is selected
     useEffect(() => {
@@ -1505,6 +1529,9 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
         setRemakeState('idle');
         setRemakeNewHtml(null);
         setRemakePrompt('');
+        setRemakeAdvancedOpen(false);
+        setRemakeModelOverride(null);
+        setRemakeResolvedModel(null);
     }, [selectedEntryId]);
 
     const entry = selectedEntryId ? entries.find((e) => e.id === selectedEntryId) : null;
@@ -1552,15 +1579,23 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
     const remakeTimestamp =
         meta.navigation === 'time_driven' ? inTime ?? 0 : entries.indexOf(entry);
 
-    // Pre-fill prompt from entry_meta if available
+    // Sentence narration is shown as STATIC context above the textarea so the
+    // user can see what scene they're editing. It used to be pre-filled into
+    // the textarea, which meant the user's edit instruction got concatenated
+    // with the narration sentence in `user_prompt` — the BE then couldn't
+    // tell which part was the instruction. Concrete failure: user_prompt
+    // `"Thousands of aspirants...\n\nUpdate the image"` confused the LLM
+    // into a near-copy of the original HTML. Now: sentence is read-only
+    // context, textarea is exclusively for the instruction.
     const entryMeta = (entry as unknown as Record<string, unknown>).entry_meta as
         | Record<string, unknown>
         | undefined;
-    const defaultPrompt = (entryMeta?.audio_text as string) ?? (entryMeta?.text as string) ?? '';
+    const sentenceContext = (
+        (entryMeta?.audio_text as string) ?? (entryMeta?.text as string) ?? ''
+    ).trim();
 
     const handleRemakeOpen = () => {
         if (!remakeOpen) {
-            setRemakePrompt(remakePrompt || defaultPrompt);
             setRemakeState('idle');
             setRemakeNewHtml(null);
         }
@@ -1571,9 +1606,47 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
         if (!remakePrompt.trim() || !videoId || !apiKey) return;
         setRemakeState('loading');
         try {
-            const result = await regenerateFrame(videoId, apiKey, remakeTimestamp, remakePrompt);
+            const result: RegenerateFrameResponse = await regenerateFrame(
+                videoId,
+                apiKey,
+                remakeTimestamp,
+                remakePrompt,
+                remakeModelOverride ? { model: remakeModelOverride } : undefined
+            );
             setRemakeNewHtml(result.new_html);
+            // Capture which model the BE actually ran. `null` for dom_patch
+            // (no LLM) — accept handler skips html_model update in that case.
+            setRemakeResolvedModel(result.resolved_model ?? null);
             setRemakeState('preview');
+
+            // Surface what the BE actually did. dom_patch is the fast path
+            // ($0 LLM, instant); full_remake is the canonical LLM rewrite.
+            // full_remake_fallback means the classifier wanted a patch but
+            // the deterministic patcher couldn't apply it (e.g. text op on
+            // an animation-span heavy element) — useful debug signal.
+            if (result.regen_path === 'dom_patch') {
+                const ops = result.applied_ops ?? [];
+                const opSummary = ops
+                    .map((o) =>
+                        o.target === 'image' || o.target === 'media_query'
+                            ? `Updated ${o.selector}`
+                            : o.target === 'color'
+                              ? `Changed ${o.selector} → ${o.after}`
+                              : `Edited ${o.selector}`
+                    )
+                    .join(' · ');
+                toast.success(opSummary || 'Targeted edit applied', {
+                    description: 'Direct DOM patch — no LLM call.',
+                });
+            } else if (result.regen_path === 'full_remake_fallback') {
+                toast.message('Rewrote whole shot', {
+                    description: 'Targeted patch wasn\'t applicable; used full remake.',
+                });
+            } else if (result.resolved_model) {
+                toast.message('Rewrote whole shot', {
+                    description: `Used ${result.resolved_model}`,
+                });
+            }
         } catch (err) {
             setRemakeState('idle');
             toast.error(err instanceof Error ? err.message : 'Regeneration failed');
@@ -1582,16 +1655,26 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
 
     const handleRemakeAccept = () => {
         if (remakeNewHtml) {
-            updateEntryHtml(entryId, remakeNewHtml);
+            // Pass the resolved_model so the next regen on this entry uses
+            // the same model. `undefined` (leave as-is) on the dom_patch
+            // path — that path didn't use an LLM, so html_model shouldn't
+            // change. `resolved_model` on full_remake / full_remake_fallback.
+            updateEntryHtml(
+                entryId,
+                remakeNewHtml,
+                remakeResolvedModel ?? undefined
+            );
         }
         setRemakeOpen(false);
         setRemakeState('idle');
         setRemakeNewHtml(null);
+        setRemakeResolvedModel(null);
     };
 
     const handleRemakeDiscard = () => {
         setRemakeState('idle');
         setRemakeNewHtml(null);
+        setRemakeResolvedModel(null);
     };
 
     return (
@@ -1677,6 +1760,17 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                 {/* Remake panel */}
                 {remakeOpen && (
                     <div className="mt-2 space-y-2">
+                        {/* Read-only scene context — sentence narration for
+                            this shot. Visible so the user knows what scene
+                            they're editing, NOT pre-filled into the textarea
+                            (that mixes narration with instruction in
+                            user_prompt and confuses the LLM). */}
+                        {sentenceContext && (
+                            <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] leading-snug text-gray-500">
+                                <span className="font-medium text-gray-400">Scene: </span>
+                                &ldquo;{sentenceContext}&rdquo;
+                            </div>
+                        )}
                         <textarea
                             rows={3}
                             value={remakePrompt}
@@ -1685,6 +1779,55 @@ export function PropertiesPanel({ variant = 'column' }: PropertiesPanelProps) {
                             className="w-full resize-none rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] text-gray-800 placeholder:text-gray-400 focus:border-indigo-400 focus:outline-none"
                             disabled={remakeState === 'loading'}
                         />
+
+                        {/* Advanced — model override. Hidden by default so the
+                            common user never sees it; opens on click. The BE
+                            default ("same model that authored this shot") is
+                            almost always what you want, so the override is
+                            an explicit opt-in. */}
+                        <details
+                            open={remakeAdvancedOpen}
+                            onToggle={(e) =>
+                                setRemakeAdvancedOpen(
+                                    (e.target as HTMLDetailsElement).open
+                                )
+                            }
+                            className="group rounded border border-gray-200 bg-gray-50/70"
+                        >
+                            <summary className="cursor-pointer select-none px-2 py-1 text-[10px] font-medium text-gray-500 hover:text-gray-700">
+                                Advanced
+                            </summary>
+                            <div className="px-2 pb-1.5 pt-0.5">
+                                <label className="mb-0.5 block text-[10px] text-gray-500">
+                                    Model
+                                </label>
+                                <select
+                                    value={remakeModelOverride ?? ''}
+                                    onChange={(e) =>
+                                        setRemakeModelOverride(e.target.value || null)
+                                    }
+                                    disabled={remakeState === 'loading'}
+                                    className="w-full rounded border border-gray-200 bg-white px-1.5 py-1 text-[11px] text-gray-700 focus:border-indigo-400 focus:outline-none"
+                                >
+                                    <option value="">
+                                        Same as original (recommended)
+                                    </option>
+                                    {regenModels?.models.map((m) => (
+                                        <option key={m.model_id} value={m.model_id}>
+                                            {m.name}
+                                            {m.tier && m.tier !== 'standard'
+                                                ? ` · ${m.tier}`
+                                                : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {!regenModels && remakeAdvancedOpen && (
+                                    <p className="mt-0.5 text-[10px] text-gray-400">
+                                        Loading models…
+                                    </p>
+                                )}
+                            </div>
+                        </details>
 
                         {remakeState === 'preview' ? (
                             <div className="space-y-1.5">

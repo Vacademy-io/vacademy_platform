@@ -1830,12 +1830,48 @@ export async function getRemoteHistory(
 // Frame regeneration
 // ---------------------------------------------------------------------------
 
+export interface RegenerateFramePatchOp {
+    target: string;
+    selector_hint?: string;
+    new_value?: string;
+    confidence?: number;
+}
+
+export interface RegenerateFrameClassification {
+    intent: 'targeted_patch' | 'full_remake';
+    patch_ops?: RegenerateFramePatchOp[];
+    rationale?: string;
+    confidence?: number;
+}
+
+export interface RegenerateFrameAppliedOp {
+    target: string;
+    selector: string;
+    before: string;
+    after: string;
+    ok: boolean;
+}
+
 export interface RegenerateFrameResponse {
     video_id: string;
     frame_index: number;
     timestamp: number;
     original_html: string;
     new_html: string;
+    /** model_id actually used. `null` when the DOM-patch fast path ran (no LLM). */
+    resolved_model?: string | null;
+    /** 'dom_patch' (deterministic), 'full_remake' (canonical LLM), or
+     *  'full_remake_fallback' (classifier wanted a patch but no op was applicable). */
+    regen_path?: 'dom_patch' | 'full_remake' | 'full_remake_fallback';
+    classification?: RegenerateFrameClassification | null;
+    applied_ops?: RegenerateFrameAppliedOp[] | null;
+}
+
+export interface RegenerateFrameOptions {
+    /** Optional model override. When omitted, the BE uses the same model that
+     *  authored the shot (persisted at gen time), then registry default for
+     *  use_case='video_regenerate', then a hard fallback. */
+    model?: string;
 }
 
 /**
@@ -1848,7 +1884,8 @@ export async function regenerateFrame(
     videoId: string,
     apiKey: string,
     timestamp: number,
-    userPrompt: string
+    userPrompt: string,
+    options?: RegenerateFrameOptions
 ): Promise<RegenerateFrameResponse> {
     const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/frame/regenerate`, {
         method: 'POST',
@@ -1860,6 +1897,7 @@ export async function regenerateFrame(
             video_id: videoId,
             timestamp,
             user_prompt: userPrompt,
+            ...(options?.model ? { model: options.model } : {}),
         }),
     });
 
@@ -1883,7 +1921,8 @@ export async function updateFrame(
     videoId: string,
     apiKey: string,
     frameIndex: number,
-    newHtml: string
+    newHtml: string,
+    options?: { htmlModel?: string }
 ): Promise<void> {
     const response = await fetch(`${AI_SERVICE_BASE_URL}/external/video/v1/frame/update`, {
         method: 'POST',
@@ -1895,6 +1934,9 @@ export async function updateFrame(
             video_id: videoId,
             frame_index: frameIndex,
             new_html: newHtml,
+            // Stamp the model that authored this HTML — read at regen time
+            // so the next "Remake with AI" uses the same model.
+            ...(options?.htmlModel ? { html_model: options.htmlModel } : {}),
         }),
     });
 

@@ -44,6 +44,15 @@ export interface Entry {
     audio_url?: string; // Optional per-entry audio (for user_driven)
     sound_cues?: SoundCue[]; // Sound Planner cues — scheduled via useSoundScheduler
     opacity?: number; // Crossfade opacity (0..1) — set per-frame at render time during transition windows
+    /**
+     * The LLM model_id that authored this entry's HTML. Stamped at initial
+     * generation in `_shot_task` and refreshed when the user accepts a
+     * regen. Read at regen time by the BE so "Remake with AI" uses the SAME
+     * model the shot was originally authored with (or whatever the user
+     * chose in the regen "Advanced > Model" dropdown). Optional — old
+     * timelines without this field fall back to the BE registry default.
+     */
+    html_model?: string;
     entry_meta?: {
         text?: string;
         audio_text?: string;

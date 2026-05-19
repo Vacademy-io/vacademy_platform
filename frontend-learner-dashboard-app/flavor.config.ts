@@ -83,5 +83,33 @@ export const flavorConfig: FlavorConfigs = {
     appName: "Uplift Teacher Training",
     domain: "enarkuplift.in",
     subdomain: "training",
-  }
+  },
+
+  // Edzumo iOS app
+  "io.edzumo.app": {
+    appName: "Edzumo",
+    domain: "edzumo.com",
+    subdomain: "workout",
+  },
+
+  // Edzumo Android app
+  "com.edzumo.app": {
+    appName: "Edzumo",
+    domain: "edzumo.com",
+    subdomain: "workout",
+  },
+
+  // Chanakaya IAS Academy iOS app
+  "io.chanakayaiasacademy.app": {
+    appName: "Chanakaya IAS Academy",
+    domain: "vacademy.io",
+    subdomain: "student-chanakayaiasacademy",
+  },
+
+  // Chanakaya IAS Academy Android app
+  "com.chanakayaiasacademy.app": {
+    appName: "Chanakaya IAS Academy",
+    domain: "vacademy.io",
+    subdomain: "student-chanakayaiasacademy",
+  },
 };

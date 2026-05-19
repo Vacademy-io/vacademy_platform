@@ -1401,7 +1401,7 @@ export interface GenerateVideoRequest {
   target_audience: string;
   target_duration: string;
   model: string;                            // @deprecated — collapses to model_overrides.default server-side
-  model_overrides?: ModelOverrides;         // V200 — per-stage user overrides (gated by STAGE_ROUTING_ENABLED env)
+  model_overrides?: ModelOverrides;         // V200 — per-stage user overrides; honored when V200 migration is applied
   quality_tier: QualityTier;
   video_id?: string;
   reference_files?: ReferenceFile[];
@@ -2108,9 +2108,12 @@ One "Default model" dropdown plus an "Customize per stage" expander for the
 `"matrix"`, `"user_default"`, `"user_per_stage"`, or `""` (legacy path /
 stage routing off). Lands in `cost_breakdown.json` per run.
 
-**Rollout flag:** `STAGE_ROUTING_ENABLED` env (accepts `true/1/yes/on`).
-Off → legacy global `script_model`/`html_model` routing path runs unchanged.
-On → DB-backed resolver fires; `model_overrides` from the request body
-layers on top.
+**Activation:** the resolver runs on every request; no env flag required.
+Behavior is gated by the `ai_model_stage_assignments` table — applying the
+V200 migration enables it, and the day-1 seed matches the legacy effective
+behavior, so applying the migration is a behavior-preserving change.
+Rollback path: `TRUNCATE ai_model_stage_assignments` (or `UPDATE ... SET
+is_active=FALSE`) — the resolver returns an empty map and the pipeline
+falls back to the legacy global `script_model`/`html_model` routing.
 
 Deep dive: see [AI_VIDEO_ARCHITECTURE_CHANGES.md §"V200 — DB-Backed Per-Stage Model Routing"](./AI_VIDEO_ARCHITECTURE_CHANGES.md).

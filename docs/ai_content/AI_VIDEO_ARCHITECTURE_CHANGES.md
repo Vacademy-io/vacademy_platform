@@ -565,7 +565,7 @@ v3 is cheaper for any tier that already runs Director; slightly more expensive f
 
 # V200 — DB-Backed Per-Stage Model Routing
 
-**Status**: backend + frontend landed 2026-05; shipped behind `STAGE_ROUTING_ENABLED` env flag (off by default). Migration `V200__ai_model_stage_assignments.sql` seeds the matrix with day-1 no-op defaults.
+**Status**: backend + frontend landed 2026-05; always-on once migration `V200__ai_model_stage_assignments.sql` is applied. The matrix seeds day-1 no-op defaults so applying it on a running deploy is a behavior-preserving change. The earlier `STAGE_ROUTING_ENABLED` env flag was removed once verified — resolution now runs on every request; an empty-matrix DB (migration not applied) falls through to the legacy `script_model`/`html_model` path automatically.
 **Audience**: engineers touching the AI video pipeline's LLM call sites, the `OpenRouterClient`, or the video-generation request DTO.
 **Origin**: the pipeline had 23 LLM call sites but only one model knob (`preferred_script_model` / `preferred_shot_model` on `QUALITY_TIERS`) and one user override (`model: str` on the request). A user picking Pro paid Pro tokens for every utility prompt (cultural-context inference, headline gen); a user picking a cheap model degraded vision review. This change introduces a per-(quality_tier, stage_id) assignment matrix in the DB and a per-stage user-override surface in the existing video-creation `SettingsPopover`.
 
@@ -594,15 +594,15 @@ POST /external/video/v1/generate
    ▼
 video_generation_service.generate()
   │  resolves quality_tier
-  │  if STAGE_ROUTING_ENABLED in {true,1,yes,on}:
-  │    stage_resolved = AIModelsService(db).get_stage_model_map(
-  │      use_case="video", quality_tier=tier, overrides=body.model_overrides
-  │    )
-  │    → reads ai_model_stage_assignments (1 SQL); per stage:
-  │       • per_stage[stage] if user_overridable                    → source="user_per_stage"
-  │       • else default if user_overridable                        → source="user_default"
-  │       • else admin matrix model_id                              → source="matrix"
-  │    pipeline_args["stage_model_map"] = {sid: (model_id, source)}
+  │  stage_resolved = AIModelsService(db).get_stage_model_map(
+  │    use_case="video", quality_tier=tier, overrides=body.model_overrides
+  │  )
+  │  → reads ai_model_stage_assignments (1 SQL); per stage:
+  │     • per_stage[stage] if user_overridable                    → source="user_per_stage"
+  │     • else default if user_overridable                        → source="user_default"
+  │     • else admin matrix model_id                              → source="matrix"
+  │  empty result (matrix not seeded yet) → fall through to legacy
+  │  pipeline_args["stage_model_map"] = {sid: (model_id, source)}
    │
    ▼
 VideoGenerationPipeline(stage_model_map=...)
@@ -663,7 +663,7 @@ Frozen enum in [app/constants/pipeline_stages.py](../../ai_service/app/constants
 |---|---|
 | [app/schemas/video_generation.py](../../ai_service/app/schemas/video_generation.py) | New `ModelOverrides` pydantic class (`default`, `per_stage`) with `model_validator` for format checking (max 200 chars, `provider/model` shape); `model_overrides` field on `VideoGenerationRequest`; legacy `model` marked deprecated |
 | [app/services/ai_models_service.py](../../ai_service/app/services/ai_models_service.py) | New `ResolvedModel` dataclass; new `get_stage_model_map(use_case, quality_tier, overrides)` — single SQL read + per-stage override resolution; handles both pydantic `ModelOverrides` and plain dict (resume path) defensively |
-| [app/services/video_generation_service.py](../../ai_service/app/services/video_generation_service.py) | `model_overrides` param threaded through `generate_till_stage` + `run_video_generation_pipeline`; resolution gated behind `STAGE_ROUTING_ENABLED` env (accepts `true/1/yes/on`); collapses legacy `model` → `ModelOverrides(default=model)`; warns when both legacy `model` and `model_overrides` are sent; projects `ResolvedModel` to `(model_id, source)` tuple for the pipeline |
+| [app/services/video_generation_service.py](../../ai_service/app/services/video_generation_service.py) | `model_overrides` param threaded through `generate_till_stage` + `run_video_generation_pipeline`; resolver runs unconditionally — empty matrix falls back to legacy `script_model`/`html_model` routing; collapses legacy `model` → `ModelOverrides(default=model)`; warns when both legacy `model` and `model_overrides` are sent; projects `ResolvedModel` to `(model_id, source)` tuple for the pipeline |
 | [app/routers/external_video_generation.py](../../ai_service/app/routers/external_video_generation.py) | `model_overrides` forwarded on all three call sites (new-gen / resume / retry); resume + retry rehydrate from `_meta["model_overrides"]` |
 | [app/ai-video-gen-main/automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) | Module-level `_normalize_stage_to_taxonomy()` mapper; `OpenRouterClient.stage_model_map` field + auto-routing in `chat()` via `_llm_stage` ContextVar (tuple-aware); `VideoGenerationPipeline.__init__` accepts `stage_model_map` and copies to both clients; `_resolve_stage_model()` helper; 11 explicit `chat()` sites pass `model=self._resolve_stage_model("...")`; helper-callable sites (entity_extraction at `_extract_subjects`, headline_thumbnail at `thumbnail_generator`) wrapped with `_llm_stage.set/reset`; ShotPlanner / NarrationWriter / vision_review callers updated to use `_resolve_stage_model` ahead of legacy tier_cfg fallbacks |
 | [app/ai-video-gen-main/cost_event_tracker.py](../../ai_service/app/ai-video-gen-main/cost_event_tracker.py) | `CostEvent.source` field (`""` / `"matrix"` / `"user_default"` / `"user_per_stage"`); `record_llm(source=...)` kwarg — lands in `cost_breakdown.json` so forensics can answer "did the user override land at runtime?" |
@@ -708,7 +708,7 @@ Expected on a typical Ultra run with user override:
 ### Modified
 - [app/schemas/video_generation.py](../../ai_service/app/schemas/video_generation.py) — `ModelOverrides` DTO + validator
 - [app/services/ai_models_service.py](../../ai_service/app/services/ai_models_service.py) — `ResolvedModel` + `get_stage_model_map`
-- [app/services/video_generation_service.py](../../ai_service/app/services/video_generation_service.py) — `STAGE_ROUTING_ENABLED` gate, resolver, tuple projection
+- [app/services/video_generation_service.py](../../ai_service/app/services/video_generation_service.py) — resolver call, tuple projection, legacy-`model` collapse + warning
 - [app/routers/external_video_generation.py](../../ai_service/app/routers/external_video_generation.py) — three call sites forward `model_overrides`
 - [app/ai-video-gen-main/automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) — normalizer + pipeline + OpenRouterClient + ~13 LLM call sites
 - [app/ai-video-gen-main/cost_event_tracker.py](../../ai_service/app/ai-video-gen-main/cost_event_tracker.py) — `source` field
@@ -723,11 +723,11 @@ Expected on a typical Ultra run with user override:
 ## 9. Rollout
 
 1. Apply migration `V200` to staging. Verify: `SELECT COUNT(*) FROM ai_model_stage_assignments WHERE use_case='video' AND is_active=TRUE` → 85.
-2. Set `STAGE_ROUTING_ENABLED=true` on staging.
+2. Restart `ai_service` so the new resolver code path is loaded. No env flag is required — the resolver runs on every request and an empty matrix is the legacy-fallback signal.
 3. Generate runs across all 5 tiers. Inspect `cost_breakdown.json`: expected to match legacy behavior (matrix == day-1 defaults). `source: "matrix"` on every event.
 4. Send a request with `model_overrides: {default: "anthropic/claude-sonnet-4-6"}`. Expect critical stages on Sonnet, utility on Flash, vision_review still on Pro.
 5. Soak 1 week. Watch cost telemetry per stage.
-6. Enable in production. Once stable, drop the `STAGE_ROUTING_ENABLED` flag check (becomes always-on).
+6. Rollback path: `TRUNCATE ai_model_stage_assignments` (or set `is_active=FALSE` for every row) — resolver returns an empty map and the pipeline falls back to legacy global routing on its next request.
 
 ## 10. Deep-review disposition
 

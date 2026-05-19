@@ -1359,21 +1359,36 @@ class OpenRouterClient:
         }
 
     def _fetch_models(self) -> list[str]:
-        models = []
+        """Build the per-call fallback model chain from `ai_model_defaults`.
+
+        Calls `AIModelsService.get_models_for_use_case("video")` directly via
+        a short-lived DB session — replacing the legacy self-HTTP call to
+        `/models/v2/use-case/video` which was wasteful (network + port
+        assumptions) AND fragile (timed out behind LB routing on deploys
+        where `/models/v2` wasn't mounted on the same hostname).
+
+        Returns `recommended_models[].model_id` in order, with
+        `free_tier_model.model_id` appended as a final fallback when the
+        recommended list is empty. Returns `[]` on any DB failure — callers
+        treat empty as "use my `default_model`".
+        """
+        models: list[str] = []
         try:
-            api_base = os.environ.get("AI_SERVICE_BASE_URL", "http://localhost:8077/ai-service")
-            url = f"{api_base}/models/v2/use-case/video"
-            req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=5) as res:
-                if res.status == 200:
-                    data = json.loads(res.read().decode("utf-8"))
-                    for m in data.get("recommended_models", []):
-                        if m.get("model_id"):
-                            models.append(m["model_id"])
-                    if not models and data.get("free_tier_model", {}).get("model_id"):
-                        models.append(data["free_tier_model"]["model_id"])
+            from app.db import db_session as _db_ctx
+            from app.services.ai_models_service import AIModelsService
+            with _db_ctx() as _db:
+                resp = AIModelsService(_db).get_models_for_use_case("video")
+            for m in (getattr(resp, "recommended_models", None) or []):
+                _mid = getattr(m, "model_id", None)
+                if _mid:
+                    models.append(_mid)
+            if not models:
+                _free = getattr(resp, "free_tier_model", None)
+                _free_mid = getattr(_free, "model_id", None) if _free else None
+                if _free_mid:
+                    models.append(_free_mid)
         except Exception as e:
-            print(f"Warning: Failed to fetch dynamic models from registry: {e}")
+            print(f"Warning: Failed to load model chain from registry: {e}")
         return models
 
     @retry_with_backoff(max_retries=4, initial_delay=2.0, exceptions=(urllib.error.URLError, RuntimeError))

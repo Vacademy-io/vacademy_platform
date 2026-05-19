@@ -740,56 +740,67 @@ class VideoGenerationService:
                 pipeline_args["html_model"]   = resolved_model
 
         # ── V200 stage routing: DB-backed per-stage model assignment ──
-        # When `STAGE_ROUTING_ENABLED=true`, resolve a {stage_id → model_id}
-        # map from `ai_model_stage_assignments` and pass it to the pipeline.
-        # Each LLM call site reads its model via `_resolve_stage_model(stage)`;
-        # when the map is empty (flag off, DB miss, lookup error) the call
-        # falls through to `client.default_model` — zero-risk no-op.
+        # Resolve a {stage_id → (model_id, source)} map from
+        # `ai_model_stage_assignments` and pass it to the pipeline. Each LLM
+        # call site reads its model via `_resolve_stage_model(stage)`; when
+        # the matrix doesn't have a row for the stage OR the DB lookup fails,
+        # the call falls through to `client.default_model` (the legacy
+        # script_model / html_model set above) — defensive no-op.
         # The legacy global `model` field collapses to
         # `ModelOverrides(default=model)` so a request that pre-dates the
         # per-stage UI still gets the same critical-stage override behavior.
-        if (os.environ.get("STAGE_ROUTING_ENABLED") or "").strip().lower() in {"true", "1", "yes", "on"}:
-            try:
-                from ..services.ai_models_service import AIModelsService
-                if db_session:
-                    _effective_overrides = model_overrides
-                    if _effective_overrides is None and model:
-                        # Collapse legacy `model` into the new shape so it
-                        # applies only to user-overridable critical stages.
-                        from ..schemas.video_generation import ModelOverrides
-                        _effective_overrides = ModelOverrides(default=model)
-                    elif _effective_overrides is not None and model:
-                        # Both fields sent — model_overrides wins. Log so a
-                        # client-side bug (sending both) shows up in audit.
-                        logger.warning(
-                            f"[VideoGenService] Both legacy `model={model!r}` and "
-                            f"`model_overrides` sent; `model_overrides` wins. "
-                            f"Drop the legacy field on the next request."
-                        )
-                    stage_resolved = AIModelsService(db_session).get_stage_model_map(
-                        use_case="video",
-                        quality_tier=quality_tier,
-                        overrides=_effective_overrides,
+        try:
+            from ..services.ai_models_service import AIModelsService
+            if db_session:
+                _effective_overrides = model_overrides
+                if _effective_overrides is None and model:
+                    # Collapse legacy `model` into the new shape so it
+                    # applies only to user-overridable critical stages.
+                    from ..schemas.video_generation import ModelOverrides
+                    _effective_overrides = ModelOverrides(default=model)
+                elif _effective_overrides is not None and model:
+                    # Both fields sent — model_overrides wins. Log so a
+                    # client-side bug (sending both) shows up in audit.
+                    logger.warning(
+                        f"[VideoGenService] Both legacy `model={model!r}` and "
+                        f"`model_overrides` sent; `model_overrides` wins. "
+                        f"Drop the legacy field on the next request."
                     )
-                    if stage_resolved:
-                        # Carry (model_id, source) tuple so cost_event_tracker
-                        # can attribute each call to "matrix" / "user_default"
-                        # / "user_per_stage" — preserves the resolution
-                        # provenance the resolver computed.
-                        pipeline_args["stage_model_map"] = {
-                            stage_id: (rm.model_id, rm.source)
-                            for stage_id, rm in stage_resolved.items()
-                        }
-                        logger.info(
-                            f"[VideoGenService] Stage routing resolved "
-                            f"{len(stage_resolved)} stage(s) for tier={quality_tier}; "
-                            f"user_overrides_active={bool(_effective_overrides)}"
-                        )
-            except Exception as _sr_err:
-                logger.warning(
-                    f"[VideoGenService] Stage routing resolution failed "
-                    f"({_sr_err}); falling back to legacy script_model/html_model routing"
+                stage_resolved = AIModelsService(db_session).get_stage_model_map(
+                    use_case="video",
+                    quality_tier=quality_tier,
+                    overrides=_effective_overrides,
                 )
+                if stage_resolved:
+                    # Carry (model_id, source) tuple so cost_event_tracker
+                    # can attribute each call to "matrix" / "user_default"
+                    # / "user_per_stage" — preserves the resolution
+                    # provenance the resolver computed.
+                    pipeline_args["stage_model_map"] = {
+                        stage_id: (rm.model_id, rm.source)
+                        for stage_id, rm in stage_resolved.items()
+                    }
+                    logger.info(
+                        f"[VideoGenService] Stage routing resolved "
+                        f"{len(stage_resolved)} stage(s) for tier={quality_tier}; "
+                        f"user_overrides_active={bool(_effective_overrides)}"
+                    )
+                else:
+                    logger.info(
+                        f"[VideoGenService] Stage routing returned no rows for "
+                        f"use_case=video tier={quality_tier} — falling back to "
+                        f"legacy script_model/html_model routing"
+                    )
+            else:
+                logger.info(
+                    f"[VideoGenService] Stage routing skipped — no db_session "
+                    f"available; falling back to legacy script_model/html_model routing"
+                )
+        except Exception as _sr_err:
+            logger.warning(
+                f"[VideoGenService] Stage routing resolution failed "
+                f"({_sr_err}); falling back to legacy script_model/html_model routing"
+            )
 
         pipeline = VideoGenerationPipeline(**pipeline_args)
         

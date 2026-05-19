@@ -4,8 +4,9 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { BASE_URL } from '@/constants/urls';
 import { getPublicUrl } from '@/services/upload_file';
-import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb } from '../-services/utils';
-import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording } from '../-services/utils';
+import { getSessionBySessionId, getLiveSessionReport, getScheduleRecordings, syncRecordingsFromBbb, processRecording, getTranscriptionStatus } from '../-services/utils';
+import type { SessionBySessionIdResponse, LiveSessionReport, MeetingRecording, RecordingTranscriptionStatus, TranscriptStatus } from '../-services/utils';
+import { CreateAssessmentFromRecordingModal } from '../-components/CreateAssessmentFromRecordingModal';
 import { enqueueYoutubeUpload, getYoutubeDefaults } from '@/routes/settings/-services/youtube-integration-service';
 import { AttendanceMarkingTable } from '../-components/AttendanceMarkingTable';
 import { FeedbackStats } from './-components/FeedbackStats';
@@ -33,6 +34,8 @@ import {
     RefreshCw,
     CloudDownload,
     AlertTriangle,
+    FileAudio,
+    Languages,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SessionCalendarView } from '../-components/session-calendar-view';
@@ -909,6 +912,7 @@ function ViewLiveSession() {
                                             scheduleId={selectedScheduleForAttendance!}
                                             accessType={sessionData?.schedule?.access_type || 'private'}
                                             sessionTitle={sessionData?.schedule?.title}
+                                            packageSessionDetails={sessionData?.schedule?.package_session_details}
                                             onSaved={async () => {
                                                 if (selectedScheduleForAttendance) {
                                                     const data = await getLiveSessionReport(
@@ -1020,6 +1024,10 @@ function ViewLiveSession() {
                                                 <RecordingYoutubeAction
                                                     rec={rec}
                                                     featureEnabled={youtubeFeatureEnabled}
+                                                />
+                                                <RecordingTranscribeAction
+                                                    rec={rec}
+                                                    batches={sessionData?.schedule?.package_session_details}
                                                 />
                                             </div>
                                         </div>
@@ -1631,6 +1639,142 @@ function RecordingYoutubeAction({
         >
             <CloudDownload className={cn('size-3', isPending && 'animate-pulse')} />
             {queued ? 'Queued' : isPending ? 'Queueing…' : 'Upload to YouTube'}
+        </button>
+    );
+}
+
+/**
+ * Process-recording / transcription action — sibling of RecordingYoutubeAction.
+ *
+ * States:
+ *   - no row     → "Process Recording" button (POST transcribe)
+ *   - QUEUED     → disabled "Processing…" (poll every 30s)
+ *   - RUNNING    → disabled "Processing…" (poll every 30s)
+ *   - COMPLETED  → green "Transcript Ready" badge + "Create Assessment" button
+ *                  (opens CreateAssessmentFromRecordingModal)
+ *   - FAILED     → red badge + "Retry" button
+ */
+function RecordingTranscribeAction({
+    rec,
+    batches,
+}: {
+    rec: MeetingRecording & { scheduleId: string };
+    batches?: Array<{
+        package_session_id: string;
+        package_name: string;
+        level_name?: string;
+        session_name?: string;
+    }>;
+}) {
+    const [status, setStatus] = useState<TranscriptStatus | null>(rec.transcriptStatus ?? null);
+    const [detectedLanguage, setDetectedLanguage] = useState<string | undefined>(rec.detectedLanguage);
+    const [errorMessage, setErrorMessage] = useState<string | undefined>(rec.transcriptionError);
+    const [assessmentModalOpen, setAssessmentModalOpen] = useState(false);
+
+    const handleData = useCallback((data: RecordingTranscriptionStatus) => {
+        setStatus(data.status);
+        setDetectedLanguage(data.detectedLanguage ?? undefined);
+        setErrorMessage(data.errorMessage ?? undefined);
+    }, []);
+
+    // Polling: only active while a job is in flight. Halts on terminal state.
+    const polling = status === 'QUEUED' || status === 'RUNNING';
+    useQuery({
+        queryKey: ['recording-transcribe', rec.scheduleId, rec.recordingId],
+        queryFn: async () => {
+            const data = await getTranscriptionStatus(rec.scheduleId, rec.recordingId);
+            handleData(data);
+            return data;
+        },
+        enabled: polling,
+        refetchInterval: 30_000,
+        refetchOnWindowFocus: false,
+    });
+
+    const { mutate, isPending } = useMutation({
+        mutationFn: () => processRecording(rec.scheduleId, rec.recordingId),
+        onSuccess: (data) => {
+            handleData(data);
+            toast.success('Transcription started');
+        },
+        onError: (err: unknown) => {
+            const httpStatus =
+                (err as { response?: { status?: number } })?.response?.status;
+            const msg =
+                (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+            if (httpStatus === 409) {
+                toast.info(msg ?? 'Transcription is already in progress');
+            } else {
+                toast.error(msg ?? 'Could not start transcription');
+            }
+        },
+    });
+
+    if (status === 'COMPLETED') {
+        return (
+            <>
+                <span
+                    className="flex items-center gap-1.5 rounded-md border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700"
+                    title={detectedLanguage ? `Detected language: ${detectedLanguage}` : 'Transcript ready'}
+                >
+                    <FileAudio className="size-3" />
+                    Transcript Ready
+                    {detectedLanguage && (
+                        <span className="ml-0.5 flex items-center gap-0.5 rounded bg-green-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-green-800">
+                            <Languages className="size-2.5" />
+                            {detectedLanguage}
+                        </span>
+                    )}
+                </span>
+
+                {/* Follow-up action: opens CreateAssessmentFromRecordingModal which
+                    drives the Layer-3 backend pipeline (admin-core fetches transcript,
+                    calls ai-service Gemini, stores generated questions). */}
+                <button
+                    onClick={() => setAssessmentModalOpen(true)}
+                    className="flex items-center gap-1.5 rounded-md border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-medium text-primary-700 transition-colors hover:bg-primary-100"
+                    title="Generate an assessment (MCQs + title) from this transcript"
+                >
+                    <FileText className="size-3" />
+                    Create Assessment
+                </button>
+
+                <CreateAssessmentFromRecordingModal
+                    open={assessmentModalOpen}
+                    onOpenChange={setAssessmentModalOpen}
+                    scheduleId={rec.scheduleId}
+                    recordingId={rec.recordingId}
+                    detectedLanguage={detectedLanguage}
+                    batches={batches}
+                />
+            </>
+        );
+    }
+
+    if (status === 'FAILED') {
+        return (
+            <button
+                onClick={() => mutate()}
+                disabled={isPending}
+                className="flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 disabled:opacity-50"
+                title={errorMessage ?? 'Transcription failed — click to retry'}
+            >
+                <AlertTriangle className="size-3" />
+                Retry Transcription
+            </button>
+        );
+    }
+
+    const inFlight = polling || isPending;
+    return (
+        <button
+            onClick={() => mutate()}
+            disabled={inFlight}
+            className="flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 disabled:opacity-50"
+            title="Generate transcript (English + source language) and detect the audio language"
+        >
+            <FileAudio className={cn('size-3', inFlight && 'animate-pulse')} />
+            {inFlight ? 'Processing…' : 'Process Recording'}
         </button>
     );
 }

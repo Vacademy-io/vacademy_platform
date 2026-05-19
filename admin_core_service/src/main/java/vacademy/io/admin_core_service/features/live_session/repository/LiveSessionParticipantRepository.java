@@ -294,6 +294,8 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     WHERE s.user_id IN (:studentIds)
     AND ss.meeting_date BETWEEN :startDate AND :endDate
     AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
+    AND (:batchIdsSize = 0 OR lsp.source_id IN (:batchIds))
+    AND (:liveSessionIdsSize = 0 OR lsp.session_id IN (:liveSessionIds))
     AND ss.status <> 'DELETED'
     AND ls.status <> 'DELETED'
     ORDER BY LOWER(s.full_name), ss.meeting_date
@@ -301,7 +303,11 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
     List<AttendanceReportProjection> getAttendanceReportForStudentIds(
             @Param("studentIds") List<String> studentIds,
             @Param("startDate") LocalDate startDate,
-            @Param("endDate") LocalDate endDate
+            @Param("endDate") LocalDate endDate,
+            @Param("batchIds") List<String> batchIds,
+            @Param("batchIdsSize") int batchIdsSize,
+            @Param("liveSessionIds") List<String> liveSessionIds,
+            @Param("liveSessionIdsSize") int liveSessionIdsSize
     );
 
     @Query(value = """

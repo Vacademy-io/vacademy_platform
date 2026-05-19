@@ -3,6 +3,12 @@ import { getUpcomingSessions } from '@/routes/study-library/live-session/-servic
 import { fetchInstituteDashboardDetails } from './dashboard-services';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_USER_ROLES_COUNT } from '@/constants/urls';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import {
+    ContentTerms,
+    RoleTerms,
+    SystemTerms,
+} from '@/routes/settings/-components/NamingSettings';
 
 export type KpiFormat = 'number' | 'currency' | 'percent';
 
@@ -83,21 +89,29 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
     const classesToday =
         sessions?.find((d) => (d.date || '').slice(0, 10) === today)?.sessions?.length || 0;
 
+    const learnersPlural = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner);
+    const coursesPlural = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course);
+    const batchesPlural = getTerminologyPlural(ContentTerms.Batch, SystemTerms.Batch);
+    const liveSessionsPlural = getTerminologyPlural(
+        ContentTerms.LiveSession,
+        SystemTerms.LiveSession
+    );
+
     return [
         {
             id: 'activeLearners',
-            label: 'Total Students',
+            label: `Total ${learnersPlural}`,
             value: counts?.student_count || 0,
             format: 'number',
-            subtitle: 'Enrolled across batches',
+            subtitle: `Enrolled across ${batchesPlural.toLowerCase()}`,
             deepLink: '/manage-students/students-list',
         },
         {
             id: 'totalCourses',
-            label: 'Total Courses',
+            label: `Total ${coursesPlural}`,
             value: counts?.course_count || 0,
             format: 'number',
-            subtitle: 'Active courses',
+            subtitle: `Active ${coursesPlural.toLowerCase()}`,
             deepLink: '/study-library/courses',
         },
         {
@@ -105,7 +119,7 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
             label: 'Team Members',
             value: teamCount,
             format: 'number',
-            subtitle: 'Admins, teachers & staff',
+            subtitle: `${getTerminologyPlural(RoleTerms.Admin, SystemTerms.Admin)}, ${getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher).toLowerCase()} & staff`,
         },
         {
             id: 'outstandingFees',
@@ -123,10 +137,10 @@ const buildAdminKpis = async (instituteId: string): Promise<DashboardKpi[]> => {
         },
         {
             id: 'classesToday',
-            label: 'Classes Today',
+            label: `${liveSessionsPlural} Today`,
             value: classesToday,
             format: 'number',
-            subtitle: 'Scheduled live sessions',
+            subtitle: `Scheduled ${liveSessionsPlural.toLowerCase()}`,
             deepLink: '/study-library/live-session',
         },
     ];
@@ -140,7 +154,7 @@ const buildTeacherKpis = async (instituteId: string): Promise<DashboardKpi[]> =>
     return [
         {
             id: 'classesToday',
-            label: 'Classes Today',
+            label: `${getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession)} Today`,
             value: classesToday,
             format: 'number',
             deepLink: '/study-library/live-session',

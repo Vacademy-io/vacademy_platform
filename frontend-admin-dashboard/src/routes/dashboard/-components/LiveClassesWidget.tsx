@@ -46,6 +46,8 @@ import {
 } from '@/routes/study-library/live-session/-constants/reportTable';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import EditLiveLinkDialog from './EditLiveLinkDialog';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 interface LiveClassesWidgetProps {
     instituteId: string;
@@ -260,7 +262,12 @@ const LiveClassesWidget: React.FC<LiveClassesWidgetProps> = ({ instituteId }) =>
                             <VideoCamera size={14} weight="duotone" />
                         </span>
                         <div className="min-w-0">
-                            <CardTitle className="text-sm font-semibold">Live Classes</CardTitle>
+                            <CardTitle className="text-sm font-semibold">
+                                {getTerminologyPlural(
+                                    ContentTerms.LiveSession,
+                                    SystemTerms.LiveSession
+                                )}
+                            </CardTitle>
                             <CardDescription className="line-clamp-1 text-[11px] text-neutral-500 sm:text-xs">
                                 {sessions.length > 0
                                     ? `${sessions.length} upcoming session${sessions.length === 1 ? '' : 's'}`
@@ -291,7 +298,12 @@ const LiveClassesWidget: React.FC<LiveClassesWidgetProps> = ({ instituteId }) =>
                                 className="text-neutral-300"
                             />
                             <div className="text-[11px] text-neutral-500">
-                                No live classes scheduled yet
+                                No{' '}
+                                {getTerminologyPlural(
+                                    ContentTerms.LiveSession,
+                                    SystemTerms.LiveSession
+                                ).toLowerCase()}{' '}
+                                scheduled yet
                             </div>
                         </div>
                     )}

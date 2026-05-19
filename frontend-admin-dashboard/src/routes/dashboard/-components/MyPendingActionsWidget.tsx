@@ -3,14 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-    CaretRight,
-    CheckCircle,
-    CurrencyDollar,
-    Stamp,
-    VideoCamera,
-    Bell,
-} from '@phosphor-icons/react';
+import { CaretRight, CheckCircle, CurrencyDollar, Stamp, Bell } from '@phosphor-icons/react';
 import {
     getPendingActionsQuery,
     type PendingAction,
@@ -36,11 +29,6 @@ const TYPE_META: Record<
         Icon: Stamp,
         iconClass: 'text-amber-600',
         label: 'Pending approval',
-    },
-    LIVE_CLASS_TODAY: {
-        Icon: VideoCamera,
-        iconClass: 'text-blue-600',
-        label: "Today's class",
     },
     UNREAD_ALERT: {
         Icon: Bell,

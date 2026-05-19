@@ -433,6 +433,24 @@ export const CREATE_PROVIDER_MEETING = `${BASE_URL}/admin-core-service/live-sess
 export const GET_SCHEDULE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings`;
 export const SYNC_RECORDINGS_FROM_BBB = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync`;
 
+// "Process Recording" / "Transcript Ready" flow — kicks off Whisper transcription
+// for a specific BBB recording and polls for terminal state. Path-keyed by
+// scheduleId + recordingId so admin-core can locate the recording in O(1).
+//
+// LOCAL-TESTING NOTE: routes to LOCAL_ADMIN_CORE_BASE (http://localhost:8072)
+// because Layer 1 transcription only lives on locally-running admin-core right
+// now. Swap to `${BASE_URL}/...` once the backend ships to stage/prod.
+export const RECORDING_TRANSCRIBE = (scheduleId: string, recordingId: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/transcribe`;
+
+// Layer 3 — Create Assessment from a completed recording transcript.
+// Same local-testing routing as above.
+export const RECORDING_CREATE_ASSESSMENT = (scheduleId: string, recordingId: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
+
+export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: string) =>
+    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
+
 // export const GET_ALL_FACULTY = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const GET_FACULTY_BY_INSTITUTE_CREATORS_ONLY = `${BASE_URL}/admin-core-service/open/institute/v1/faculty/by-institute/only-creator`;
 

@@ -1027,7 +1027,7 @@ function ViewLiveSession() {
                                                 />
                                                 <RecordingTranscribeAction
                                                     rec={rec}
-                                                    batches={sessionData?.schedule?.package_session_details}
+                                                    batches={sessionData?.schedule?.package_session_details ?? undefined}
                                                 />
                                             </div>
                                         </div>

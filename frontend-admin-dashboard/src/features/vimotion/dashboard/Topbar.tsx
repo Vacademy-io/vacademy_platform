@@ -15,18 +15,20 @@ export function Topbar({ instituteId, activeTab }: TopbarProps) {
     const isLow = !!credits.data?.is_low_balance;
 
     return (
-        <header className="flex h-14 items-center justify-between border-b border-neutral-200 bg-white px-6">
-            <div>
-                <h1 className="text-base font-semibold text-neutral-900">
+        <header className="flex h-14 items-center justify-between gap-3 border-b border-neutral-200 bg-white px-4 sm:px-6">
+            <div className="min-w-0">
+                <h1 className="truncate text-base font-semibold text-neutral-900">
                     {TAB_LABELS[activeTab]}
                 </h1>
-                <p className="text-xs text-neutral-500">{TAB_DESCRIPTIONS[activeTab]}</p>
+                <p className="hidden truncate text-xs text-neutral-500 sm:block">
+                    {TAB_DESCRIPTIONS[activeTab]}
+                </p>
             </div>
 
             {balance != null && (
                 <div
                     className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium',
+                        'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium sm:px-3',
                         isLow
                             ? 'border-red-200 bg-red-50 text-red-700'
                             : 'border-neutral-200 bg-white text-neutral-700'
@@ -37,7 +39,7 @@ export function Topbar({ instituteId, activeTab }: TopbarProps) {
                         className={cn('size-3.5', isLow ? 'text-red-600' : 'text-primary-500')}
                     />
                     {formatCredits(balance)}
-                    <span className="font-normal text-neutral-400">credits</span>
+                    <span className="hidden font-normal text-neutral-400 sm:inline">credits</span>
                 </div>
             )}
         </header>

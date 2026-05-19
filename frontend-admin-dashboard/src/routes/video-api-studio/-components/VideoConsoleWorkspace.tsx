@@ -2132,7 +2132,7 @@ export function VideoConsoleWorkspace({
                 )}
 
                 {/* Content Area */}
-                <div className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth p-2 sm:p-3">
+                <div className="pb-keyboard scroll-pb-keyboard flex-1 overflow-y-auto overflow-x-hidden scroll-smooth p-2 sm:p-3">
                     {consoleState === 'idle' && !currentGeneration && !isLoadingVideoUrls && (
                         <div className="duration-200 animate-in fade-in zoom-in-95">
                             <CenteredHero

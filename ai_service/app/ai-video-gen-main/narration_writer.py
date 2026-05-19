@@ -137,8 +137,17 @@ def build_narration_writer_user_prompt(
     language: str,
     brand_voice: Optional[Dict[str, Any]] = None,
     continuity_notes: Optional[str] = None,
+    wpm_override: Optional[float] = None,
+    regen_note: Optional[str] = None,
 ) -> str:
-    """Compose the NarrationWriter user prompt from the ShotPlanner output."""
+    """Compose the NarrationWriter user prompt from the ShotPlanner output.
+
+    `wpm_override` (when set) replaces DEFAULT_WPM in the per-shot word budget —
+    used by the v3 audio-overrun safety net to rewrite at the empirically
+    measured TTS pace × 0.95. `regen_note` (when set) is prepended verbatim
+    as an URGENT REVISION block so the LLM understands this is a corrective
+    rewrite, not a fresh authoring call.
+    """
     shots = shot_plan.get("shots") if isinstance(shot_plan.get("shots"), list) else []
     payload: Dict[str, Any] = {
         "target_duration_s": round(float(target_duration_s), 2),
@@ -151,18 +160,30 @@ def build_narration_writer_user_prompt(
     if continuity_notes:
         payload["continuity_notes"] = str(continuity_notes)[:400]
 
+    effective_wpm = float(wpm_override) if (wpm_override and wpm_override > 0) else DEFAULT_WPM
     expected_words = sum(
-        max(0, int(round((float(s.get("duration_estimate_s") or 0.0)) * DEFAULT_WPM / 60.0)))
+        max(0, int(round((float(s.get("duration_estimate_s") or 0.0)) * effective_wpm / 60.0)))
         for s in shots
         if isinstance(s, dict) and (s.get("audio_policy") or "narration_only") != "intrinsic_only"
     )
 
-    lines = [
+    lines: List[str] = []
+    if regen_note:
+        lines += [regen_note.strip(), ""]
+    lines += [
         "SHOT PLAN:",
         json.dumps(payload, ensure_ascii=False, indent=2),
         "",
         f"EXPECTED TOTAL WORD COUNT (across all narrated shots): ~{expected_words} words "
-        f"({DEFAULT_WPM:.0f} wpm × {target_duration_s:.1f}s minus intrinsic shots).",
+        f"({effective_wpm:.0f} wpm × {target_duration_s:.1f}s minus intrinsic shots).",
+    ]
+    if wpm_override and wpm_override > 0 and abs(effective_wpm - DEFAULT_WPM) > 1.0:
+        lines.append(
+            f"OVERRIDE: target pacing is {effective_wpm:.0f} wpm (not the default "
+            f"{DEFAULT_WPM:.0f}) — the TTS voice for this run is slower than typical. "
+            f"Cut every shot's word count proportionally; keep the meaning, lose the filler."
+        )
+    lines += [
         "",
         "Author the narration now. Output the JSON object only.",
     ]
@@ -262,6 +283,8 @@ def write_narration(
     target_audience: str = "General/Adult",
     language: str = "English",
     brand_voice: Optional[Dict[str, Any]] = None,
+    wpm_override: Optional[float] = None,
+    regen_note: Optional[str] = None,
     temperature: float = 0.7,
     max_tokens: int = 6000,
 ) -> Dict[str, Any]:
@@ -321,6 +344,8 @@ def write_narration(
         language=language,
         brand_voice=brand_voice,
         continuity_notes=shot_plan.get("continuity_notes"),
+        wpm_override=wpm_override,
+        regen_note=regen_note,
     )
     messages = [
         {"role": "system", "content": NARRATION_WRITER_SYSTEM_PROMPT},

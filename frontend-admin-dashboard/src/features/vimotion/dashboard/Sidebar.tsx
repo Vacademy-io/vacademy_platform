@@ -27,6 +27,10 @@ interface SidebarProps {
     onTabChange: (tab: DashboardTab) => void;
 }
 
+interface SidebarContentProps extends SidebarProps {
+    onNavigate?: () => void;
+}
+
 type NavItem = {
     id: DashboardTab;
     label: string;
@@ -45,6 +49,26 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
+    return (
+        <aside
+            data-tour="vim-sidebar"
+            className="hidden w-60 shrink-0 flex-col border-r border-neutral-200 bg-white md:flex"
+        >
+            <SidebarContent
+                instituteId={instituteId}
+                activeTab={activeTab}
+                onTabChange={onTabChange}
+            />
+        </aside>
+    );
+}
+
+export function SidebarContent({
+    instituteId,
+    activeTab,
+    onTabChange,
+    onNavigate,
+}: SidebarContentProps) {
     const navigate = useNavigate();
     const studioName = useStudioName(instituteId);
     const credits = useAiCreditsQuery(!!instituteId);
@@ -56,18 +80,23 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
         navigate({ to: '/vim/login' });
     };
 
+    const handleTabClick = (id: DashboardTab) => {
+        onTabChange(id);
+        onNavigate?.();
+    };
+
     return (
-        <aside
-            data-tour="vim-sidebar"
-            className="flex w-60 shrink-0 flex-col border-r border-neutral-200 bg-white"
-        >
+        <div className="flex h-full flex-col">
             {/* Brand + studio name */}
             <div className="flex items-center gap-2.5 p-5">
                 <div className="flex size-9 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
                     <VimotionLogoMark size={20} className="text-neutral-900" />
                 </div>
                 <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold leading-tight text-neutral-900">
+                    <p
+                        className="truncate text-sm font-semibold leading-tight text-neutral-900"
+                        title={studioName.data ?? undefined}
+                    >
                         {studioName.data ?? 'Vimotion'}
                     </p>
                     <p className="text-xs text-neutral-500">Studio</p>
@@ -84,10 +113,10 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
                                 <button
                                     type="button"
                                     data-tour={`vim-sidebar-${id}`}
-                                    onClick={() => onTabChange(id)}
+                                    onClick={() => handleTabClick(id)}
                                     aria-current={active ? 'page' : undefined}
                                     className={cn(
-                                        'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                                        'flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium transition-colors',
                                         active
                                             ? 'bg-neutral-900 text-white'
                                             : 'text-neutral-700 hover:bg-neutral-100'
@@ -117,13 +146,13 @@ export function Sidebar({ instituteId, activeTab, onTabChange }: SidebarProps) {
                 <button
                     type="button"
                     onClick={handleLogout}
-                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
+                    className="flex min-h-[44px] w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
                 >
                     <LogOut className="size-4" />
                     Log out
                 </button>
             </div>
-        </aside>
+        </div>
     );
 }
 

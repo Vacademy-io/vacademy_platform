@@ -1603,6 +1603,128 @@ function SceneDetail({
                 </div>
             )}
 
+            {/* v3 live-progress detail — present when the BE RunStateAggregator
+                snapshot includes per-shot detail for this scene. Shows the
+                current substage, the full regen log (every gate verdict), and
+                any active third-party calls. Quietly absent for legacy runs. */}
+            {scene.liveDetail && (
+                <div className="rounded-md border bg-gradient-to-b from-slate-50 to-white p-3 text-xs">
+                    <div className="mb-2 flex items-center justify-between">
+                        <span className="font-medium text-foreground">Live progress</span>
+                        {scene.liveDetail.elapsedS != null && (
+                            <span className="font-mono tabular-nums text-muted-foreground">
+                                {scene.liveDetail.elapsedS.toFixed(1)}s elapsed
+                            </span>
+                        )}
+                    </div>
+                    {scene.liveDetail.substage && (
+                        <div className="mb-2 text-foreground/80">
+                            Current substage:{' '}
+                            <span className="font-mono">{scene.liveDetail.substage}</span>
+                        </div>
+                    )}
+                    {scene.liveDetail.attempts && Object.keys(scene.liveDetail.attempts).length > 0 && (
+                        <div className="mb-2">
+                            <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                Regen attempts by gate
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                                {Object.entries(scene.liveDetail.attempts).map(([step, n]) => (
+                                    <span
+                                        key={step}
+                                        className="rounded bg-orange-50 px-1.5 py-0.5 font-mono text-[10px] text-orange-700"
+                                    >
+                                        {step.replace(/_regen$/, '')}: {n}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {scene.liveDetail.regenLog && scene.liveDetail.regenLog.length > 0 && (
+                        <div className="mb-2">
+                            <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                Verdict log
+                            </div>
+                            <ol className="space-y-1">
+                                {scene.liveDetail.regenLog.map((r, i) => (
+                                    <li
+                                        key={`${r.step}-${r.attempt}-${i}`}
+                                        className="flex items-start gap-2 text-[11px] leading-snug"
+                                    >
+                                        <span className="mt-0.5 font-mono text-muted-foreground">
+                                            {r.step}#{r.attempt}
+                                        </span>
+                                        <span
+                                            className={
+                                                r.verdict === 'pass'
+                                                    ? 'rounded bg-emerald-50 px-1 text-[10px] text-emerald-700'
+                                                    : r.verdict === 'shipped_original'
+                                                      ? 'rounded bg-amber-50 px-1 text-[10px] text-amber-700'
+                                                      : 'rounded bg-rose-50 px-1 text-[10px] text-rose-700'
+                                            }
+                                        >
+                                            {r.verdict}
+                                        </span>
+                                        {r.reason && (
+                                            <span className="flex-1 text-foreground/70">
+                                                {r.reason}
+                                            </span>
+                                        )}
+                                    </li>
+                                ))}
+                            </ol>
+                        </div>
+                    )}
+                    {scene.liveDetail.externalCalls &&
+                        scene.liveDetail.externalCalls.length > 0 && (
+                            <div>
+                                <div className="mb-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+                                    External calls
+                                </div>
+                                <ul className="space-y-1">
+                                    {scene.liveDetail.externalCalls.map((c) => (
+                                        <li
+                                            key={c.id}
+                                            className="flex items-center gap-2 text-[11px]"
+                                        >
+                                            <span className="font-mono text-foreground/80">
+                                                {c.provider} · {c.op}
+                                            </span>
+                                            <span
+                                                className={
+                                                    c.state === 'done'
+                                                        ? 'rounded bg-emerald-50 px-1 text-[10px] text-emerald-700'
+                                                        : c.state === 'failed'
+                                                          ? 'rounded bg-rose-50 px-1 text-[10px] text-rose-700'
+                                                          : 'rounded bg-blue-50 px-1 text-[10px] text-blue-700'
+                                                }
+                                            >
+                                                {c.state}
+                                                {c.pollCount ? ` (${c.pollCount})` : ''}
+                                            </span>
+                                            {c.elapsedS != null && (
+                                                <span className="font-mono text-muted-foreground">
+                                                    {c.elapsedS.toFixed(1)}s
+                                                </span>
+                                            )}
+                                            {c.error && (
+                                                <span className="truncate text-rose-700">
+                                                    {c.error}
+                                                </span>
+                                            )}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    {scene.liveDetail.lastError && (
+                        <div className="mt-2 rounded bg-rose-50 p-2 text-[11px] text-rose-800">
+                            {scene.liveDetail.lastError}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Hero media — prefer the rendered HTML when present so the
                 user can actually "play" the beat (animations, video tags
                 inside the HTML, etc). Falls back to the AI B-roll clip,

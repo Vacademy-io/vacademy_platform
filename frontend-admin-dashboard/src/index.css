@@ -11,6 +11,72 @@ html {
     scroll-behavior: smooth;
 }
 
+/* ---------------------------------------------------------------------------
+ * Safe-area + keyboard CSS variables (set by src/native/safeArea.ts +
+ * src/native/keyboard.ts at boot). On web they degrade to 0; on iOS/Android
+ * Capacitor builds they reflect env(safe-area-inset-*) and the IME height so
+ * any component can compose them into padding/margins without knowing whether
+ * it runs natively.
+ * ------------------------------------------------------------------------- */
+:root {
+    --safe-area-inset-top: 0px;
+    --safe-area-inset-right: 0px;
+    --safe-area-inset-bottom: 0px;
+    --safe-area-inset-left: 0px;
+    --keyboard-height: 0px;
+}
+
+/* Tailwind-style utilities for safe-area-aware padding. Use these on the
+ * outermost surface of any full-screen native view so the notch / Dynamic
+ * Island / Android gesture bar don't overlap content. */
+.pt-safe { padding-top: var(--safe-area-inset-top); }
+.pr-safe { padding-right: var(--safe-area-inset-right); }
+.pb-safe { padding-bottom: var(--safe-area-inset-bottom); }
+.pl-safe { padding-left: var(--safe-area-inset-left); }
+.px-safe {
+    padding-left: var(--safe-area-inset-left);
+    padding-right: var(--safe-area-inset-right);
+}
+.py-safe {
+    padding-top: var(--safe-area-inset-top);
+    padding-bottom: var(--safe-area-inset-bottom);
+}
+.p-safe {
+    padding-top: var(--safe-area-inset-top);
+    padding-right: var(--safe-area-inset-right);
+    padding-bottom: var(--safe-area-inset-bottom);
+    padding-left: var(--safe-area-inset-left);
+}
+.min-h-screen-safe {
+    min-height: calc(100vh - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+}
+.h-screen-safe {
+    height: calc(100vh - var(--safe-area-inset-top) - var(--safe-area-inset-bottom));
+}
+/* Sticky bottom bars (composer Send row, dashboard nav) — sits above the
+ * IME when open, otherwise above the home-indicator. The 0.5rem floor
+ * preserves layouts that paired `pb-keyboard` with Tailwind padding utilities
+ * (p-2 etc.) so the class doesn't pull desktop layouts flush against the
+ * viewport edge when both CSS variables are 0. */
+.pb-keyboard {
+    padding-bottom: max(var(--keyboard-height), var(--safe-area-inset-bottom), 0.5rem);
+}
+/* Apply to a scroll container so the browser's focus-scroll-into-view leaves
+ * the keyboard's height of room below the focused input. Pair with .pb-keyboard
+ * on the same element so there's actual content space to scroll into. */
+.scroll-pb-keyboard {
+    scroll-padding-bottom: var(--keyboard-height);
+}
+
+/* Native body styling — never let pull-to-refresh white space appear on iOS
+ * since we run as a fullscreen app. */
+.platform-native body {
+    background: #FAFAF7;
+    overscroll-behavior-y: none;
+}
+.platform-ios body {
+    -webkit-tap-highlight-color: transparent;
+}
 
 /* Hide scrollbar utility */
 .scrollbar-hide {

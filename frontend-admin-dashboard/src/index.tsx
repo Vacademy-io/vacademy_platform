@@ -27,11 +27,29 @@ import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtili
 import { TokenKey } from '@/constants/auth/tokens';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { installChunkErrorHandler } from '@/lib/chunk-reload';
+import { initNative, isNative, getPlatform } from '@/native';
 
 // Recover stale tabs whose cached chunk URLs 404 after a new deploy.
 // Must run before React renders so failures during the first lazy import
 // are intercepted at the window level instead of bubbling to an error boundary.
 installChunkErrorHandler();
+
+// Initialize native bridges (safe area + keyboard CSS vars are also useful on
+// web, so this runs unconditionally; native-only plugins guard internally).
+// Also tag <html> with the platform so CSS can target iOS/Android specifically.
+void initNative();
+document.documentElement.classList.add(`platform-${getPlatform()}`);
+if (isNative()) {
+    document.documentElement.classList.add('platform-native');
+    // On native, the app is product-scoped to Vimotion — force the launch URL
+    // into the /vim shell on cold start so a stale localStorage path can't
+    // surface the admin login. Deep-link handlers (src/native/deepLinks.ts)
+    // override this after the router mounts.
+    const path = window.location.pathname;
+    if (!path.startsWith('/vim')) {
+        window.history.replaceState({}, '', '/vim');
+    }
+}
 
 // Initialize Amplitude as early as possible on client
 if (typeof window !== 'undefined') {

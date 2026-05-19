@@ -21,6 +21,7 @@ import { TokenKey } from '@/constants/auth/tokens';
 import { vimotionLogin } from '../api/signup';
 import { VimotionLogoMark } from '../brand/VimotionLogoMark';
 import { useVimotionDocumentChrome } from '../brand/useVimotionDocumentChrome';
+import { useVimotionNativeShell } from '../native/useVimotionNativeShell';
 import { OutputShowcase } from './OutputShowcase';
 
 const loginSchema = z.object({
@@ -32,6 +33,7 @@ type LoginValues = z.infer<typeof loginSchema>;
 
 export function LoginForm() {
     useVimotionDocumentChrome();
+    useVimotionNativeShell();
     const navigate = useNavigate();
     const [showPassword, setShowPassword] = useState(false);
 
@@ -64,8 +66,11 @@ export function LoginForm() {
     const onSubmit = (values: LoginValues) => login.mutate(values);
 
     return (
-        <div className="grid min-h-screen w-screen grid-cols-1 bg-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <OutputShowcase tagline="Sign back in. Your studio is exactly how you left it." />
+        <div className="pt-safe pb-safe grid min-h-screen w-screen grid-cols-1 bg-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <OutputShowcase
+                tagline="Sign back in. Your studio is exactly how you left it."
+                className="order-last lg:order-first"
+            />
 
             <section className="flex min-h-screen flex-col">
                 {/* Mobile-only top bar with the wordmark */}

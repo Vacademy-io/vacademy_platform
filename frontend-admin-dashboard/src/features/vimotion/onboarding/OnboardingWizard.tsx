@@ -9,6 +9,7 @@ import { Stepper } from './Stepper';
 import { BrandPanel } from './BrandPanel';
 import { VimotionLogoMark } from '../brand/VimotionLogoMark';
 import { useVimotionDocumentChrome } from '../brand/useVimotionDocumentChrome';
+import { useVimotionNativeShell } from '../native/useVimotionNativeShell';
 
 const STEP_META: Record<OnboardingStep, { title: string; description: string }> = {
     contact: {
@@ -33,6 +34,7 @@ const STEP_ORDER: OnboardingStep[] = ['contact', 'otp', 'account-type', 'studio-
 
 export function OnboardingWizard() {
     useVimotionDocumentChrome();
+    useVimotionNativeShell();
     const { step, signupToken, setStep } = useVimotionOnboardingStore();
 
     // Guard: a fresh refresh on a later step without a token sends the user
@@ -47,7 +49,7 @@ export function OnboardingWizard() {
     const meta = STEP_META[step];
 
     return (
-        <div className="grid min-h-screen w-screen grid-cols-1 bg-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="pt-safe pb-safe grid min-h-screen w-screen grid-cols-1 bg-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <BrandPanel />
 
             <div className="flex min-h-screen flex-col">
@@ -61,7 +63,7 @@ export function OnboardingWizard() {
                     </span>
                 </div>
 
-                <div className="flex flex-1 items-center justify-center px-6 py-12 sm:px-10">
+                <div className="flex flex-1 items-center justify-center px-4 py-8 sm:px-10 sm:py-12">
                     <div className="w-full max-w-md space-y-8">
                         <div className="space-y-3">
                             <Stepper total={STEP_ORDER.length} current={stepIndex} />

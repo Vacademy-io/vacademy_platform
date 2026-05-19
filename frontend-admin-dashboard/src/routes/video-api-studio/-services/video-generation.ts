@@ -205,6 +205,50 @@ export const AI_VIDEO_MODELS = [
 ] as const;
 export type AiVideoModel = (typeof AI_VIDEO_MODELS)[number]['value'];
 
+// ── Per-stage model overrides (V200 — DB-backed routing) ─────────────────
+// Backend canonical stage IDs the user can override at request time. Keep in
+// lockstep with `app/constants/pipeline_stages.py` USER_OVERRIDABLE_STAGES.
+// Non-overridable stages (vision_review, cultural_context, etc.) are pinned
+// to admin defaults and stay off this list — sending them is a silent no-op.
+export type UserOverridableStage =
+    | 'shot_planner'
+    | 'narration_writer'
+    | 'per_shot_html'
+    | 'act_planner'
+    | 'regen_html'
+    // v2 legacy — overridable until v2 is deleted
+    | 'director'
+    | 'script_generation'
+    | 'script_review';
+
+// Display order + labels for the ModelOverridesPanel "advanced" expander.
+// Same shape as AI_VIDEO_MODELS — readonly tuple so dropdowns stay
+// well-typed and constant.
+export const USER_OVERRIDABLE_STAGE_META: readonly {
+    value: UserOverridableStage;
+    label: string;
+    hint?: string;
+}[] = [
+    { value: 'shot_planner', label: 'Shot planning', hint: 'Plans the whole video shot-by-shot.' },
+    { value: 'narration_writer', label: 'Narration writing', hint: 'Authors per-shot narration text.' },
+    { value: 'per_shot_html', label: 'Per-shot HTML', hint: 'Generates HTML for every shot — biggest token bucket.' },
+    { value: 'act_planner', label: 'Act planner', hint: 'Decomposes intent into acts before shot planning.' },
+    { value: 'regen_html', label: 'HTML regeneration', hint: 'Corrective regen for failed validation passes.' },
+    // v2 legacy — only visible when older runs are involved
+    { value: 'director', label: 'Director (v2)', hint: 'v2 pipeline only.' },
+    { value: 'script_generation', label: 'Script generation (v2)', hint: 'v2 pipeline only.' },
+    { value: 'script_review', label: 'Script review (v2)', hint: 'v2 pipeline only.' },
+] as const;
+
+export interface ModelOverrides {
+    /** Mass-pick model — applied to every user-overridable stage. */
+    default?: string;
+    /** Per-stage explicit overrides. Wins over `default` for individual stages.
+     *  Keys must be `UserOverridableStage` values; unknown / non-overridable
+     *  keys are silently ignored by the backend. */
+    per_stage?: Partial<Record<UserOverridableStage, string>>;
+}
+
 /** Returns true when the user has expressed any non-default opinion. */
 export function hasActiveVisualPreferences(prefs: VisualPreferences | undefined | null): boolean {
     if (!prefs) return false;
@@ -318,7 +362,17 @@ export interface GenerateVideoRequest {
     html_quality: 'classic' | 'advanced';
     target_audience: string;
     target_duration: string;
+    /** @deprecated Use `model_overrides` instead. Kept for backwards compat —
+     *  when set without `model_overrides`, the BE collapses it to
+     *  `ModelOverrides(default=model)` so it only applies to user-overridable
+     *  critical stages (vision review + utility prompts stay on admin defaults). */
     model: string;
+    /** Per-stage model overrides (V200 DB-backed routing). When omitted, every
+     *  stage uses its admin-configured default from `ai_model_stage_assignments`.
+     *  `default` mass-applies to all user-overridable stages; `per_stage` wins
+     *  over `default` for specific stages. Vision review + utility prompts
+     *  ignore this entirely (pinned to admin defaults). */
+    model_overrides?: ModelOverrides;
     quality_tier: QualityTier;
     video_id?: string; // Optional: auto-generated if not provided
     reference_files?: ReferenceFile[];
@@ -922,6 +976,119 @@ export interface VideoStatusResponse {
     /** BE-side `extra_metadata` — see VideoStatusMetadata for the surface area we read. */
     metadata?: VideoStatusMetadata | null;
     token_usage?: TokenUsage | null;
+    /**
+     * v3 live-progress snapshot. Single source of truth for the pipeline
+     * view — both live runs and history reads consume this shape. Read
+     * from the BE's in-memory RunStateAggregator while the run is active;
+     * falls back to the persisted snapshot in extra_metadata.live for
+     * post-restart and history reads. Absent for legacy v1/v2 runs.
+     */
+    live?: VideoLiveProgress | null;
+}
+
+/**
+ * v3 live-progress snapshot returned by `GET /status/{video_id}.live`.
+ * Mirrors `LiveProgress` in ai_service/.../run_state_aggregator.py.
+ */
+export interface VideoLiveProgress {
+    status: VideoStatusType;
+    active_stage: VideoLiveStageId;
+    active_substage?: string | null;
+    director_thought?: string | null;
+    started_at?: number | null;
+    last_event_at?: number | null;
+    finished_at?: number | null;
+    stages: Record<VideoLiveStageId, VideoLiveStageProgress>;
+    shots: VideoLiveShotProgress[];
+    recurring_motifs?: Array<Record<string, unknown>>;
+    external_calls?: VideoLiveExternalCall[];
+    costs?: VideoLiveCosts;
+    /** Rolling log; capped at 50 events on the wire. */
+    event_log?: VideoLiveEvent[];
+}
+
+export type VideoLiveStageId =
+    | 'pitch'
+    | 'research'
+    | 'shotPlanner'
+    | 'narrationWriter'
+    | 'filming'
+    | 'talent'
+    | 'score'
+    | 'finalCut';
+
+export interface VideoLiveStageProgress {
+    state: 'pending' | 'in_progress' | 'wrapped' | 'failed';
+    started_at?: number | null;
+    wrapped_at?: number | null;
+    message?: string | null;
+    detail?: Record<string, unknown>;
+}
+
+export interface VideoLiveShotProgress {
+    idx: number;
+    shot_type?: string | null;
+    intent_role?: string | null;
+    audio_policy?: string | null;
+    background_treatment?: string | null;
+    transition_in?: string | null;
+    narration_brief?: string | null;
+    duration_estimate_s?: number | null;
+    state: 'pending' | 'in_progress' | 'wrapped' | 'cut' | 'reshoot';
+    /** One of: html_gen | density | bbox_lint | brand_asset | vision_review | screenshot | tts | media_polling */
+    substage?: string | null;
+    /** Map of step → attempt count, e.g. {vision_regen: 2, bbox_regen: 1}. */
+    attempts?: Record<string, number>;
+    regen_log?: Array<{
+        step: string;
+        attempt: number;
+        verdict: string;
+        reason?: string | null;
+        at: number;
+    }>;
+    external_call_ids?: string[];
+    cost_usd?: number;
+    tokens_in?: number;
+    tokens_out?: number;
+    started_at?: number | null;
+    wrapped_at?: number | null;
+    elapsed_s?: number | null;
+    last_error?: string | null;
+}
+
+export interface VideoLiveExternalCall {
+    id: string;
+    provider: string;
+    op: string;
+    state: 'queued' | 'polling' | 'done' | 'failed';
+    shot_idx?: number | null;
+    request_id?: string | null;
+    started_at?: number;
+    finished_at?: number | null;
+    elapsed_s?: number | null;
+    poll_count?: number;
+    eta_s?: number | null;
+    error?: string | null;
+}
+
+export interface VideoLiveCosts {
+    spent_usd?: number;
+    spent_credits?: number;
+    cap_usd?: number | null;
+    cap_credits?: number | null;
+    tokens_prompt?: number;
+    tokens_completion?: number;
+    tokens_total?: number;
+    estimated_cost_usd?: number;
+}
+
+export interface VideoLiveEvent {
+    at: number;
+    type: string;
+    stage?: string | null;
+    shot_idx?: number | null;
+    message?: string | null;
+    detail?: Record<string, unknown>;
 }
 
 /** A single intent-aware thumbnail option generated by the pipeline. */
@@ -1083,6 +1250,9 @@ export const DEFAULT_OPTIONS: Omit<GenerateVideoRequest, 'prompt'> = {
     // downgrades these to false on tier-ineligible runs even when sent.
     ai_video_enabled: false,
     ai_video_audio_enabled: false,
+    // model_overrides intentionally omitted (undefined) — the request body
+    // serializer drops undefined keys so the BE applies admin defaults
+    // for every stage.
 };
 
 export function generateVideoId(): string {
@@ -1819,6 +1989,17 @@ export async function getRemoteHistory(
                 ai_video_enabled: pickBool('ai_video_enabled', false),
                 ai_video_audio_enabled: pickBool('ai_video_audio_enabled', false),
                 ai_video_model: pickStrOrUndef('ai_video_model') as AiVideoModel | undefined,
+                // V200 per-stage overrides — rehydrate from saved metadata
+                // (user_selections.model_overrides, falling back to
+                // meta.model_overrides). Old records without model_overrides
+                // fall back to the legacy `model` string which the BE
+                // collapses into ModelOverrides(default=model) server-side.
+                ...(() => {
+                    const v = sel['model_overrides'] ?? meta['model_overrides'];
+                    return v && typeof v === 'object'
+                        ? { model_overrides: v as ModelOverrides }
+                        : {};
+                })(),
             },
             token_usage: item.token_usage ?? null,
             thumbnails,

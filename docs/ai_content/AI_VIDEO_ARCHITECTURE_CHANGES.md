@@ -560,3 +560,316 @@ v3 is cheaper for any tier that already runs Director; slightly more expensive f
 - `PropertiesPanel.tsx` — shot-based editing UI (rows with re-narrate + intrinsic-audio badges)
 - Persist `shot_plan.json` in the html-stage S3 upload bundle
 - Tier unification + `beat_planner.py`/`default_shot_mapper.py` deletion (after v3 soaks in shadow)
+
+---
+
+# V200 — DB-Backed Per-Stage Model Routing
+
+**Status**: backend + frontend landed 2026-05; shipped behind `STAGE_ROUTING_ENABLED` env flag (off by default). Migration `V200__ai_model_stage_assignments.sql` seeds the matrix with day-1 no-op defaults.
+**Audience**: engineers touching the AI video pipeline's LLM call sites, the `OpenRouterClient`, or the video-generation request DTO.
+**Origin**: the pipeline had 23 LLM call sites but only one model knob (`preferred_script_model` / `preferred_shot_model` on `QUALITY_TIERS`) and one user override (`model: str` on the request). A user picking Pro paid Pro tokens for every utility prompt (cultural-context inference, headline gen); a user picking a cheap model degraded vision review. This change introduces a per-(quality_tier, stage_id) assignment matrix in the DB and a per-stage user-override surface in the existing video-creation `SettingsPopover`.
+
+## 1. The problem
+
+| Symptom | Cause |
+|---|---|
+| Free-tier and Ultra-tier ran exactly the same models on every LLM call | `QUALITY_TIERS` only declared `preferred_script_model` + `preferred_shot_model`; tier-specific keys like `shot_planner_model` / `narration_writer_model` were *read* but never *set* |
+| User override applied globally — Pro for everything or Flash for everything | Resolved in `video_generation_service` lines 712-722, baked into `script_client.default_model` + `html_client.default_model` on construction |
+| Vision review hardcoded to Pro in source | `shot_visual_reviewer.py:389`: `model: str = "google/gemini-2.5-pro"` |
+| Avatar hardcoded to Kling Standard | tier config literal |
+| Cost telemetry recorded `stage="unknown"` for ~20 of 24 LLM call sites | Only the 4 regen sites wrapped with `_llm_stage.set(...)`; the rest used the ContextVar default |
+
+## 2. Architecture
+
+```
+POST /external/video/v1/generate
+  body: {
+    ..., quality_tier: "ultra",
+    model_overrides: {
+      default: "anthropic/claude-sonnet-4-6",
+      per_stage: { regen_html: "google/gemini-3-flash-preview" }
+    }
+  }
+   │
+   ▼
+video_generation_service.generate()
+  │  resolves quality_tier
+  │  if STAGE_ROUTING_ENABLED in {true,1,yes,on}:
+  │    stage_resolved = AIModelsService(db).get_stage_model_map(
+  │      use_case="video", quality_tier=tier, overrides=body.model_overrides
+  │    )
+  │    → reads ai_model_stage_assignments (1 SQL); per stage:
+  │       • per_stage[stage] if user_overridable                    → source="user_per_stage"
+  │       • else default if user_overridable                        → source="user_default"
+  │       • else admin matrix model_id                              → source="matrix"
+  │    pipeline_args["stage_model_map"] = {sid: (model_id, source)}
+   │
+   ▼
+VideoGenerationPipeline(stage_model_map=...)
+  │  stores on self._stage_model_map (tuples)
+  │  copies to script_client.stage_model_map + html_client.stage_model_map
+   │
+   ▼  (every LLM call site:)
+OpenRouterClient.chat(messages, model=?, …)
+  • if explicit `model=` passed → use that (helper-module callers + explicit pipeline call sites pass model=_resolve_stage_model(STAGE) here)
+  • else if stage_model_map non-empty:
+      _runtime_stage = _llm_stage.get()           # ContextVar set by call site or wrapper
+      canonical = _normalize_stage_to_taxonomy(_runtime_stage)
+      (model_id, source) = stage_model_map[canonical]
+  • else fall through to model_chain → default_model
+  • cost event records (stage, model, source)
+```
+
+The flag-off path skips the resolver entirely, `stage_model_map` is empty on both clients, every `chat()` falls through to the legacy `default_model` — perfect zero-risk no-op.
+
+## 3. Stage taxonomy
+
+Frozen enum in [app/constants/pipeline_stages.py](../../ai_service/app/constants/pipeline_stages.py) — 17 stages bucketed by quality-defining role:
+
+| Stage ID | Bucket | Day-1 seed | user_overridable |
+|---|---|---|---|
+| `shot_planner` | CRITICAL | gemini-3-flash-preview | ✅ |
+| `narration_writer` | CRITICAL | gemini-3-flash-preview | ✅ |
+| `per_shot_html` | CRITICAL | gemini-3-flash-preview | ✅ |
+| `vision_review` | CRITICAL | **gemini-2.5-pro** | ❌ (pinned) |
+| `director` (v2 legacy) | CRITICAL | gemini-3-flash-preview | ✅ |
+| `script_generation` (v2 legacy) | CRITICAL | gemini-3-flash-preview | ✅ |
+| `script_review` (v2 legacy) | CRITICAL | gemini-3-flash-preview | ✅ |
+| `act_planner` | MEDIUM | gemini-3-flash-preview | ✅ |
+| `beat_planner` (v2 legacy) | MEDIUM | gemini-3-flash-preview | ❌ |
+| `image_prompt_enhancement` | MEDIUM | gemini-3-flash-preview | ❌ |
+| `stock_video_ranking` | MEDIUM | gemini-3-flash-preview | ❌ |
+| `entity_extraction` | MEDIUM | gemini-3-flash-preview | ❌ |
+| `regen_html` | UTILITY | gemini-3-flash-preview | ✅ |
+| `cultural_context` | UTILITY | gemini-2.5-flash | ❌ |
+| `shot_decomposer` | UTILITY | gemini-3-flash-preview | ❌ |
+| `host_description` | UTILITY | gemini-2.5-flash | ❌ |
+| `headline_thumbnail` | UTILITY | gemini-2.5-flash | ❌ |
+
+`regen_html` collapses five physical call sites (html_repair, brand_asset_regen, bbox_lint_regen, animation_validator_regen, html quality repair) into one bucket — admins/users shouldn't have to manage five rows for the same intent.
+
+**`vision_review_regen_*` resolves to `vision_review`, not `regen_html`** — the corrective pass for a vision-review defect must run on the same pinned model that flagged the defect; otherwise a cheap-model regen would mask the issue. See [B6 in deep review](#deep-review-disposition).
+
+## 4. New modules
+
+| File | Purpose | Lines |
+|---|---|---|
+| [app/constants/pipeline_stages.py](../../ai_service/app/constants/pipeline_stages.py) | `PipelineStage` enum, `USER_OVERRIDABLE_STAGES` frozenset, `STAGE_BUCKETS` classification, `is_user_overridable()` helper | ~80 |
+| [admin_core_service/.../V200__ai_model_stage_assignments.sql](../../admin_core_service/src/main/resources/db/migration/V200__ai_model_stage_assignments.sql) | New table + 85-row seed (17 stages × 5 tiers) via CROSS JOIN INSERT with `ON CONFLICT DO UPDATE` for re-runnability | ~120 |
+
+## 5. Modified modules
+
+| Module | What changed |
+|---|---|
+| [app/schemas/video_generation.py](../../ai_service/app/schemas/video_generation.py) | New `ModelOverrides` pydantic class (`default`, `per_stage`) with `model_validator` for format checking (max 200 chars, `provider/model` shape); `model_overrides` field on `VideoGenerationRequest`; legacy `model` marked deprecated |
+| [app/services/ai_models_service.py](../../ai_service/app/services/ai_models_service.py) | New `ResolvedModel` dataclass; new `get_stage_model_map(use_case, quality_tier, overrides)` — single SQL read + per-stage override resolution; handles both pydantic `ModelOverrides` and plain dict (resume path) defensively |
+| [app/services/video_generation_service.py](../../ai_service/app/services/video_generation_service.py) | `model_overrides` param threaded through `generate_till_stage` + `run_video_generation_pipeline`; resolution gated behind `STAGE_ROUTING_ENABLED` env (accepts `true/1/yes/on`); collapses legacy `model` → `ModelOverrides(default=model)`; warns when both legacy `model` and `model_overrides` are sent; projects `ResolvedModel` to `(model_id, source)` tuple for the pipeline |
+| [app/routers/external_video_generation.py](../../ai_service/app/routers/external_video_generation.py) | `model_overrides` forwarded on all three call sites (new-gen / resume / retry); resume + retry rehydrate from `_meta["model_overrides"]` |
+| [app/ai-video-gen-main/automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) | Module-level `_normalize_stage_to_taxonomy()` mapper; `OpenRouterClient.stage_model_map` field + auto-routing in `chat()` via `_llm_stage` ContextVar (tuple-aware); `VideoGenerationPipeline.__init__` accepts `stage_model_map` and copies to both clients; `_resolve_stage_model()` helper; 11 explicit `chat()` sites pass `model=self._resolve_stage_model("...")`; helper-callable sites (entity_extraction at `_extract_subjects`, headline_thumbnail at `thumbnail_generator`) wrapped with `_llm_stage.set/reset`; ShotPlanner / NarrationWriter / vision_review callers updated to use `_resolve_stage_model` ahead of legacy tier_cfg fallbacks |
+| [app/ai-video-gen-main/cost_event_tracker.py](../../ai_service/app/ai-video-gen-main/cost_event_tracker.py) | `CostEvent.source` field (`""` / `"matrix"` / `"user_default"` / `"user_per_stage"`); `record_llm(source=...)` kwarg — lands in `cost_breakdown.json` so forensics can answer "did the user override land at runtime?" |
+| [app/ai-video-gen-main/shot_visual_reviewer.py](../../ai_service/app/ai-video-gen-main/shot_visual_reviewer.py) | Hardcoded `model="google/gemini-2.5-pro"` default kept as a safety net for empty stage maps. Pipeline callers now pass `model=self._resolve_stage_model("vision_review") or "google/gemini-2.5-pro"` — Pro stays everywhere unless admin edits the matrix |
+
+### Frontend
+| Module | What changed |
+|---|---|
+| [routes/video-api-studio/-services/video-generation.ts](../../frontend-admin-dashboard/src/routes/video-api-studio/-services/video-generation.ts) | New types: `ModelOverrides`, `UserOverridableStage` (8 stage union), `USER_OVERRIDABLE_STAGE_META` (display labels for the advanced expander); `model_overrides?: ModelOverrides` on `GenerateVideoRequest`; history rehydration in `getRemoteHistory` from `sel['model_overrides'] ?? meta['model_overrides']` |
+| [routes/video-api-studio/console/-components/SettingsPopover.tsx](../../frontend-admin-dashboard/src/routes/video-api-studio/console/-components/SettingsPopover.tsx) | New `ModelOverridesPanel` sub-component (mirrors `AiVideoPanel`). Single "Default model" dropdown sourced from `useAIModelsList({ use_case: 'video' })` mass-applies to every user-overridable stage. Optional "Customize per stage" accordion exposes 8 per-stage rows. `prunePerStage()` strips empty/whitespace before serialization so FE state never carries values the BE would reject |
+
+## 6. Override semantics
+
+| User sends | Effect |
+|---|---|
+| Nothing (`model_overrides` omitted) | Every stage uses its admin matrix default. `source="matrix"` on every cost event |
+| Legacy `model: "X"` only | Collapsed to `ModelOverrides(default="X")` server-side; same as if user set the default in the panel |
+| `model_overrides: {default: "X"}` | Every **user-overridable** stage uses X; pinned stages (vision_review + utility) stay on admin defaults. `source="user_default"` on overridden cost events |
+| `model_overrides: {default: "X", per_stage: {regen_html: "Y"}}` | `regen_html` uses Y, every other user-overridable stage uses X, pinned stays admin. `source="user_per_stage"` for regen_html, `"user_default"` for others |
+| `model_overrides: {per_stage: {shot_planner: "Y"}}` (no default) | `shot_planner` uses Y, every other stage uses admin defaults. `source="user_per_stage"` for shot_planner, `"matrix"` for others |
+| `model_overrides: {per_stage: {vision_review: "Y"}}` | Silently ignored — `user_overridable=false` for vision_review. `source="matrix"`. No error |
+| Both legacy `model: "X"` and new `model_overrides: {...}` | `model_overrides` wins; service emits a `logger.warning` so client-side bugs surface in audit |
+
+## 7. Cost tracking
+
+`CostEvent.source` lands in `cost_breakdown.json` per event. Aggregation by `source` is a follow-up; for now, individual events can be queried:
+
+```bash
+jq '[.events[] | select(.kind=="llm") | {stage, model, source}] | group_by(.source) | map({source: .[0].source, count: length})' cost_breakdown.json
+```
+
+Expected on a typical Ultra run with user override:
+- `source: "matrix"` — utility stages, vision review
+- `source: "user_default"` or `"user_per_stage"` — critical stages
+
+## 8. Files reference
+
+### Added
+- [app/constants/pipeline_stages.py](../../ai_service/app/constants/pipeline_stages.py)
+- [admin_core_service/.../V200__ai_model_stage_assignments.sql](../../admin_core_service/src/main/resources/db/migration/V200__ai_model_stage_assignments.sql)
+
+### Modified
+- [app/schemas/video_generation.py](../../ai_service/app/schemas/video_generation.py) — `ModelOverrides` DTO + validator
+- [app/services/ai_models_service.py](../../ai_service/app/services/ai_models_service.py) — `ResolvedModel` + `get_stage_model_map`
+- [app/services/video_generation_service.py](../../ai_service/app/services/video_generation_service.py) — `STAGE_ROUTING_ENABLED` gate, resolver, tuple projection
+- [app/routers/external_video_generation.py](../../ai_service/app/routers/external_video_generation.py) — three call sites forward `model_overrides`
+- [app/ai-video-gen-main/automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) — normalizer + pipeline + OpenRouterClient + ~13 LLM call sites
+- [app/ai-video-gen-main/cost_event_tracker.py](../../ai_service/app/ai-video-gen-main/cost_event_tracker.py) — `source` field
+- [app/ai-video-gen-main/shot_visual_reviewer.py](../../ai_service/app/ai-video-gen-main/shot_visual_reviewer.py) — Pro safety-net docstring
+- [frontend-admin-dashboard/.../video-generation.ts](../../frontend-admin-dashboard/src/routes/video-api-studio/-services/video-generation.ts) — types + rehydration
+- [frontend-admin-dashboard/.../SettingsPopover.tsx](../../frontend-admin-dashboard/src/routes/video-api-studio/console/-components/SettingsPopover.tsx) — `ModelOverridesPanel`
+
+### Not created (explicit non-goals)
+- ❌ No admin "AIModelMatrix" settings page — matrix edits via SQL.
+- ❌ No `PATCH /models/v2/stage-assignments` endpoint — out of scope.
+
+## 9. Rollout
+
+1. Apply migration `V200` to staging. Verify: `SELECT COUNT(*) FROM ai_model_stage_assignments WHERE use_case='video' AND is_active=TRUE` → 85.
+2. Set `STAGE_ROUTING_ENABLED=true` on staging.
+3. Generate runs across all 5 tiers. Inspect `cost_breakdown.json`: expected to match legacy behavior (matrix == day-1 defaults). `source: "matrix"` on every event.
+4. Send a request with `model_overrides: {default: "anthropic/claude-sonnet-4-6"}`. Expect critical stages on Sonnet, utility on Flash, vision_review still on Pro.
+5. Soak 1 week. Watch cost telemetry per stage.
+6. Enable in production. Once stable, drop the `STAGE_ROUTING_ENABLED` flag check (becomes always-on).
+
+## 10. Deep-review disposition
+
+A code-review pass after landing the change surfaced 7 blockers + 8 nice-to-fixes; 13 were fixed in the same session. Surviving deferred items:
+
+- **B5 full DB allow-list validation** — currently only pydantic-side format check (`provider/model`, max 200 chars). A malicious request with `default: "google/does-not-exist"` will reach OpenRouter and 4xx there. Recommended follow-up: validate at router entry against `SELECT model_id FROM ai_models WHERE is_active=TRUE AND 'video' = ANY(recommended_for)`.
+- **B7 free-tier seed uses gemini-3-flash-preview (premium 2× credit multiplier)** — matches the existing legacy `_FLASH_TIERS` routing at `video_generation_service.py:712` exactly, so not a regression. Admins can edit free-tier rows to a true free model post-launch.
+- **N4 `pgcrypto` extension** — `gen_random_uuid()` requires it; verify on target DBs before applying V200.
+- **N5 redundant single-column `is_active` index** — dropped on next cleanup.
+- **N2 db_session-nil logging** — minor logging miss.
+
+## 11. Known gaps not yet addressed
+
+- **No admin UI for editing the matrix** — defaults are seeded by migration; admins edit individual cells via SQL until a follow-up `AIModelMatrix.tsx` ships.
+- **No per-institute overlays** — matrix is global. Multi-tenant per-institute overrides are a Phase 2 plan.
+- **No per-stage user override for medium/utility stages** — `cultural_context`, `image_prompt_enhancement`, `headline_thumbnail`, etc. always use admin defaults. Intentional cost guardrail.
+- **No quality_score-driven dynamic routing** — admin picks explicit models per cell.
+- **Legacy v2 model knobs (`preferred_script_model`, `preferred_shot_model`) still in `QUALITY_TIERS`** — kept as fallback for when stage routing is off. Removed when v2 deletion lands.
+
+---
+
+# Live progress aggregator (2026-05) — polling-based v3 pipeline UI
+
+**Status**: shipped 2026-05. v3 only.
+**Audience**: engineers maintaining the AI video studio pipeline view, the polling `/status` endpoint, or anything that reads `extra_metadata.live`.
+**Why**: The pipeline already collected rich per-shot telemetry (director decisions, regen verdicts, third-party polling, costs) but the FE only ever saw the coarse `sub_stage / shot_done / shot_error` triplet that bubbled through SSE. The studio UI showed a generic "Filming 3/8" spinner with no visibility into what was actually running. This rework gives the FE one structured live snapshot, served from the polling status endpoint, that drives both live and history views from the same shape.
+
+## 1. What changed end-to-end
+
+```
+Pipeline thread emits _emit_progress({type, ...}) events
+        │
+        ▼
+RunStateAggregator.handle_event(video_id, ev)   ← NEW, in-process singleton
+        │  (also forwarded to the existing SSE queue — additive)
+        ▼
+LiveProgress snapshot (per video_id, RLock-guarded)
+        │
+        │  every 5s + on terminal transition
+        ▼
+ai_gen_video.extra_metadata.live   ← persisted JSONB for history reads
+        │
+        ▼
+GET /status/{video_id}   →   response.live   (in-memory first, DB fallback)
+        │
+        ▼
+FE useVideoStatus()  (refetchInterval = 15s while IN_PROGRESS, false on terminal)
+        │
+        ▼
+derivePipelineFromStatus(status)  enriches each SceneSlot with
+liveDetail { substage, regenCount, attempts, regenLog, externalCalls, … }
+        │
+        ▼
+PipelineFlow auto-focuses on liveActiveStage / single in-production scene
+SceneNode renders chips + 🔄 regen counter + live-substage line
+SceneDetail drawer shows verdict log + external calls
+Bottom-center "Director:" ticker shows the latest director_thought
+```
+
+## 2. New module
+
+| File | Purpose | Lines |
+|---|---|---|
+| [app/ai-video-gen-main/run_state_aggregator.py](../../ai_service/app/ai-video-gen-main/run_state_aggregator.py) | Process-local `RunStateAggregator` singleton (`RUN_STATE`). Holds one `LiveProgress` per video_id under a per-entry `threading.RLock`. Exposes `start_run` / `end_run` / `handle_event` / `snapshot` / `serialize_for_db`. v3 stage IDs (`pitch`, `research`, `shotPlanner`, `narrationWriter`, `filming`, `talent`, `score`, `finalCut`) match the FE `PipelineNodeId` enum exactly. Single-instance assumption documented — swap `_runs` for Redis when scaling out. | ~470 |
+
+## 3. New / enriched `_emit_progress` events
+
+All additive — existing `sub_stage` / `shot_done` / `shot_error` continue to fire.
+
+| Event | When | Site |
+|---|---|---|
+| `sub_stage[shot_planning_done]` (enriched) | After ShotPlanner finalizes | `_run_v3_shot_planning` in [automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) — now carries `shots_summary[]` with `shot_type / intent_role / audio_policy / background_treatment / transition_in / narration_brief / duration_estimate_s` per shot, plus `recurring_motifs`. |
+| `shot_substage` `{shot_idx, substage, message}` | Entry of bbox-lint / brand-asset / vision-review and start of `_shot_task` | `_lint_shot_bbox`, `_lint_shot_brand_asset`, `_review_shot_visually`, `_shot_task` |
+| `shot_regen_attempt` `{shot_idx, step, attempt, verdict, reason}` | When a gate decides to fire a corrective regen | bbox-lint at the "firing corrective regen" log line; brand-asset at the "MISSING — firing corrective regen" line; vision-review at the severity-3 branch |
+
+The aggregator also handles `external_call`, `cost_tick`, `director_thinking`, `render_progress`, `tts_segment_done`, `thumbnails_ready` event types — these are reserved for future emit sites (Veo polling wrapper, cost tracker hook, etc.). The aggregator gracefully ignores unknown event types.
+
+Two helper methods on the pipeline class make new emits one-liners:
+- `_emit_shot_substage(shot_idx, substage, message=None)`
+- `_emit_shot_regen(shot_idx, step, attempt, verdict, reason=None)`
+
+## 4. Service / endpoint changes
+
+| File | Change |
+|---|---|
+| [app/services/video_generation_service.py](../../ai_service/app/services/video_generation_service.py) | New lazy import helper `_get_run_state_aggregator()`. `_progress_cb` now calls `aggregator.handle_event(video_id, ev)` before queueing for SSE. `start_run(video_id)` fires before the pipeline thread is launched. `end_run(video_id, "COMPLETED" \| "FAILED")` fires at every terminal point (success, error, cancellation). Periodic flush every 5 s (and on each terminal transition) calls `repository.update_live_snapshot(video_id, snap)`. `get_video_status` attaches `live` to the response, preferring in-memory, falling back to `extra_metadata.live`. The authoritative DB `status` is folded onto the snapshot so the FE never has to reconcile two status strings. |
+| [app/repositories/ai_video_repository.py](../../ai_service/app/repositories/ai_video_repository.py) | New `update_live_snapshot(video_id, snapshot)` — replaces `extra_metadata.live` atomically; best-effort with rollback on failure. |
+| [app/schemas/video_generation.py](../../ai_service/app/schemas/video_generation.py) | `VideoStatusResponse.live: Optional[Dict[str, Any]]` field added with shape-describing docstring. Legacy `generation_progress` retained. |
+
+The SSE streaming-POST endpoint at `/external/video/v1/generate` is **intentionally retained**. The aggregator is additive — events flow into both the queue (SSE) and the aggregator (polling snapshot). Removing SSE involves cross-cutting FE work in `generateVideo()` / `regenerateFromStage()` / `addToStage()` consumers (each a streaming body-parse loop) and is deferred to a separate iteration since the live polling UI is fully functional without it.
+
+## 5. FE changes
+
+| File | Change |
+|---|---|
+| [routes/video-api-studio/-services/video-generation.ts](../../frontend-admin-dashboard/src/routes/video-api-studio/-services/video-generation.ts) | New types: `VideoLiveProgress`, `VideoLiveStageId`, `VideoLiveStageProgress`, `VideoLiveShotProgress`, `VideoLiveExternalCall`, `VideoLiveCosts`, `VideoLiveEvent`. `VideoStatusResponse.live` added. |
+| [routes/video-api-studio/-components/pipeline/-utils/use-video-status.ts](../../frontend-admin-dashboard/src/routes/video-api-studio/-components/pipeline/-utils/use-video-status.ts) | Rewritten to use `refetchInterval: 15s` while `status` is non-terminal, `false` once terminal. `staleTime: 0` so React Query re-renders consumers on every successful poll. |
+| [routes/video-api-studio/-components/pipeline/-utils/derive-pipeline-state.ts](../../frontend-admin-dashboard/src/routes/video-api-studio/-components/pipeline/-utils/derive-pipeline-state.ts) | New `SceneLiveDetail` shape on `SceneSlot.liveDetail`. New top-level `PipelineState.liveActiveStage`, `liveActiveSubstage`, `liveDirectorThought`, `liveStarted`, `liveLastEventAt`, `liveCosts`. `derivePipelineFromStatus` now folds `status.live` over the base derivation — preserving URLs / talent / score enrichment, overriding scene state from `live.shots[].state`, populating decisions when the base derivation didn't have them. Two helpers: `liveStateToNodeState`, `sumRegenAttempts`. |
+| [routes/video-api-studio/-components/pipeline/PipelineFlow.tsx](../../frontend-admin-dashboard/src/routes/video-api-studio/-components/pipeline/PipelineFlow.tsx) | Auto-focus camera: when `state.liveActiveStage` changes (or exactly one scene is in_production during Filming), `flow.fitView({nodes: [target], padding: 0.3, duration: 500, maxZoom: 0.9})` smoothly pans to it. `onMoveStart` flips `followLiveRef.current = false` so any manual pan/zoom opts out. New bottom-center `<Panel>` renders the director-thinking ticker. |
+| [routes/video-api-studio/-components/pipeline/nodes/SceneNode.tsx](../../frontend-admin-dashboard/src/routes/video-api-studio/-components/pipeline/nodes/SceneNode.tsx) | `SUBSTAGE_VISUAL` map (label + icon per substage). Added `transition_in` chip alongside the existing `intent_role` / `background_treatment` chips. New 🔄 regen counter chip in the header when `liveDetail.regenCount > 0`. New live substage line (icon + label + active external call) below the chip row, visible only while the scene is in_production. |
+| [routes/video-api-studio/-components/pipeline/NodeDetailSheet.tsx](../../frontend-admin-dashboard/src/routes/video-api-studio/-components/pipeline/NodeDetailSheet.tsx) | Scene branch gains a "Live progress" panel: current substage, per-gate attempt counts, full verdict log, external calls, last error, elapsed seconds. Quietly absent for runs without `liveDetail`. |
+
+## 6. Behavior guarantees
+
+- **No legacy regression.** v2 runs that don't populate `live` continue to render via the existing `generation_progress`-based derivation. The FE detects `live` and additively enriches; absent `live` means the diagram falls back to the pre-rework view.
+- **SSE coexists.** The streaming-POST `/generate` endpoint is unchanged. Every progress event still lands on the SSE queue AND in the aggregator — no event is dropped. A future cleanup can remove SSE without touching the aggregator code.
+- **Single-instance assumption.** The aggregator is process-local. Multi-replica deploys need either sticky routing by video_id or a Redis snapshot store — the choke point is `RunStateAggregator._runs`.
+- **History parity.** A history view of a wrapped run reads `extra_metadata.live` (the final snapshot persisted at terminal transition) and renders the same scene-level decisions + final regen log as a live run did at completion. Per-shot URLs / final media still come from the base derivation.
+- **Polling cadence.** 15 s while running, halted on terminal status. Token + cost data refreshes at the same cadence; the per-shot regen counter updates within one poll of the BE emit.
+- **Auto-focus respects the user.** Any manual pan/zoom turns off the auto-focus camera until the user reloads or manually navigates. No surprise scroll-jacking.
+
+## 7. Cost surface
+
+Aggregator memory: ~1–5 KB per active run (deepcopy-isolated snapshot + 200-event rolling log).
+DB write volume: 1 row update per video every 5 s = 12 writes/min/active video. Truncated event log keeps each write under ~50 KB.
+No new LLM calls. No new third-party calls. No new render-worker work.
+
+## 8. Deferred (separate iteration)
+
+- **Remove SSE.** `POST /generate` continues to stream; `generateVideo()` / `regenerateFromStage()` / `addToStage()` continue to parse body-line SSE. Removal requires rewriting all three consumers (in `video-generation.ts`) plus the SSE state machine in `VideoConsoleWorkspace.tsx`. The aggregator path makes SSE redundant but not yet harmful.
+- **Delete `FilmingNode` Phase 1 placeholder + `GenerationProgress` linear stepper.** Both are still referenced by `PipelineFlow.tsx` / `VideoConsoleWorkspace.tsx`; safe deletion requires the SSE removal above first.
+- **External-call wrapping for fal.ai Veo / Seedream / Pexels / ElevenLabs.** The aggregator already handles `external_call` events; emit sites in `fal_veo_client.py` etc. are not wired yet. Wrapping the queue submit-poll loop is the highest-ROI follow-up.
+- **`cost_tick` emits from `AiVideoCostTracker.try_charge`.** Aggregator handles them; tracker doesn't emit yet.
+- **Density-validator substage emit.** Density is called from the caller (not self-contained), so it didn't fit the same one-liner pattern as the other three gates. Add when refactoring the validator loop.
+- **`director_thinking` natural-language emits.** ShotPlanner / NarrationWriter could optionally emit short "I chose hook → setup → moment because…" lines for the ticker. Not yet wired.
+- **Multi-instance support.** Swap `_runs` for a Redis-backed store and add sticky routing by video_id when ai_service moves past one pod.
+
+## 9. Files reference
+
+### Added
+- [app/ai-video-gen-main/run_state_aggregator.py](../../ai_service/app/ai-video-gen-main/run_state_aggregator.py)
+
+### Modified — backend
+- [app/ai-video-gen-main/automation_pipeline.py](../../ai_service/app/ai-video-gen-main/automation_pipeline.py) — `_emit_shot_substage` + `_emit_shot_regen` helpers; enriched `shot_planning_done` emit; substage emits in bbox-lint / brand-asset / vision-review entries + `_shot_task` HTML-gen start; regen-attempt emits at each gate's regen decision
+- [app/services/video_generation_service.py](../../ai_service/app/services/video_generation_service.py) — aggregator lazy-import helper; `_progress_cb` forwards to aggregator; `start_run` / `end_run` lifecycle; 5 s flush loop; `get_video_status` attaches `live`
+- [app/repositories/ai_video_repository.py](../../ai_service/app/repositories/ai_video_repository.py) — `update_live_snapshot`
+- [app/schemas/video_generation.py](../../ai_service/app/schemas/video_generation.py) — `VideoStatusResponse.live`
+
+### Modified — frontend
+- [routes/video-api-studio/-services/video-generation.ts](../../frontend-admin-dashboard/src/routes/video-api-studio/-services/video-generation.ts)
+- [routes/video-api-studio/-components/pipeline/-utils/use-video-status.ts](../../frontend-admin-dashboard/src/routes/video-api-studio/-components/pipeline/-utils/use-video-status.ts)
+- [routes/video-api-studio/-components/pipeline/-utils/derive-pipeline-state.ts](../../frontend-admin-dashboard/src/routes/video-api-studio/-components/pipeline/-utils/derive-pipeline-state.ts)
+- [routes/video-api-studio/-components/pipeline/PipelineFlow.tsx](../../frontend-admin-dashboard/src/routes/video-api-studio/-components/pipeline/PipelineFlow.tsx)
+- [routes/video-api-studio/-components/pipeline/nodes/SceneNode.tsx](../../frontend-admin-dashboard/src/routes/video-api-studio/-components/pipeline/nodes/SceneNode.tsx)
+- [routes/video-api-studio/-components/pipeline/NodeDetailSheet.tsx](../../frontend-admin-dashboard/src/routes/video-api-studio/-components/pipeline/NodeDetailSheet.tsx)

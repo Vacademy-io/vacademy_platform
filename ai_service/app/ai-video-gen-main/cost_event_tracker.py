@@ -47,6 +47,14 @@ class CostEvent:
     outcome: str = "ok"     # "ok" | "empty_string_recovered" | "parse_failed" | "ship_original_after_regen" | "error"
     cache_read_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
+    # Per-stage routing telemetry (V200). "" when stage routing is off / map
+    # missing for this stage; otherwise one of:
+    #   "matrix"           — admin default from ai_model_stage_assignments
+    #   "user_default"     — user's ModelOverrides.default replaced the matrix
+    #   "user_per_stage"   — user's ModelOverrides.per_stage[stage] replaced the matrix
+    # Lands in cost_breakdown.json so forensics can answer "did the user
+    # override actually land at runtime?".
+    source: str = ""
 
 
 class CostEventTracker:
@@ -71,10 +79,16 @@ class CostEventTracker:
         outcome: str = "ok",
         duration_ms: Optional[int] = None,
         cost_usd: float = 0.0,
+        source: str = "",
     ) -> None:
         """Record one successful LLM completion. `usage` is the dict OpenRouter returns
         (with `prompt_tokens`, `completion_tokens`, optional `cache_read_input_tokens`,
-        `cache_creation_input_tokens`)."""
+        `cache_creation_input_tokens`).
+
+        `source` (optional) attributes the model choice to the per-stage routing
+        layer — see CostEvent.source docstring. Empty string ("") = legacy
+        path / no stage routing active for this call.
+        """
         self._events.append(CostEvent(
             timestamp=_now_iso(),
             stage=stage,
@@ -88,6 +102,7 @@ class CostEventTracker:
             cost_usd=float(cost_usd or 0.0),
             duration_ms=duration_ms,
             outcome=outcome,
+            source=source,
         ))
 
     def record_image(

@@ -771,6 +771,52 @@ def _normalize_recurring_motifs(motifs: Any) -> List[Dict[str, str]]:
     return out
 
 
+_MUSIC_MOOD_ENUM = frozenset({"default", "celebratory", "educational", "cinematic"})
+
+
+def _normalize_music_plan(plan: Any) -> Optional[Dict[str, Any]]:
+    """Coerce music_plan into the {overall_mood, overall_genre, chunks[]} shape
+    consumed by music_generator. Returns None when the LLM omitted it or the
+    payload is unrecoverable — caller falls back to `_build_default_music_plan`.
+
+    Mirrors the Director's MUSIC_PLAN_EXTENSION contract; downstream code
+    treats v2 Director output and v3 ShotPlanner output interchangeably.
+    """
+    if not isinstance(plan, dict):
+        return None
+    chunks_raw = plan.get("chunks")
+    if not isinstance(chunks_raw, list) or not chunks_raw:
+        return None
+    chunks: List[Dict[str, Any]] = []
+    for ch in chunks_raw:
+        if not isinstance(ch, dict):
+            continue
+        prompt = str(ch.get("timestamped_prompt") or "").strip()
+        if not prompt:
+            continue
+        try:
+            start = float(ch.get("start_time") or 0.0)
+            end = float(ch.get("end_time") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if end <= start:
+            continue
+        chunks.append(
+            {
+                "start_time": round(start, 3),
+                "end_time": round(end, 3),
+                "timestamped_prompt": prompt,
+            }
+        )
+    if not chunks:
+        return None
+    return {
+        "overall_mood": str(plan.get("overall_mood") or "").strip(),
+        "overall_genre": str(plan.get("overall_genre") or "").strip(),
+        "chunks": chunks,
+    }
+
+
 def normalize_shot_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
     """Apply normalization + lazy defaults to a parsed shot plan. Idempotent.
 
@@ -786,10 +832,15 @@ def normalize_shot_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
 
     _derive_shot_timings(normalized)
 
+    audio_mood_raw = str(plan.get("audio_mood") or "").strip().lower()
+    audio_mood = audio_mood_raw if audio_mood_raw in _MUSIC_MOOD_ENUM else ""
+
     return {
         "shots": normalized,
         "continuity_notes": str(plan.get("continuity_notes") or "").strip(),
         "recurring_motifs": _normalize_recurring_motifs(plan.get("recurring_motifs")),
+        "music_plan": _normalize_music_plan(plan.get("music_plan")),
+        "audio_mood": audio_mood,
     }
 
 
@@ -851,6 +902,8 @@ def plan_shots(
     cultural_context: Any = None,
     template_catalog_md: Optional[str] = None,
     valid_template_ids: Optional[List[str]] = None,
+    include_music_plan: bool = False,
+    music_plan_target_duration_s: Optional[float] = None,
     temperature: float = 0.6,
     max_tokens: int = 16000,
 ) -> Dict[str, Any]:
@@ -862,11 +915,19 @@ def plan_shots(
     Passed in rather than instantiated here so callers can inject test doubles
     and so this module stays free of network deps.
 
+    When `include_music_plan=True`, the Director's MUSIC_PLAN_EXTENSION is
+    appended to the system prompt and ShotPlanner emits a top-level
+    `music_plan` (mood/genre/timestamped chunks) + optional `audio_mood`.
+    Mirrors the v2 Director contract so downstream music_generator code
+    treats both plans interchangeably.
+
     Returns:
       {
         "shots":             [<normalized shot dicts>],   # never empty on success
         "continuity_notes":  "<≤200 chars>",
         "recurring_motifs":  [<normalized motif dicts>],
+        "music_plan":        {<mood, genre, chunks>} | None,
+        "audio_mood":        "<default|celebratory|educational|cinematic|"">",
         "usage":             {<llm token usage>},
         "raw":               "<raw llm response>",        # for telemetry / debug
         "wpm":               150.0,
@@ -906,8 +967,36 @@ def plan_shots(
         valid_template_ids=valid_template_ids,
     )
 
+    system_content = SHOT_PLANNER_SYSTEM_PROMPT
+    if include_music_plan:
+        # Append the Director's MUSIC_PLAN_EXTENSION verbatim so v2 Director
+        # and v3 ShotPlanner produce music_plan payloads under the same
+        # contract — music_generator treats them interchangeably. The chunk
+        # budget reminder goes in the user prompt instead of the system block
+        # so it stays per-run.
+        try:
+            from director_prompts import MUSIC_PLAN_EXTENSION  # type: ignore
+        except ImportError:
+            MUSIC_PLAN_EXTENSION = ""  # type: ignore
+        if MUSIC_PLAN_EXTENSION:
+            system_content = system_content + MUSIC_PLAN_EXTENSION
+            _mp_target = float(music_plan_target_duration_s or target_duration_s)
+            _chunk_cap = 180.0
+            _chunks_needed = max(1, int(-(-_mp_target // _chunk_cap)))  # ceil
+            user_prompt = (
+                user_prompt
+                + f"\n\nMUSIC PLAN REMINDER: total narration ≈ {_mp_target:.1f}s. "
+                f"Emit `music_plan.chunks` with {_chunks_needed} chunk(s) tiling "
+                f"[0.0, {_mp_target:.1f}] with no gaps. Each chunk's "
+                f"`timestamped_prompt` is one prose string with `[mm:ss]` markers "
+                f"(chunk-relative; first marker `[00:00]`). Every prompt must "
+                f"contain \"no vocals, no lyrics\". Match the music to the shots "
+                f"you actually planned (instrumentation + tempo + mood derive "
+                f"from the shot palette/energy, not a default warm-piano bed)."
+            )
+
     messages = [
-        {"role": "system", "content": SHOT_PLANNER_SYSTEM_PROMPT},
+        {"role": "system", "content": system_content},
         {"role": "user", "content": user_prompt},
     ]
     text, usage = llm_chat(
@@ -930,6 +1019,8 @@ def plan_shots(
         "shots": parsed["shots"],
         "continuity_notes": parsed["continuity_notes"],
         "recurring_motifs": parsed["recurring_motifs"],
+        "music_plan": parsed.get("music_plan"),
+        "audio_mood": parsed.get("audio_mood", ""),
         "usage": usage or {},
         "raw": text or "",
         "wpm": DEFAULT_WPM,

@@ -380,6 +380,43 @@ class AiVideoRepository:
             if not self.session:
                 session.close()
 
+    def update_live_snapshot(
+        self,
+        video_id: str,
+        snapshot: Dict[str, Any],
+    ) -> None:
+        """Replace ``extra_metadata.live`` with the latest aggregator snapshot.
+
+        Called periodically (~every 5 s) by the async flusher in the
+        generation service so post-restart polls and history reads can fall
+        back to the persisted snapshot when the in-process aggregator no
+        longer has the run. Always overwrites — the snapshot is already the
+        authoritative shape; merging would double-count.
+
+        Best-effort: any DB error is swallowed so a transient Postgres
+        hiccup never breaks the pipeline thread.
+        """
+        if not snapshot:
+            return
+        session = self._get_fresh_session()
+        try:
+            video = session.query(AiGenVideo).filter_by(video_id=video_id).first()
+            if not video:
+                return
+            meta = dict(video.extra_metadata or {})
+            meta["live"] = snapshot
+            video.extra_metadata = meta
+            flag_modified(video, "extra_metadata")
+            video.updated_at = datetime.utcnow()
+            session.commit()
+        except Exception:
+            try:
+                session.rollback()
+            except Exception:
+                pass
+        finally:
+            session.close()
+
     def update_generation_progress(
         self,
         video_id: str,

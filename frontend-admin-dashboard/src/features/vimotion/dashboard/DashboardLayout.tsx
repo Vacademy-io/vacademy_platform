@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { getInstituteId } from '@/constants/helper';
 import { VideoConsoleWorkspace } from '@/routes/video-api-studio/-components/VideoConsoleWorkspace';
-import { Sidebar } from './Sidebar';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { Sidebar, SidebarContent } from './Sidebar';
 import { Topbar } from './Topbar';
+import { BottomTabBar } from './BottomTabBar';
 import { RecentTab } from './RecentTab';
 import { ReelsTab } from './ReelsTab';
 import { AssetsTab } from './AssetsTab';
@@ -15,6 +17,7 @@ import { isTab, type DashboardTab } from './tabsConfig';
 import { VimTourProvider, useVimTour } from '../tour/VimTourProvider';
 import { useVimotionRole } from '../auth/useVimotionRole';
 import { useVimotionDocumentChrome } from '../brand/useVimotionDocumentChrome';
+import { useVimotionNativeShell } from '../native/useVimotionNativeShell';
 
 export function DashboardLayout() {
     useVimotionDocumentChrome();
@@ -27,6 +30,7 @@ export function DashboardLayout() {
 }
 
 function DashboardShell() {
+    useVimotionNativeShell();
     const navigate = useNavigate();
     const instituteId = getInstituteId();
     const search = useSearch({ strict: false }) as { tab?: string; videoId?: string };
@@ -37,6 +41,7 @@ function DashboardShell() {
     const tab: DashboardTab = requestedTab === 'team' && !isAdmin ? 'recent' : requestedTab;
     const videoId = typeof search.videoId === 'string' && search.videoId ? search.videoId : null;
     const { startTourIfNew } = useVimTour();
+    const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
     // First-time auto-start: dashboard tour kicks in on the recent tab (the
     // landing tab) once anchors are mounted. The Composer tour kicks in the
@@ -98,8 +103,19 @@ function DashboardShell() {
         // h-screen (not min-h-screen) bounds the shell to one viewport so only
         // <main> scrolls — the sidebar + topbar stay pinned regardless of
         // content length.
-        <div className="flex h-screen w-screen overflow-hidden bg-[#FAFAF7]">
+        <div className="pt-safe pb-safe flex h-screen w-screen overflow-hidden bg-[#FAFAF7]">
             <Sidebar instituteId={instituteId} activeTab={tab} onTabChange={setTab} />
+
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+                <SheetContent side="left" className="w-72 p-0 sm:max-w-xs md:hidden">
+                    <SidebarContent
+                        instituteId={instituteId}
+                        activeTab={tab}
+                        onTabChange={setTab}
+                        onNavigate={() => setMobileNavOpen(false)}
+                    />
+                </SheetContent>
+            </Sheet>
 
             <div className="flex min-w-0 flex-1 flex-col">
                 <Topbar instituteId={instituteId} activeTab={tab} />
@@ -123,7 +139,7 @@ function DashboardShell() {
                         )}
                     </main>
                 ) : (
-                    <main className="flex-1 overflow-y-auto p-8">
+                    <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
                         <div className="mx-auto max-w-5xl space-y-6">
                             <OnboardingBanner />
                             {tab === 'recent' && <RecentTab />}
@@ -135,6 +151,12 @@ function DashboardShell() {
                         </div>
                     </main>
                 )}
+
+                <BottomTabBar
+                    activeTab={tab}
+                    onTabChange={setTab}
+                    onMoreClick={() => setMobileNavOpen(true)}
+                />
             </div>
         </div>
     );

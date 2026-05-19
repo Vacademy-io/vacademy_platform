@@ -559,7 +559,7 @@ export function BrandKitDrawer({ open, onOpenChange, instituteId, kit }: BrandKi
                             </div>
 
                             {/* Fonts */}
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <FormField
                                     control={form.control}
                                     name="headingFont"
@@ -686,7 +686,7 @@ export function BrandKitDrawer({ open, onOpenChange, instituteId, kit }: BrandKi
                                 />
                                 {form.watch('watermarkEnabled') && (
                                     <div className="mt-3 space-y-3">
-                                        <div className="grid grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                             <FormField
                                                 control={form.control}
                                                 name="watermarkPosition"

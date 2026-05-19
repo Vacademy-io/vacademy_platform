@@ -63,6 +63,24 @@ def _is_pipeline_cancelled(exc: BaseException) -> bool:
     detect it here by class name so we don't need a fragile dynamic import
     at module load time — the pipeline is only loaded later via sys.path."""
     return type(exc).__name__ == "PipelineCancelled"
+
+
+def _get_run_state_aggregator():
+    """Lazy import of the v3 live-progress aggregator. The aggregator lives
+    in ``ai-video-gen-main/`` so we follow the same sys.path trick the
+    pipeline import uses. Returns the module-level RUN_STATE singleton or
+    None if the module can't be loaded — callers must tolerate None so a
+    broken aggregator never breaks the generation pipeline."""
+    try:
+        import sys as _sys
+        from pathlib import Path as _Path
+        _aigen = str(_Path(__file__).resolve().parent.parent / "ai-video-gen-main")
+        if _aigen not in _sys.path:
+            _sys.path.insert(0, _aigen)
+        from run_state_aggregator import RUN_STATE  # type: ignore
+        return RUN_STATE
+    except Exception:
+        return None
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from ..models.ai_token_usage import ApiProvider, RequestType
@@ -262,6 +280,9 @@ class VideoGenerationService:
         visual_preferences: Optional[Any] = None,
         ai_video_enabled: bool = False,
         ai_video_audio_enabled: bool = False,
+        # Per-stage model overrides (V200 — DB-backed routing). Untyped here
+        # (Any) to avoid a schemas → service circular import.
+        model_overrides: Optional[Any] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Generate video up to a specific stage with SSE progress updates.
@@ -548,6 +569,7 @@ class VideoGenerationService:
                     visual_preferences=visual_preferences,
                     ai_video_enabled=ai_video_enabled,
                     ai_video_audio_enabled=ai_video_audio_enabled,
+                    model_overrides=model_overrides,
                 ):
                     # If we get an error event, refund credits and stop
                     if event.get("type") == "error":
@@ -644,6 +666,12 @@ class VideoGenerationService:
         # tiers, so callers can pass these flags unconditionally.
         ai_video_enabled: bool = False,
         ai_video_audio_enabled: bool = False,
+        # Per-stage model overrides (V200 — DB-backed routing). When set,
+        # resolved into a per-stage map via AIModelsService.get_stage_model_map
+        # and passed to VideoGenerationPipeline. Untyped here (Any) to avoid a
+        # schemas → service circular import; the field shape is the pydantic
+        # `ModelOverrides` from app.schemas.video_generation.
+        model_overrides: Optional[Any] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Run the video generation pipeline stages with real-time DB updates.
@@ -710,6 +738,58 @@ class VideoGenerationService:
             else:
                 pipeline_args["script_model"] = resolved_model
                 pipeline_args["html_model"]   = resolved_model
+
+        # ── V200 stage routing: DB-backed per-stage model assignment ──
+        # When `STAGE_ROUTING_ENABLED=true`, resolve a {stage_id → model_id}
+        # map from `ai_model_stage_assignments` and pass it to the pipeline.
+        # Each LLM call site reads its model via `_resolve_stage_model(stage)`;
+        # when the map is empty (flag off, DB miss, lookup error) the call
+        # falls through to `client.default_model` — zero-risk no-op.
+        # The legacy global `model` field collapses to
+        # `ModelOverrides(default=model)` so a request that pre-dates the
+        # per-stage UI still gets the same critical-stage override behavior.
+        if (os.environ.get("STAGE_ROUTING_ENABLED") or "").strip().lower() in {"true", "1", "yes", "on"}:
+            try:
+                from ..services.ai_models_service import AIModelsService
+                if db_session:
+                    _effective_overrides = model_overrides
+                    if _effective_overrides is None and model:
+                        # Collapse legacy `model` into the new shape so it
+                        # applies only to user-overridable critical stages.
+                        from ..schemas.video_generation import ModelOverrides
+                        _effective_overrides = ModelOverrides(default=model)
+                    elif _effective_overrides is not None and model:
+                        # Both fields sent — model_overrides wins. Log so a
+                        # client-side bug (sending both) shows up in audit.
+                        logger.warning(
+                            f"[VideoGenService] Both legacy `model={model!r}` and "
+                            f"`model_overrides` sent; `model_overrides` wins. "
+                            f"Drop the legacy field on the next request."
+                        )
+                    stage_resolved = AIModelsService(db_session).get_stage_model_map(
+                        use_case="video",
+                        quality_tier=quality_tier,
+                        overrides=_effective_overrides,
+                    )
+                    if stage_resolved:
+                        # Carry (model_id, source) tuple so cost_event_tracker
+                        # can attribute each call to "matrix" / "user_default"
+                        # / "user_per_stage" — preserves the resolution
+                        # provenance the resolver computed.
+                        pipeline_args["stage_model_map"] = {
+                            stage_id: (rm.model_id, rm.source)
+                            for stage_id, rm in stage_resolved.items()
+                        }
+                        logger.info(
+                            f"[VideoGenService] Stage routing resolved "
+                            f"{len(stage_resolved)} stage(s) for tier={quality_tier}; "
+                            f"user_overrides_active={bool(_effective_overrides)}"
+                        )
+            except Exception as _sr_err:
+                logger.warning(
+                    f"[VideoGenService] Stage routing resolution failed "
+                    f"({_sr_err}); falling back to legacy script_model/html_model routing"
+                )
 
         pipeline = VideoGenerationPipeline(**pipeline_args)
         
@@ -1728,10 +1808,18 @@ class VideoGenerationService:
                 _vid_width = 1080 if orientation == "portrait" else 1920
                 _vid_height = 1920 if orientation == "portrait" else 1080
 
-                # Thread-safe queue: pipeline thread puts events; async loop drains them
+                # Thread-safe queue: pipeline thread puts events; async loop drains them.
+                # The live-progress aggregator is the structured-snapshot store the
+                # polling /status endpoint reads from; the queue is the legacy SSE
+                # delivery path (kept until the FE is fully on polling).
                 _prog_queue: _queue.Queue = _queue.Queue()
+                _aggregator = _get_run_state_aggregator()
+                if _aggregator is not None:
+                    _aggregator.start_run(video_id)
 
                 def _progress_cb(event: Dict[str, Any]) -> None:
+                    if _aggregator is not None:
+                        _aggregator.handle_event(video_id, event)
                     _prog_queue.put_nowait(event)
 
                 pipeline_run = functools.partial(
@@ -1786,6 +1874,8 @@ class VideoGenerationService:
 
                 # Run pipeline in thread while draining the progress queue in the
                 # async event loop so sub-stage events reach the SSE client in real time.
+                _LIVE_FLUSH_INTERVAL_S = 5.0
+                _last_live_flush_ts = 0.0
                 with ThreadPoolExecutor() as executor:
                     _pipeline_future = loop.run_in_executor(executor, pipeline_run)
                     while not _pipeline_future.done():
@@ -1819,6 +1909,19 @@ class VideoGenerationService:
                                     except Exception:
                                         pass
                             yield _ev
+                        # Periodic flush of the live snapshot to DB so post-restart
+                        # polls and history reads have something to fall back to.
+                        # Best-effort; aggregator may be absent if module failed to
+                        # load. 5s cadence keeps Postgres write volume bounded.
+                        _now = time.time()
+                        if _aggregator is not None and (_now - _last_live_flush_ts) >= _LIVE_FLUSH_INTERVAL_S:
+                            try:
+                                _snap = _aggregator.serialize_for_db(video_id)
+                                if _snap:
+                                    self.repository.update_live_snapshot(video_id, _snap)
+                            except Exception:
+                                pass
+                            _last_live_flush_ts = _now
                         await asyncio.sleep(0.25)
                     # Drain any remaining events after the future completes
                     while not _prog_queue.empty():
@@ -2201,6 +2304,15 @@ class VideoGenerationService:
                         "message": "Stopped by user",
                     }
                     cancellation_registry.clear(video_id)
+                    _agg_end = _get_run_state_aggregator()
+                    if _agg_end is not None:
+                        _agg_end.end_run(video_id, "FAILED")
+                        try:
+                            _final_snap = _agg_end.serialize_for_db(video_id)
+                            if _final_snap:
+                                self.repository.update_live_snapshot(video_id, _final_snap)
+                        except Exception:
+                            pass
                     return
                 import traceback
                 pipeline_error = str(e)
@@ -2748,6 +2860,7 @@ class VideoGenerationService:
             logger.warning(f"[VideoGenService] No record found in DB for {video_id}")
         
         # If pipeline had error, mark as failed
+        _agg_terminal = _get_run_state_aggregator()
         if pipeline_error:
             logger.error(f"[VideoGenService] Pipeline error: {pipeline_error}")
             video_record = self.repository.get_by_video_id(video_id)
@@ -2764,7 +2877,15 @@ class VideoGenerationService:
                     video_id=video_id,
                     error_message=pipeline_error
                 )
-            
+            if _agg_terminal is not None:
+                _agg_terminal.end_run(video_id, "FAILED")
+                try:
+                    _final_snap = _agg_terminal.serialize_for_db(video_id)
+                    if _final_snap:
+                        self.repository.update_live_snapshot(video_id, _final_snap)
+                except Exception:
+                    pass
+
             yield {
                 "type": "error",
                 "message": f"Video generation encountered an error: {pipeline_error}. Partial files may have been saved.",
@@ -2772,6 +2893,19 @@ class VideoGenerationService:
                 "error_details": pipeline_error,
                 "stage": video_record.current_stage if video_record else "PENDING"
             }
+        elif _agg_terminal is not None:
+            # Loop finished without setting pipeline_error → mark the live
+            # snapshot as completed so the polling endpoint stops showing the
+            # stage spinner. The DB record's status is the authoritative
+            # source on retrospective queries; the aggregator's flip here
+            # keeps the live view in sync without a separate DB read.
+            _agg_terminal.end_run(video_id, "COMPLETED")
+            try:
+                _final_snap = _agg_terminal.serialize_for_db(video_id)
+                if _final_snap:
+                    self.repository.update_live_snapshot(video_id, _final_snap)
+            except Exception:
+                pass
 
         # Clean up the cooperative-stop registry entry. Idempotent — safe even
         # if we already cleared on a PipelineCancelled return earlier.
@@ -2833,18 +2967,47 @@ class VideoGenerationService:
     def get_video_status(self, video_id: str) -> Optional[Dict[str, Any]]:
         """
         Get current status of video generation.
-        
+
         Args:
             video_id: Video identifier
-            
+
         Returns:
-            Video status dictionary or None if not found
+            Video status dictionary or None if not found. Includes a `live`
+            field carrying the v3 RunStateAggregator snapshot — read from
+            process memory while the run is active, falling back to the
+            persisted snapshot in ``extra_metadata.live`` for history views.
+            The DB-side ``status`` field always wins for the top-level
+            status string; ``live.status`` is allowed to lag (it's a
+            snapshot of what the in-process aggregator believed last).
         """
         video_record = self.repository.get_by_video_id(video_id)
         if not video_record:
             return None
-        
-        return video_record.to_dict()
+
+        result = video_record.to_dict()
+
+        # Attach live snapshot. In-memory wins; DB fallback for history /
+        # post-restart reads. Tolerates aggregator load failure (returns
+        # None) so a broken aggregator never breaks status reads.
+        live: Optional[Dict[str, Any]] = None
+        aggregator = _get_run_state_aggregator()
+        if aggregator is not None:
+            try:
+                live = aggregator.snapshot(video_id)
+            except Exception:
+                live = None
+        if live is None:
+            meta = result.get("metadata") or {}
+            live = meta.get("live") if isinstance(meta, dict) else None
+        if live is not None:
+            # Reflect the authoritative DB status onto the snapshot so the
+            # FE doesn't have to reconcile two status strings.
+            db_status = result.get("status")
+            if db_status:
+                live["status"] = db_status
+            result["live"] = live
+
+        return result
 
 
     # ──────────────────────────────────────────────────────────────────────

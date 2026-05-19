@@ -2,29 +2,39 @@ import { useQuery } from '@tanstack/react-query';
 import { getVideoStatus, type VideoStatusResponse } from '../../../-services/video-generation';
 
 /**
- * Lazily fetch `/status` for a video. The response carries
- * `generation_progress.shot_plan` (canonical Director plan) and
- * `cumulative_tokens` — both of which `currentGeneration` doesn't include
- * when a history item is opened directly. PipelineFlow uses this to
- * synthesize per-scene nodes for already-finished videos.
+ * Poll `/status` for a video. The response now carries a `live` payload
+ * (RunStateAggregator snapshot) which is the single source of truth for
+ * the pipeline view — both live runs and history reads consume it the
+ * same way. While the run is IN_PROGRESS we refetch every 15 s; once it
+ * reaches a terminal status (`COMPLETED` / `FAILED` / `STALLED`) we stop
+ * polling. The user can force-refresh via the consumer-provided control.
  *
- * Cached per-`videoId`. 1-minute stale time so an in-flight run still
- * refreshes occasionally; for a wrapped run the data is immutable so the
- * single fetch is a one-off cost.
+ * Cached per-`videoId`. `apiKey` participates in the key so a key
+ * rotation invalidates the cache. We keep `staleTime: 0` so a refetch
+ * always re-renders consumers with the freshest snapshot.
  */
+const POLL_INTERVAL_MS = 15_000;
+const TERMINAL_STATUSES = new Set(['COMPLETED', 'FAILED', 'STALLED', 'CANCELLED']);
+
 export function useVideoStatus(videoId: string | undefined, apiKey: string | undefined) {
     return useQuery<VideoStatusResponse>({
-        // apiKey participates in the key so a key rotation invalidates the
-        // cached status — practically rare but lets the query plugin pass
-        // its exhaustive-deps lint without an exemption.
         queryKey: ['video-status', videoId, apiKey],
         queryFn: () => {
             if (!videoId || !apiKey) throw new Error('missing videoId or apiKey');
             return getVideoStatus(videoId, apiKey);
         },
         enabled: !!videoId && !!apiKey,
-        staleTime: 60 * 1000,
+        staleTime: 0,
         retry: 1,
         refetchOnWindowFocus: false,
+        // Polling cadence: 15 s while running, stopped once terminal.
+        // Returning `false` from `refetchInterval` halts the polling loop;
+        // returning a number reschedules. React Query treats this as the
+        // authoritative cadence — no need for a separate setInterval.
+        refetchInterval: (query) => {
+            const status = query.state.data?.status;
+            if (status && TERMINAL_STATUSES.has(status)) return false;
+            return POLL_INTERVAL_MS;
+        },
     });
 }

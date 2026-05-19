@@ -369,6 +369,12 @@ async def generate_video_external(
                         # service / pipeline gates tier eligibility internally.
                         ai_video_enabled=bool(getattr(p, "ai_video_enabled", False)),
                         ai_video_audio_enabled=bool(getattr(p, "ai_video_audio_enabled", False)),
+                        # Per-stage model overrides (DB-backed routing). When set,
+                        # the service resolves a per-stage map via
+                        # `AIModelsService.get_stage_model_map(...)`. The legacy
+                        # `model` field collapses to `model_overrides.default` if
+                        # `model_overrides` is omitted.
+                        model_overrides=getattr(p, "model_overrides", None),
                     ):
                         await q.put(json.dumps(event))
             except asyncio.CancelledError:
@@ -682,6 +688,11 @@ async def resume_video_external(
                         # preserved. Resumed runs default OFF when absent.
                         ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
                         ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),
+                        # Resume parity: rehydrate per-stage overrides from
+                        # saved metadata if present; otherwise fall through to
+                        # the legacy `model` field (which the service collapses
+                        # into ModelOverrides(default=model)).
+                        model_overrides=_meta.get("model_overrides"),
                     ):
                         await q.put(json.dumps(event))
             except Exception as exc:
@@ -838,6 +849,8 @@ async def retry_video_external(
                     # AI video (Phase 3b) — retry rehydrates from saved meta
                     ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
                     ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),
+                    # Retry parity: rehydrate per-stage overrides from saved meta
+                    model_overrides=_meta.get("model_overrides"),
                 ):
                     await q.put(json.dumps(event))
         except Exception as exc:

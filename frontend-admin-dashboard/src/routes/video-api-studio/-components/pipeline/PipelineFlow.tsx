@@ -751,6 +751,51 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
         return () => cancelAnimationFrame(id);
     }, [flow, nodes.length, stateSignature]);
 
+    // ── Auto-focus on the active stage / scene during live runs ──────────
+    // When the BE pushes a new `live.active_stage` (or a single scene flips
+    // to `in_production` during Filming), softly pan the camera to that
+    // node. The user can opt out by interacting with the canvas — once they
+    // pan or zoom manually, `followLive` flips off until they hit the
+    // "Follow live" button (rendered alongside the canvas controls).
+    const followLiveRef = useRef(true);
+    const lastFocusKeyRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (!followLiveRef.current) return;
+        if (state.status !== 'in_production') return;
+        const activeStage = state.liveActiveStage;
+        if (!activeStage) return;
+
+        // Prefer focusing on the single in-progress scene when Filming is
+        // active and exactly one scene is currently running — that's the
+        // most informative view.
+        let focusNodeId: string | null = null;
+        if (activeStage === 'filming' && state.scenes.length > 0) {
+            const running = state.scenes.filter((s) => s.state === 'in_production');
+            const only = running.length === 1 ? running[0] : undefined;
+            if (only) {
+                focusNodeId = `scene-${only.index}`;
+            }
+        }
+        if (!focusNodeId) focusNodeId = activeStage;
+
+        const target = nodes.find((n) => n.id === focusNodeId);
+        if (!target) return;
+
+        // Deduplicate: don't re-pan on every poll if the focus hasn't moved.
+        if (lastFocusKeyRef.current === focusNodeId) return;
+        lastFocusKeyRef.current = focusNodeId;
+
+        const id = requestAnimationFrame(() => {
+            flow.fitView({
+                nodes: [target],
+                padding: 0.3,
+                duration: 500,
+                maxZoom: 0.9,
+            });
+        });
+        return () => cancelAnimationFrame(id);
+    }, [flow, state.liveActiveStage, state.status, state.scenes, nodes]);
+
     // Show MiniMap once the diagram has many scene nodes — otherwise the
     // user can't see where they are after zooming in. Threshold = 8 since
     // the linear chain alone is already 6 nodes.
@@ -809,6 +854,12 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
                 panOnScroll={false}
                 defaultEdgeOptions={{ type: 'smoothstep' }}
                 onNodeClick={handleNodeClick}
+                onMoveStart={() => {
+                    // Any manual pan/zoom opts the user out of the auto-
+                    // focus camera. Stays off until the run flips to a new
+                    // status (the ref isn't reset between snapshots).
+                    followLiveRef.current = false;
+                }}
             >
                 <Background gap={24} size={1} color="#e5e7eb" />
                 <Controls position="bottom-left" showInteractive={false} />
@@ -819,6 +870,23 @@ function PipelineFlowInner({ state, apiKey }: PipelineFlowProps) {
                 >
                     Click any stage for details
                 </Panel>
+                {/* Director-thinking ticker: a single live line of "what is
+                    the pipeline doing right now" sourced from
+                    state.liveDirectorThought (set by the BE on shot_decisions /
+                    director_thinking events) with a fallback to the active
+                    stage label. Only shown while the run is in production. */}
+                {state.status === 'in_production' && (state.liveDirectorThought || state.liveActiveStage) && (
+                    <Panel
+                        position="bottom-center"
+                        className="m-3 max-w-[560px] truncate rounded-full border bg-white/95 px-3 py-1.5 text-xs text-foreground shadow-md backdrop-blur"
+                    >
+                        <span className="mr-2 inline-block size-1.5 animate-pulse rounded-full bg-blue-500 align-middle" />
+                        <span className="font-medium text-muted-foreground">Director:</span>{' '}
+                        <span className="text-foreground/90">
+                            {state.liveDirectorThought ?? `working on ${state.liveActiveStage}…`}
+                        </span>
+                    </Panel>
+                )}
             </ReactFlow>
             <NodeDetailSheet
                 target={openTarget}

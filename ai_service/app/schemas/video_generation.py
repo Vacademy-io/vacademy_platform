@@ -55,6 +55,85 @@ class ReferenceFileItem(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Per-stage model overrides
+# ---------------------------------------------------------------------------
+# The video pipeline has ~17 distinct LLM stages. By default each stage uses
+# the model assigned in the `ai_model_stage_assignments` matrix (per
+# quality_tier × stage_id). User overrides on this DTO replace the matrix
+# value for stages whose `user_overridable` flag is true:
+#   shot_planner, narration_writer, per_shot_html, act_planner, regen_html,
+#   plus v2-legacy director / script_generation / script_review.
+# Vision review + utility prompts (cultural_context, headline_thumbnail,
+# host_description, etc.) ignore the override — they're pinned to admin
+# defaults to protect cost + quality.
+#
+# Resolution order per stage:
+#   1. overrides.per_stage[stage] if set     → source="user_per_stage"
+#   2. overrides.default if set              → source="user_default"
+#   3. matrix row (admin default)            → source="matrix"
+
+class ModelOverrides(BaseModel):
+    """Per-stage user model overrides for an AI video run."""
+    default: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description=(
+            "Mass-pick model for every user-overridable stage. Equivalent to "
+            "the legacy single `model` field on VideoGenerationRequest."
+        ),
+    )
+    per_stage: Optional[Dict[str, str]] = Field(
+        default=None,
+        description=(
+            "Per-stage explicit overrides. Keys must be user-overridable stage "
+            "IDs from `app.constants.pipeline_stages.PipelineStage`; unknown or "
+            "non-overridable keys are silently ignored. Wins over `default`."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_model_strings(self) -> "ModelOverrides":
+        """Light validation — reject empty / oversized / non-string entries.
+
+        Full DB validation (model exists in `ai_models`, is_active=TRUE,
+        `recommended_for @> 'video'`) happens at the service layer via
+        AIModelsService — this is the FIRST line of defense at the boundary
+        to keep obviously bad payloads out of the resolver path.
+        """
+        if self.default is not None:
+            v = self.default.strip()
+            if not v:
+                self.default = None
+            elif "/" not in v:  # all known model_ids are 'provider/model'
+                raise ValueError(
+                    f"model_overrides.default '{self.default}' is not a valid "
+                    f"model identifier (expected 'provider/model' shape)."
+                )
+            else:
+                self.default = v
+        if self.per_stage:
+            cleaned: Dict[str, str] = {}
+            for k, val in self.per_stage.items():
+                if not isinstance(val, str):
+                    continue
+                vs = val.strip()
+                if not vs:
+                    continue
+                if len(vs) > 200:
+                    raise ValueError(
+                        f"model_overrides.per_stage[{k!r}] exceeds 200 chars."
+                    )
+                if "/" not in vs:
+                    raise ValueError(
+                        f"model_overrides.per_stage[{k!r}] '{val}' is not a "
+                        f"valid model identifier (expected 'provider/model')."
+                    )
+                cleaned[str(k)] = vs
+            self.per_stage = cleaned or None
+        return self
+
+
+# ---------------------------------------------------------------------------
 # Host (on-screen narrator) — first-class concept added in this round.
 # Two host kinds:
 #   • avatar — AI talking head (per-shot Seedream image-to-image conditioned on
@@ -284,7 +363,23 @@ class VideoGenerationRequest(BaseModel):
     )
     model: Optional[str] = Field(
         default=None,
-        description="AI Model to use for generation (e.g. 'xiaomi/mimo-v2-flash:free')"
+        description=(
+            "DEPRECATED single-model override. When set without `model_overrides`, "
+            "the service-layer resolver collapses it to `ModelOverrides(default=model)` "
+            "so it applies only to user-overridable critical stages. Prefer "
+            "`model_overrides` going forward."
+        ),
+    )
+    model_overrides: Optional["ModelOverrides"] = Field(
+        default=None,
+        description=(
+            "Per-stage user model overrides. `default` mass-applies to every "
+            "user-overridable stage (ShotPlanner, NarrationWriter, per-shot HTML, "
+            "act planner, regen HTML, plus v2-legacy script/director stages). "
+            "`per_stage` overrides individual stages (per_stage wins over default). "
+            "Vision review + small utility prompts ignore both and stay on admin "
+            "defaults. Omit entirely to use admin defaults for everything."
+        ),
     )
     quality_tier: str = Field(
         default="ultra",
@@ -591,6 +686,24 @@ class VideoStatusResponse(BaseModel):
             "last_shot ({shot_index, shot_type, duration_s} — quick access to last completed shot), "
             "errors (list[{shot_index, shot_type, error, retrying, attempt, timestamp}] — shot errors, capped at 50), "
             "last_event (raw last pipeline event dict)."
+        )
+    )
+    live: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "v3 live-progress snapshot from RunStateAggregator. Single source of truth "
+            "for the polling-based FE pipeline view. Shape: "
+            "{status, active_stage, active_substage, director_thought, started_at, "
+            "last_event_at, finished_at, stages:{<stage_id>:{state, started_at, wrapped_at, message, detail}}, "
+            "shots:[{idx, shot_type, intent_role, audio_policy, background_treatment, transition_in, "
+            "narration_brief, duration_estimate_s, state, substage, attempts, regen_log, external_call_ids, "
+            "cost_usd, tokens_in, tokens_out, started_at, wrapped_at, elapsed_s, last_error}], "
+            "recurring_motifs, external_calls:[{id, provider, op, state, shot_idx, request_id, "
+            "started_at, finished_at, elapsed_s, poll_count, eta_s, error}], "
+            "costs:{spent_usd, spent_credits, cap_usd, cap_credits, tokens_*}, "
+            "event_log:[{at, type, stage, shot_idx, message, detail}] (last 50)}. "
+            "Read from process memory while the run is active; falls back to the "
+            "persisted snapshot in extra_metadata.live on history reads."
         )
     )
     created_at: Optional[str]

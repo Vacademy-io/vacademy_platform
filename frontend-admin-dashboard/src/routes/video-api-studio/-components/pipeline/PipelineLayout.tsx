@@ -54,9 +54,9 @@ export function PipelineLayout({
     onEdit,
 }: PipelineLayoutProps) {
     return (
-        <div className="flex size-full min-h-[600px] flex-col gap-4 xl:flex-row">
+        <div className="flex size-full min-h-0 flex-col gap-3 sm:gap-4 xl:min-h-[600px] xl:flex-row">
             {/* Left: flow diagram (2/3 on desktop) */}
-            <div className="flex min-h-[480px] flex-1 flex-col rounded-xl border bg-card shadow-sm xl:basis-2/3">
+            <div className="flex min-h-[320px] flex-1 flex-col rounded-xl border bg-card shadow-sm sm:min-h-[400px] xl:min-h-[480px] xl:basis-2/3">
                 <header className="flex items-start justify-between gap-2 border-b px-4 py-3">
                     <div className="min-w-0 flex-1">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -67,7 +67,7 @@ export function PipelineLayout({
                         </h2>
                     </div>
                 </header>
-                <div className="relative min-h-[480px] flex-1">
+                <div className="relative min-h-[320px] flex-1 sm:min-h-[400px] xl:min-h-[480px]">
                     <PipelineFlow state={state} apiKey={apiKey} />
                 </div>
             </div>

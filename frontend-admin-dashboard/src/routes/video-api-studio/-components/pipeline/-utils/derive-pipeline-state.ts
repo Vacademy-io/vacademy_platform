@@ -11,6 +11,7 @@ import type {
     GenerateVideoRequest,
     ShotPlanItem,
     TokenUsage,
+    VideoLiveProgress,
     VideoOrientation,
     VideoStage,
     VideoStatusMetadata,
@@ -220,6 +221,45 @@ export interface SceneSlot {
         requestId?: string;
         cacheHit?: boolean;
     }>;
+    /**
+     * Per-shot live snapshot from the BE RunStateAggregator. Carries the
+     * mid-render substage, regen counters, and any third-party calls active
+     * on this shot. Populated when `status.live.shots[idx]` exists.
+     */
+    liveDetail?: SceneLiveDetail;
+}
+
+/** Mid-render live detail for a single scene. Cleared once the run wraps. */
+export interface SceneLiveDetail {
+    /** html_gen | density | bbox_lint | brand_asset | vision_review | screenshot | tts | media_polling */
+    substage?: string | null;
+    /** Sum of all regen attempts across all gates — drives the scene-card counter chip. */
+    regenCount: number;
+    /** Per-step regen counts, e.g. {vision_regen: 2, bbox_regen: 1}. */
+    attempts?: Record<string, number>;
+    /** Verdict log entries — full timeline of every regen decision. */
+    regenLog?: Array<{
+        step: string;
+        attempt: number;
+        verdict: string;
+        reason?: string | null;
+        at: number;
+    }>;
+    /** External-call records cross-referenced from `live.external_calls`. */
+    externalCalls?: Array<{
+        id: string;
+        provider: string;
+        op: string;
+        state: 'queued' | 'polling' | 'done' | 'failed';
+        pollCount?: number;
+        startedAt?: number;
+        finishedAt?: number | null;
+        elapsedS?: number | null;
+        error?: string | null;
+    }>;
+    elapsedS?: number | null;
+    lastError?: string | null;
+    costUsd?: number;
 }
 /**
  * One avatar take rendered for a host shot. Sourced from
@@ -333,6 +373,22 @@ export interface PipelineState {
         words?: string;
         timeline?: string;
         videoMp4?: string;
+    };
+    /**
+     * v3 live-progress detail — present when the BE `status.live` snapshot
+     * is available. Drives the auto-focus camera, the director-thinking
+     * ticker below the diagram, and any future cost/external-call surfaces.
+     */
+    liveActiveStage?: string | null;
+    liveActiveSubstage?: string | null;
+    liveDirectorThought?: string | null;
+    liveStarted?: number | null;
+    liveLastEventAt?: number | null;
+    liveCosts?: {
+        spentUsd?: number;
+        spentCredits?: number;
+        capUsd?: number | null;
+        capCredits?: number | null;
     };
 }
 
@@ -1406,7 +1462,7 @@ export function derivePipelineFromStatus(
         }
     }
 
-    return {
+    const derived: PipelineState = {
         status: pipelineStatus,
         videoId: status.video_id,
         prompt,
@@ -1438,6 +1494,115 @@ export function derivePipelineFromStatus(
             videoMp4: videoMp4Url,
         },
     };
+
+    // ── v3 live-snapshot enrichment ────────────────────────────────────
+    // When the BE returns a `live` payload, fold per-shot substage / regen /
+    // external-call detail into each `SceneSlot.liveDetail`, set the active
+    // stage + director thought on the state, and override scene state from
+    // live.shots[].state (which is the freshest signal during in_progress
+    // runs). The base derivation above remains the source for everything
+    // else — URLs, talent, score, costs (cumulative_tokens), etc. — so
+    // this enrichment is purely additive.
+    const live = status.live;
+    if (live) {
+        derived.liveActiveStage = live.active_stage ?? null;
+        derived.liveActiveSubstage = live.active_substage ?? null;
+        derived.liveDirectorThought = live.director_thought ?? null;
+        derived.liveStarted = live.started_at ?? null;
+        derived.liveLastEventAt = live.last_event_at ?? null;
+        if (live.costs) {
+            derived.liveCosts = {
+                spentUsd: live.costs.spent_usd,
+                spentCredits: live.costs.spent_credits,
+                capUsd: live.costs.cap_usd ?? null,
+                capCredits: live.costs.cap_credits ?? null,
+            };
+        }
+        // Index external calls so we can attach them per-shot without an
+        // O(n×m) scan inside the map below.
+        const externalCallsByShot = new Map<number, VideoLiveProgress['external_calls']>();
+        for (const c of live.external_calls ?? []) {
+            const idx = typeof c.shot_idx === 'number' ? c.shot_idx : null;
+            if (idx === null) continue;
+            const bucket = externalCallsByShot.get(idx) ?? [];
+            bucket.push(c);
+            externalCallsByShot.set(idx, bucket);
+        }
+        // Merge per-shot live state into the scenes array. The base
+        // derivation populated `derived.scenes` from generation_progress;
+        // we overlay (don't replace) so URLs / narration excerpts stay.
+        const liveByIdx = new Map<number, VideoLiveProgress['shots'][number]>();
+        for (const s of live.shots ?? []) liveByIdx.set(s.idx, s);
+        derived.scenes = derived.scenes.map((scene) => {
+            const lv = liveByIdx.get(scene.index);
+            if (!lv) return scene;
+            const ec = externalCallsByShot.get(scene.index) ?? [];
+            const merged: SceneSlot = {
+                ...scene,
+                // Fill in decisions from live when the base derivation
+                // didn't have them (common for in-flight runs).
+                intentRole: scene.intentRole ?? lv.intent_role ?? undefined,
+                audioPolicy: (scene.audioPolicy ?? lv.audio_policy ?? undefined) as SceneSlot['audioPolicy'],
+                backgroundTreatment: scene.backgroundTreatment ?? lv.background_treatment ?? undefined,
+                transitionIn: scene.transitionIn ?? lv.transition_in ?? undefined,
+                narrationBrief: scene.narrationBrief ?? lv.narration_brief ?? undefined,
+                // Live state overrides — `wrapped`/`reshoot`/`cut` from
+                // the aggregator wins because it's emitted at terminal
+                // transitions before generation_progress lands.
+                state: liveStateToNodeState(lv.state, scene.state),
+                liveDetail: {
+                    substage: lv.substage ?? null,
+                    attempts: lv.attempts ?? undefined,
+                    regenLog: lv.regen_log,
+                    regenCount: sumRegenAttempts(lv.attempts),
+                    externalCalls: ec.map((c) => ({
+                        id: c.id,
+                        provider: c.provider,
+                        op: c.op,
+                        state: c.state,
+                        pollCount: c.poll_count,
+                        startedAt: c.started_at,
+                        finishedAt: c.finished_at ?? null,
+                        elapsedS: c.elapsed_s ?? null,
+                        error: c.error ?? null,
+                    })),
+                    elapsedS: lv.elapsed_s ?? null,
+                    lastError: lv.last_error ?? null,
+                    costUsd: lv.cost_usd,
+                },
+            };
+            return merged;
+        });
+    }
+
+    return derived;
+}
+
+function liveStateToNodeState(
+    live: VideoLiveProgress['shots'][number]['state'],
+    fallback: NodeState,
+): NodeState {
+    switch (live) {
+        case 'wrapped':
+            return 'wrapped';
+        case 'in_progress':
+            return 'in_production';
+        case 'cut':
+            return 'cut';
+        case 'reshoot':
+            return 'reshoot';
+        case 'pending':
+            return fallback === 'wrapped' ? 'wrapped' : 'scheduled';
+        default:
+            return fallback;
+    }
+}
+
+function sumRegenAttempts(attempts?: Record<string, number>): number {
+    if (!attempts) return 0;
+    let total = 0;
+    for (const v of Object.values(attempts)) total += v || 0;
+    return total;
 }
 
 // ── Helpers for derivePipelineFromStatus ────────────────────────────────

@@ -54,6 +54,76 @@ _llm_phase: ContextVar[str] = ContextVar("_llm_phase", default="base")
 _llm_stage: ContextVar[str] = ContextVar("_llm_stage", default="unknown")
 
 
+# ── V200 stage routing: normalize runtime stage strings to taxonomy IDs ──
+# Call sites set `_llm_stage` to descriptive runtime strings like
+# "brand_asset_regen_shot_3" or "shot_html_seg_5". Those map to canonical
+# `PipelineStage` enum values via this normalizer so the per-stage
+# model-resolution layer can look up the right matrix row.
+#
+# Returns None when no mapping applies — caller falls back to the model
+# chain / default model. Keep this list aligned with the taxonomy in
+# `app/constants/pipeline_stages.py`.
+
+def _normalize_stage_to_taxonomy(stage: str) -> Optional[str]:
+    """Map a runtime `_llm_stage` ContextVar string to a `PipelineStage` ID."""
+    if not stage:
+        return None
+    s = stage.lower()
+    # Order matters: more-specific prefixes first
+    if s.startswith("shot_planning") or s == "shot_planner":
+        return "shot_planner"
+    if s.startswith("narration_writing") or s == "narration_writer":
+        return "narration_writer"
+    if s.startswith("act_planner"):
+        return "act_planner"
+    if s.startswith("beat_planner"):
+        return "beat_planner"
+    # NOTE: vision_review_regen prompts the same Pro reviewer model — they're
+    # part of the pinned vision-review quality gate, not the generic
+    # regen_html bucket. Keeping them on the pinned model means the corrective
+    # pass cannot be user-overridden to a cheap model that would mask defects.
+    if s.startswith("vision_review_regen") or s.startswith("vision_corrective"):
+        return "vision_review"
+    if (
+        s.startswith("brand_asset_regen")
+        or s.startswith("bbox_lint_regen")
+        or s.startswith("bbox_regen")
+        or s.startswith("html_repair")
+        or s.startswith("animation_validator_regen")
+        or s.startswith("anim_density_regen")
+    ):
+        return "regen_html"
+    if s.startswith("vision_review"):  # detection-only
+        return "vision_review"
+    if (
+        s.startswith("shot_html")
+        or s.startswith("per_shot_html")
+        or s.startswith("html_seg")
+    ):
+        return "per_shot_html"
+    if s.startswith("director"):
+        return "director"
+    if s.startswith("script_review") or "two_pass" in s:
+        return "script_review"
+    if s.startswith("script"):
+        return "script_generation"
+    if s in ("subject_extraction", "entity_extraction") or "named_entit" in s:
+        return "entity_extraction"
+    if s.startswith("cultural_context") or s.startswith("region_inference"):
+        return "cultural_context"
+    if s.startswith("shot_decompose") or s.startswith("decompose"):
+        return "shot_decomposer"
+    if s.startswith("host_description") or s.startswith("set_description"):
+        return "host_description"
+    if s.startswith("headline") or s.startswith("thumbnail_headline"):
+        return "headline_thumbnail"
+    if s.startswith("image_prompt_enhancement") or s == "image_prompt":
+        return "image_prompt_enhancement"
+    if s.startswith("stock_video_ranking") or s == "stock_ranking":
+        return "stock_video_ranking"
+    return None
+
+
 def _extract_visual_intent_block(prompt_text: Optional[str]) -> Optional[str]:
     """Pillar 2.2 — pull the user's "VISUAL APPROACH" prose out of the raw prompt.
 
@@ -678,6 +748,11 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
         "ai_video_eligible": False,
+        # Pipeline architecture — v3 ShotPlanner-first (see ultra tier for
+        # rationale). Free/standard previously ran a segment-based no-Director
+        # path; v3 unifies all tiers under one shot-planning flow. Rollback:
+        # `PIPELINE_VERSION=v2` env override per-deploy without a code change.
+        "pipeline_version": "v3",
     },
     "standard": {
         "script_temperature": 0.5,
@@ -712,6 +787,8 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
         "ai_video_eligible": False,
+        # Pipeline architecture — see "free" tier comment.
+        "pipeline_version": "v3",
     },
     "premium": {
         "script_temperature": 0.6,
@@ -754,6 +831,8 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
         "ai_video_eligible": False,
+        # Pipeline architecture — see "free" tier comment.
+        "pipeline_version": "v3",
     },
     "ultra": {
         "script_temperature": 0.6,
@@ -916,6 +995,8 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # for the eligible-vs-enabled distinction).
         "ai_video_eligible": True,
         "ai_video_per_video_cost_cap_usd": AI_VIDEO_PER_VIDEO_COST_CAP_USD,
+        # Pipeline architecture — see "ultra" tier comment.
+        "pipeline_version": "v3",
     },
 }
 
@@ -1256,6 +1337,18 @@ class OpenRouterClient:
         # ai_models table for pricing if needed.
         self.cost_events: Optional[Any] = None  # cost_event_tracker.CostEventTracker
 
+        # V200 per-stage routing. Populated by VideoGenerationPipeline at
+        # construction time from `ai_model_stage_assignments` (one entry per
+        # canonical PipelineStage ID). Values are `(model_id, source)` tuples
+        # so each cost event can attribute the choice to "matrix" /
+        # "user_default" / "user_per_stage". When non-empty AND the caller
+        # didn't pass an explicit `model=`, chat() resolves the model by
+        # mapping the `_llm_stage` ContextVar through
+        # `_normalize_stage_to_taxonomy(...)` and looking up the result.
+        # An empty map means "fall through to the existing model_chain /
+        # default_model" — perfect no-op behavior for the rollout window.
+        self.stage_model_map: Dict[str, Tuple[str, str]] = {}
+
         self.model_chain = self._fetch_models()
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
         self.headers = {
@@ -1292,13 +1385,32 @@ class OpenRouterClient:
         max_tokens: int = 2000,
         response_format: Optional[Dict[str, Any]] = None,
     ) -> Tuple[str, Dict[str, Any]]:
-        # Use provided model or fall back to chain/default
+        # Use provided model, then stage-routed model, then chain, then default.
+        # Stage routing (V200): when no explicit model is passed AND the
+        # caller's `_llm_stage` ContextVar maps to a taxonomy entry that has a
+        # row in `self.stage_model_map`, use that model. Stamps `_source` on
+        # the cost event so forensics can attribute the choice.
+        _stage_routed_source = ""
         if model:
             models_to_try = [model]
-        elif self.model_chain:
-            models_to_try = self.model_chain
         else:
-            models_to_try = [self.default_model]
+            stage_routed: Optional[str] = None
+            if self.stage_model_map:
+                _runtime_stage = _llm_stage.get()
+                _canonical = _normalize_stage_to_taxonomy(_runtime_stage)
+                if _canonical:
+                    _entry = self.stage_model_map.get(_canonical)
+                    if isinstance(_entry, tuple) and len(_entry) == 2:
+                        stage_routed, _stage_routed_source = _entry[0], (_entry[1] or "matrix")
+                    elif isinstance(_entry, str) and _entry:
+                        # Legacy flat-string callers — source unknown.
+                        stage_routed, _stage_routed_source = _entry, "matrix"
+            if stage_routed:
+                models_to_try = [stage_routed]
+            elif self.model_chain:
+                models_to_try = self.model_chain
+            else:
+                models_to_try = [self.default_model]
 
         # Apply prompt caching: wrap system message content in cache_control array
         if self.use_prompt_cache:
@@ -1363,6 +1475,7 @@ class OpenRouterClient:
                                 usage=usage,
                                 phase=_llm_phase.get(),
                                 duration_ms=int((time.perf_counter() - _t_start) * 1000),
+                                source=_stage_routed_source,
                             )
                         except Exception:
                             pass
@@ -1769,11 +1882,43 @@ class VideoGenerationPipeline:
         serper_api_keys: str = DEFAULT_SERPER_API_KEYS,
         runs_dir: Path = DEFAULT_RUNS_DIR,
         quality_tier: str = "ultra",
+        stage_model_map: Optional[Dict[str, Any]] = None,
     ) -> None:
         if not openrouter_key:
             raise ValueError("OpenRouter API key is required (set OPENROUTER_API_KEY or pass --openrouter-key).")
         self.script_client = OpenRouterClient(openrouter_key, script_model)
         self.html_client = OpenRouterClient(openrouter_key, html_model)
+
+        # Per-stage model routing (V200 — DB-backed). When the service layer
+        # resolved a non-empty map from `ai_model_stage_assignments`, each LLM
+        # call site reads its model via `self._resolve_stage_model(stage_id)`
+        # which returns the matrix-resolved (or user-overridden) model_id.
+        # An empty map (feature flag off, DB miss, legacy caller) returns None
+        # at every lookup so `OpenRouterClient.chat(model=None)` falls through
+        # to its default — zero-risk no-op for the rollout window.
+        # Normalize the stage map to {stage_id: (model_id, source)} so callers
+        # can pass either the legacy flat string form or the new tuple form.
+        # `source` is the provenance string from `ResolvedModel.source`
+        # (matrix / user_default / user_per_stage); flat-string callers get
+        # the empty-string sentinel.
+        self._stage_model_map: Dict[str, Tuple[str, str]] = {}
+        for _sid, _val in (stage_model_map or {}).items():
+            if isinstance(_val, tuple) and len(_val) == 2:
+                self._stage_model_map[_sid] = (str(_val[0]), str(_val[1] or ""))
+            elif isinstance(_val, str):
+                self._stage_model_map[_sid] = (_val, "")
+        if self._stage_model_map:
+            # Both clients consult this map on every chat() call when no
+            # explicit `model=` is passed by the caller — the `_llm_stage`
+            # ContextVar's value is normalized to a taxonomy ID and looked up.
+            self.script_client.stage_model_map = self._stage_model_map
+            self.html_client.stage_model_map = self._stage_model_map
+            _example = next(iter(self._stage_model_map.items()))
+            print(
+                f"🎯 Stage routing enabled — {len(self._stage_model_map)} "
+                f"stage(s) mapped (e.g. {_example[0]}={_example[1][0]}"
+                f"{(' [' + _example[1][1] + ']') if _example[1][1] else ''})"
+            )
 
         # Pillar 1 — per-run cost balance sheet. Each LLM call goes through one
         # of the two clients above; we attach a single shared tracker so events
@@ -2111,6 +2256,27 @@ class VideoGenerationPipeline:
         if override is not None:
             return bool(override)
         return bool(self._tier_config.get("background_music_enabled", False))
+
+    def _resolve_stage_model(self, stage: str) -> Optional[str]:
+        """Return the resolved model_id for a pipeline stage, or None.
+
+        Reads `self._stage_model_map` (populated by the V200 stage-routing
+        layer when the feature flag is on). Returns None when the stage isn't
+        mapped — every LLM call site passes the result as `model=` to
+        `OpenRouterClient.chat(...)`, which falls through to its default
+        model on None. So an empty map is a perfect no-op (rollout safety).
+
+        Accepts `str` rather than `PipelineStage` to keep call sites flexible
+        — every caller can pass the raw stage string literal that already
+        encodes its `_llm_stage` ContextVar value.
+        """
+        if not self._stage_model_map:
+            return None
+        entry = self._stage_model_map.get(stage)
+        if entry is None:
+            return None
+        # entry is (model_id, source) tuple
+        return entry[0] if isinstance(entry, tuple) else entry
 
     def _snap_cues_to_beat(
         self,
@@ -4664,6 +4830,76 @@ class VideoGenerationPipeline:
                             "message": "host.type='raw' is not implemented yet; rendering without host",
                         })
 
+                    # ── v3 audio-overrun safety net ─────────────────────
+                    # v2's script-stage overrun check (line ~3825) doesn't
+                    # fire on v3 because there's no monolithic TTS at script
+                    # time. Detect it here, after per-shot TTS produced the
+                    # stitched master, and rerun NarrationWriter once at the
+                    # measured-wpm × 0.95 if we overshot >25%. Capped at one
+                    # regen per video via `self._audio_regen_attempted`.
+                    # Gated on the v3 path being active — v2-Phase-B already
+                    # uses Director which is too expensive to re-run here.
+                    if (
+                        _active_v3_plan
+                        and content_type == "VIDEO"
+                        and _director_plan is self._v3_shot_plan
+                        and tts_outputs.get("audio_path")
+                    ):
+                        _regen = self._v3_check_audio_overrun_and_regen(
+                            shot_plan=_director_plan,
+                            tts_outputs=tts_outputs,
+                            audio_duration=float(_seg_audio_dur or 0.0),
+                            target_duration_s=float(getattr(self, "_target_seconds", 0) or 0),
+                            words=words or [],
+                            run_dir=run_dir,
+                            language=language,
+                            voice_gender=voice_gender,
+                            tts_provider=tts_provider,
+                            voice_id=voice_id,
+                            target_audience=target_audience,
+                        )
+                        if _regen:
+                            _new_words = _regen.get("words") or []
+                            _new_dur = float(_regen.get("audio_duration") or 0.0)
+                            if _new_words:
+                                words = _new_words
+                            if _new_dur > 0:
+                                _seg_audio_dur = _new_dur
+                            _extra_chars = int(_regen.get("extra_tts_chars") or 0)
+                            if _extra_chars > 0:
+                                accumulate_usage({"tts_character_count": _extra_chars})
+                            _nw_usage = _regen.get("nw_usage") or {}
+                            if _nw_usage:
+                                accumulate_usage(_nw_usage)
+
+                    # ── Late emphasis_map build (post per-shot TTS) ──────
+                    # v2 builds emphasis_map inside `_run_director` from the
+                    # monolithic Whisper output. Two paths skip that build:
+                    #   (1) v3 — `_run_director` never runs.
+                    #   (2) v2 Phase-B — Director runs in script stage with
+                    #       words=[] because TTS is deferred to html stage.
+                    # In both cases `_emphasis_map` is empty when the per-shot
+                    # HTML LLM reads it, so narrator-stress visual highlights
+                    # never land. Once per-shot TTS has run and `words` is the
+                    # stitched word list, build it here. Idempotent — skips
+                    # when a non-empty map already exists (v2 monolithic path).
+                    if (
+                        self._tier_config.get("director_emphasis_map")
+                        and words
+                        and not getattr(self, "_emphasis_map", "")
+                    ):
+                        try:
+                            from director_prompts import build_emphasis_map as _build_em
+                            self._emphasis_map = _build_em(words) or ""
+                            if self._emphasis_map:
+                                print(
+                                    f"   📍 emphasis_map built post-TTS "
+                                    f"({len(words)} words → {self._emphasis_map.count(chr(10)) + 1} lines)"
+                                )
+                        except Exception as _em_err:
+                            print(f"   ⚠️ emphasis_map late build failed (non-fatal): {_em_err}")
+                            self._emphasis_map = getattr(self, "_emphasis_map", "") or ""
+
                     self._emit_progress({
                         "type": "sub_stage", "sub_stage": "html_generating",
                         "message": f"Generating visuals for {len(_director_plan['shots'])} shots...",
@@ -5499,6 +5735,7 @@ class VideoGenerationPipeline:
                     messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                     temperature=self._tier_config.get("script_temperature", 0.5),
                     max_tokens=_max_tokens,
+                    model=self._resolve_stage_model("script_generation"),
                 )
                 data = _extract_json_blob(raw)
                 break  # Success
@@ -5770,6 +6007,7 @@ class VideoGenerationPipeline:
                 ],
                 temperature=0.5,
                 max_tokens=32000,
+                model=self._resolve_stage_model("script_review"),
             )
             reviewed = _extract_json_blob(raw)
 
@@ -5861,6 +6099,7 @@ class VideoGenerationPipeline:
                 ],
                 temperature=0.3,
                 max_tokens=8000,
+                model=self._resolve_stage_model("regen_html"),
             )
             if _usage:
                 total_usage["prompt_tokens"] += _usage.get("prompt_tokens", 0)
@@ -8392,6 +8631,8 @@ class VideoGenerationPipeline:
         if not self._shot_requires_brand_asset(shot, shot_idx, total_shots):
             return None
 
+        self._emit_shot_substage(shot_idx, "brand_asset", "Checking brand asset…")
+
         if self._html_has_reference_asset_embed(html):
             print(f"   🏷️  Shot {shot_idx + 1}: brand-asset embed PRESENT (required shot)")
             return {
@@ -8402,6 +8643,10 @@ class VideoGenerationPipeline:
             }
 
         # Required but missing — fire one corrective regen.
+        self._emit_shot_regen(
+            shot_idx, "brand_asset", attempt=1,
+            verdict="fail", reason="reference asset missing from HTML",
+        )
         # Build a directive that points the LLM at the BRAND ANCHOR block
         # already in the prompt history.
         _ref_ctx = getattr(self, "_reference_context", None) or {}
@@ -8563,6 +8808,7 @@ class VideoGenerationPipeline:
             # signal that bbox-lint isn't actually running.
             return None
 
+        self._emit_shot_substage(shot_idx, "bbox_lint", "Bounding-box check…")
         timestamps = self._bbox_lint_pick_timestamps(duration_s)
         canvas_w = int(getattr(self, "video_width", 1920))
         canvas_h = int(getattr(self, "video_height", 1080))
@@ -8610,6 +8856,10 @@ class VideoGenerationPipeline:
         print(
             f"   📐 Shot {shot_idx + 1}: bbox-lint FOUND {len(violations)} overflow(s) "
             f"[{_codes}{'…' if len(violations) > 3 else ''}] — firing corrective regen"
+        )
+        self._emit_shot_regen(
+            shot_idx, "bbox", attempt=1,
+            verdict="fail", reason=f"{len(violations)} overflow violations",
         )
 
         corrective = self._build_bbox_corrective_prompt(
@@ -9028,6 +9278,7 @@ class VideoGenerationPipeline:
             self._vision_review_skipped_count += 1
             return None
 
+        self._emit_shot_substage(shot_idx, "vision_review", "Reviewing rendered shot…")
         timestamps = self._vision_review_pick_timestamps(duration_s)
         canvas = "portrait" if getattr(self, "video_width", 1920) < getattr(self, "video_height", 1080) else "landscape"
 
@@ -9080,6 +9331,11 @@ class VideoGenerationPipeline:
             palette=_palette,
             prior_shot_screenshot=_prior_thumb,
             llm_chat=self.html_client.chat,
+            # Preserve the legacy Pro safety net when stage routing is off
+            # (_resolve_stage_model returns None on empty map). Vision review
+            # has always been Pro and that's the matrix default too — admins
+            # can flip via SQL but the BE never silently downgrades.
+            model=self._resolve_stage_model("vision_review") or "google/gemini-2.5-pro",
         )
 
         # Cache this shot's mid-frame so the next shot can BG_DISCONTINUITY-check
@@ -9156,6 +9412,15 @@ class VideoGenerationPipeline:
             and review.get("issues")
             and self._tier_config.get("vision_review_regen_enabled", True)
         ):
+            _issue_codes = ",".join(
+                str(i.get("code") or i.get("type") or "issue")
+                for i in (review.get("issues") or [])[:3]
+            )
+            self._emit_shot_regen(
+                shot_idx, "vision", attempt=1,
+                verdict="fail",
+                reason=f"severity {review.get('severity_max')} [{_issue_codes}]",
+            )
             corrective = self._build_vision_corrective_prompt(
                 review.get("issues") or [],
                 html=html,
@@ -9234,6 +9499,11 @@ class VideoGenerationPipeline:
                             palette=_palette,
                             prior_shot_screenshot=_prior_thumb,
                             llm_chat=self.html_client.chat,
+                            # Preserve the legacy Pro safety net when stage routing is off
+            # (_resolve_stage_model returns None on empty map). Vision review
+            # has always been Pro and that's the matrix default too — admins
+            # can flip via SQL but the BE never silently downgrades.
+            model=self._resolve_stage_model("vision_review") or "google/gemini-2.5-pro",
                         )
                         # If regen ships, overwrite the cached thumbnail with
                         # the post-regen mid-frame so the next shot's
@@ -9518,6 +9788,7 @@ class VideoGenerationPipeline:
                 temperature=0.55,
                 max_tokens=min(8000, self._tier_config.get("director_max_tokens", 20000)),
                 response_format={"type": "json_object"},
+                model=self._resolve_stage_model("act_planner"),
             )
         except Exception as exc:
             print(f"   ⚠️ Act Planner failed: {exc} — shot planner will run without an act plan")
@@ -10099,6 +10370,209 @@ class VideoGenerationPipeline:
             print(f"   ⚠️ Could not persist derived script.txt: {_ws_err}")
         return script_path, script_text, beat_outline
 
+    def _v3_check_audio_overrun_and_regen(
+        self,
+        *,
+        shot_plan: Dict[str, Any],
+        tts_outputs: Dict[str, Any],
+        audio_duration: float,
+        target_duration_s: float,
+        words: List[Dict[str, Any]],
+        run_dir: Path,
+        language: str,
+        voice_gender: str,
+        tts_provider: str,
+        voice_id: Optional[str],
+        target_audience: str,
+    ) -> Optional[Dict[str, Any]]:
+        """v3 counterpart to v2's audio-overrun safety net (line ~3825).
+
+        When per-shot TTS output overshoots target_duration_s by >25%, the
+        TTS voice is slower than the 150-wpm default ShotPlanner assumed.
+        Rerun NarrationWriter once at the empirically-measured wpm × 0.95,
+        regenerate per-shot TTS on the tightened narration, then refresh the
+        master narration + word timings. Caller updates `words` and
+        `_seg_audio_dur` from the return value.
+
+        Returns:
+          None when no regen ran (no overrun, already attempted, missing
+          inputs, or regen failed — caller keeps original audio).
+          {"words", "audio_duration", "extra_tts_chars", "nw_usage"} on
+          successful regen.
+
+        Capped at one regen per video via `self._audio_regen_attempted`.
+        """
+        if self._audio_regen_attempted:
+            return None
+        if target_duration_s <= 0 or audio_duration <= 0:
+            return None
+        if getattr(self, "_user_had_script", False):
+            # User-supplied script can't be machine-rewritten — would discard
+            # their wording. Same rule as v2's safety net.
+            return None
+        overshoot = audio_duration / target_duration_s
+        if overshoot <= 1.25:
+            return None
+
+        n_words = sum(1 for w in (words or []) if w)
+        if n_words <= 0:
+            return None
+        measured_wps = n_words / audio_duration
+        measured_wpm = measured_wps * 60.0
+        # Floor at 60 wpm to keep the regen prompt sane on pathological voices
+        target_wpm = max(60.0, measured_wpm * 0.95)
+
+        self._audio_regen_attempted = True
+        print(
+            f"   📐 v3 audio-overrun: {audio_duration:.1f}s vs "
+            f"{target_duration_s:.0f}s target ({overshoot:.2f}×); "
+            f"measured ≈{measured_wpm:.0f} wpm → NarrationWriter regen at "
+            f"{target_wpm:.0f} wpm × 0.95"
+        )
+
+        regen_note = (
+            f"⚠️ URGENT REVISION REQUIRED: the previous narration rendered as "
+            f"{audio_duration:.1f}s of audio for a {target_duration_s:.0f}s "
+            f"target ({overshoot:.2f}× overrun). The chosen TTS voice paces "
+            f"at ~{measured_wpm:.0f} wpm, slower than the default 150 wpm "
+            f"this plan budgeted for. Rewrite EVERY narrated shot at a "
+            f"tighter word budget that fits the shot's duration at this "
+            f"voice's measured pace. Cut filler, trim qualifiers, drop "
+            f"redundant examples — keep meaning, lose length. Do NOT change "
+            f"shot order, shot_index, or audio_policy."
+        )
+
+        try:
+            from narration_writer import write_narration, NarrationWriteError
+        except Exception as _ie:
+            print(f"   ⚠️ NarrationWriter import failed during regen: {_ie}")
+            return None
+
+        tier_cfg = self._tier_config if isinstance(self._tier_config, dict) else {}
+        nw_model = (
+            self._resolve_stage_model("narration_writer")
+            or tier_cfg.get("narration_writer_model")
+            or tier_cfg.get("shot_planner_model")
+            or tier_cfg.get("director_model")
+            or getattr(self.script_client, "model", None)
+        )
+        brand_brief = self._extract_brand_brief() or {}
+        brand_voice = brand_brief.get("voice") if isinstance(brand_brief, dict) else None
+
+        try:
+            nw_result = write_narration(
+                shot_plan=shot_plan,
+                llm_chat=self.script_client.chat,
+                model=nw_model,
+                target_duration_s=target_duration_s,
+                target_audience=target_audience,
+                language=language,
+                brand_voice=brand_voice,
+                wpm_override=target_wpm,
+                regen_note=regen_note,
+            )
+        except NarrationWriteError as _nw_err:
+            print(f"   ⚠️ v3 overrun NarrationWriter regen unparseable: {_nw_err}")
+            return None
+        except Exception as _nw_err:
+            print(f"   ⚠️ v3 overrun NarrationWriter regen failed: {_nw_err}")
+            return None
+
+        # Persist the rewritten plan so a resume picks up the regen narration
+        try:
+            (run_dir / "shot_plan.json").write_text(
+                json.dumps(shot_plan, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception as _wp:
+            print(f"   ⚠️ Could not re-persist shot_plan.json after regen: {_wp}")
+
+        # Drop stale per-shot TTS artifacts so the rerun doesn't reuse them.
+        # `_run_per_shot_tts_v2` writes shot_NNN.{mp3,json,txt} into run_dir/tts.
+        try:
+            _tts_dir = run_dir / "tts"
+            if _tts_dir.exists():
+                for _f in _tts_dir.iterdir():
+                    if _f.is_file():
+                        try:
+                            _f.unlink()
+                        except Exception:
+                            pass
+        except Exception as _td_err:
+            print(f"   ⚠️ Could not clean per-shot TTS dir for regen: {_td_err}")
+
+        # Rerun per-shot TTS. Update the caller's tts_outputs in place so
+        # downstream code (audio mixing, S3 upload bundle) reads the regen
+        # audio path without further plumbing.
+        new_tts: Dict[str, Any] = {"deferred_to_html": True}
+        try:
+            self._run_per_shot_tts_v2(
+                shot_plan["shots"],
+                run_dir,
+                new_tts,
+                language=language,
+                voice_gender=voice_gender,
+                tts_provider=tts_provider,
+                voice_id=voice_id,
+            )
+        except Exception as _ts_err:
+            print(f"   ⚠️ v3 per-shot TTS rerun after regen failed: {_ts_err}; keeping original audio")
+            return None
+
+        # Overwrite caller's tts_outputs so consumers (audio mixing, etc.)
+        # see the regen artifacts.
+        for _k, _v in new_tts.items():
+            tts_outputs[_k] = _v
+
+        # Rebuild flat words + probe new audio duration
+        new_words: List[Dict[str, Any]] = []
+        new_audio_dur = 0.0
+        try:
+            _raw_path = new_tts.get("response_json")
+            if _raw_path and Path(str(_raw_path)).exists():
+                _stitched = json.loads(Path(str(_raw_path)).read_text(encoding="utf-8"))
+                _word_entries = _stitched.get("word_entries") or []
+                new_words = [
+                    {
+                        "word": w.get("word", ""),
+                        "start": float(w.get("start") or 0.0),
+                        "end": float(w.get("end") or 0.0),
+                    }
+                    for w in _word_entries
+                    if isinstance(w, dict) and w.get("word")
+                ]
+                try:
+                    (run_dir / "narration.words.json").write_text(
+                        json.dumps(new_words, ensure_ascii=False),
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+            _audio_p = new_tts.get("audio_path")
+            if _audio_p and Path(str(_audio_p)).exists():
+                _probe = subprocess.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries",
+                     "format=duration", "-of",
+                     "default=noprint_wrappers=1:nokey=1", str(_audio_p)],
+                    capture_output=True, text=True, timeout=10,
+                )
+                new_audio_dur = float((_probe.stdout or "0").strip() or 0.0)
+        except Exception as _post_err:
+            print(f"   ⚠️ v3 overrun-regen post-processing failed: {_post_err}")
+
+        extra_chars = int(new_tts.get("tts_character_count") or 0)
+        if new_audio_dur > 0:
+            print(
+                f"   ✅ v3 audio-overrun regen complete: {new_audio_dur:.1f}s "
+                f"(was {audio_duration:.1f}s, target {target_duration_s:.0f}s)"
+            )
+        return {
+            "words": new_words,
+            "audio_duration": new_audio_dur,
+            "extra_tts_chars": extra_chars,
+            "nw_usage": nw_result.get("usage") or {},
+        }
+
     @staticmethod
     def _v3_accumulate_partial_usage(target: Dict[str, Any], src: Dict[str, Any]) -> None:
         """Merge LLM usage from a single phase into a partial-usage dict.
@@ -10151,8 +10625,12 @@ class VideoGenerationPipeline:
 
         # ── 1. ShotPlanner ─────────────────────────────────────────────
         tier_config = self._tier_config if isinstance(self._tier_config, dict) else {}
+        # V200 stage routing wins over the legacy tier_cfg keys (which are
+        # read-but-empty today). Falls back to tier_cfg → script_client default
+        # when the stage map is empty (rollout flag off, DB miss).
         shot_planner_model = (
-            tier_config.get("shot_planner_model")
+            self._resolve_stage_model("shot_planner")
+            or tier_config.get("shot_planner_model")
             or tier_config.get("director_model")
             or getattr(self.script_client, "model", None)
         )
@@ -10251,11 +10729,20 @@ class VideoGenerationPipeline:
             cultural_context=getattr(self, "_cultural_context", None),
             template_catalog_md=_tmpl_catalog_md or None,
             valid_template_ids=_tmpl_valid_ids,
+            include_music_plan=self._is_background_music_enabled(),
+            music_plan_target_duration_s=target_duration_s,
         )
         shot_plan_dict = {
             "shots": sp_result["shots"],
             "continuity_notes": sp_result.get("continuity_notes", ""),
             "recurring_motifs": sp_result.get("recurring_motifs") or [],
+            # v3 parity with v2 Director — `music_plan` and `audio_mood`
+            # are read by the html-stage music picker (line ~4851). When
+            # ShotPlanner omits music_plan (LLM dropped the field, or
+            # background music disabled for this run), the picker falls
+            # back to `_build_default_music_plan` exactly like v2 did.
+            "music_plan": sp_result.get("music_plan"),
+            "audio_mood": sp_result.get("audio_mood", ""),
         }
         sp_usage = sp_result.get("usage") or {}
         # Record ShotPlanner tokens NOW — if NarrationWriter raises below,
@@ -10278,16 +10765,40 @@ class VideoGenerationPipeline:
         except Exception as _ap_err:
             print(f"   ⚠️ AudioPolicyPlanner normalize failed ({_ap_err}); shots keep ShotPlanner values")
 
+        # Build a compact per-shot summary so the FE live-progress view can
+        # render director decisions (audio_policy, background_treatment,
+        # transition_in, intent_role) before HTML generation even starts.
+        # Truncate the narration brief so the JSONB row stays compact.
+        _shots_summary: List[Dict[str, Any]] = []
+        for _i, _s in enumerate(shot_plan_dict["shots"]):
+            if not isinstance(_s, dict):
+                continue
+            _brief = _s.get("narration_brief") or _s.get("narration_text") or ""
+            if isinstance(_brief, str) and len(_brief) > 220:
+                _brief = _brief[:220].rstrip() + "…"
+            _shots_summary.append({
+                "shot_index": _i,
+                "shot_type": _s.get("shot_type"),
+                "intent_role": _s.get("intent_role"),
+                "audio_policy": _s.get("audio_policy"),
+                "background_treatment": _s.get("background_treatment"),
+                "transition_in": _s.get("transition_in"),
+                "duration_estimate_s": _s.get("duration_estimate_s"),
+                "narration_brief": _brief,
+            })
         self._emit_progress({
             "type": "sub_stage",
             "sub_stage": "shot_planning_done",
             "message": f"Shot plan ready: {len(shot_plan_dict['shots'])} shots",
             "shot_count": len(shot_plan_dict["shots"]),
+            "shots_summary": _shots_summary,
+            "recurring_motifs": shot_plan_dict.get("recurring_motifs") or [],
         })
 
         # ── 3. NarrationWriter ────────────────────────────────────────
         narration_writer_model = (
-            tier_config.get("narration_writer_model")
+            self._resolve_stage_model("narration_writer")
+            or tier_config.get("narration_writer_model")
             or shot_planner_model
         )
         self._emit_progress({
@@ -11252,6 +11763,7 @@ class VideoGenerationPipeline:
                     temperature=0.5 if attempt == 0 else 0.3,  # lower temp on retries
                     max_tokens=_next_attempt_tokens,
                     response_format={"type": "json_object"},
+                    model=self._resolve_stage_model("director"),
                 )
                 if attempt_usage:
                     total_usage["prompt_tokens"] += attempt_usage.get("prompt_tokens", 0)
@@ -11471,7 +11983,13 @@ class VideoGenerationPipeline:
         if self._tier_config.get("image_continuity_enabled"):
             try:
                 from subject_extractor import extract_subjects as _extract_subjects  # type: ignore
-                mapping, subjects = _extract_subjects(shots, self.html_client.chat)
+                # V200: set the stage ContextVar so the inner chat() call
+                # auto-routes through `entity_extraction` in the stage map.
+                _se_tok = _llm_stage.set("entity_extraction")
+                try:
+                    mapping, subjects = _extract_subjects(shots, self.html_client.chat)
+                finally:
+                    _llm_stage.reset(_se_tok)
                 self._subject_id_for_shot = mapping
                 if subjects:
                     print(
@@ -11746,6 +12264,7 @@ class VideoGenerationPipeline:
                 ],
                 temperature=0.3,
                 max_tokens=1200,
+                model=self._resolve_stage_model("shot_decomposer"),
             )
             data = _extract_json_blob(raw)
         except Exception as exc:
@@ -12086,13 +12605,16 @@ class VideoGenerationPipeline:
             if not api_key:
                 raise RuntimeError("no API key on script_client")
 
+            # V200: prefer per-stage routing (host_description matrix row);
+            # falls back to the legacy DEFAULT_MODEL constant when the stage
+            # map is empty (rollout flag off or matrix lookup failed).
             from app.constants.models import DEFAULT_MODEL as _ROUTER_MODEL
             raw, _usage = self.script_client.chat(
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                model=_ROUTER_MODEL,
+                model=self._resolve_stage_model("host_description") or _ROUTER_MODEL,
                 temperature=0.4,
                 max_tokens=200,
             )
@@ -14212,6 +14734,16 @@ class VideoGenerationPipeline:
             end_time = float(shot.get("end_time", start_time + 8))
             duration = max(1.0, end_time - start_time)
 
+            # Live-progress hint: mark this shot as actively in production at
+            # the html_gen substage. The FE flips the scene card from
+            # "pending" to "in_progress" on this event. Validators below will
+            # emit further substage transitions (bbox / brand_asset / vision).
+            self._emit_shot_substage(
+                shot_idx,
+                "html_gen",
+                f"Generating shot {shot_idx + 1} ({shot_type})",
+            )
+
             # ── Slice D safety net: KINETIC_TEXT incompatible with low/minimal ──
             # The Director was told to forbid KINETIC_TEXT at low/minimal text
             # density (Slice C). Cheap planners ignore long forbid-lists; this
@@ -15574,6 +16106,7 @@ class VideoGenerationPipeline:
                             8000 if attempt > 0
                             else self._tier_config.get("per_shot_max_tokens", 16000)
                         ),
+                        model=self._resolve_stage_model("per_shot_html"),
                     )
                     # Add this attempt's tokens before JSON parsing so parse failures
                     # are still counted in the cost.
@@ -16909,6 +17442,9 @@ class VideoGenerationPipeline:
                         messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
                         temperature=self._tier_config.get("html_temperature", 0.7),
                         max_tokens=self._tier_config.get("html_max_tokens", 24000),
+                        # v2 segment-based HTML fallback path — same canonical
+                        # stage as per-shot HTML for routing purposes.
+                        model=self._resolve_stage_model("per_shot_html"),
                     )
                     data = self._parse_html_response(raw, seg, run_dir)
 
@@ -20058,6 +20594,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 ],
                 temperature=0.6,
                 max_tokens=500,
+                model=self._resolve_stage_model("image_prompt_enhancement"),
             )
             enhanced = enhanced.strip().strip('"').strip("'")
             if len(enhanced) > 30:
@@ -20132,6 +20669,7 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
                 # the JSON body. 400 is safely above the observed failure mode.
                 max_tokens=400,
                 response_format={"type": "json_object"},
+                model=self._resolve_stage_model("stock_video_ranking"),
             )
             if _usage:
                 usage["prompt_tokens"] += _usage.get("prompt_tokens", 0)
@@ -23254,6 +23792,52 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
             except Exception:
                 pass  # never let a callback error break the pipeline
 
+    def _emit_shot_substage(
+        self,
+        shot_idx: int,
+        substage: str,
+        message: Optional[str] = None,
+    ) -> None:
+        """Emit a `shot_substage` event so the FE live-progress view can show
+        which per-shot phase is currently running (html_gen, density, bbox,
+        brand_asset, vision_review, screenshot, tts, media_polling).
+
+        Best-effort and additive — no behavior change if the callback is None.
+        Substage strings are part of the public live-progress contract; the
+        FE's stage-vocab.ts maps them to icons.
+        """
+        self._emit_progress({
+            "type": "shot_substage",
+            "shot_idx": int(shot_idx),
+            "substage": substage,
+            "message": message,
+        })
+
+    def _emit_shot_regen(
+        self,
+        shot_idx: int,
+        step: str,
+        attempt: int,
+        verdict: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        """Emit a `shot_regen_attempt` event whenever a post-render gate
+        (density / bbox / brand_asset / vision_review) decides to fire a
+        corrective regen. The FE shows this as the regen counter chip on
+        the scene card and as a row in the detail drawer's regen log.
+
+        `verdict` is the current decision: `fail` (about to regen),
+        `pass` (regen accepted), `shipped_original` (regen worse → reverted).
+        """
+        self._emit_progress({
+            "type": "shot_regen_attempt",
+            "shot_idx": int(shot_idx),
+            "step": step,
+            "attempt": int(attempt),
+            "verdict": verdict,
+            "reason": reason,
+        })
+
     def _run_thumbnail_batch_bg(
         self,
         *,
@@ -23308,8 +23892,18 @@ gsap.to('{selectors}', {{opacity: 1, y: 0, duration: 0.5, stagger: 0.15, delay: 
 
         # Use the script_client for the small headline LLM call — same model
         # the script/director uses, so token usage is accounted for cleanly.
+        # V200: wrap the callable so it sets `_llm_stage` to `headline_thumbnail`
+        # before invoking chat() — this triggers stage routing in
+        # `OpenRouterClient.chat()` so the matrix model wins.
         try:
-            _llm_chat = self.script_client.chat
+            _base_chat = self.script_client.chat
+
+            def _llm_chat(*args, **kwargs):
+                _hl_tok = _llm_stage.set("headline_thumbnail")
+                try:
+                    return _base_chat(*args, **kwargs)
+                finally:
+                    _llm_stage.reset(_hl_tok)
         except AttributeError:
             _llm_chat = None  # subject_extractor pattern: pass None → fallback
 

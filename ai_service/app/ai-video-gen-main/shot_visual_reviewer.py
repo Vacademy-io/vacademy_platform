@@ -386,7 +386,12 @@ def review_shot(
     host_meta: Optional[Dict[str, Any]] = None,
     palette: Optional[Dict[str, Any]] = None,
     prior_shot_screenshot: Optional[bytes] = None,  # v3 — for BG_DISCONTINUITY
-    model: str = "google/gemini-2.5-pro",
+    # V200: model resolution is the caller's responsibility — the pipeline
+    # passes the matrix-resolved model_id from `_resolve_stage_model("vision_review")`
+    # so admins can tune via the `ai_model_stage_assignments` table. The
+    # legacy hardcoded "google/gemini-2.5-pro" default remains as a safety
+    # net for callers that haven't been migrated to per-stage routing yet.
+    model: Optional[str] = "google/gemini-2.5-pro",
     # Pro on OpenRouter consumes tokens on internal reasoning before emitting
     # JSON. With a verbose rubric, 1200 was occasionally truncated. Output
     # cost on 2400 tokens at $5/M is ~$0.012 per shot — small on top of the

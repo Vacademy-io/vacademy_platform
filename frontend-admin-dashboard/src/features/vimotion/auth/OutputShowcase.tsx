@@ -68,10 +68,11 @@ export function OutputShowcase({
     return (
         <aside
             className={cn(
-                // Pin the panel to the viewport so a tall showcase never
-                // pushes the right-hand form below the fold. The panel
-                // handles its own internal overflow.
-                'relative hidden border-r border-neutral-200/70 bg-[#FAFAF7] lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col lg:overflow-y-auto',
+                // Pin the panel to the viewport on desktop so a tall showcase
+                // never pushes the right-hand form below the fold. On mobile,
+                // it sits as a section below the form (placed via `order` in
+                // the parent grid).
+                'relative flex flex-col border-neutral-200/70 bg-[#FAFAF7] lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:border-r',
                 className
             )}
         >
@@ -79,9 +80,10 @@ export function OutputShowcase({
             <div className="pointer-events-none absolute -right-32 -top-32 size-[28rem] rounded-full bg-primary-100/70 blur-3xl" />
             <div className="pointer-events-none absolute -bottom-40 -left-24 size-[28rem] rounded-full bg-primary-50/80 blur-3xl" />
 
-            <div className="relative flex min-h-full flex-col justify-between gap-6 p-8 xl:p-10">
+            <div className="relative flex min-h-full flex-col justify-between gap-6 p-6 sm:p-8 xl:p-10">
                 <header>
-                    <div className="flex items-center gap-2.5">
+                    {/* Duplicate of the mobile form-top logo strip — hide on mobile. */}
+                    <div className="hidden items-center gap-2.5 lg:flex">
                         <div className="flex size-9 items-center justify-center rounded-lg bg-white shadow-sm ring-1 ring-neutral-200">
                             <VimotionLogoMark size={20} className="text-neutral-900" />
                         </div>
@@ -90,7 +92,7 @@ export function OutputShowcase({
                         </span>
                     </div>
 
-                    <h2 className="mt-6 max-w-md text-2xl font-semibold leading-tight tracking-tight text-neutral-900 xl:mt-8 xl:text-3xl">
+                    <h2 className="max-w-md text-xl font-semibold leading-tight tracking-tight text-neutral-900 sm:text-2xl lg:mt-6 xl:mt-8 xl:text-3xl">
                         {tagline}
                     </h2>
                     <p className="mt-2.5 max-w-md text-sm text-neutral-600">

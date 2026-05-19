@@ -1400,7 +1400,8 @@ export interface GenerateVideoRequest {
   html_quality: 'classic' | 'advanced';
   target_audience: string;
   target_duration: string;
-  model: string;
+  model: string;                            // @deprecated — collapses to model_overrides.default server-side
+  model_overrides?: ModelOverrides;         // V200 — per-stage user overrides (gated by STAGE_ROUTING_ENABLED env)
   quality_tier: QualityTier;
   video_id?: string;
   reference_files?: ReferenceFile[];
@@ -2058,3 +2059,58 @@ telemetry's `_shot_to_family` map.
 - S3 mirror of per-shot Veo MP4s (today they live on the fal CDN until segment cache cleanup)
 - Additional audio policies (`intrinsic_under_narration`, `narration_over_intrinsic`) for cinematic ducking
 - BeatPlanner / DefaultShotMapper main-pipeline wiring (modules exist but are off-by-default)
+
+---
+
+## Per-stage AI model overrides (V200) — added 2026-05
+
+`VideoGenerationRequest.model_overrides` lets the user route each LLM stage
+(ShotPlanner, NarrationWriter, per-shot HTML, etc.) to a different model
+without affecting utility stages or the pinned vision-review gate. Replaces
+the single global `model` field as the recommended way to override models;
+the legacy `model` field is still accepted and is collapsed to
+`ModelOverrides(default=model)` on the server.
+
+Shape:
+
+```ts
+interface ModelOverrides {
+  default?: string;                                          // mass-applies to every user-overridable stage
+  per_stage?: Partial<Record<UserOverridableStage, string>>; // wins over default for individual stages
+}
+
+type UserOverridableStage =
+  | 'shot_planner'         // plans the whole video shot-by-shot
+  | 'narration_writer'     // authors per-shot narration text
+  | 'per_shot_html'        // generates HTML for every shot
+  | 'act_planner'          // decomposes intent into acts pre-ShotPlanner
+  | 'regen_html'           // corrective regen on validation failures
+  | 'director'             // v2 legacy
+  | 'script_generation'    // v2 legacy
+  | 'script_review';       // v2 legacy
+```
+
+**Pinned stages (ignore the override):** `vision_review` (always Pro for the
+quality gate), `cultural_context`, `entity_extraction`,
+`image_prompt_enhancement`, `stock_video_ranking`, `beat_planner`,
+`shot_decomposer`, `host_description`, `headline_thumbnail`. Sending
+`per_stage` keys for these is silently dropped.
+
+**Defaults source:** matrix table `ai_model_stage_assignments` (5 quality
+tiers × 17 stages = 85 rows). Edit via SQL — no admin UI in this scope.
+
+**FE surface:** `ModelOverridesPanel` inside the existing `SettingsPopover`.
+One "Default model" dropdown plus an "Customize per stage" expander for the
+8 user-overridable stages. Source list comes from
+`useAIModelsList({ use_case: 'video' })`.
+
+**Telemetry:** every LLM `CostEvent` carries a `source` field — one of
+`"matrix"`, `"user_default"`, `"user_per_stage"`, or `""` (legacy path /
+stage routing off). Lands in `cost_breakdown.json` per run.
+
+**Rollout flag:** `STAGE_ROUTING_ENABLED` env (accepts `true/1/yes/on`).
+Off → legacy global `script_model`/`html_model` routing path runs unchanged.
+On → DB-backed resolver fires; `model_overrides` from the request body
+layers on top.
+
+Deep dive: see [AI_VIDEO_ARCHITECTURE_CHANGES.md §"V200 — DB-Backed Per-Stage Model Routing"](./AI_VIDEO_ARCHITECTURE_CHANGES.md).

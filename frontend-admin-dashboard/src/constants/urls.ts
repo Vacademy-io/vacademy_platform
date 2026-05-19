@@ -614,6 +614,12 @@ export const SUB_ORG_TEAM_ADD = `${BASE_URL}/admin-core-service/sub-org/v1/team/
 export const SUB_ORG_TEAM_REMOVE = `${BASE_URL}/admin-core-service/sub-org/v1/team/remove`;
 export const SUB_ORG_TEAM_ACCESSIBLE = `${BASE_URL}/admin-core-service/sub-org/v1/team/accessible-sub-orgs`;
 export const SUB_ORG_TEAM_ACCESSIBLE_GRANTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/accessible-grants`;
+export const SUB_ORG_TEAM_PENDING_INSTALLMENTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/pending-installments`;
+// Manage-sub-orgs detail panel: admin CPO ledger + learner pending dues
+export const GET_SUB_ORG_FINANCE_DETAIL = `${BASE_URL}/admin-core-service/institute/v1/sub-org/finance-detail`;
+// Invoices (per user) — used by the sub-org analytics dashboard
+export const GET_INVOICES_BY_USER = (userId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;
 
 // Instructor Copilot
 export const INSTRUCTOR_COPILOT_BASE = `${BASE_URL}/admin-core-service/instructor-copilot/v1`;

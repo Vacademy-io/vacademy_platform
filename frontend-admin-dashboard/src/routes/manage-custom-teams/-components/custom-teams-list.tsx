@@ -19,6 +19,8 @@ import {
     getAllRoles,
     listSubOrgTeamMembers,
     removeSubOrgTeamMember,
+    getSubOrgTeamPendingInstallments,
+    type SubOrgTeamPendingInstallments,
 } from '../-services/custom-team-services';
 import { fetchInstituteDashboardUsers } from '@/routes/dashboard/-services/dashboard-services';
 import { getInstituteId } from '@/constants/helper';
@@ -33,6 +35,8 @@ import {
 } from '@/components/ui/table';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { UserAccessModal } from './user-access-modal';
+import { MemberHistoryDrawer } from '@/routes/manage-custom-teams/sub-orgs/-components/member-history-drawer';
+import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import { mapRoleToCustomName } from '@/utils/roleUtils';
 import { toast } from 'sonner';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -53,6 +57,12 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
     const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
     const [accessModalUserId, setAccessModalUserId] = useState<string | null>(null);
     const [accessModalUserName, setAccessModalUserName] = useState<string>('');
+    // In subOrg mode a row click opens the payment-history drawer (CPO installments +
+    // invoices) instead of the per-permissions UserAccessModal.
+    const [historyDrawer, setHistoryDrawer] = useState<{
+        userId: string;
+        name?: string;
+    } | null>(null);
     const [selectedTab, setSelectedTab] = useState<SubOrgTab>('active');
 
     const { data: rolesResponse, isLoading: isLoadingRoles } = useQuery({
@@ -114,6 +124,21 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
     });
 
     const allMembers = data?.content || [];
+
+    // Pending-installments lookup, only in subOrg mode. Only members with non-PAID
+    // StudentFeePayment rows are returned by the backend; absent members render '—'.
+    const { data: pendingDues } = useQuery<SubOrgTeamPendingInstallments>({
+        queryKey: ['sub-org-team-pending-installments', subOrgId],
+        queryFn: () => getSubOrgTeamPendingInstallments(subOrgId!, instituteId!),
+        enabled: mode === 'subOrg' && !!subOrgId && !!instituteId,
+        staleTime: 30000,
+    });
+    const duesByUserId = (pendingDues?.members || []).reduce<
+        Record<string, SubOrgTeamPendingInstallments['members'][number]>
+    >((acc, row) => {
+        acc[row.user_id] = row;
+        return acc;
+    }, {});
 
     // Status derivation has to mirror the cell-level logic — auth-service doesn't set the
     // top-level `status` field, so fall back to the first institute-scoped role's status.
@@ -216,13 +241,14 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                             <TableHead>Phone</TableHead>
                             <TableHead>Roles</TableHead>
                             <TableHead>Status</TableHead>
+                            {mode === 'subOrg' && <TableHead>Pending Dues</TableHead>}
                             {mode === 'subOrg' && <TableHead className="text-right">Actions</TableHead>}
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {!members || members.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={mode === 'subOrg' ? 6 : 5} className="h-24 text-center">
+                                <TableCell colSpan={mode === 'subOrg' ? 7 : 5} className="h-24 text-center">
                                     <div className="flex flex-col items-center justify-center gap-2 text-gray-500">
                                         <User className="h-8 w-8 opacity-50" />
                                         <p>No members found.</p>
@@ -235,8 +261,14 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                                     key={member.id || member.userId}
                                     className="cursor-pointer hover:bg-neutral-50 transition-colors"
                                     onClick={() => {
-                                        setAccessModalUserId(member.id || member.userId);
-                                        setAccessModalUserName(member.full_name || member.name);
+                                        const uid = member.id || member.userId;
+                                        const uname = member.full_name || member.name;
+                                        if (mode === 'subOrg') {
+                                            setHistoryDrawer({ userId: uid, name: uname });
+                                        } else {
+                                            setAccessModalUserId(uid);
+                                            setAccessModalUserName(uname);
+                                        }
                                     }}
                                 >
                                     <TableCell className="font-medium">
@@ -283,6 +315,41 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                                             );
                                         })()}
                                     </TableCell>
+                                    {mode === 'subOrg' && (() => {
+                                        // Most team members have no UserPlan → no SFP rows → empty cell.
+                                        // A row appears here only if the member happens to have a CPO plan.
+                                        const memberId = member.id || member.userId;
+                                        const dues = memberId ? duesByUserId[memberId] : undefined;
+                                        if (!dues || (dues.pending_installments_count ?? 0) === 0) {
+                                            return (
+                                                <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                                            );
+                                        }
+                                        const amount = dues.outstanding_amount ?? 0;
+                                        const fmt = `₹${Number(amount).toLocaleString('en-IN', {
+                                            maximumFractionDigits: 2,
+                                        })}`;
+                                        return (
+                                            <TableCell>
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-medium text-amber-700">
+                                                        {fmt}
+                                                    </span>
+                                                    <span className="text-[10px] text-muted-foreground">
+                                                        {dues.pending_installments_count} pending
+                                                        {dues.next_due_date
+                                                            ? ` · next ${new Date(
+                                                                  dues.next_due_date,
+                                                              ).toLocaleDateString('en-IN', {
+                                                                  day: '2-digit',
+                                                                  month: 'short',
+                                                              })}`
+                                                            : ''}
+                                                    </span>
+                                                </div>
+                                            </TableCell>
+                                        );
+                                    })()}
                                     {mode === 'subOrg' && (
                                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                                             <AlertDialog>
@@ -349,6 +416,15 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                 onOpenChange={(open) => !open && setAccessModalUserId(null)}
                 userId={accessModalUserId}
                 userName={accessModalUserName}
+            />
+
+            <MemberHistoryDrawer
+                open={!!historyDrawer}
+                onOpenChange={(o) => !o && setHistoryDrawer(null)}
+                userId={historyDrawer?.userId || null}
+                userName={historyDrawer?.name}
+                subtitle="Team member"
+                readOnly={isCallerSubOrgAdmin()}
             />
         </div>
     );

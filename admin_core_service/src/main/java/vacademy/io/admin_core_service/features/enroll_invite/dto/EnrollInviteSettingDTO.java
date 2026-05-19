@@ -58,6 +58,26 @@ public class EnrollInviteSettingDTO {
         @JsonProperty("AUTH_ROLES")
         private List<String> authRoles;
 
+        /**
+         * Seat cap for the sub-org. Carried here for CPO-backed sub-orgs because the
+         * mirror PaymentOption + synthetic PaymentPlan is shared across sub-orgs that
+         * pick the same CPO (UNIQUE constraint on payment_option.complex_payment_option_id),
+         * so per-sub-org member_count can't live on the org's PaymentPlan. Scoped FREE
+         * invites read this when populating their own PaymentPlan.memberCount.
+         */
+        @JsonProperty("MEMBER_COUNT")
+        private Integer memberCount;
+
+        /**
+         * Allow-list of custom-role names a sub-org admin can assign on /manage-suborg-teams
+         * Add Member. Configured at sub-org creation, editable later by the parent admin
+         * via PATCH /institute/v1/sub-org/{id}/team-roles. Distinct from {@link #authRoles},
+         * which is the auth-service role assigned to the sub-org admin themselves.
+         * Empty / null = no restriction (legacy behaviour — every custom role available).
+         */
+        @JsonProperty("ALLOWED_TEAM_ROLES")
+        private List<String> allowedTeamRoles;
+
     }
 
     @Data

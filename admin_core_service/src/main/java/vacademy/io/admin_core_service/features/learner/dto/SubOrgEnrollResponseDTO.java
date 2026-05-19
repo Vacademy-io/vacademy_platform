@@ -20,4 +20,8 @@ public class SubOrgEnrollResponseDTO {
     private UserDTO user;
     private String mappingId;
     private String message;
+
+    // Populated only when paymentMode = OFFLINE was honoured.
+    private String paymentLogId;
+    private String invoiceId;
 }

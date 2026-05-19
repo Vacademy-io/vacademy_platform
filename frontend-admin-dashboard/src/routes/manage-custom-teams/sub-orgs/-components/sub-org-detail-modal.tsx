@@ -21,7 +21,7 @@ import {
     type SubOrgFinanceDetail,
 } from '../../-services/custom-team-services';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_SUB_ORG_ALL_ADMINS, LOCAL_ADMIN_CORE_BASE } from '@/constants/urls';
+import { BASE_URL, GET_SUB_ORG_ALL_ADMINS } from '@/constants/urls';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { Copy, Link2, BookOpen, ShieldCheck, ExternalLink, UserPlus, Loader2, Wallet, GraduationCap } from 'lucide-react';
 import { toast } from 'sonner';
@@ -354,12 +354,11 @@ function AddUserToSubOrgSection({
     const [offlineDate, setOfflineDate] = useState<string>(''); // yyyy-mm-dd
     const [generateInvoice, setGenerateInvoice] = useState<boolean>(false);
 
-    // Fetch the institute's CPO list so the admin can pick a per-learner CPO. Uses local
-    // backend URL (sub-org work is pinned to localhost:8072 per dev setup).
+    // Fetch the institute's CPO list so the admin can pick a per-learner CPO.
     const { data: cpoListResponse } = useQuery({
-        queryKey: ['sub-org-add-user-cpo-list-local', instituteId],
+        queryKey: ['sub-org-add-user-cpo-list', instituteId],
         queryFn: async () => {
-            const url = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/fee-management/cpo/${instituteId}`;
+            const url = `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${instituteId}`;
             const resp = await authenticatedAxiosInstance({
                 method: 'GET',
                 url,
@@ -375,11 +374,11 @@ function AddUserToSubOrgSection({
 
     // Fetch the full CPO template when admin picks one. Used to render the installment editor.
     const { data: cpoFullDetails, isLoading: isLoadingCpoTemplate } = useQuery({
-        queryKey: ['sub-org-add-user-cpo-full-local', selectedPaymentOptionId],
+        queryKey: ['sub-org-add-user-cpo-full', selectedPaymentOptionId],
         queryFn: async () => {
             // selectedPaymentOptionId is the PaymentOption mirror id; we need the CPO id.
             // Find the matching cpo in cpoList — they share the same id-space via mirror.
-            const url = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/fee-management/cpo/${selectedPaymentOptionId}/full`;
+            const url = `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${selectedPaymentOptionId}/full`;
             const resp = await authenticatedAxiosInstance({ method: 'GET', url });
             return resp.data;
         },

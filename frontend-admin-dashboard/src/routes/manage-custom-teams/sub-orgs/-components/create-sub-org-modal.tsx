@@ -42,14 +42,12 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL, GET_INSTITUTE_VENDORS } from '@/constants/urls';
 import type { CPOListApiResponse } from '@/routes/financial-management/fee-plans/-types/cpo-types';
 
-// Sub-org work is pinned to localhost:8072. The package picker must read from the
-// same backend the sub-org will be created on, otherwise package_session_ids won't
-// resolve at create time. Keep these local helpers inline so the rest of the
-// dashboard's package-service calls (BASE_URL → staging) stay untouched.
+// Local sub-org helpers — kept inline so the rest of the dashboard's package-service
+// calls don't accidentally pick up the same lookup logic. Use BASE_URL for production.
 const fetchBatchesSummaryLocal = async (instituteId: string, statuses: string[]) => {
     const params = new URLSearchParams();
     statuses.forEach((s) => params.append('statuses', s));
-    const url = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/v1/batches-summary/${instituteId}${
+    const url = `${BASE_URL}/admin-core-service/institute/v1/batches-summary/${instituteId}${
         params.toString() ? `?${params.toString()}` : ''
     }`;
     const response = await authenticatedAxiosInstance({ method: 'GET', url });
@@ -57,7 +55,7 @@ const fetchBatchesSummaryLocal = async (instituteId: string, statuses: string[])
 };
 
 const fetchCourseBatchesLocal = async (courseId: string): Promise<PackageSessionDTO[]> => {
-    const url = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/course/v1/${courseId}/batches`;
+    const url = `${BASE_URL}/admin-core-service/course/v1/${courseId}/batches`;
     const response = await authenticatedAxiosInstance({ method: 'GET', url });
     return response.data;
 };
@@ -67,7 +65,7 @@ const fetchInstituteCpoListLocal = async (
     pageNo = 0,
     pageSize = 100
 ): Promise<CPOListApiResponse> => {
-    const url = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/fee-management/cpo/${instituteId}`;
+    const url = `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${instituteId}`;
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url,
@@ -145,8 +143,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         },
     });
 
-    // Fetch packages for step 2 — pinned to LOCAL_ADMIN_CORE_BASE so the IDs
-    // match the local DB where the sub-org will be created.
+    // Fetch packages for step 2.
     const { data: packagesSummary, isLoading: isLoadingSummary } = useQuery({
         queryKey: ['sub-org-packages-summary-local', instituteId],
         queryFn: () => fetchBatchesSummaryLocal(instituteId || '', ['ACTIVE']),
@@ -211,7 +208,6 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
     });
 
     // Fetch institute CPOs — used to populate the picker when payment_type=CPO.
-    // Pinned to LOCAL_ADMIN_CORE_BASE so the CPO IDs match the local DB.
     const { data: cpoListResponse, isLoading: isLoadingCpos } = useQuery({
         queryKey: ['sub-org-institute-cpo-list-local', instituteId],
         queryFn: () => fetchInstituteCpoListLocal(instituteId || '', 0, 100),

@@ -21,7 +21,7 @@ import {
     SUB_ORG_TEAM_PENDING_INSTALLMENTS,
     GET_SUB_ORG_FINANCE_DETAIL,
     GET_INVOICES_BY_USER,
-    LOCAL_ADMIN_CORE_BASE,
+    BASE_URL,
 } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
@@ -272,7 +272,7 @@ export const updateSubOrgTeamRoles = async (
     allowedTeamRoles: string[]
 ): Promise<{ sub_org_id: string; allowed_team_roles: string[] }> => {
     const parentInstituteId = getCurrentInstituteId();
-    const url = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/v1/sub-org/${subOrgId}/team-roles`;
+    const url = `${BASE_URL}/admin-core-service/institute/v1/sub-org/${subOrgId}/team-roles`;
     const response = await authenticatedAxiosInstance({
         method: 'PATCH',
         url,

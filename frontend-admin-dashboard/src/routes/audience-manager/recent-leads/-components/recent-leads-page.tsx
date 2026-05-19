@@ -707,7 +707,13 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
                     return (
                         <div className="flex flex-col gap-0.5 p-3 font-medium text-neutral-900">
                             <span>{displayName(lead)}</span>
-                            {profile && <LeadScoreBadge score={profile.best_score} size="sm" />}
+                            {profile && (
+                                <LeadScoreBadge
+                                    score={profile.best_score}
+                                    tier={profile.lead_tier}
+                                    size="sm"
+                                />
+                            )}
                         </div>
                     );
                 },
@@ -875,14 +881,23 @@ const RecentLeadsTable = ({ data, isLoading, error }: RecentLeadsTableProps) => 
             onOpenChange={setIsSidebarOpen}
         >
             <div className="min-w-0 flex-1 rounded-md shadow-sm">
-                <MyTable<RecentLeadDetail>
-                    data={tableData}
-                    columns={columns}
-                    isLoading={isLoading}
-                    error={error}
-                    currentPage={0}
-                    tableState={{ columnVisibility: {} }}
-                />
+                {!isLoading && !error && data && data.content.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-1 rounded-lg border border-neutral-200 bg-white px-6 py-16 text-center">
+                        <p className="text-sm font-medium text-neutral-700">No leads found</p>
+                        <p className="text-xs text-neutral-500">
+                            Try adjusting the filters or clearing them to see more results.
+                        </p>
+                    </div>
+                ) : (
+                    <MyTable<RecentLeadDetail>
+                        data={tableData}
+                        columns={columns}
+                        isLoading={isLoading}
+                        error={error}
+                        currentPage={0}
+                        tableState={{ columnVisibility: {} }}
+                    />
+                )}
             </div>
             <StudentSidebar selectedTab="overview" examType="EXAM" isStudentList={false} />
 

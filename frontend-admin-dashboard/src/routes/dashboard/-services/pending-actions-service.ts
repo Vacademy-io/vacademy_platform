@@ -1,12 +1,9 @@
 import { fetchPendingAdjustments } from '@/services/manage-finances';
 import { fetchSystemAlerts, stripHtml } from '@/services/notifications/system-alerts';
-import { getUpcomingSessions } from '@/routes/study-library/live-session/-services/utils';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
-export type PendingActionType =
-    | 'OVERDUE_PAYMENT'
-    | 'PENDING_APPROVAL'
-    | 'LIVE_CLASS_TODAY'
-    | 'UNREAD_ALERT';
+export type PendingActionType = 'OVERDUE_PAYMENT' | 'PENDING_APPROVAL' | 'UNREAD_ALERT';
 
 export type PendingActionSeverity = 'high' | 'medium' | 'low';
 
@@ -49,25 +46,18 @@ const safeSettled = async <T>(p: Promise<T>): Promise<T | null> => {
     }
 };
 
-const todayKey = (): string => {
-    const d = new Date();
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    return `${yyyy}-${mm}-${dd}`;
-};
-
 // Map fetchPendingAdjustments rows into overdue-payment actions.
 // An item is "overdue" when is_overdue=true OR status='OVERDUE'.
 const buildOverduePaymentActions = async (): Promise<PendingAction[]> => {
     const rows = await safeSettled(fetchPendingAdjustments());
     if (!rows) return [];
+    const learnerLabel = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
     return rows
         .filter((r) => r.is_overdue || r.status === 'OVERDUE')
         .map((r) => ({
             id: `overdue:${r.id}`,
             type: 'OVERDUE_PAYMENT' as const,
-            title: `${r.student_name || 'Student'} — ${formatMoney(r.amount_due || 0)} overdue`,
+            title: `${r.student_name || learnerLabel} — ${formatMoney(r.amount_due || 0)} overdue`,
             subtitle: `${r.days_overdue} day${r.days_overdue === 1 ? '' : 's'} late · ${r.fee_type_name || r.cpo_name || 'Fee'}`,
             ageHours: Math.max(r.days_overdue * 24, hoursSince(r.due_date)),
             deepLink: '/financial-management/collection-dashboard',
@@ -79,36 +69,18 @@ const buildOverduePaymentActions = async (): Promise<PendingAction[]> => {
 const buildPendingApprovalActions = async (): Promise<PendingAction[]> => {
     const rows = await safeSettled(fetchPendingAdjustments());
     if (!rows) return [];
+    const learnerLabel = getTerminology(RoleTerms.Learner, SystemTerms.Learner);
     return rows
         .filter((r) => r.adjustment_status === 'PENDING_APPROVAL')
         .map((r) => ({
             id: `approval:${r.id}`,
             type: 'PENDING_APPROVAL' as const,
-            title: `Approve adjustment for ${r.student_name || 'Student'}`,
+            title: `Approve adjustment for ${r.student_name || learnerLabel}`,
             subtitle: `${r.adjustment_type || 'Adjustment'} · ${formatMoney(r.adjustment_amount || 0)}`,
             ageHours: hoursSince(r.due_date),
             deepLink: '/financial-management/collection-dashboard',
             severity: 'medium',
         }));
-};
-
-// Live classes scheduled for today (across the institute).
-const buildLiveClassTodayActions = async (instituteId: string): Promise<PendingAction[]> => {
-    if (!instituteId) return [];
-    const days = await safeSettled(getUpcomingSessions(instituteId));
-    if (!days) return [];
-    const today = todayKey();
-    const todayDay = days.find((d) => (d.date || '').slice(0, 10) === today);
-    if (!todayDay) return [];
-    return todayDay.sessions.slice(0, 5).map((s) => ({
-        id: `live:${s.session_id}-${s.schedule_id}`,
-        type: 'LIVE_CLASS_TODAY' as const,
-        title: s.title || 'Live class',
-        subtitle: `${s.start_time?.slice(0, 5) || ''}${s.subject ? ' · ' + s.subject : ''}`,
-        ageHours: 0,
-        deepLink: '/study-library/live-session',
-        severity: 'low',
-    }));
 };
 
 // Unread system alerts (top 5) — clicking opens the existing alerts modal.
@@ -149,11 +121,10 @@ export interface GetPendingActionsArgs {
 }
 
 export const getPendingActions = async (args: GetPendingActionsArgs): Promise<PendingAction[]> => {
-    const { instituteId, userId, limit = 20 } = args;
+    const { userId, limit = 20 } = args;
     const groups = await Promise.all([
         buildOverduePaymentActions(),
         buildPendingApprovalActions(),
-        buildLiveClassTodayActions(instituteId),
         buildUnreadAlertActions(userId),
     ]);
     const all = groups.flat();

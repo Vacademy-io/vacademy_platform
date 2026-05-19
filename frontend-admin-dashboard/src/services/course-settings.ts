@@ -303,6 +303,7 @@ export const mergeWithDefaults = (settings: Partial<CourseSettingsData>): Course
         },
         offerPricing: {
             enabled: settings.offerPricing?.enabled ?? false,
+            rounding: settings.offerPricing?.rounding ?? 'NONE',
         },
     };
 };

@@ -98,9 +98,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:minLeadScore IS NULL OR COALESCE(ls.raw_score, 0) >= :minLeadScore)
                               AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
                               AND (COALESCE(:leadTier, '') = '' OR
-                                   (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
-                                   (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
-                                   (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
+                                   (ulp.user_id IS NOT NULL AND :leadTier = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                            WHEN ulp.best_score >= 50 THEN 'WARM'
+                                            ELSE 'COLD' END)))
                               AND (COALESCE(:assignedCounselorId, '') = ''
                                    OR lu.user_id = :assignedCounselorId
                                    OR ulp.assigned_counselor_id = :assignedCounselorId)
@@ -172,9 +173,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (:minLeadScore IS NULL OR COALESCE(ls.raw_score, 0) >= :minLeadScore)
                               AND (:maxLeadScore IS NULL OR COALESCE(ls.raw_score, 0) <= :maxLeadScore)
                               AND (COALESCE(:leadTier, '') = '' OR
-                                   (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
-                                   (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
-                                   (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
+                                   (ulp.user_id IS NOT NULL AND :leadTier = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                            WHEN ulp.best_score >= 50 THEN 'WARM'
+                                            ELSE 'COLD' END)))
                               AND (COALESCE(:assignedCounselorId, '') = ''
                                    OR lu.user_id = :assignedCounselorId
                                    OR ulp.assigned_counselor_id = :assignedCounselorId)
@@ -274,9 +276,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    (COALESCE(:searchUserIdsCsv, '') != ''
                                     AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (COALESCE(:leadTier, '') = '' OR
-                                   (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
-                                   (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
-                                   (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
+                                   (ulp.user_id IS NOT NULL AND :leadTier = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                            WHEN ulp.best_score >= 50 THEN 'WARM'
+                                            ELSE 'COLD' END)))
                               AND (COALESCE(:assignedCounselorId, '') = ''
                                    OR lu.user_id = :assignedCounselorId
                                    OR ulp.assigned_counselor_id = :assignedCounselorId)
@@ -318,9 +321,10 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    (COALESCE(:searchUserIdsCsv, '') != ''
                                     AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
                               AND (COALESCE(:leadTier, '') = '' OR
-                                   (:leadTier = 'HOT'  AND ls.raw_score IS NOT NULL AND ls.raw_score >= 80) OR
-                                   (:leadTier = 'WARM' AND ls.raw_score IS NOT NULL AND ls.raw_score >= 50 AND ls.raw_score < 80) OR
-                                   (:leadTier = 'COLD' AND ls.raw_score IS NOT NULL AND ls.raw_score < 50))
+                                   (ulp.user_id IS NOT NULL AND :leadTier = COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                            WHEN ulp.best_score >= 50 THEN 'WARM'
+                                            ELSE 'COLD' END)))
                               AND (COALESCE(:assignedCounselorId, '') = ''
                                    OR lu.user_id = :assignedCounselorId
                                    OR ulp.assigned_counselor_id = :assignedCounselorId)

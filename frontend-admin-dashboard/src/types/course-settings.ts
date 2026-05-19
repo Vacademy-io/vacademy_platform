@@ -111,8 +111,11 @@ export interface DripConditionsSettings {
     conditions: DripCondition[];
 }
 
+export type OfferPriceRoundingMode = 'NONE' | 'CEIL' | 'FLOOR';
+
 export interface OfferPricingSettings {
     enabled: boolean; // Opt-in toggle for the per-course offer-price tool
+    rounding?: OfferPriceRoundingMode; // Whole-unit rounding applied to discounted price; default 'NONE'
 }
 
 export interface CourseSettingsData {
@@ -186,5 +189,6 @@ export const DEFAULT_COURSE_SETTINGS: CourseSettingsData = {
     },
     offerPricing: {
         enabled: false,
+        rounding: 'NONE',
     },
 };

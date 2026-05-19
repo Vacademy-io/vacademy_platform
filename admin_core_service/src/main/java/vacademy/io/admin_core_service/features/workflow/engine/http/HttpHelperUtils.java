@@ -26,11 +26,30 @@ public class HttpHelperUtils {
 
     public <T> T evaluateSpel(String expression, Map<String, Object> context, Class<T> targetType, T defaultValue) {
         if (!StringUtils.hasText(expression)) return defaultValue;
+        // Don't run SpEL on values that aren't SpEL expressions. A bare URL like
+        // "https://example.com/x" contains a colon which the SpEL parser rejects,
+        // and a bare identifier like "webhookResponse" gets treated as a context
+        // variable lookup and fails. Mirror what evaluateBodyExpressions does:
+        // only invoke the parser when the value actually looks like SpEL.
+        //   - "#..."           → variable / context reference  (#ctx['x'], #root)
+        //   - "T(...)"         → type reference (rare in this codebase but allowed)
+        //   - "'...'"          → SpEL string literal (existing LMS workflow shape)
+        // Anything else is treated as a plain string literal.
+        String trimmed = expression.trim();
+        boolean looksLikeSpel =
+                trimmed.contains("#")
+                || trimmed.startsWith("T(")
+                || (trimmed.length() >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'"));
+        if (!looksLikeSpel) {
+            if (targetType.isInstance(expression)) {
+                return (T) expression;
+            }
+            return defaultValue;
+        }
         try {
             Object res = spelEvaluator.evaluate(expression, context);
             return (T) res;
         } catch (Exception e) {
-            e.printStackTrace();
             log.warn("SpEL evaluation failed for '{}': {}", expression, e.getMessage());
             return defaultValue;
         }

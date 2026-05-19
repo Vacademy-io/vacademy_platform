@@ -726,7 +726,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                 return (
                   <div
                     key={book.id}
-                    className="group relative flex flex-col cursor-pointer perspective-1000   rounded-xl"
+                    className="group relative isolate flex flex-col cursor-pointer perspective-1000   rounded-xl"
 
                     onClick={() => handleBookClick(book)}
                   >

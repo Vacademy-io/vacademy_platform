@@ -1438,6 +1438,8 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                     : undefined;
 
             const webhookNode = makeNode('HTTP_REQUEST', 'POST enrollment to webhook', {
+                // Plain string — the HTTP_REQUEST handler now passes literals through
+                // (only invokes SpEL when the value contains #, T(, or '...').
                 resultKey: 'webhookResponse',
                 config: {
                     requestType: 'EXTERNAL',

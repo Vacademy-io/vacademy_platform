@@ -40,8 +40,8 @@ interface AttendanceMarkingTableProps {
     packageSessionDetails?: Array<{
         package_session_id: string;
         package_name: string;
-        level_name: string;
-    }>;
+        level_name?: string;
+    }> | null;
     onSaved?: () => void;
 }
 

@@ -156,9 +156,11 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
     // Prefetch sessions for every package in parallel so the user sees the full
     // (package · level · session) list immediately as checkboxes — no click-to-expand
     // dance. This was the behaviour that broke against the local backend.
-    const packageIds = (packagesSummary?.packages || []).map((p: { id: string }) => p.id);
+    const packageIds: string[] = (packagesSummary?.packages || []).map(
+        (p: { id: string }) => p.id
+    );
     const sessionQueries = useQueries({
-        queries: packageIds.map((pkgId) => ({
+        queries: packageIds.map((pkgId: string) => ({
             queryKey: ['sub-org-package-sessions-local', pkgId],
             queryFn: () => fetchCourseBatchesLocal(pkgId),
             enabled: open && step >= 2 && !!pkgId,

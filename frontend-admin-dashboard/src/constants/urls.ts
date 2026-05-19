@@ -585,24 +585,23 @@ export const LIST_PLANNING_LOGS = `${PLANNING_LOGS_BASE}/list`;
 export const UPDATE_PLANNING_LOG = (logId: string) => `${PLANNING_LOGS_BASE}/${logId}`;
 export const GENERATE_INTERVAL_TYPE_ID = `${PLANNING_LOGS_BASE}/generate-interval-type-id`;
 
-// Sub Org — all routes target LOCAL_ADMIN_CORE_BASE (localhost:8072) for dev parity
-// with the locally-running admin-core-service. Flip back to BASE_URL when promoting.
-export const GET_SUB_ORG_ADMINS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/sub-org/v1/sub-org-admins`;
-export const GET_SUB_ORG_ALL_ADMINS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/sub-org/v1/all-admins`;
-export const GET_SUB_ORG_MEMBERS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/sub-org/v1/members`;
-export const ADD_SUB_ORG_MEMBER = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/sub-org/v1/add-member`;
+// Sub Org
+export const GET_SUB_ORG_ADMINS = `${BASE_URL}/admin-core-service/sub-org/v1/sub-org-admins`;
+export const GET_SUB_ORG_ALL_ADMINS = `${BASE_URL}/admin-core-service/sub-org/v1/all-admins`;
+export const GET_SUB_ORG_MEMBERS = `${BASE_URL}/admin-core-service/sub-org/v1/members`;
+export const ADD_SUB_ORG_MEMBER = `${BASE_URL}/admin-core-service/sub-org/v1/add-member`;
 // Sub-org team (custom-role) endpoints — server-scoped to caller's sub-org
-export const SUB_ORG_TEAM_LIST = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/sub-org/v1/team/list`;
-export const SUB_ORG_TEAM_ADD = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/sub-org/v1/team/add`;
-export const SUB_ORG_TEAM_REMOVE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/sub-org/v1/team/remove`;
-export const SUB_ORG_TEAM_ACCESSIBLE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/sub-org/v1/team/accessible-sub-orgs`;
-export const SUB_ORG_TEAM_ACCESSIBLE_GRANTS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/sub-org/v1/team/accessible-grants`;
-export const SUB_ORG_TEAM_PENDING_INSTALLMENTS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/sub-org/v1/team/pending-installments`;
+export const SUB_ORG_TEAM_LIST = `${BASE_URL}/admin-core-service/sub-org/v1/team/list`;
+export const SUB_ORG_TEAM_ADD = `${BASE_URL}/admin-core-service/sub-org/v1/team/add`;
+export const SUB_ORG_TEAM_REMOVE = `${BASE_URL}/admin-core-service/sub-org/v1/team/remove`;
+export const SUB_ORG_TEAM_ACCESSIBLE = `${BASE_URL}/admin-core-service/sub-org/v1/team/accessible-sub-orgs`;
+export const SUB_ORG_TEAM_ACCESSIBLE_GRANTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/accessible-grants`;
+export const SUB_ORG_TEAM_PENDING_INSTALLMENTS = `${BASE_URL}/admin-core-service/sub-org/v1/team/pending-installments`;
 // Manage-sub-orgs detail panel: admin CPO ledger + learner pending dues
-export const GET_SUB_ORG_FINANCE_DETAIL = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/v1/sub-org/finance-detail`;
+export const GET_SUB_ORG_FINANCE_DETAIL = `${BASE_URL}/admin-core-service/institute/v1/sub-org/finance-detail`;
 // Invoices (per user) — used by the sub-org analytics dashboard
 export const GET_INVOICES_BY_USER = (userId: string) =>
-    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/v1/invoices/user/${userId}`;
+    `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;
 
 // Instructor Copilot
 export const INSTRUCTOR_COPILOT_BASE = `${BASE_URL}/admin-core-service/instructor-copilot/v1`;
@@ -670,12 +669,12 @@ export const AUTOSUGGEST_USERS = `${BASE_URL}/auth-service/v1/user/autosuggest-u
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;
 export const GET_ALL_FACULTY_V2 = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
-export const CREATE_SUB_ORG = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/v1/sub-org/create`;
-export const GET_SUB_ORGS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/v1/sub-org/get-all`;
-export const CREATE_SUB_ORG_WITH_SUBSCRIPTION = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/v1/sub-org/create-with-subscription`;
-export const GET_SUB_ORG_SCOPED_INVITES = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/v1/sub-org/scoped-invites`;
-export const GET_SUB_ORG_SEAT_USAGE = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/v1/sub-org/seat-usage`;
-export const GET_SUB_ORG_SUBSCRIPTION_STATUS = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/v1/sub-org/subscription-status`;
+export const CREATE_SUB_ORG = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create`;
+export const GET_SUB_ORGS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/get-all`;
+export const CREATE_SUB_ORG_WITH_SUBSCRIPTION = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create-with-subscription`;
+export const GET_SUB_ORG_SCOPED_INVITES = `${BASE_URL}/admin-core-service/institute/v1/sub-org/scoped-invites`;
+export const GET_SUB_ORG_SEAT_USAGE = `${BASE_URL}/admin-core-service/institute/v1/sub-org/seat-usage`;
+export const GET_SUB_ORG_SUBSCRIPTION_STATUS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/subscription-status`;
 
 // Custom Roles (Auth Service) - use auth-service/v1 to match other auth endpoints and avoid CORS
 // GET /auth-service/v1/institute/{instituteId}/roles, POST for create

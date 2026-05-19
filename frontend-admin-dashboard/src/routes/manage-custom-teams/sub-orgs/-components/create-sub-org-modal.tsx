@@ -39,7 +39,7 @@ import {
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_INSTITUTE_VENDORS, LOCAL_ADMIN_CORE_BASE } from '@/constants/urls';
+import { BASE_URL, GET_INSTITUTE_VENDORS } from '@/constants/urls';
 import type { CPOListApiResponse } from '@/routes/financial-management/fee-plans/-types/cpo-types';
 
 // Sub-org work is pinned to localhost:8072. The package picker must read from the

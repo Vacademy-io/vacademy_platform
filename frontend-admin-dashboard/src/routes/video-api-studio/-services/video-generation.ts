@@ -210,16 +210,18 @@ export type AiVideoModel = (typeof AI_VIDEO_MODELS)[number]['value'];
 // lockstep with `app/constants/pipeline_stages.py` USER_OVERRIDABLE_STAGES.
 // Non-overridable stages (vision_review, cultural_context, etc.) are pinned
 // to admin defaults and stay off this list — sending them is a silent no-op.
+//
+// v2-legacy stage IDs (`director`, `script_generation`, `script_review`) are
+// no longer surfaced in the UI now that v3 is the only supported pipeline.
+// The BE still accepts them in `per_stage` for back-compat, so any clients
+// that still send them keep working — they just resolve to matrix rows that
+// the v3 runtime never reads.
 export type UserOverridableStage =
     | 'shot_planner'
     | 'narration_writer'
     | 'per_shot_html'
     | 'act_planner'
-    | 'regen_html'
-    // v2 legacy — overridable until v2 is deleted
-    | 'director'
-    | 'script_generation'
-    | 'script_review';
+    | 'regen_html';
 
 // Display order + labels for the ModelOverridesPanel "advanced" expander.
 // Same shape as AI_VIDEO_MODELS — readonly tuple so dropdowns stay
@@ -234,10 +236,6 @@ export const USER_OVERRIDABLE_STAGE_META: readonly {
     { value: 'per_shot_html', label: 'Per-shot HTML', hint: 'Generates HTML for every shot — biggest token bucket.' },
     { value: 'act_planner', label: 'Act planner', hint: 'Decomposes intent into acts before shot planning.' },
     { value: 'regen_html', label: 'HTML regeneration', hint: 'Corrective regen for failed validation passes.' },
-    // v2 legacy — only visible when older runs are involved
-    { value: 'director', label: 'Director (v2)', hint: 'v2 pipeline only.' },
-    { value: 'script_generation', label: 'Script generation (v2)', hint: 'v2 pipeline only.' },
-    { value: 'script_review', label: 'Script review (v2)', hint: 'v2 pipeline only.' },
 ] as const;
 
 export interface ModelOverrides {

@@ -435,7 +435,7 @@ Per-stage deduction is automatic — every new LLM call (bbox-lint regen, brand-
 
 # Pipeline Reorder v3 — ShotPlanner-first architecture
 
-**Status**: backend wiring shipped 2026-05-15 behind `PIPELINE_VERSION=v3` flag (also per-tier `pipeline_version: "v3"`). v2 remains the default; v3 is opt-in for shadow testing before promotion.
+**Status**: backend wiring shipped 2026-05-15; v3 is now the **only** supported pipeline. v2 is deprecated and no longer user-selectable — the `PIPELINE_VERSION` env var and per-tier `pipeline_version` config field were removed once v3 soaked. The v2 BeatPlanner → Director → segment-HTML chain remains in `automation_pipeline.py` as an internal exception-handler fallback inside `_run_v3_shot_planning` only.
 **Audience**: engineers maintaining the AI video pipeline, the editor's audio surface, or anything that reads `timeline.meta.sentences[]`.
 **Origin**: user-requested architectural reorder — see [plan-to-make-the-tranquil-engelbart.md](../../../../Users/shreyashjain/.claude/plans/plan-to-make-the-tranquil-engelbart.md) for the full design rationale.
 
@@ -491,7 +491,7 @@ Two LLM planning calls (~$0.06–$0.10) replace v2's three (~$0.08–$0.16). The
 
 ## 5. Behavioral guarantees
 
-- **v3 is OFF by default.** Without `PIPELINE_VERSION=v3` (env) or per-tier `pipeline_version: "v3"`, the pipeline runs the existing v2 path unchanged. No production behavior change at this commit.
+- **v3 is the only supported mode.** `_pipeline_v3_enabled()` returns `True` unconditionally; `_resolve_pipeline_version()` returns `"v3"` unconditionally. Historical videos persisted with `user_selections.pipeline_version: "v2"` still render correctly in the FE audit panel (we don't rewrite history), but every new run is v3.
 - **v3 failure falls back to v2.** ShotPlanner or NarrationWriter raising any exception logs and falls through to the v2 path. No run is sacrificed to the new path while it's bedding in.
 - **`meta.shots[]` is built for both v2 and v3 timelines.** `_write_timeline` reads from `self._v3_shot_plan` first, then `shot_plan.json` on disk, then `director_plan.json`. So a v2 ultra-tier video also gets `meta.shots[]` — the editor's shot-mode works for any video with a Director plan.
 - **Sentence clips remain readable.** `meta.sentences[]` is left intact for backward compatibility; the editor MAY prefer `meta.shots[]` when present but doesn't have to.

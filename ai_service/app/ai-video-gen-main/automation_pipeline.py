@@ -748,11 +748,6 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
         "ai_video_eligible": False,
-        # Pipeline architecture — v3 ShotPlanner-first (see ultra tier for
-        # rationale). Free/standard previously ran a segment-based no-Director
-        # path; v3 unifies all tiers under one shot-planning flow. Rollback:
-        # `PIPELINE_VERSION=v2` env override per-deploy without a code change.
-        "pipeline_version": "v3",
     },
     "standard": {
         "script_temperature": 0.5,
@@ -787,8 +782,6 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
         "ai_video_eligible": False,
-        # Pipeline architecture — see "free" tier comment.
-        "pipeline_version": "v3",
     },
     "premium": {
         "script_temperature": 0.6,
@@ -831,8 +824,6 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         "beat_planner_enabled": True,
         # AI video gen (fal.ai veo3.1/lite) — ineligible on this tier.
         "ai_video_eligible": False,
-        # Pipeline architecture — see "free" tier comment.
-        "pipeline_version": "v3",
     },
     "ultra": {
         "script_temperature": 0.6,
@@ -907,15 +898,6 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # "best attempt" but never actually fixes the back-half-motion check.
         # Detection stays; regen LLM call is gated by this knob.
         "anim_validator_regen_enabled": False,
-        # B-4 — activate v3 ShotPlanner-first pipeline on ultra. The dormant
-        # v3 code path (shot_planner.py + narration_writer.py + the v3 gate
-        # at line ~9290) takes over: ShotPlanner sees the prompt + visual
-        # intent + pre-fetched references + brand brief in a single LLM call;
-        # NarrationWriter authors all per-shot narration coherently; the
-        # legacy BeatPlanner→Script→Director chain is bypassed. Rollback:
-        # set `PIPELINE_VERSION=v2` env var to override per-deploy without a
-        # code change.
-        "pipeline_version": "v3",
         # Pillar 2.4 — shot HTML shared-preamble dedup. When True, the per-
         # shot system prompt tells the LLM NOT to re-emit the SVG <defs> /
         # font @import / brand palette CSS / text-safety rules (renderer
@@ -995,8 +977,6 @@ QUALITY_TIERS: dict[str, dict[str, Any]] = {
         # for the eligible-vs-enabled distinction).
         "ai_video_eligible": True,
         "ai_video_per_video_cost_cap_usd": AI_VIDEO_PER_VIDEO_COST_CAP_USD,
-        # Pipeline architecture — see "ultra" tier comment.
-        "pipeline_version": "v3",
     },
 }
 
@@ -2886,6 +2866,21 @@ class VideoGenerationPipeline:
         # Cap one audio-overrun regen per video (Fix 1f).
         self._audio_regen_attempted: bool = False
 
+        # Runtime pipeline-version attribution — what actually ran for this
+        # video. v3 is always selected up front (`_pipeline_v3_enabled()`
+        # is True), but if ShotPlanner/NarrationWriter raise, the except
+        # path inside `_run_v3_shot_planning` falls back to v2 BeatPlanner→
+        # Director→segment-HTML. This flag distinguishes the two for cost
+        # forensics + audit-panel accuracy.
+        #
+        # Values:
+        #   "v3"                       — clean v3 run, ShotPlanner+NarrationWriter both succeeded
+        #   "v3_with_v2_fallback"      — v3 errored, v2 chain ran as the internal safety net
+        # cost_event_tracker.build_report() reads this; the service layer
+        # writes it to `user_selections.runtime_pipeline_version` post-run
+        # so the FE can disambiguate intent ("v3") from runtime.
+        self._v3_runtime_status: str = "v3"
+
         # Host plan (from HostPlannerService — runs in pre-script preamble).
         # When enabled=True, downstream stages branch:
         #   • script LLM       → 1st-person directive (Change 7)
@@ -3519,13 +3514,13 @@ class VideoGenerationPipeline:
                 pass  # validation block below will fill in a safe default
 
             # ── v3 dispatch (ShotPlanner-first) ──────────────────────
-            # Gated behind PIPELINE_VERSION=v3 (env) or tier_config
-            # `pipeline_version: "v3"`. On success, populates `script_plan`
-            # from ShotPlanner + NarrationWriter output, persists
-            # `shot_plan.json`, and short-circuits the v2 BeatPlanner +
-            # _draft_script + reviews + bridge below via `_v3_done=True`.
-            # On v3 failure, falls through to v2 — no run is sacrificed
-            # to the new path while it's bedding in.
+            # v3 is the only supported pipeline (v2 deprecated). Populates
+            # `script_plan` from ShotPlanner + NarrationWriter output,
+            # persists `shot_plan.json`, and short-circuits the v2
+            # BeatPlanner + _draft_script + reviews + bridge below via
+            # `_v3_done=True`. On v3 LLM failure, the except path falls
+            # through to the v2 chain as an internal safety-net only —
+            # not user-selectable.
             _v3_done = False
             self._v3_shot_plan = None  # cleared every script-stage entry
             if self._pipeline_v3_enabled():
@@ -3571,6 +3566,11 @@ class VideoGenerationPipeline:
                         f"({type(_v3_err).__name__}: {_v3_err}) — falling back to v2"
                     )
                     self._v3_shot_plan = None  # html stage must NOT think v3 succeeded
+                    # Mark runtime as v2-fallback so cost events + audit panel
+                    # accurately reflect what actually ran. Cleared back to
+                    # "v3" only by a successful re-run; a partial-failed run
+                    # stays flagged forever (correct attribution).
+                    self._v3_runtime_status = "v3_with_v2_fallback"
                     # Bill whatever LLM work completed before the failure so
                     # we don't silently eat ShotPlanner cost on NarrationWriter
                     # parse failures.
@@ -5472,7 +5472,10 @@ class VideoGenerationPipeline:
             cost_breakdown = self._cost_events.build_report(
                 video_id=getattr(self, "_run_video_id", "unknown"),
                 tier=self._quality_tier,
-                pipeline_version=(self._tier_config.get("pipeline_version") or "v2"),
+                # Reflects what actually ran: "v3" on clean runs, or
+                # "v3_with_v2_fallback" when ShotPlanner/NarrationWriter
+                # errored and the internal v2 safety net fired.
+                pipeline_version=getattr(self, "_v3_runtime_status", "v3"),
                 run_started_at=getattr(self, "_run_started_at", None),
             )
             # Also persist alongside the timeline so resume detection / debug
@@ -10227,31 +10230,24 @@ class VideoGenerationPipeline:
     # ─────────────────────────────────────────────────────────────────────
     # v3 pipeline — ShotPlanner runs BEFORE the script; NarrationWriter
     # authors per-shot text. Replaces BeatPlanner → ScriptGenerator →
-    # Director chain with one upfront planning stage. Gated by the
-    # `PIPELINE_VERSION=v3` env var (or per-tier `pipeline_version: "v3"`
-    # in QUALITY_TIERS) so it ships behind a flag during transition.
+    # Director chain with one upfront planning stage. v3 is now the only
+    # user-selectable mode; the v2 BeatPlanner→Director→segment-HTML chain
+    # remains inside `_run_v3_shot_planning`'s except path as an internal
+    # safety-net fallback for ShotPlanner/NarrationWriter failures only.
     # See: docs/ai_content/AI_VIDEO_ARCHITECTURE_CHANGES.md "Pipeline Reorder v3"
     # ─────────────────────────────────────────────────────────────────────
 
     def _pipeline_v3_enabled(self) -> bool:
-        """Returns True when the v3 ShotPlanner-first path should run for
-        this pipeline instance.
+        """v3 is the only supported pipeline. Always True.
 
-        Resolution order (first hit wins):
-          1. `PIPELINE_VERSION` env var equals "v3" — operator override
-          2. Per-tier config `pipeline_version` equals "v3" — strategic rollout
-        Anything else (including absent / v1 / v2) → v2 path (existing).
-
-        The flag is read fresh each call so test fixtures can flip it
-        mid-run without re-instantiating the pipeline.
+        Kept as a method (rather than inlining `True` at each call site) so
+        the ~14 gates that read `self._pipeline_v3_enabled()` don't churn.
+        Previously this consulted `PIPELINE_VERSION` env + per-tier
+        `pipeline_version` config — both surfaces removed because they had
+        silent-fallback paths that could downgrade a v3-pinned run to v2
+        when the lazy import or env read misbehaved on cold start.
         """
-        import os as _os_v3
-        env_val = (_os_v3.environ.get("PIPELINE_VERSION") or "").strip().lower()
-        if env_val == "v3":
-            return True
-        tier_val = (self._tier_config.get("pipeline_version") or "").strip().lower() \
-            if isinstance(self._tier_config, dict) else ""
-        return tier_val == "v3"
+        return True
 
     def _v3_aspect_label(self) -> str:
         """Derive ShotPlanner's `image_ratio` input from instance state.

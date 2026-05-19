@@ -87,3 +87,74 @@ def health_root() -> dict:
 @router.get("/health", include_in_schema=False)
 def health_legacy() -> dict:
     return {"status": "ok"}
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Diagnostics — pipeline-config readout
+#
+# Per-pod state probe so operators can verify (bypassing the LB) that every
+# replica is running the same code version and resolves v3 unconditionally.
+# Returns: pipeline_version (always "v3"), whether the automation_pipeline
+# module imports successfully, list of tier configs present, the module's
+# resolved file path, and the git commit if exposed via env.
+# No authentication — the response leaks no secrets and the endpoint is
+# read-only.
+# ─────────────────────────────────────────────────────────────────────────
+
+@router.get("/diagnostics/pipeline-config")
+def diagnostics_pipeline_config() -> dict:
+    """Per-pod readout of the AI video pipeline boot state.
+
+    Hit this against each replica (bypassing the LB) when an audit panel
+    or runtime log shows a v2/v3 mismatch — the response narrows it down
+    to "module didn't import" vs "older deployed commit" in one call.
+    """
+    import sys as _sys_d
+    from pathlib import Path as _Path_d
+    out: dict = {
+        "pipeline_version": "v3",
+        "v2_supported": False,
+        "v2_note": (
+            "v2 BeatPlanner→Director chain remains as an internal exception-handler "
+            "fallback inside _run_v3_shot_planning, but is no longer user-selectable."
+        ),
+        "tier_configs_present": [],
+        "automation_pipeline_module_path": None,
+        "automation_pipeline_import_ok": False,
+        "automation_pipeline_import_error": None,
+        "git_commit": os.environ.get("GIT_COMMIT") or os.environ.get("VERCEL_GIT_COMMIT_SHA") or None,
+        "pipeline_version_env_var": os.environ.get("PIPELINE_VERSION") or None,
+        "pipeline_version_env_var_note": (
+            "PIPELINE_VERSION env var is no longer consulted. Listed here for "
+            "operational visibility only — set or unset, behavior is identical."
+        ),
+    }
+    try:
+        _aigen = str(_Path_d(__file__).resolve().parent.parent / "ai-video-gen-main")
+        if _aigen not in _sys_d.path:
+            _sys_d.path.insert(0, _aigen)
+        from automation_pipeline import QUALITY_TIERS as _qt_d  # type: ignore
+        import automation_pipeline as _ap_module  # type: ignore
+        out["tier_configs_present"] = sorted(_qt_d.keys())
+        out["automation_pipeline_module_path"] = getattr(_ap_module, "__file__", None)
+        out["automation_pipeline_import_ok"] = True
+        # Method-presence sanity check — `_pipeline_v3_enabled` is the
+        # in-pipeline gate. A code-deletion or refactor that loses this
+        # method would silently send every run down the v2 fallback. Probe
+        # both presence + return value here so the diagnostic catches it.
+        try:
+            from automation_pipeline import VideoGenerationPipeline as _Pipe  # type: ignore
+            _method = getattr(_Pipe, "_pipeline_v3_enabled", None)
+            out["pipeline_v3_method_present"] = callable(_method)
+            # Calling the method needs `self._tier_config` but the new body
+            # is a constant `return True` and doesn't touch self. Probe by
+            # calling it bound to a minimal stub.
+            class _Stub:
+                _tier_config = {}
+            out["pipeline_v3_method_returns_true"] = bool(_method(_Stub()))  # type: ignore[arg-type]
+        except Exception as _mp_err:
+            out["pipeline_v3_method_present"] = False
+            out["pipeline_v3_method_error"] = f"{type(_mp_err).__name__}: {_mp_err}"
+    except Exception as exc:
+        out["automation_pipeline_import_error"] = f"{type(exc).__name__}: {exc}"
+    return out

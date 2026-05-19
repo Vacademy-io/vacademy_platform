@@ -52,6 +52,47 @@ def create_app() -> FastAPI:
     logger.info(f"Environment: {settings.app_env}")
     # API keys loaded from environment (not logging to avoid exposing key status)
     logger.info("="*80)
+
+    # ── Pipeline-version banner ─────────────────────────────────────────
+    # v3 is the only supported pipeline. The v2 BeatPlanner→Director chain
+    # remains as an internal exception-handler fallback inside
+    # `_run_v3_shot_planning`, but is no longer user-selectable. Print the
+    # banner + verify `automation_pipeline.QUALITY_TIERS` is importable so
+    # any cold-start import failure surfaces immediately in logs (rather
+    # than silently downgrading to v2 like the pre-V200 resolution did).
+    try:
+        import sys as _sys_pv
+        from pathlib import Path as _Path_pv
+        _aigen_pv = str(_Path_pv(__file__).resolve().parent / "ai-video-gen-main")
+        if _aigen_pv not in _sys_pv.path:
+            _sys_pv.path.insert(0, _aigen_pv)
+        from automation_pipeline import QUALITY_TIERS as _qt_pv  # type: ignore
+        _tier_names = sorted(_qt_pv.keys())
+        logger.info("🚦 AI video pipeline: v3 (only supported version; v2 deprecated)")
+        logger.info(f"   Resolved tier configs: {', '.join(_tier_names)}")
+        # Probe v3-only modules explicitly. A partial deploy that left
+        # `automation_pipeline.py` in place but lost `shot_planner.py` or
+        # `narration_writer.py` would pass the QUALITY_TIERS probe above
+        # but crash on every gen request. Surface here instead.
+        try:
+            from shot_planner import plan_shots  # type: ignore  # noqa: F401
+            from narration_writer import write_narration  # type: ignore  # noqa: F401
+            logger.info("   ShotPlanner + NarrationWriter modules: OK")
+        except Exception as _v3_mod_err:
+            logger.error(
+                "🚨 v3 critical module probe FAILED (%s) — the pipeline will "
+                "always fall back to the v2 safety net on every run. Verify "
+                "shot_planner.py + narration_writer.py are present in "
+                "ai-video-gen-main/.",
+                _v3_mod_err,
+            )
+    except Exception as _pv_err:
+        logger.error(
+            "🚦 AI video pipeline boot probe FAILED to import "
+            "automation_pipeline.QUALITY_TIERS (%s). Pipeline will still run "
+            "v3 unconditionally, but this hints at a deploy/path problem.",
+            _pv_err,
+        )
     
     app = FastAPI(
         title=settings.app_name,

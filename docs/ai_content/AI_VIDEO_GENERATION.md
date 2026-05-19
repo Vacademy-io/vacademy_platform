@@ -2084,11 +2084,10 @@ type UserOverridableStage =
   | 'narration_writer'     // authors per-shot narration text
   | 'per_shot_html'        // generates HTML for every shot
   | 'act_planner'          // decomposes intent into acts pre-ShotPlanner
-  | 'regen_html'           // corrective regen on validation failures
-  | 'director'             // v2 legacy
-  | 'script_generation'    // v2 legacy
-  | 'script_review';       // v2 legacy
+  | 'regen_html';          // corrective regen on validation failures
 ```
+
+v2-legacy stage IDs (`director`, `script_generation`, `script_review`) were dropped from the FE union once v3 became the only supported pipeline. The BE still accepts them in `per_stage` for back-compat; they resolve harmlessly against matrix rows that v3 never reads.
 
 **Pinned stages (ignore the override):** `vision_review` (always Pro for the
 quality gate), `cultural_context`, `entity_extraction`,
@@ -2100,8 +2099,9 @@ quality gate), `cultural_context`, `entity_extraction`,
 tiers × 17 stages = 85 rows). Edit via SQL — no admin UI in this scope.
 
 **FE surface:** `ModelOverridesPanel` inside the existing `SettingsPopover`.
-One "Default model" dropdown plus an "Customize per stage" expander for the
-8 user-overridable stages. Source list comes from
+One "Default model" dropdown plus a "Customize per stage" expander for the
+5 user-overridable stages (`shot_planner`, `narration_writer`,
+`per_shot_html`, `act_planner`, `regen_html`). Source list comes from
 `useAIModelsList({ use_case: 'video' })`.
 
 **Telemetry:** every LLM `CostEvent` carries a `source` field — one of

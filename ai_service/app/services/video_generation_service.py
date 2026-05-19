@@ -23,37 +23,21 @@ from .s3_service import S3Service
 from . import cancellation_registry
 
 
-def _resolve_pipeline_version(quality_tier: str) -> str:
-    """Resolve the pipeline architecture flag ("v2" | "v3") that will run
-    for this video, BEFORE the pipeline is instantiated.
+def _resolve_pipeline_version(quality_tier: Optional[str] = None) -> str:
+    """v3 is the only supported pipeline. v2 BeatPlanner→Director→segment-HTML
+    code remains inside `_run_v3_shot_planning`'s exception handler as an
+    internal safety-net fallback, but is no longer a user-selectable mode.
 
-    Mirrors `VideoGenerationPipeline._pipeline_v3_enabled()` resolution
-    order: env override → per-tier QUALITY_TIERS config → default v2. Used
-    when persisting `user_selections.pipeline_version` so the FE can render
-    the correct graph (ShotPlanner-first vs legacy) on the very first poll —
-    no need to wait for the first v3 SSE event to confirm.
+    The `quality_tier` argument is kept for call-site back-compat — it's
+    ignored. Every video persists `user_selections.pipeline_version = "v3"`,
+    so the FE audit panel always reflects the actual runtime.
 
-    Imports `QUALITY_TIERS` lazily so a failure to load the pipeline module
-    (e.g. partial deploy, syntax error during refactor) doesn't take down
-    the gen-start request. Falls back to "v2" on any error.
+    Previously this function consulted `PIPELINE_VERSION` env var and the
+    per-tier `pipeline_version` field on QUALITY_TIERS. Both surfaces had
+    silent-fallback paths that could persist `"v2"` even when the runtime
+    successfully ran v3 (e.g. lazy import races on cold start). Removed.
     """
-    env_val = (os.environ.get("PIPELINE_VERSION") or "").strip().lower()
-    if env_val == "v3":
-        return "v3"
-    try:
-        # Lazy import — the ai-video-gen-main package is a sibling tree
-        # and we don't want gen-start to hard-depend on its load order.
-        import sys as _sys
-        from pathlib import Path as _Path
-        _aigen = str(_Path(__file__).resolve().parent.parent / "ai-video-gen-main")
-        if _aigen not in _sys.path:
-            _sys.path.insert(0, _aigen)
-        from automation_pipeline import QUALITY_TIERS  # type: ignore
-        tier_cfg = QUALITY_TIERS.get(quality_tier) or {}
-        tier_val = (tier_cfg.get("pipeline_version") or "").strip().lower()
-        return "v3" if tier_val == "v3" else "v2"
-    except Exception:
-        return "v2"
+    return "v3"
 
 
 def _is_pipeline_cancelled(exc: BaseException) -> bool:
@@ -1379,13 +1363,14 @@ class VideoGenerationService:
                     # originally picked. Free-text overrides land in
                     # intent_outcomes.visual_preferences_resolved instead.
                     "visual_preferences": visual_prefs_struct,
-                    # Pipeline architecture flag — read up-front so the FE
-                    # renders the right graph (v3 ShotPlanner-first vs v2
-                    # legacy) without waiting for the first v3 SSE event to
-                    # arrive (or, on history rehydration, the timeline). Same
-                    # resolution order as `_pipeline_v3_enabled` in the
-                    # pipeline class (env override → per-tier config →
-                    # default v2).
+                    # Pipeline architecture flag — written up-front so the FE
+                    # renders the right graph without waiting for SSE events.
+                    # `_resolve_pipeline_version` is now a constant `"v3"` (v2
+                    # deprecated, no longer user-selectable). Historical
+                    # records may still have `"v2"` persisted from before this
+                    # change and render under the v2 graph — that's correct
+                    # display of what actually ran. Only new gen-starts get
+                    # `"v3"` stamped going forward.
                     "pipeline_version": _resolve_pipeline_version(quality_tier),
                 }
                 _emeta["intent_outcomes"] = {

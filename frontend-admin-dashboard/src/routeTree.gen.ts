@@ -120,6 +120,7 @@ import { Route as SignupOauthCallbackRouteImport } from "./routes/signup/oauth/c
 import { Route as PlanningPlanningLogIdRouteImport } from "./routes/planning/planning/$logId"
 import { Route as PlanningActivityLogsLogIdRouteImport } from "./routes/planning/activity-logs/$logId"
 import { Route as ManagePagesEditorTagNameRouteImport } from "./routes/manage-pages/editor/$tagName"
+import { Route as ManageCustomTeamsSubOrgsSubOrgSlugRouteImport } from "./routes/manage-custom-teams/sub-orgs/$subOrgSlug"
 import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/redirect"
 import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
 import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
@@ -1026,6 +1027,16 @@ const ManagePagesEditorTagNameRoute =
     path: "/manage-pages/editor/$tagName",
     getParentRoute: () => rootRouteImport,
   } as any)
+const ManageCustomTeamsSubOrgsSubOrgSlugRoute =
+  ManageCustomTeamsSubOrgsSubOrgSlugRouteImport.update({
+    id: "/manage-custom-teams/sub-orgs/$subOrgSlug",
+    path: "/manage-custom-teams/sub-orgs/$subOrgSlug",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/manage-custom-teams/sub-orgs/$subOrgSlug.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const LoginOauthRedirectRoute = LoginOauthRedirectRouteImport.update({
   id: "/login/oauth/redirect",
   path: "/login/oauth/redirect",
@@ -1489,6 +1500,7 @@ export interface FileRoutesByFullPath {
   "/vim/": typeof VimIndexRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
+  "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
   "/planning/activity-logs/$logId": typeof PlanningActivityLogsLogIdRoute
   "/planning/planning/$logId": typeof PlanningPlanningLogIdRoute
@@ -1652,6 +1664,7 @@ export interface FileRoutesByTo {
   "/vim": typeof VimIndexRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
+  "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
   "/planning/activity-logs/$logId": typeof PlanningActivityLogsLogIdRoute
   "/planning/planning/$logId": typeof PlanningPlanningLogIdRoute
@@ -1817,6 +1830,7 @@ export interface FileRoutesById {
   "/vim/": typeof VimIndexRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
+  "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   "/manage-pages/editor/$tagName": typeof ManagePagesEditorTagNameRoute
   "/planning/activity-logs/$logId": typeof PlanningActivityLogsLogIdRoute
   "/planning/planning/$logId": typeof PlanningPlanningLogIdRoute
@@ -1983,6 +1997,7 @@ export interface FileRouteTypes {
     | "/vim/"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
+    | "/manage-custom-teams/sub-orgs/$subOrgSlug"
     | "/manage-pages/editor/$tagName"
     | "/planning/activity-logs/$logId"
     | "/planning/planning/$logId"
@@ -2146,6 +2161,7 @@ export interface FileRouteTypes {
     | "/vim"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
+    | "/manage-custom-teams/sub-orgs/$subOrgSlug"
     | "/manage-pages/editor/$tagName"
     | "/planning/activity-logs/$logId"
     | "/planning/planning/$logId"
@@ -2310,6 +2326,7 @@ export interface FileRouteTypes {
     | "/vim/"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
+    | "/manage-custom-teams/sub-orgs/$subOrgSlug"
     | "/manage-pages/editor/$tagName"
     | "/planning/activity-logs/$logId"
     | "/planning/planning/$logId"
@@ -2474,6 +2491,7 @@ export interface RootRouteChildren {
   VimIndexRoute: typeof VimIndexRoute
   AutomationChatbotFlowsFlowIdRoute: typeof AutomationChatbotFlowsFlowIdRoute
   LoginOauthRedirectRoute: typeof LoginOauthRedirectRoute
+  ManageCustomTeamsSubOrgsSubOrgSlugRoute: typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
   ManagePagesEditorTagNameRoute: typeof ManagePagesEditorTagNameRoute
   PlanningActivityLogsLogIdRoute: typeof PlanningActivityLogsLogIdRoute
   PlanningPlanningLogIdRoute: typeof PlanningPlanningLogIdRoute
@@ -3389,6 +3407,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof ManagePagesEditorTagNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/manage-custom-teams/sub-orgs/$subOrgSlug": {
+      id: "/manage-custom-teams/sub-orgs/$subOrgSlug"
+      path: "/manage-custom-teams/sub-orgs/$subOrgSlug"
+      fullPath: "/manage-custom-teams/sub-orgs/$subOrgSlug"
+      preLoaderRoute: typeof ManageCustomTeamsSubOrgsSubOrgSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/login/oauth/redirect": {
       id: "/login/oauth/redirect"
       path: "/login/oauth/redirect"
@@ -3788,6 +3813,8 @@ const rootRouteChildren: RootRouteChildren = {
   VimIndexRoute: VimIndexRoute,
   AutomationChatbotFlowsFlowIdRoute: AutomationChatbotFlowsFlowIdRoute,
   LoginOauthRedirectRoute: LoginOauthRedirectRoute,
+  ManageCustomTeamsSubOrgsSubOrgSlugRoute:
+    ManageCustomTeamsSubOrgsSubOrgSlugRoute,
   ManagePagesEditorTagNameRoute: ManagePagesEditorTagNameRoute,
   PlanningActivityLogsLogIdRoute: PlanningActivityLogsLogIdRoute,
   PlanningPlanningLogIdRoute: PlanningPlanningLogIdRoute,

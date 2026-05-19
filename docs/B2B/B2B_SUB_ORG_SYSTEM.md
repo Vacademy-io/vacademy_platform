@@ -23,6 +23,7 @@
 19. [API Reference](#api-reference)
 20. [Data Flow Diagrams](#data-flow-diagrams)
 21. [Key Invariants](#key-invariants)
+22. [Recent Changes (V183+)](#recent-changes-v183) — section 7 covers Sub-Org Team Management (`/manage-suborg-teams`)
 
 ---
 
@@ -1040,8 +1041,12 @@ When `subOrgName` is set:
 | `components/common/layout-container/sidebar/sidebar-panel.tsx` | SidebarPanel with "Powered by" display |
 | `components/common/students/enroll-manually/simple-enrollment-wizard.tsx` | Enrollment wizard filtered by sub-org access |
 | `routes/manage-students/students-list/-services/exportStudentsCsv.ts` | CSV export filtered by sub-org access |
-| `routes/manage-custom-teams/-components/add-member-form.tsx` | Add member with paginated package session search |
-| `constants/urls.ts` | URL constants: ADD_SUB_ORG_MEMBER, GET_SUB_ORG_ADMINS, GET_SUB_ORG_MEMBERS, GET_INSTITUTE_VENDORS |
+| `routes/manage-custom-teams/-components/add-member-form.tsx` | Add member — `mode` prop switches between institute (original) and subOrg (scoped PSes, custom roles only, hides Linkage Type / Has-Faculty checkbox) |
+| `routes/manage-custom-teams/-components/custom-teams-list.tsx` | Team list — `mode` prop switches between institute (original) and subOrg (Active/Invited tabs, trash icon + AlertDialog for remove, status derived from role) |
+| `routes/manage-suborg-teams/index.lazy.tsx` | New route: sub-org picker + reuses `CustomTeamsList` with `mode='subOrg'` |
+| `routes/manage-suborg-teams/index.tsx` | TanStack eager route registration for the new path |
+| `constants/urls.ts` | URL constants: ADD_SUB_ORG_MEMBER, GET_SUB_ORG_ADMINS, GET_SUB_ORG_MEMBERS, GET_INSTITUTE_VENDORS, SUB_ORG_TEAM_LIST/ADD/REMOVE/ACCESSIBLE/ACCESSIBLE_GRANTS |
+| `constants/display-settings/admin-defaults.ts` + `teacher-defaults.ts` | `suborg-teams` sub-item defaults to `visible: false` — admins opt in via Display Settings |
 
 ---
 
@@ -1071,10 +1076,18 @@ When `subOrgName` is set:
 | `features/user_subscription/service/UserPlanService.java` | Payment processing, applyOperationsOnFirstPayment → createScopedFreeInvites |
 | `features/learner_management/controller/BulkLearnerManagementController.java` | Bulk assign with adminUserId extraction |
 | `features/learner_management/service/BulkAssignmentService.java` | Calls SubOrgAutoLinkService after enrollment |
-| `features/faculty/repository/FacultySubjectPackageSessionMappingRepository.java` | findSubOrgIdsByUserAndPackageSession query |
+| `features/faculty/repository/FacultySubjectPackageSessionMappingRepository.java` | findSubOrgIdsByUserAndPackageSession query + the new SUB_ORG team-management queries (findDistinctUserIdsBySubOrgIdAndLinkage, findDistinctSubOrgIdsByUserAndLinkage, findByUserIdAndSubOrgIdAndLinkage, countActiveSubOrgLinkagesByUser, findByFiltersScopedToSubOrgs) |
+| `features/faculty/service/FacultyService.java` | `getAllFaculty` now branches by caller's SUB_ORG FSPSSM — sub-org admins get the scoped variant for the course-details Teachers tab |
+| `features/suborg/controller/SubOrgTeamController.java` | NEW — `/team/list`, `/team/add`, `/team/remove`, `/team/accessible-sub-orgs`, `/team/accessible-grants` |
+| `features/suborg/service/SubOrgTeamService.java` | NEW — caller-scope check via FSPSSM presence, defensive post-filter on the auth-service response, auto-link SUBORG_LEARNER invites during add |
+| `features/suborg/dto/SubOrgTeamListRequestDTO.java` / `SubOrgTeamAddRequestDTO.java` / `SubOrgTeamRemoveRequestDTO.java` | NEW DTOs for the team endpoints |
 | `features/suborg/entity/InstituteSubOrg.java` | Parent ↔ child linkage entity |
 | `features/institute_learner/entity/StudentSubOrg.java` | Learner ↔ sub-org junction entity |
 | `auth_service/.../CustomRoleService.java` | getRolesForInstitute (system + custom roles) |
+| `common_service/.../auth/dto/UserRoleFilterDTO.java` | Additive `userIds` field — read by `RoleService.getUsersByInstituteIdAndStatusPaged` to route through the userIds-aware repo path |
+| `common_service/.../auth/repository/UserRepository.java` | Additive `findUsersByStatusAndInstituteAndUserIdsPaged` + `countUsersByStatusAndInstituteAndUserIds` |
+| `common_service/.../auth/service/UserService.java` | Additive `getUsersByInstituteIdAndStatusPagedAndUserIds` |
+| `auth_service/.../config/ApplicationSecurityConfig.java` | Whitelist for `/auth-service/internal/v1/user-invitation/invite` (used by HMAC add-member) |
 
 ---
 
@@ -1102,11 +1115,34 @@ When `subOrgName` is set:
 | `GET` | `/sub-org-admins` | `?packageSessionId=&subOrgId=&userId=` | List admins (excluding userId) |
 | `GET` | `/all-admins` | `?subOrgId=` | List all ROOT_ADMINs |
 
+### Sub-Org Team (Custom-Role) Management (`/admin-core-service/sub-org/v1/team`)
+
+Separate from the learner endpoints above. These power the **`/manage-suborg-teams`** route — sub-org admins manage their own team members (custom roles only), and access is scoped server-side to the caller's FSPSSM `linkage_type=SUB_ORG` entries.
+
+| Method | Path | Body / Params | Purpose |
+|--------|------|---------------|---------|
+| `POST` | `/list` | `SubOrgTeamListRequestDTO` | List team members for a sub-org (paginated, scoped to caller's FSPSSM) |
+| `POST` | `/add` | `SubOrgTeamAddRequestDTO` | Invite a new user with a custom role; auto-links SUBORG_LEARNER invites for selected PSes |
+| `POST` | `/remove` | `SubOrgTeamRemoveRequestDTO` | Soft-delete: mark all SUB_ORG-linked FSPSSM rows for (user, sub-org) INACTIVE |
+| `GET` | `/accessible-sub-orgs` | `?instituteId=` | Sub-orgs the caller can manage (for the picker) |
+| `GET` | `/accessible-grants` | `?instituteId=` | Package-session IDs the caller can grant (real admin: all PSes; sub-org admin: their FSPSSM PSes) |
+
+**Access rules (enforced server-side in `SubOrgTeamService`):**
+
+| Caller | List | Add | Remove |
+|---|---|---|---|
+| ADMIN/TEACHER (no SUB_ORG FSPSSM) | any sub-org or none | any custom role, any PS | any user |
+| Sub-org admin (has SUB_ORG FSPSSM) | only their own sub-orgs (403 otherwise) | only custom roles (no ADMIN/TEACHER/STUDENT); only PSes in their FSPSSM scope | only users with FSPSSM under their sub-org |
+
+**Caller fingerprint:** the service distinguishes a sub-org admin from a real admin by **presence of SUB_ORG-linked FSPSSM entries**, NOT by the `ADMIN` role string in the JWT (sub-org admins are also assigned the ADMIN role for the parent institute). See `SubOrgTeamService.ensureCallerCanAccessSubOrg`.
+
 ### Auth Service
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/auth-service/v1/institute/{instituteId}/roles` | Get system + custom roles |
+| `POST` | `/auth-service/v1/user-roles/users-of-status` | List users with optional `user_ids` filter (used by sub-org team list — admin-core-service forwards the caller's JWT and passes the FSPSSM-resolved user IDs). Backward-compatible: existing callers that don't set `user_ids` keep the original behaviour. |
+| `POST` | `/auth-service/internal/v1/user-invitation/invite` (HMAC) | Used by admin-core-service `SubOrgTeamService.addTeamMember` to create the user + send invite email. Whitelisted in `ApplicationSecurityConfig.ALLOWED_PATHS`. |
 
 ### Payment Vendor
 
@@ -1511,6 +1547,114 @@ When a learner is enrolled via an invite that has a `subOrgId`, credential/enrol
 
 **File changed:**
 - `DynamicNotificationService.java` — overrides `instituteName` and `themeColor` from sub-org institute when `enrollInvite.subOrgId` is present
+
+---
+
+### 7. Sub-Org Team Management (Custom Roles per Sub-Org)
+
+A self-service UI + API for sub-org admins to manage their own team — users with **custom roles only**, scoped server-side so one sub-org admin can't see / touch another sub-org's team.
+
+#### Route
+
+- **`/manage-suborg-teams`** (frontend) — hidden from the sidebar by default; opt-in via Display Settings (`Manage Institute → Sub Tabs → Sub-Org Teams → Visible`).
+- The original `/manage-institute/teams` and `/manage-custom-teams` flows are untouched.
+
+#### Backend
+
+**New files (admin-core-service):**
+- `features/suborg/controller/SubOrgTeamController.java` — endpoints under `/admin-core-service/sub-org/v1/team`
+- `features/suborg/service/SubOrgTeamService.java` — list / add / remove / accessible-sub-orgs / accessible-grants
+- `features/suborg/dto/SubOrgTeamListRequestDTO.java`
+- `features/suborg/dto/SubOrgTeamAddRequestDTO.java`
+- `features/suborg/dto/SubOrgTeamRemoveRequestDTO.java`
+
+**Repository additions:**
+- `FacultySubjectPackageSessionMappingRepository`:
+  - `findDistinctUserIdsBySubOrgIdAndLinkage` — distinct user IDs with active SUB_ORG-linked FSPSSM for a sub-org (the team list candidate set)
+  - `findDistinctSubOrgIdsByUserAndLinkage` — caller's accessible sub-orgs (for scope checks + accessible-sub-orgs picker)
+  - `findByUserIdAndSubOrgIdAndLinkage` — all rows for a user under a sub-org (for remove)
+  - `countActiveSubOrgLinkagesByUser` — counter (currently unused, kept for future "drop UserRole when 0 linkages remain" logic)
+  - `findByFiltersScopedToSubOrgs` — sub-org-scoped variant of `findByFilters`, used by the course-details Teachers tab when caller is a sub-org admin (see [Sub-org-scoped faculty list](#course-details-teachers-tab-sub-org-filter) below)
+
+**Auth-service additive change (back-compat):**
+- `UserRoleFilterDTO.userIds` — optional list field
+- `UserRepository.findUsersByStatusAndInstituteAndUserIdsPaged` + `countUsersByStatusAndInstituteAndUserIds` — variants of the existing paged query with an extra `u.id IN (:userIds)` clause
+- `UserService.getUsersByInstituteIdAndStatusPagedAndUserIds` — wrapper that routes to the new repo methods
+- `RoleService.getUsersByInstituteIdAndStatusPaged` — branches to the userIds path **only when `filterDTO.userIds != null`**, so existing callers (e.g. `/manage-institute/teams`) keep their original behaviour exactly
+
+**Internal invite endpoint whitelist:** `/auth-service/internal/v1/user-invitation/invite` added to `ALLOWED_PATHS` so `SubOrgTeamService.addTeamMember` can call it via HMAC.
+
+#### Sub-org admin detection
+
+The presence of any active SUB_ORG-linked FSPSSM entry is the **canonical fingerprint** of a sub-org admin. The ADMIN/TEACHER role string alone is unreliable because sub-org admins are also assigned the ADMIN role for the parent institute during their SUB_ORG invite enrollment.
+
+```java
+List<String> accessibleSubOrgs = facultyMappingRepository
+    .findDistinctSubOrgIdsByUserAndLinkage(userId, List.of("ACTIVE"));
+boolean isSubOrgAdmin = !accessibleSubOrgs.isEmpty();
+```
+
+Used in: `SubOrgTeamService.ensureCallerCanAccessSubOrg`, `FacultyService.getAllFaculty` (teacher list).
+
+#### Add-member flow
+
+1. Frontend (subOrg mode) sends `{ sub_org_id, institute_id, user, role_name, role_id?, package_session_ids[], access_permission }`. No invite picker — invite-level access is auto-linked server-side.
+2. Backend validates: caller's sub-org scope, custom-role-only restriction (no ADMIN/TEACHER/STUDENT), every PS in caller's FSPSSM scope.
+3. Calls `/auth-service/internal/v1/user-invitation/invite` (HMAC) → creates user with `UserRoleStatus.INVITED`, sends invitation email via NotificationService.
+4. For each selected PS:
+   - Creates FSPSSM row with `access_type=PACKAGE_SESSION, linkage_type=SUB_ORG, suborg_id`.
+   - Calls `EnrollInviteRepository.findInviteIdsForSubOrgAndPackageSession(subOrgId, psId)` and creates one FSPSSM row per linked SUBORG_LEARNER invite with `access_type=ENROLL_INVITE`.
+5. Returns `{ user_id, ps_granted, invite_granted, granted_count }`.
+
+#### Remove-member flow (soft delete)
+
+1. Caller-scope check.
+2. Find all rows matching `(user_id, sub_org_id, linkage_type=SUB_ORG)` → mark every row `status=INACTIVE`.
+3. Account, UserRole, JWT, other sub-org memberships → untouched.
+4. Seat counter (counts ACTIVE SUB_ORG FSPSSM rows) drops automatically.
+5. No notification email is sent.
+
+#### List-member flow
+
+1. FSPSSM query returns the candidate user IDs for the sub-org.
+2. Admin-core-service calls auth-service's **public** `/users-of-status` endpoint, forwarding the caller's JWT, with the `userIds` filter set to the FSPSSM-derived list.
+3. **Defensive post-filter**: if auth-service is on an older build that doesn't honour `userIds` (the filter is silently dropped), admin-core-service trims the response locally to those IDs. Pagination metadata is rewritten when filtering actually trimmed rows.
+4. UI tabs (subOrg mode only): "Active" shows `ACTIVE` + `DISABLED`; "Invited" shows `INVITED`. Status is derived from the first institute-scoped role's `status` because auth-service's `UserWithRolesDTO.status` (top-level) is never populated.
+
+#### Course-details Teachers tab — sub-org filter
+
+`FacultyService.getAllFaculty` now branches based on caller's `findDistinctSubOrgIdsByUserAndLinkage`:
+- **Empty list (real admin):** uses existing `findByFilters` — no change.
+- **Non-empty (sub-org admin):** uses new `findByFiltersScopedToSubOrgs` which adds `AND fm.linkage_type = 'SUB_ORG' AND fm.suborg_id IN (:suborgIds)` — sub-org admin only sees teachers attached to THEIR sub-orgs for the PS.
+
+#### Display Settings integration
+
+`/manage-suborg-teams` is registered in `sidebar/utils.ts` as a sub-item of `manage-institute`. Default visibility is `false`:
+- `admin-defaults.ts` — `SUB_ITEMS_HIDDEN_BY_DEFAULT = new Set(['suborg-teams'])` — `mapSidebarToConfig` returns `visible: false` for these IDs.
+- `teacher-defaults.ts` — same opt-out via `visible: subId !== 'suborg-teams'`.
+
+Admins toggle the sidebar entry via the existing Display Settings UI (`/settings/display-settings` → Sidebar Tabs → Manage Institute → Sub Tabs → Sub-Org Teams).
+
+#### Frontend files
+
+| File | Purpose |
+|---|---|
+| `routes/manage-suborg-teams/index.lazy.tsx` | Route component. Fetches `listAccessibleSubOrgs`, renders a sub-org picker (auto-selects first / persists via `setSelectedSubOrgId`), then mounts `CustomTeamsList` in `mode='subOrg'`. |
+| `routes/manage-suborg-teams/index.tsx` | Eager route registration for TanStack Router. |
+| `routes/manage-custom-teams/-components/custom-teams-list.tsx` | Now accepts `mode` + `subOrgId` props. Default `mode='institute'` keeps the original `fetchInstituteDashboardUsers` flow unchanged. In subOrg mode: calls `listSubOrgTeamMembers`, shows Active/Invited tabs, renders trash icon (shadcn `Button` + `AlertDialog`) for remove. |
+| `routes/manage-custom-teams/-components/add-member-form.tsx` | Now accepts `mode` + `subOrgId` props. In subOrg mode: filters roles to custom-only, fetches `listAccessibleGrants` to scope the PS picker, hides Linkage Type + Has-Faculty-Permission, single-call submit via `addSubOrgTeamMember`. |
+| `routes/manage-custom-teams/-services/custom-team-services.ts` | New service fns: `listSubOrgTeamMembers`, `addSubOrgTeamMember`, `removeSubOrgTeamMember`, `listAccessibleSubOrgs`, `listAccessibleGrants`. |
+| `constants/urls.ts` | New URL constants: `SUB_ORG_TEAM_LIST/ADD/REMOVE/ACCESSIBLE/ACCESSIBLE_GRANTS`. |
+| `components/common/layout-container/sidebar/utils.ts` | Added the `Sub-Org Teams` sub-item under `manage-institute`. |
+| `constants/display-settings/admin-defaults.ts` + `teacher-defaults.ts` | Sub-org-teams hidden by default in role defaults. |
+
+#### Files NOT changed (existing flows safe)
+
+- All existing FSPSSM repo methods untouched; only additions.
+- `UserRoleFilterDTO` field is additive; original `users-of-status` callers unaffected.
+- `SubOrgLearnerController` endpoints (learner enroll / terminate / members / admins) untouched.
+- `/manage-institute/teams` and `/manage-custom-teams` routes untouched.
+- `RoleInternalController` returned to its original single endpoint state (no extra internal route added in production code).
 
 ---
 

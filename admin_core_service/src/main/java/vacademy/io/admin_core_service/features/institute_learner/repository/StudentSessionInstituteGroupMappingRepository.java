@@ -391,4 +391,27 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("subOrgId") String subOrgId,
       @Param("packageSessionId") String packageSessionId);
 
+  /**
+   * Sub-org-wide roster for the finance-detail panel: one row per active mapping with the
+   * fields the panel needs (no FETCH joins so payload stays small). Includes both admins
+   * and learners; caller branches by comma_separated_org_roles.
+   *
+   * Order: [mapping_id, user_id, package_session_id, user_plan_id,
+   *         comma_separated_org_roles, enrolled_date, full_name]
+   */
+  @Query(value = """
+      SELECT ssigm.id,
+             ssigm.user_id,
+             ssigm.package_session_id,
+             ssigm.user_plan_id,
+             ssigm.comma_separated_org_roles,
+             ssigm.enrolled_date,
+             s.full_name
+      FROM student_session_institute_group_mapping ssigm
+      LEFT JOIN student s ON s.user_id = ssigm.user_id
+      WHERE ssigm.sub_org_id = :subOrgId
+        AND ssigm.status = 'ACTIVE'
+      """, nativeQuery = true)
+  List<Object[]> findActiveSubOrgRoster(@Param("subOrgId") String subOrgId);
+
 }

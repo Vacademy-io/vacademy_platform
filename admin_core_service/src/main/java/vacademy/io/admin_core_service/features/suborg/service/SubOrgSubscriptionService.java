@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSettingDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
@@ -13,6 +14,8 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessi
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
+import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaymentOption;
+import vacademy.io.admin_core_service.features.fee_management.repository.ComplexPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
@@ -22,7 +25,10 @@ import vacademy.io.admin_core_service.features.suborg.dto.SeatUsageDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentOptionService;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.security.SecureRandom;
@@ -41,6 +47,8 @@ public class SubOrgSubscriptionService {
     private final PackageSessionService packageSessionService;
     private final PackageSessionEnrollInviteToPaymentOptionService packageSessionEnrollInviteToPaymentOptionService;
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
+    private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
+    private final PaymentOptionService paymentOptionService;
 
     /**
      * Creates a sub-org with an org-level EnrollInvite that the sub-org admin
@@ -70,49 +78,90 @@ public class SubOrgSubscriptionService {
         invite.setCurrency(request.getCurrency());
         invite.setLearnerAccessDays(request.getValidityInDays());
 
-        // Build settingJson with auth roles if provided
-        if (!CollectionUtils.isEmpty(request.getAuthRoles())) {
+        // 3. Resolve PaymentOption.
+        //    Non-CPO: fresh PaymentOption + fresh PaymentPlan with seat cap (existing flow).
+        //    CPO: reuse the singleton mirror via findOrCreateMirrorForCpo — there's a
+        //    UNIQUE constraint on payment_option.complex_payment_option_id, so a brand-new
+        //    row collides when the same CPO has already been mirrored (e.g. by a prior
+        //    sub-org or by the fee-management UI). Seat cap is carried on settingJson
+        //    instead, since the synthetic plan is shared across sub-orgs.
+        String paymentType = request.getPaymentType() != null ? request.getPaymentType() : "FREE";
+        ComplexPaymentOption cpo = null;
+        if (PaymentOptionType.CPO.name().equalsIgnoreCase(paymentType)) {
+            if (request.getComplexPaymentOptionId() == null
+                    || request.getComplexPaymentOptionId().isBlank()) {
+                throw new VacademyException(
+                        "complex_payment_option_id is required when payment_type=CPO");
+            }
+            cpo = complexPaymentOptionRepository
+                    .findByIdAndStatusNot(request.getComplexPaymentOptionId(),
+                            StatusEnum.DELETED.name())
+                    .orElseThrow(() -> new VacademyException(
+                            "Fee structure not found: " + request.getComplexPaymentOptionId()));
+            if ("PENDING_APPROVAL".equalsIgnoreCase(cpo.getStatus())) {
+                throw new VacademyException(
+                        "Fee structure is pending approval and cannot back a sub-org subscription");
+            }
+        }
+
+        // Build settingJson — authRoles for invite-time role override, memberCount for
+        // CPO sub-orgs (since the shared synthetic plan can't carry it), and the
+        // allow-list of custom roles the sub-org admin can assign when adding their
+        // own team members (consumed by /manage-suborg-teams).
+        boolean hasAuthRoles = !CollectionUtils.isEmpty(request.getAuthRoles());
+        boolean carryMemberCount = cpo != null && request.getMemberCount() != null;
+        boolean hasAllowedTeamRoles = !CollectionUtils.isEmpty(request.getAllowedTeamRoles());
+        if (hasAuthRoles || carryMemberCount || hasAllowedTeamRoles) {
             try {
                 EnrollInviteSettingDTO settingDTO = new EnrollInviteSettingDTO();
                 EnrollInviteSettingDTO.Settings settings = new EnrollInviteSettingDTO.Settings();
                 EnrollInviteSettingDTO.SubOrgSetting subOrgSetting = new EnrollInviteSettingDTO.SubOrgSetting();
-                subOrgSetting.setAuthRoles(request.getAuthRoles());
+                if (hasAuthRoles) subOrgSetting.setAuthRoles(request.getAuthRoles());
+                if (carryMemberCount) subOrgSetting.setMemberCount(request.getMemberCount());
+                if (hasAllowedTeamRoles) subOrgSetting.setAllowedTeamRoles(request.getAllowedTeamRoles());
                 settings.setSubOrgSetting(subOrgSetting);
                 settingDTO.setSetting(settings);
                 ObjectMapper mapper = new ObjectMapper();
                 invite.setSettingJson(mapper.writeValueAsString(settingDTO));
             } catch (Exception e) {
-                log.warn("Failed to serialize authRoles to settingJson: {}", e.getMessage());
+                log.warn("Failed to serialize sub-org settings: {}", e.getMessage());
             }
         }
 
         invite = enrollInviteRepository.save(invite);
         log.info("Created org-level EnrollInvite id={} for sub-org={}", invite.getId(), subOrgId);
 
-        // 3. Create PaymentOption
-        PaymentOption option = new PaymentOption();
-        option.setName("Sub-Org Plan: " + request.getSubOrgDetails().getInstituteName());
-        option.setType(request.getPaymentType() != null ? request.getPaymentType() : "FREE");
-        option.setTag("DEFAULT");
-        option.setStatus(StatusEnum.ACTIVE.name());
-        option.setRequireApproval(false);
-        option = paymentOptionRepository.save(option);
-        log.info("Created PaymentOption id={}", option.getId());
+        PaymentOption option;
+        if (cpo != null) {
+            // Reuse the singleton mirror. Idempotent — handles "this CPO already has a mirror".
+            option = paymentOptionService.findOrCreateMirrorForCpo(cpo);
+            log.info("Reusing CPO mirror PaymentOption id={} for cpoId={}",
+                    option.getId(), cpo.getId());
+        } else {
+            option = new PaymentOption();
+            option.setName("Sub-Org Plan: " + request.getSubOrgDetails().getInstituteName());
+            option.setType(paymentType);
+            option.setTag("DEFAULT");
+            option.setStatus(StatusEnum.ACTIVE.name());
+            option.setRequireApproval(false);
+            option = paymentOptionRepository.save(option);
+            log.info("Created PaymentOption id={} type={}", option.getId(), option.getType());
 
-        // 4. Create PaymentPlan
-        PaymentPlan plan = new PaymentPlan();
-        plan.setName("Sub-Org Plan");
-        plan.setStatus(StatusEnum.ACTIVE.name());
-        plan.setActualPrice(request.getActualPrice() != null ? request.getActualPrice() : 0);
-        plan.setElevatedPrice(request.getElevatedPrice() != null ? request.getElevatedPrice() : 0);
-        plan.setCurrency(request.getCurrency());
-        plan.setTag("DEFAULT");
-        plan.setMemberCount(request.getMemberCount());
-        plan.setValidityInDays(request.getValidityInDays());
-        plan.setPaymentOption(option);
-        option.getPaymentPlans().add(plan);
-        paymentOptionRepository.save(option);
-        log.info("Created PaymentPlan with memberCount={}", request.getMemberCount());
+            // 4. Per-sub-org PaymentPlan carries the seat cap for the non-CPO path.
+            PaymentPlan plan = new PaymentPlan();
+            plan.setName("Sub-Org Plan");
+            plan.setStatus(StatusEnum.ACTIVE.name());
+            plan.setActualPrice(request.getActualPrice() != null ? request.getActualPrice() : 0);
+            plan.setElevatedPrice(request.getElevatedPrice() != null ? request.getElevatedPrice() : 0);
+            plan.setCurrency(request.getCurrency());
+            plan.setTag("DEFAULT");
+            plan.setMemberCount(request.getMemberCount());
+            plan.setValidityInDays(request.getValidityInDays());
+            plan.setPaymentOption(option);
+            option.getPaymentPlans().add(plan);
+            paymentOptionRepository.save(option);
+            log.info("Created PaymentPlan with memberCount={}", request.getMemberCount());
+        }
 
         // 5. Link invite to each package session
         if (!CollectionUtils.isEmpty(request.getPackageSessionIds())) {
@@ -129,11 +178,15 @@ public class SubOrgSubscriptionService {
             log.info("Linked invite to {} package sessions", mappings.size());
         }
 
-        // 6. Create SUBORG_LEARNER invite per PS (for learner enrollment + FSPSSM access)
+        // 6. Create SUBORG_LEARNER invite per PS (for learner enrollment + FSPSSM access).
+        // Naming convention: "SubOrgLearner — <Package · Level · Session>" so 3 PSes
+        // produce 3 distinguishable invites instead of three identically-named rows.
         if (!CollectionUtils.isEmpty(request.getPackageSessionIds())) {
             for (String psId : request.getPackageSessionIds()) {
+                PackageSession ps = packageSessionService.findById(psId);
+                String psLabel = buildPsLabel(ps);
                 EnrollInvite learnerInvite = new EnrollInvite();
-                learnerInvite.setName("Sub-Org Learner: " + request.getSubOrgDetails().getInstituteName());
+                learnerInvite.setName("SubOrgLearner — " + psLabel);
                 learnerInvite.setTag(EnrollInviteTag.SUBORG_LEARNER.name());
                 learnerInvite.setSubOrgId(subOrgId);
                 learnerInvite.setStatus(StatusEnum.ACTIVE.name());
@@ -147,13 +200,13 @@ public class SubOrgSubscriptionService {
                 learnerInvite = enrollInviteRepository.save(learnerInvite);
 
                 // Link to PS with same payment option
-                PackageSession ps = packageSessionService.findById(psId);
                 PackageSessionLearnerInvitationToPaymentOption learnerMapping =
                         new PackageSessionLearnerInvitationToPaymentOption(
                                 learnerInvite, ps, option, StatusEnum.ACTIVE.name());
                 packageSessionEnrollInviteToPaymentOptionService
                         .createPackageSessionLearnerInvitationToPaymentOptions(List.of(learnerMapping));
-                log.info("Created SUBORG_LEARNER invite id={} for sub-org={}, PS={}", learnerInvite.getId(), subOrgId, psId);
+                log.info("Created SUBORG_LEARNER invite id={} name='{}' for sub-org={}, PS={}",
+                        learnerInvite.getId(), learnerInvite.getName(), subOrgId, psId);
             }
         }
 
@@ -174,6 +227,10 @@ public class SubOrgSubscriptionService {
                                          PaymentPlan orgPlan) {
         String subOrgId = orgInvite.getSubOrgId();
         String instituteId = orgInvite.getInstituteId();
+
+        // For CPO sub-orgs the org PaymentPlan is the shared CPO synthetic plan and
+        // carries no per-sub-org memberCount — fall back to settingJson.MEMBER_COUNT.
+        Integer fallbackMemberCount = readSubOrgMemberCountFromSettings(orgInvite);
 
         // Find all package sessions linked to the org-level invite
         List<PackageSessionLearnerInvitationToPaymentOption> orgMappings =
@@ -226,8 +283,10 @@ public class SubOrgSubscriptionService {
             freePlan.setActualPrice(0);
             freePlan.setElevatedPrice(0);
             freePlan.setTag("DEFAULT");
-            freePlan.setMemberCount(orgPlan != null ? orgPlan.getMemberCount() : null);
-            freePlan.setValidityInDays(orgPlan != null ? orgPlan.getValidityInDays() : null);
+            Integer planMemberCount = orgPlan != null ? orgPlan.getMemberCount() : null;
+            freePlan.setMemberCount(planMemberCount != null ? planMemberCount : fallbackMemberCount);
+            freePlan.setValidityInDays(orgPlan != null ? orgPlan.getValidityInDays()
+                    : orgInvite.getLearnerAccessDays());
             freePlan.setPaymentOption(freeOption);
             freeOption.getPaymentPlans().add(freePlan);
             paymentOptionRepository.save(freeOption);
@@ -297,6 +356,94 @@ public class SubOrgSubscriptionService {
             enrollInviteRepository.save(invite);
             log.info("Deactivated scoped invite id={} for sub-org={}", invite.getId(), subOrgId);
         }
+    }
+
+    /**
+     * Replaces the ALLOWED_TEAM_ROLES list on the sub-org's org-level invite settingJson.
+     * Idempotent. Pass an empty list to clear the restriction.
+     */
+    @Transactional
+    public List<String> updateAllowedTeamRoles(String subOrgId, String parentInstituteId,
+                                               List<String> allowedRoles) {
+        if (!StringUtils.hasText(subOrgId)) {
+            throw new VacademyException("sub_org_id is required");
+        }
+        if (!StringUtils.hasText(parentInstituteId)) {
+            throw new VacademyException("parent_institute_id is required");
+        }
+        List<EnrollInvite> candidates = enrollInviteRepository
+                .findBySubOrgIdAndInstituteId(subOrgId, parentInstituteId,
+                        List.of(StatusEnum.ACTIVE.name()));
+        if (candidates.isEmpty()) {
+            throw new VacademyException("No active org-level invite found for sub-org " + subOrgId);
+        }
+        EnrollInvite invite = candidates.get(0);
+
+        ObjectMapper mapper = new ObjectMapper();
+        EnrollInviteSettingDTO dto;
+        try {
+            dto = StringUtils.hasText(invite.getSettingJson())
+                    ? mapper.readValue(invite.getSettingJson(), EnrollInviteSettingDTO.class)
+                    : new EnrollInviteSettingDTO();
+        } catch (Exception e) {
+            log.warn("Could not parse existing settingJson for invite {}; recreating", invite.getId());
+            dto = new EnrollInviteSettingDTO();
+        }
+        if (dto.getSetting() == null) dto.setSetting(new EnrollInviteSettingDTO.Settings());
+        EnrollInviteSettingDTO.SubOrgSetting subSetting = dto.getSetting().getSubOrgSetting();
+        if (subSetting == null) {
+            subSetting = new EnrollInviteSettingDTO.SubOrgSetting();
+            dto.getSetting().setSubOrgSetting(subSetting);
+        }
+        subSetting.setAllowedTeamRoles(allowedRoles);
+
+        try {
+            invite.setSettingJson(mapper.writeValueAsString(dto));
+            enrollInviteRepository.save(invite);
+        } catch (Exception e) {
+            throw new VacademyException("Failed to persist allowed_team_roles: " + e.getMessage());
+        }
+        log.info("Updated allowed_team_roles for sub-org={} to {}", subOrgId, allowedRoles);
+        return allowedRoles != null ? allowedRoles : List.of();
+    }
+
+    private Integer readSubOrgMemberCountFromSettings(EnrollInvite invite) {
+        if (invite == null || !StringUtils.hasText(invite.getSettingJson())) return null;
+        try {
+            EnrollInviteSettingDTO dto = new ObjectMapper()
+                    .readValue(invite.getSettingJson(), EnrollInviteSettingDTO.class);
+            return Optional.ofNullable(dto)
+                    .map(EnrollInviteSettingDTO::getSetting)
+                    .map(EnrollInviteSettingDTO.Settings::getSubOrgSetting)
+                    .map(EnrollInviteSettingDTO.SubOrgSetting::getMemberCount)
+                    .orElse(null);
+        } catch (Exception e) {
+            log.debug("Could not read MEMBER_COUNT from settingJson for invite {}: {}",
+                    invite.getId(), e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Builds a human-friendly PS label for invite naming, joining package / level / session
+     * with " · " separators. Falls back to the PS id when nothing else is available.
+     */
+    private String buildPsLabel(PackageSession ps) {
+        if (ps == null) return "unknown";
+        String pkg = ps.getPackageEntity() != null ? ps.getPackageEntity().getPackageName() : null;
+        String level = ps.getLevel() != null ? ps.getLevel().getLevelName() : null;
+        String session = ps.getSession() != null ? ps.getSession().getSessionName() : null;
+        StringBuilder sb = new StringBuilder();
+        if (StringUtils.hasText(pkg)) sb.append(pkg);
+        if (StringUtils.hasText(level)) {
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append(level);
+        }
+        if (StringUtils.hasText(session)) {
+            if (sb.length() > 0) sb.append(" · ");
+            sb.append(session);
+        }
+        return sb.length() > 0 ? sb.toString() : ps.getId();
     }
 
     private String generateInviteCode() {

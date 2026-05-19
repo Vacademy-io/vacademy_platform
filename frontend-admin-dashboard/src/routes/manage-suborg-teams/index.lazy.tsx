@@ -1,24 +1,13 @@
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { Helmet } from 'react-helmet';
-import { CustomTeamsList } from '@/routes/manage-custom-teams/-components/custom-teams-list';
-import {
-    getSelectedSubOrgId,
-    setSelectedSubOrgId,
-} from '@/lib/auth/facultyAccessUtils';
+import { isCallerSubOrgAdmin, setSelectedSubOrgId } from '@/lib/auth/facultyAccessUtils';
 import { listAccessibleSubOrgs } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import { Building2 } from 'lucide-react';
+import { SubOrgAnalyticsPanel } from './-components/sub-org-analytics-panel';
 
 export const Route = createLazyFileRoute('/manage-suborg-teams/')({
     component: ManageSubOrgTeams,
@@ -38,9 +27,21 @@ function normaliseSubOrg(org: any): SubOrgItem | null {
     return { id, name: name || 'Untitled Sub-Org' };
 }
 
+/**
+ * Sub-org-admin route. Auto-resolves the caller's single accessible sub-org and
+ * mounts the analytics panel in read-only mode. Institute admins reach the same
+ * analytics surface via /manage-custom-teams/sub-orgs/$subOrgSlug instead.
+ *
+ * Why no picker / no slug here:
+ *   - Sub-org admins typically have exactly one sub-org (their own); a picker is
+ *     dead UI.
+ *   - The panel already honours `readOnly` via `isCallerSubOrgAdmin()`, so we
+ *     don't even need a route-level flag.
+ *   - If the caller has multiple SUB_ORG-linked FSPSSM entries (unusual), we fall
+ *     back to the first; a follow-on small picker can be added later if needed.
+ */
 function ManageSubOrgTeams() {
     const instituteId = getCurrentInstituteId();
-    const [selectedId, setSelectedId] = useState<string | null>(() => getSelectedSubOrgId());
 
     const { data: rawSubOrgs, isLoading } = useQuery({
         queryKey: ['sub-orgs-accessible-picker', instituteId],
@@ -55,84 +56,54 @@ function ManageSubOrgTeams() {
         return list.map(normaliseSubOrg).filter(Boolean) as SubOrgItem[];
     }, [rawSubOrgs]);
 
-    // Auto-select the only sub-org (or the first one) once the list loads,
-    // if nothing is already selected, or if the previous selection is no longer accessible.
+    const selectedSubOrg = subOrgs[0];
+
+    // Only persist the selected sub-org for actual sub-org admins. Institute admins
+    // hitting this route accidentally (the backend's listAccessibleSubOrgs returns
+    // ALL sub-orgs for them, not just FSPSSM matches) would otherwise poison the
+    // localStorage key and flip sidebar branding across the whole app.
     useEffect(() => {
-        if (!subOrgs.length) return;
-        if (selectedId && subOrgs.some((s) => s.id === selectedId)) return;
-        const first = subOrgs[0];
-        if (!first) return;
-        setSelectedId(first.id);
-        setSelectedSubOrgId(first.id);
-    }, [subOrgs, selectedId]);
-
-    const selectedSubOrg = subOrgs.find((s) => s.id === selectedId);
-
-    const handleSelect = (newId: string) => {
-        setSelectedId(newId);
-        setSelectedSubOrgId(newId);
-    };
+        if (selectedSubOrg?.id && isCallerSubOrgAdmin()) {
+            setSelectedSubOrgId(selectedSubOrg.id);
+        }
+    }, [selectedSubOrg?.id]);
 
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Manage Sub-Org Teams</title>
+                <title>
+                    {selectedSubOrg ? `${selectedSubOrg.name} — Sub-Org` : 'Sub-Org'}
+                </title>
             </Helmet>
             <div className="p-6">
-                <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="mb-6 flex flex-col gap-3">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-900">
-                            Sub-Org Teams
-                            {selectedSubOrg && (
-                                <span className="ml-2 text-gray-500 font-normal">
-                                    — {selectedSubOrg.name}
-                                </span>
-                            )}
+                            {selectedSubOrg?.name || 'Sub-Org'}
                         </h1>
                         <p className="text-sm text-gray-500">
-                            Manage your sub-org team members. Only custom roles can be
-                            assigned; members are scoped to the selected sub-org.
+                            Your sub-org&apos;s payments, learners and team. The ledger
+                            is read-only — the parent institute admin manages installments
+                            and discounts.
                         </p>
                     </div>
-
-                    {subOrgs.length > 1 && (
-                        <div className="flex items-center gap-2">
-                            <Building2 className="h-4 w-4 text-gray-400" />
-                            <Select
-                                value={selectedId ?? ''}
-                                onValueChange={handleSelect}
-                            >
-                                <SelectTrigger className="min-w-[240px]">
-                                    <SelectValue placeholder="Pick a sub-org" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {subOrgs.map((s) => (
-                                        <SelectItem key={s.id} value={s.id}>
-                                            {s.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    )}
                 </div>
 
                 {isLoading ? (
                     <DashboardLoader />
-                ) : subOrgs.length === 0 ? (
+                ) : !selectedSubOrg ? (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-800">
-                        <p className="font-medium">No sub-orgs found.</p>
+                        <p className="font-medium">No sub-org access.</p>
                         <p className="text-sm">
-                            Create a sub-org from <strong>Manage Sub Org</strong> before
-                            using this page.
+                            Ask your institute admin to grant you sub-org admin access.
                         </p>
                     </div>
-                ) : !selectedId ? (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-800">
-                        <p className="font-medium">Pick a sub-org to continue.</p>
-                    </div>
                 ) : (
-                    <CustomTeamsList mode="subOrg" subOrgId={selectedId} />
+                    <SubOrgAnalyticsPanel
+                        subOrgId={selectedSubOrg.id}
+                        subOrgName={selectedSubOrg.name}
+                        restrictedView
+                    />
                 )}
             </div>
         </LayoutContainer>

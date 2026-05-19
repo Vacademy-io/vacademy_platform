@@ -18,6 +18,10 @@ import {
     SUB_ORG_TEAM_REMOVE,
     SUB_ORG_TEAM_ACCESSIBLE,
     SUB_ORG_TEAM_ACCESSIBLE_GRANTS,
+    SUB_ORG_TEAM_PENDING_INSTALLMENTS,
+    GET_SUB_ORG_FINANCE_DETAIL,
+    GET_INVOICES_BY_USER,
+    LOCAL_ADMIN_CORE_BASE,
 } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
@@ -208,7 +212,7 @@ export interface CreateSubOrgSubscriptionRequest {
         institute_logo_file_id?: string;
     };
     package_session_ids: string[];
-    payment_type: 'SUBSCRIPTION' | 'ONE_TIME' | 'FREE';
+    payment_type: 'SUBSCRIPTION' | 'ONE_TIME' | 'FREE' | 'CPO';
     actual_price?: number;
     elevated_price?: number;
     currency?: string;
@@ -217,6 +221,11 @@ export interface CreateSubOrgSubscriptionRequest {
     vendor?: string;
     vendor_id?: string;
     auth_roles?: string[];
+    /** Custom roles the sub-org admin can later assign on /manage-suborg-teams.
+     *  Empty / undefined = no restriction. */
+    allowed_team_roles?: string[];
+    /** Required when payment_type === 'CPO'. */
+    complex_payment_option_id?: string;
 }
 
 export interface CreateSubOrgSubscriptionResponse {
@@ -250,6 +259,25 @@ export const createSubOrgWithSubscription = async (
         url: CREATE_SUB_ORG_WITH_SUBSCRIPTION,
         params: { parentInstituteId },
         data,
+    });
+    return response.data;
+};
+
+/**
+ * Replace the ALLOWED_TEAM_ROLES list for a sub-org. Pass an empty list to clear
+ * (no restriction). Editable by the parent institute admin only.
+ */
+export const updateSubOrgTeamRoles = async (
+    subOrgId: string,
+    allowedTeamRoles: string[]
+): Promise<{ sub_org_id: string; allowed_team_roles: string[] }> => {
+    const parentInstituteId = getCurrentInstituteId();
+    const url = `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/institute/v1/sub-org/${subOrgId}/team-roles`;
+    const response = await authenticatedAxiosInstance({
+        method: 'PATCH',
+        url,
+        params: { parentInstituteId },
+        data: { allowed_team_roles: allowedTeamRoles },
     });
     return response.data;
 };
@@ -290,6 +318,27 @@ export const getSubscriptionStatus = async (
 
 // --- Add User to Sub-Org ---
 
+export interface AddSubOrgMemberInstallmentOverride {
+    aft_installment_id: string;
+    start_date?: string;
+    due_date?: string;
+    amount?: number;
+    discount?: {
+        type: 'PERCENTAGE' | 'FLAT';
+        value: number;
+        reason?: string;
+    };
+}
+
+export interface AddSubOrgMemberCpoConfig {
+    installment_overrides?: AddSubOrgMemberInstallmentOverride[];
+    cpo_discount?: {
+        type: 'PERCENTAGE' | 'FLAT';
+        value: number;
+        reason?: string;
+    };
+}
+
 export interface AddSubOrgMemberRequest {
     user: {
         email: string;
@@ -297,11 +346,26 @@ export interface AddSubOrgMemberRequest {
         mobile_number?: string;
         roles: string[];
     };
-    package_session_id: string;
+    package_session_id?: string;
+    /** Multi-PS variant — admin gets access to every PS in the list in one round-trip. */
+    package_session_ids?: string[];
     sub_org_id: string;
     institute_id: string;
     comma_separated_org_roles: string;
     status?: string;
+
+    // Optional manual offline-payment recording. Mirrors bulk/v3/assign non-CPO path.
+    payment_mode?: 'SKIP' | 'OFFLINE';
+    offline_payment_amount?: number;
+    offline_payment_currency?: string;
+    offline_payment_date?: string; // ISO
+    offline_payment_reference?: string;
+    generate_invoice?: boolean;
+
+    // Per-learner payment-option override. When set to a CPO mirror id, the backend
+    // generates SFPs + applies cpo_config + FIFO-allocates offline payment.
+    payment_option_id?: string;
+    cpo_config?: AddSubOrgMemberCpoConfig;
 }
 
 export interface AddSubOrgMemberResponse {
@@ -312,6 +376,8 @@ export interface AddSubOrgMemberResponse {
     };
     mapping_id: string;
     message: string;
+    payment_log_id?: string | null;
+    invoice_id?: string | null;
 }
 
 export const addSubOrgMember = async (
@@ -444,4 +510,166 @@ export const listAccessibleGrants = async (
         params: { instituteId },
     });
     return response.data;
+};
+
+// --- Sub-Org Finance Detail (manage-sub-orgs detail panel) ---
+
+export interface SubOrgInstallment {
+    student_fee_payment_id: string;
+    amount_expected: number;
+    amount_paid: number;
+    due_date?: string;
+    status: string; // PENDING / PARTIAL_PAID / PAID / WAIVED / OVERDUE
+}
+
+export interface SubOrgAdminPayment {
+    user_id?: string;
+    full_name?: string;
+    user_plan_id?: string;
+    payment_type?: string;             // FREE / ONE_TIME / SUBSCRIPTION / CPO
+    complex_payment_option_id?: string;
+    user_plan_status?: string;
+    start_date?: string;
+    end_date?: string;
+    total_amount?: number;
+    paid_amount?: number;
+    outstanding_amount?: number;
+    installment_count?: number;
+    pending_installments_count?: number;
+    next_due?: SubOrgInstallment;
+    installments?: SubOrgInstallment[];
+}
+
+export interface SubOrgLearnerRow {
+    user_id: string;
+    full_name?: string;
+    package_session_id?: string;
+    user_plan_id?: string;
+    enrolled_date?: string;
+    outstanding_amount?: number;
+    pending_installments_count?: number;
+    next_due?: SubOrgInstallment;
+}
+
+export interface SubOrgFinanceDetail {
+    sub_org_id: string;
+    sub_org_name?: string;
+    admin_payment?: SubOrgAdminPayment;
+    learners: SubOrgLearnerRow[];
+    totals: {
+        learner_count: number;
+        total_outstanding: number;
+    };
+    seat_usage?: {
+        used?: number;
+        total?: number | null;
+        remaining?: number | null;
+    };
+}
+
+export const getSubOrgFinanceDetail = async (
+    subOrgId: string,
+    parentInstituteId?: string
+): Promise<SubOrgFinanceDetail> => {
+    const params: Record<string, string> = { subOrgId };
+    if (parentInstituteId) params.parentInstituteId = parentInstituteId;
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_SUB_ORG_FINANCE_DETAIL,
+        params,
+    });
+    return response.data;
+};
+
+// --- Sub-Org Team Pending Installments (manage-suborg-teams column) ---
+
+export interface SubOrgTeamMemberInstallmentRow {
+    user_id: string;
+    outstanding_amount?: number;
+    pending_installments_count?: number;
+    total_installments?: number;
+    next_due_date?: string;
+    next_due_amount?: number;
+    next_due_status?: string;
+}
+
+export interface SubOrgTeamPendingInstallments {
+    sub_org_id: string;
+    members: SubOrgTeamMemberInstallmentRow[];
+}
+
+export const getSubOrgTeamPendingInstallments = async (
+    subOrgId: string,
+    instituteId: string
+): Promise<SubOrgTeamPendingInstallments> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: SUB_ORG_TEAM_PENDING_INSTALLMENTS,
+        params: { subOrgId, instituteId },
+    });
+    return response.data;
+};
+
+// --- Invoices (per user) ---
+
+export interface InvoiceSummary {
+    id: string;
+    invoiceNumber?: string;
+    invoice_number?: string;
+    totalAmount?: number;
+    total_amount?: number;
+    currency?: string;
+    status?: string;
+    invoice_date?: string;
+    invoiceDate?: string;
+    pdfUrl?: string;
+    pdf_url?: string;
+    fileId?: string;
+    file_id?: string;
+    [key: string]: unknown;
+}
+
+export const getInvoicesByUser = async (userId: string): Promise<InvoiceSummary[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_INVOICES_BY_USER(userId),
+    });
+    return Array.isArray(response.data) ? response.data : [];
+};
+
+/**
+ * Force a browser save dialog for the invoice PDF.
+ *
+ * The URL we receive is a pre-signed S3 link (1-day TTL). Plain `<a download>` is a hint
+ * only for cross-origin downloads and most browsers ignore it for S3, so we fetch the
+ * PDF as a blob and trigger an in-page anchor click. If CORS blocks the fetch
+ * (production-side S3 mis-config), we fall back to opening the URL in a new tab so the
+ * user can still save from the browser PDF viewer.
+ */
+export const downloadInvoicePdf = async (url: string, filename: string): Promise<void> => {
+    try {
+        const resp = await fetch(url, { credentials: 'omit' });
+        if (!resp.ok) throw new Error(`Invoice fetch ${resp.status}`);
+        const blob = await resp.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = objectUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // Give the browser a moment to start the download before revoking.
+        setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+        window.open(url, '_blank', 'noopener,noreferrer');
+    }
+};
+
+/** Builds a stable filename for invoice downloads. */
+export const buildInvoiceFilename = (invoice: InvoiceSummary): string => {
+    const num =
+        (invoice.invoice_number as string | undefined)
+        || (invoice.invoiceNumber as string | undefined)
+        || invoice.id;
+    return `invoice-${num}.pdf`;
 };

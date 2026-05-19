@@ -17,6 +17,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.admin_core_service.features.faculty.entity.FacultySubjectPackageSessionMapping;
 import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
+import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
+import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
 import vacademy.io.admin_core_service.features.institute.entity.InstituteSubOrg;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubOrgRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
@@ -24,6 +26,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollIn
 import vacademy.io.common.institute.entity.session.PackageSession;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamAddRequestDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamListRequestDTO;
+import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamMemberInstallmentsDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgTeamRemoveRequestDTO;
 import vacademy.io.common.auth.dto.PagedUserWithRolesResponse;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -35,6 +38,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import jakarta.servlet.http.HttpServletRequest;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -71,6 +75,9 @@ public class SubOrgTeamService {
 
     @Autowired
     private EnrollInviteRepository enrollInviteRepository;
+
+    @Autowired
+    private StudentFeePaymentRepository studentFeePaymentRepository;
 
     @Autowired
     private InternalClientUtils internalClientUtils;
@@ -215,6 +222,17 @@ public class SubOrgTeamService {
             if (!StringUtils.hasText(roleName) || SYSTEM_ROLES.contains(roleName.toUpperCase())) {
                 throw new VacademyException("Sub-org admins can only assign custom roles");
             }
+            // ALLOWED_TEAM_ROLES allow-list (configured at sub-org creation, editable
+            // later by the parent admin). Empty / null = no restriction. Parent admins
+            // bypass this gate so they can add members in any role they choose.
+            List<String> allowed = readAllowedTeamRolesFromSubOrgSettings(
+                    request.getSubOrgId(), request.getInstituteId());
+            if (allowed != null && !allowed.isEmpty()
+                    && allowed.stream().noneMatch(r -> r.equalsIgnoreCase(roleName))) {
+                throw new VacademyException(
+                        "Role '" + roleName + "' is not in this sub-org's allowed roles. "
+                                + "Allowed: " + String.join(", ", allowed));
+            }
         }
 
         // Validate package sessions are within caller's scope (sub-org admins only).
@@ -353,6 +371,74 @@ public class SubOrgTeamService {
         return result;
     }
 
+    /**
+     * Returns one row per team member who has any non-PAID StudentFeePayment. The candidate
+     * set is the same FSPSSM-derived user list backing {@link #listTeamMembers}, so caller-
+     * scope semantics match the team list 1:1. Team members without SFP rows are omitted
+     * (the frontend can treat absent members as "no installments due").
+     */
+    @Transactional(readOnly = true)
+    public SubOrgTeamMemberInstallmentsDTO getPendingInstallments(String subOrgId,
+                                                                  String instituteId,
+                                                                  CustomUserDetails caller) {
+        if (!StringUtils.hasText(subOrgId)) {
+            throw new VacademyException("sub_org_id is required");
+        }
+        if (!StringUtils.hasText(instituteId)) {
+            throw new VacademyException("institute_id is required");
+        }
+        ensureCallerCanAccessSubOrg(caller, instituteId, subOrgId);
+
+        List<String> userIds = facultyMappingRepository
+                .findDistinctUserIdsBySubOrgIdAndLinkage(subOrgId, List.of("ACTIVE"));
+        if (userIds.isEmpty()) {
+            return SubOrgTeamMemberInstallmentsDTO.builder()
+                    .subOrgId(subOrgId)
+                    .members(java.util.Collections.emptyList())
+                    .build();
+        }
+
+        List<SubOrgTeamMemberInstallmentsDTO.Row> rows = new ArrayList<>();
+        for (String userId : userIds) {
+            List<StudentFeePayment> all = studentFeePaymentRepository.findByUserId(userId);
+            if (all.isEmpty()) continue;
+
+            BigDecimal outstanding = BigDecimal.ZERO;
+            int pending = 0;
+            StudentFeePayment nextDue = null;
+            for (StudentFeePayment sfp : all) {
+                if ("PAID".equalsIgnoreCase(sfp.getStatus())) continue;
+                BigDecimal expected = sfp.getAmountExpected() != null ? sfp.getAmountExpected() : BigDecimal.ZERO;
+                BigDecimal paid = sfp.getAmountPaid() != null ? sfp.getAmountPaid() : BigDecimal.ZERO;
+                outstanding = outstanding.add(expected.subtract(paid).max(BigDecimal.ZERO));
+                pending++;
+                if (sfp.getDueDate() != null
+                        && (nextDue == null || nextDue.getDueDate() == null
+                            || sfp.getDueDate().before(nextDue.getDueDate()))) {
+                    nextDue = sfp;
+                }
+            }
+            if (pending == 0) continue;
+
+            SubOrgTeamMemberInstallmentsDTO.Row.RowBuilder b = SubOrgTeamMemberInstallmentsDTO.Row.builder()
+                    .userId(userId)
+                    .outstandingAmount(outstanding)
+                    .pendingInstallmentsCount(pending)
+                    .totalInstallments(all.size());
+            if (nextDue != null) {
+                b.nextDueDate(nextDue.getDueDate())
+                        .nextDueAmount(nextDue.getAmountExpected())
+                        .nextDueStatus(nextDue.getStatus());
+            }
+            rows.add(b.build());
+        }
+
+        return SubOrgTeamMemberInstallmentsDTO.builder()
+                .subOrgId(subOrgId)
+                .members(rows)
+                .build();
+    }
+
     // ─────────── helpers ───────────
 
     private void ensureCallerCanAccessSubOrg(CustomUserDetails caller, String instituteId, String subOrgId) {
@@ -468,6 +554,35 @@ public class SubOrgTeamService {
      * fallback. We avoid a DB role check here because user_role lives in auth-service.
      */
     @SuppressWarnings("unchecked")
+    /**
+     * Looks up ALLOWED_TEAM_ROLES from the sub-org's org-level invite settingJson.
+     * Returns null/empty when no allow-list is configured (legacy / unrestricted).
+     */
+    private List<String> readAllowedTeamRolesFromSubOrgSettings(String subOrgId,
+                                                                String parentInstituteId) {
+        try {
+            List<vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite> candidates =
+                    enrollInviteRepository.findBySubOrgIdAndInstituteId(
+                            subOrgId, parentInstituteId, List.of("ACTIVE"));
+            ObjectMapper mapper = new ObjectMapper();
+            for (var invite : candidates) {
+                if (!StringUtils.hasText(invite.getSettingJson())) continue;
+                try {
+                    var dto = mapper.readValue(invite.getSettingJson(),
+                            vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSettingDTO.class);
+                    if (dto != null && dto.getSetting() != null
+                            && dto.getSetting().getSubOrgSetting() != null) {
+                        List<String> roles = dto.getSetting().getSubOrgSetting().getAllowedTeamRoles();
+                        if (roles != null && !roles.isEmpty()) return roles;
+                    }
+                } catch (Exception ignored) { /* try next invite */ }
+            }
+        } catch (Exception e) {
+            log.debug("Could not read ALLOWED_TEAM_ROLES for sub-org {}: {}", subOrgId, e.getMessage());
+        }
+        return null;
+    }
+
     private boolean hasSystemRole(CustomUserDetails user, String instituteId, String... roles) {
         if (user == null) return false;
         boolean fromAuthorities = user.getAuthorities().stream()

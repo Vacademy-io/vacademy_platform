@@ -24,6 +24,7 @@ import vacademy.io.admin_core_service.features.user_subscription.repository.User
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
 import vacademy.io.admin_core_service.features.user_subscription.util.PaymentOptionJsonDiscountAccessor;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
+import vacademy.io.admin_core_service.features.faculty.repository.FacultySubjectPackageSessionMappingRepository;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.payment.enums.PaymentGateway;
 import vacademy.io.common.payment.enums.PaymentStatusEnum;
@@ -56,6 +57,7 @@ public class CpoSideViewService {
     private final FeeLedgerAllocationService feeLedgerAllocationService;
     private final InvoiceService invoiceService;
     private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
+    private final FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
 
     // -------------------------------------------------------------------- read
 
@@ -190,6 +192,8 @@ public class CpoSideViewService {
     public CpoSideViewInstallmentsResponseDTO modifyInstallment(
             String sfpId, ModifyInstallmentRequestDTO req, String appliedBy) {
 
+        assertNotSubOrgAdmin(appliedBy, "modify installment");
+
         StudentFeePayment sfp = studentFeePaymentRepository.findById(sfpId)
                 .orElseThrow(() -> new VacademyException("StudentFeePayment not found: " + sfpId));
 
@@ -221,6 +225,8 @@ public class CpoSideViewService {
     public CpoSideViewInstallmentsResponseDTO setCpoDiscount(
             String userPlanId, ApplyCpoDiscountRequestDTO req, String appliedBy) {
 
+        assertNotSubOrgAdmin(appliedBy, "apply CPO discount");
+
         if (req.getDiscount() == null && !req.isRemove()) {
             throw new VacademyException("Either discount or remove=true must be supplied");
         }
@@ -231,6 +237,8 @@ public class CpoSideViewService {
     @Transactional
     public CpoSideViewInstallmentsResponseDTO recordOfflinePayment(
             String userPlanId, RecordOfflinePaymentRequestDTO req, String appliedBy) {
+
+        assertNotSubOrgAdmin(appliedBy, "record offline payment");
 
         // Audit log up front. We had a prod incident where an offline payment
         // landed as ₹1 instead of the intended amount; logging the exact wire
@@ -311,4 +319,38 @@ public class CpoSideViewService {
     }
 
     private static BigDecimal nz(BigDecimal b) { return b == null ? BigDecimal.ZERO : b; }
+
+    /**
+     * Rejects ledger mutations by sub-org admins. Fingerprint mirrors
+     * {@code SubOrgTeamService.ensureCallerCanAccessSubOrg}: presence of any active
+     * SUB_ORG-linked FSPSSM row identifies the caller as a sub-org admin, regardless
+     * of their JWT role string (sub-org admins are also given the ADMIN role on the
+     * parent institute, so the role alone is unreliable).
+     *
+     * Why: CPO ledger edits (per-installment date/amount/discount, CPO-level discount,
+     * offline payment recording) are an institute↔sub-org-admin finance agreement.
+     * The sub-org admin must not be able to discount themselves or record their own
+     * collections. Only the parent institute admin (no SUB_ORG linkages) can.
+     */
+    private void assertNotSubOrgAdmin(String userId, String action) {
+        if (userId == null || userId.isBlank()) return; // anonymous internal call — let through
+        try {
+            List<String> subOrgLinks = facultyMappingRepository
+                    .findDistinctSubOrgIdsByUserAndLinkage(userId, List.of("ACTIVE"));
+            if (subOrgLinks != null && !subOrgLinks.isEmpty()) {
+                log.warn("Blocked CPO ledger mutation '{}' by sub-org admin userId={} (subOrgs={})",
+                        action, userId, subOrgLinks);
+                throw new VacademyException(
+                        "Only the parent institute admin can " + action
+                                + " on a CPO ledger.");
+            }
+        } catch (VacademyException ve) {
+            throw ve;
+        } catch (Exception e) {
+            // Fail open on infrastructure failures — we don't want a transient DB blip
+            // to block legitimate institute-admin writes. Logged for visibility.
+            log.warn("Could not verify sub-org-admin status for userId={} ({}); allowing the write.",
+                    userId, e.getMessage());
+        }
+    }
 }

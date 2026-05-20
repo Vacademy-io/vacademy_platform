@@ -104,6 +104,12 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
 
     const handleExportPastAttendance = () => {
         setIsAttendanceExporting(true);
+        // const batchValue = session.package_session_details && session.package_session_details.length > 0
+        //     ? session.package_session_details.map((d) => d.level_name).filter(Boolean).join(' | ')
+        //     : '';
+        const courseValue = session.package_session_details && session.package_session_details.length > 0
+            ? session.package_session_details.map((d) => d.package_name).filter(Boolean).join(' | ')
+            : '';
         const csvData = (reportResponse || []).map((item, idx) => {
             const engagement = item.engagementData ? (() => { try { return JSON.parse(item.engagementData); } catch { return null; } })() : null;
             const duration = item.providerTotalDurationMinutes ?? '';
@@ -133,6 +139,8 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                 '#': idx + 1,
                 'Name': item.fullName,
                 'Email': item.email || '',
+                // 'Batch': batchValue,
+                'Course': courseValue,
                 'Status': item.attendanceStatus === 'PRESENT' ? 'Present' : item.attendanceStatus === 'ABSENT' ? 'Absent' : 'Unmarked',
                 'Mode': item.statusType || '',
                 'Duration (min)': duration,
@@ -574,6 +582,7 @@ export default function PreviousSessionCard({ session }: PreviousSessionCardProp
                                 sessionId={session.session_id}
                                 scheduleId={session.schedule_id}
                                 accessType={session.access_level}
+                                packageSessionDetails={session.package_session_details}
                                 onSaved={() => {
                                     fetchReport({
                                         sessionId: session.session_id,

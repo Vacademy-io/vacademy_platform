@@ -21,17 +21,13 @@ import {
     getAllRoles,
     type CreateSubOrgSubscriptionRequest,
 } from '../../-services/custom-team-services';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Loader2, UploadCloud, Check, ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import {
-    fetchBatchesSummary,
-    fetchCourseBatches,
-} from '@/routes/admin-package-management/-services/package-service';
 import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -43,7 +39,40 @@ import {
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_INSTITUTE_VENDORS } from '@/constants/urls';
+import { BASE_URL, GET_INSTITUTE_VENDORS } from '@/constants/urls';
+import type { CPOListApiResponse } from '@/routes/financial-management/fee-plans/-types/cpo-types';
+
+// Local sub-org helpers — kept inline so the rest of the dashboard's package-service
+// calls don't accidentally pick up the same lookup logic. Use BASE_URL for production.
+const fetchBatchesSummaryLocal = async (instituteId: string, statuses: string[]) => {
+    const params = new URLSearchParams();
+    statuses.forEach((s) => params.append('statuses', s));
+    const url = `${BASE_URL}/admin-core-service/institute/v1/batches-summary/${instituteId}${
+        params.toString() ? `?${params.toString()}` : ''
+    }`;
+    const response = await authenticatedAxiosInstance({ method: 'GET', url });
+    return response.data;
+};
+
+const fetchCourseBatchesLocal = async (courseId: string): Promise<PackageSessionDTO[]> => {
+    const url = `${BASE_URL}/admin-core-service/course/v1/${courseId}/batches`;
+    const response = await authenticatedAxiosInstance({ method: 'GET', url });
+    return response.data;
+};
+
+const fetchInstituteCpoListLocal = async (
+    instituteId: string,
+    pageNo = 0,
+    pageSize = 100
+): Promise<CPOListApiResponse> => {
+    const url = `${BASE_URL}/admin-core-service/v1/fee-management/cpo/${instituteId}`;
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url,
+        params: { pageNo, pageSize },
+    });
+    return response.data;
+};
 
 // Step 1 schema: Sub-Org details
 const step1Schema = z.object({
@@ -53,7 +82,7 @@ const step1Schema = z.object({
 
 // Step 3 schema: Pricing & Seats
 const step3Schema = z.object({
-    paymentType: z.enum(['SUBSCRIPTION', 'ONE_TIME', 'FREE']),
+    paymentType: z.enum(['SUBSCRIPTION', 'ONE_TIME', 'FREE', 'CPO']),
     actualPrice: z.number().min(0).optional(),
     elevatedPrice: z.number().min(0).optional(),
     currency: z.string().optional(),
@@ -61,6 +90,8 @@ const step3Schema = z.object({
     validityInDays: z.number().min(1, 'Validity must be at least 1 day'),
     vendor: z.string().optional(),
     vendorId: z.string().optional(),
+    // Required when paymentType=CPO — picked from the institute's existing CPO list.
+    complexPaymentOptionId: z.string().optional(),
 });
 
 type Step1Values = z.infer<typeof step1Schema>;
@@ -88,8 +119,11 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
     const [step, setStep] = useState(1);
     const [step1Data, setStep1Data] = useState<Step1Values | null>(null);
     const [selectedPackageSessionIds, setSelectedPackageSessionIds] = useState<string[]>([]);
-    const [expandedPackageId, setExpandedPackageId] = useState<string | null>(null);
     const [selectedAuthRoles, setSelectedAuthRoles] = useState<string[]>([]);
+    // Custom roles the sub-org admin will be allowed to pick when adding their team
+    // members on /manage-suborg-teams. Persisted on settingJson.ALLOWED_TEAM_ROLES.
+    // Empty = no restriction. Editable later via the sub-org detail modal.
+    const [selectedTeamRoles, setSelectedTeamRoles] = useState<string[]>([]);
     const [showNewRoleInput, setShowNewRoleInput] = useState(false);
     const [newRoleName, setNewRoleName] = useState('');
 
@@ -109,21 +143,49 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         },
     });
 
-    // Fetch packages for step 2
-    const { data: packagesSummary } = useQuery({
-        queryKey: ['packages-summary'],
-        queryFn: () => fetchBatchesSummary(['ACTIVE']),
-        enabled: open && step >= 2,
+    // Fetch packages for step 2.
+    const { data: packagesSummary, isLoading: isLoadingSummary } = useQuery({
+        queryKey: ['sub-org-packages-summary-local', instituteId],
+        queryFn: () => fetchBatchesSummaryLocal(instituteId || '', ['ACTIVE']),
+        enabled: open && step >= 2 && !!instituteId,
     });
 
-    // Fetch sessions for expanded package
-    const { data: packageSessions = [], isLoading: isLoadingSessions } = useQuery<
-        PackageSessionDTO[]
-    >({
-        queryKey: ['package-sessions', expandedPackageId],
-        queryFn: () => fetchCourseBatches(expandedPackageId!),
-        enabled: !!expandedPackageId,
+    // Prefetch sessions for every package in parallel so the user sees the full
+    // (package · level · session) list immediately as checkboxes — no click-to-expand
+    // dance. This was the behaviour that broke against the local backend.
+    const packageIds: string[] = (packagesSummary?.packages || []).map(
+        (p: { id: string }) => p.id
+    );
+    const sessionQueries = useQueries({
+        queries: packageIds.map((pkgId: string) => ({
+            queryKey: ['sub-org-package-sessions-local', pkgId],
+            queryFn: () => fetchCourseBatchesLocal(pkgId),
+            enabled: open && step >= 2 && !!pkgId,
+            staleTime: 30000,
+        })),
     });
+    const isLoadingSessions =
+        isLoadingSummary || sessionQueries.some((q) => q.isLoading);
+
+    type FlatRow = {
+        packageId: string;
+        packageName: string;
+        packageSessionId: string;
+        levelName: string;
+        sessionName: string;
+    };
+    const flatRows: FlatRow[] = (packagesSummary?.packages || []).flatMap(
+        (pkg: { id: string; name: string }, idx: number) => {
+            const sessions = (sessionQueries[idx]?.data || []) as PackageSessionDTO[];
+            return sessions.map((ps) => ({
+                packageId: pkg.id,
+                packageName: pkg.name || pkg.id,
+                packageSessionId: ps.id,
+                levelName: ps.level?.level_name || '—',
+                sessionName: ps.session?.session_name || '—',
+            }));
+        }
+    );
 
     // Fetch roles from parent institute
     const { data: rolesList = [] } = useQuery<{ id: string; name: string }[]>({
@@ -144,6 +206,17 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         },
         enabled: open && !!instituteId,
     });
+
+    // Fetch institute CPOs — used to populate the picker when payment_type=CPO.
+    const { data: cpoListResponse, isLoading: isLoadingCpos } = useQuery({
+        queryKey: ['sub-org-institute-cpo-list-local', instituteId],
+        queryFn: () => fetchInstituteCpoListLocal(instituteId || '', 0, 100),
+        enabled: open && step === 3 && !!instituteId,
+        staleTime: 30000,
+    });
+    const cpoList = (cpoListResponse?.content || []).filter(
+        (cpo) => cpo.status === 'ACTIVE'
+    );
 
     // Auto-select vendor when there's exactly one
     useEffect(() => {
@@ -217,9 +290,9 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
         setStep(1);
         setStep1Data(null);
         setSelectedPackageSessionIds([]);
-        setExpandedPackageId(null);
         setLogoPreview(null);
         setSelectedAuthRoles([]);
+        setSelectedTeamRoles([]);
         setShowNewRoleInput(false);
         setNewRoleName('');
         step1Form.reset();
@@ -285,6 +358,15 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
 
     const handleFinalSubmit = (data: Step3Values) => {
         if (!step1Data) return;
+
+        // CPO needs an explicit picker selection; price/vendor live on the CPO itself.
+        if (data.paymentType === 'CPO' && !data.complexPaymentOptionId) {
+            toast.error('Please select a fee structure (CPO) for the sub-org subscription');
+            return;
+        }
+
+        const isGatewayBacked = data.paymentType === 'ONE_TIME' || data.paymentType === 'SUBSCRIPTION';
+
         const request: CreateSubOrgSubscriptionRequest = {
             sub_org_details: {
                 institute_name: step1Data.instituteName,
@@ -292,14 +374,17 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
             },
             package_session_ids: selectedPackageSessionIds,
             payment_type: data.paymentType,
-            actual_price: data.paymentType !== 'FREE' ? data.actualPrice : undefined,
-            elevated_price: data.paymentType !== 'FREE' ? data.elevatedPrice : undefined,
-            currency: data.paymentType !== 'FREE' ? data.currency : undefined,
+            actual_price: isGatewayBacked ? data.actualPrice : undefined,
+            elevated_price: isGatewayBacked ? data.elevatedPrice : undefined,
+            currency: isGatewayBacked ? data.currency : undefined,
             member_count: data.memberCount,
             validity_in_days: data.validityInDays,
-            vendor: data.vendor,
-            vendor_id: data.vendorId,
+            vendor: isGatewayBacked ? data.vendor : undefined,
+            vendor_id: isGatewayBacked ? data.vendorId : undefined,
             auth_roles: selectedAuthRoles.length > 0 ? selectedAuthRoles : undefined,
+            allowed_team_roles: selectedTeamRoles.length > 0 ? selectedTeamRoles : undefined,
+            complex_payment_option_id:
+                data.paymentType === 'CPO' ? data.complexPaymentOptionId : undefined,
         };
         subscriptionMutation.mutate(request);
     };
@@ -321,8 +406,8 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                 onOpenChange(o);
             }}
         >
-            <DialogContent className="w-[95vw] max-w-[425px] sm:max-w-[600px] md:max-w-[700px]">
-                <DialogHeader>
+            <DialogContent className="flex max-h-[90vh] w-[95vw] flex-col overflow-hidden max-w-[425px] sm:max-w-[600px] md:max-w-[700px]">
+                <DialogHeader className="shrink-0">
                     <DialogTitle>
                         {step === 1 && 'Create Sub-Organization'}
                         {step === 2 && 'Select Package Sessions'}
@@ -336,7 +421,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                 </DialogHeader>
 
                 {/* Step indicators */}
-                <div className="flex items-center justify-center gap-2 py-2">
+                <div className="flex shrink-0 items-center justify-center gap-2 py-2">
                     {[1, 2, 3].map((s) => (
                         <div
                             key={s}
@@ -352,6 +437,12 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                         </div>
                     ))}
                 </div>
+
+                {/* Scrollable wizard body — wraps every step so a long Step 3 (with the
+                    pricing options + admin roles + allowed team roles + summary + footer)
+                    doesn't push the dialog past the viewport. Each step's <DialogFooter>
+                    lives inside this scroll area too, matching the sub-org-detail modal. */}
+                <div className="-mx-2 flex-1 overflow-y-auto px-2 pb-2">
 
                 {/* STEP 1: Sub-Org Details */}
                 {step === 1 && (
@@ -432,74 +523,57 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                     </Form>
                 )}
 
-                {/* STEP 2: Package Session Selection */}
+                {/* STEP 2: Package Session Selection — flat checkbox list, grouped by package */}
                 {step === 2 && (
                     <div className="space-y-4">
                         <ScrollArea className="h-[300px] rounded-md border p-3">
-                            {packagesSummary?.packages?.length === 0 && (
+                            {isLoadingSessions && flatRows.length === 0 && (
+                                <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Loading package sessions...
+                                </div>
+                            )}
+                            {!isLoadingSessions && flatRows.length === 0 && (
                                 <p className="py-8 text-center text-sm text-muted-foreground">
-                                    No packages found.
+                                    No package sessions found.
                                 </p>
                             )}
-                            {packagesSummary?.packages?.map(
-                                (pkg: { id: string; name: string }) => (
-                                    <div key={pkg.id} className="mb-2">
-                                        <button
-                                            type="button"
-                                            className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-medium hover:bg-muted"
-                                            onClick={() =>
-                                                setExpandedPackageId(
-                                                    expandedPackageId === pkg.id
-                                                        ? null
-                                                        : pkg.id
-                                                )
-                                            }
-                                        >
-                                            <span>{pkg.name}</span>
-                                            <ChevronRight
-                                                className={`h-4 w-4 transition-transform ${
-                                                    expandedPackageId === pkg.id
-                                                        ? 'rotate-90'
-                                                        : ''
-                                                }`}
-                                            />
-                                        </button>
-                                        {expandedPackageId === pkg.id && (
-                                            <div className="ml-4 mt-1 space-y-1">
-                                                {isLoadingSessions ? (
-                                                    <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-                                                        <Loader2 className="h-3 w-3 animate-spin" />
-                                                        Loading sessions...
-                                                    </div>
-                                                ) : packageSessions.length === 0 ? (
-                                                    <p className="py-2 text-sm text-muted-foreground">
-                                                        No sessions available.
-                                                    </p>
-                                                ) : (
-                                                    packageSessions.map((ps) => (
-                                                        <label
-                                                            key={ps.id}
-                                                            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
-                                                        >
-                                                            <Checkbox
-                                                                checked={selectedPackageSessionIds.includes(
-                                                                    ps.id
-                                                                )}
-                                                                onCheckedChange={() =>
-                                                                    togglePackageSession(ps.id)
-                                                                }
-                                                            />
-                                                            <span>
-                                                                {ps.level?.level_name} -{' '}
-                                                                {ps.session?.session_name}
-                                                            </span>
-                                                        </label>
-                                                    ))
-                                                )}
+                            {(packagesSummary?.packages || []).map(
+                                (pkg: { id: string; name: string }) => {
+                                    const rows = flatRows.filter(
+                                        (r) => r.packageId === pkg.id
+                                    );
+                                    if (rows.length === 0) return null;
+                                    return (
+                                        <div key={pkg.id} className="mb-3">
+                                            <p className="px-1 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                {pkg.name}
+                                            </p>
+                                            <div className="space-y-1">
+                                                {rows.map((row) => (
+                                                    <label
+                                                        key={row.packageSessionId}
+                                                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
+                                                    >
+                                                        <Checkbox
+                                                            checked={selectedPackageSessionIds.includes(
+                                                                row.packageSessionId
+                                                            )}
+                                                            onCheckedChange={() =>
+                                                                togglePackageSession(
+                                                                    row.packageSessionId
+                                                                )
+                                                            }
+                                                        />
+                                                        <span>
+                                                            {row.levelName} - {row.sessionName}
+                                                        </span>
+                                                    </label>
+                                                ))}
                                             </div>
-                                        )}
-                                    </div>
-                                )
+                                        </div>
+                                    );
+                                }
                             )}
                         </ScrollArea>
 
@@ -552,7 +626,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                         onValueChange={(v) =>
                                             step3Form.setValue(
                                                 'paymentType',
-                                                v as 'SUBSCRIPTION' | 'ONE_TIME' | 'FREE'
+                                                v as 'SUBSCRIPTION' | 'ONE_TIME' | 'FREE' | 'CPO'
                                             )
                                         }
                                     >
@@ -565,11 +639,51 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                             <SelectItem value="SUBSCRIPTION">
                                                 Subscription
                                             </SelectItem>
+                                            <SelectItem value="CPO">
+                                                CPO (Custom Fee Structure)
+                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
 
-                                {paymentType !== 'FREE' && (
+                                {paymentType === 'CPO' && (
+                                    <div className="space-y-2 sm:col-span-2">
+                                        <Label>Fee Structure (CPO) *</Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            The admin who joins via this invite pays the CPO
+                                            installments. Learners ride free under the scoped
+                                            invites.
+                                        </p>
+                                        <Select
+                                            value={step3Form.watch('complexPaymentOptionId') || ''}
+                                            onValueChange={(v) =>
+                                                step3Form.setValue('complexPaymentOptionId', v)
+                                            }
+                                            disabled={isLoadingCpos}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue
+                                                    placeholder={
+                                                        isLoadingCpos
+                                                            ? 'Loading fee structures...'
+                                                            : cpoList.length === 0
+                                                              ? 'No active fee structures found'
+                                                              : 'Select a fee structure'
+                                                    }
+                                                />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {cpoList.map((cpo) => (
+                                                    <SelectItem key={cpo.id} value={cpo.id}>
+                                                        {cpo.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                )}
+
+                                {(paymentType === 'ONE_TIME' || paymentType === 'SUBSCRIPTION') && (
                                     <>
                                         <div className="space-y-2">
                                             <Label>Actual Price</Label>
@@ -737,6 +851,46 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                     </div>
                                 </div>
 
+                                {/* Allowed team roles — restricts which custom roles the
+                                    sub-org admin can assign on /manage-suborg-teams.
+                                    Empty = no restriction. Editable later from the sub-org
+                                    detail modal. */}
+                                <div className="space-y-2 sm:col-span-2">
+                                    <div>
+                                        <Label>Allowed team roles</Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            Roles the sub-org admin can pick when adding
+                                            their own team members. Leave empty to allow
+                                            any custom role.
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 rounded-md border p-2">
+                                        {rolesList.map((role) => (
+                                            <label
+                                                key={role.id}
+                                                className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-sm hover:bg-muted"
+                                            >
+                                                <Checkbox
+                                                    checked={selectedTeamRoles.includes(role.name)}
+                                                    onCheckedChange={(checked) => {
+                                                        setSelectedTeamRoles((prev) =>
+                                                            checked
+                                                                ? [...prev, role.name]
+                                                                : prev.filter((r) => r !== role.name)
+                                                        );
+                                                    }}
+                                                />
+                                                {role.name}
+                                            </label>
+                                        ))}
+                                        {rolesList.length === 0 && (
+                                            <span className="text-xs text-muted-foreground">
+                                                No roles found
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
                                 <div className="space-y-2">
                                     <Label>Seat Limit</Label>
                                     <Input
@@ -805,6 +959,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                         </form>
                     </Form>
                 )}
+                </div>
             </DialogContent>
         </Dialog>
     );

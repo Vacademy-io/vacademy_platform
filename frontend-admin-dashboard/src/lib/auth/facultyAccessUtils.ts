@@ -161,6 +161,20 @@ export const hasFacultyPermission = (permission: string): boolean => {
 };
 
 /**
+ * True when the current user has any active SUB_ORG-linked FSPSSM entries — i.e. they
+ * are acting as a sub-org admin, not the parent institute admin. Used as the canonical
+ * "read-only ledger" signal: sub-org admins must not edit installments / apply discounts
+ * / record offline payments on their own CPO (it's a finance agreement against the
+ * institute admin). Parent institute admins (zero sub-org linkages) keep full write
+ * access.
+ */
+export const isCallerSubOrgAdmin = (): boolean => {
+    const facultyData = getFacultyAccessData();
+    if (!facultyData || !facultyData.subOrgs) return false;
+    return facultyData.subOrgs.length > 0;
+};
+
+/**
  * Get faculty access data from localStorage
  */
 export const getFacultyAccessData = (): FacultyAccessData | null => {
@@ -212,6 +226,33 @@ export const setSelectedSubOrgId = (subOrgId: string): void => {
     } catch (error) {
         console.error('Error saving selected sub-org ID to localStorage:', error);
     }
+};
+
+/**
+ * Returns the selected sub-org id only when the current user actually has it in
+ * their FSPSSM-derived `facultyData.subOrgs[]`. Otherwise returns null AND
+ * self-heals by removing the stale entry from localStorage.
+ *
+ * Use this whenever a caller intends to switch *branding/access context* to a
+ * sub-org. The plain {@link getSelectedSubOrgId} can return a stale id left
+ * behind by a previous session (or by an institute admin browsing a sub-org
+ * deep page) and would silently flip the sidebar branding to a sub-org the
+ * caller has no real access to.
+ */
+export const getValidSelectedSubOrgId = (): string | null => {
+    const raw = getSelectedSubOrgId();
+    if (!raw) return null;
+    const facultyData = getFacultyAccessData();
+    const subOrgs = facultyData?.subOrgs ?? [];
+    if (subOrgs.some((s) => s.subOrgId === raw)) return raw;
+    // Stale entry — clear so future reads / refreshes can settle on parent
+    // branding without manual cache-busting.
+    try {
+        localStorage.removeItem(SELECTED_SUBORG_STORAGE_KEY);
+    } catch {
+        /* best effort */
+    }
+    return null;
 };
 
 /**

@@ -12,6 +12,9 @@ import {
     ADMIN_MARK_ATTENDANCE,
     GET_SCHEDULE_RECORDINGS,
     SYNC_RECORDINGS_FROM_BBB,
+    RECORDING_TRANSCRIBE,
+    RECORDING_CREATE_ASSESSMENT,
+    RECORDING_LIST_ASSESSMENTS,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 
@@ -167,6 +170,32 @@ export interface MeetingRecording {
     /** Set by the YouTube upload worker once the recording has been published. */
     youtubeVideoId?: string;
     youtubeVideoUrl?: string;
+
+    // Transcription state (populated server-side from ai_content_extraction).
+    // Null/undefined when no transcription has ever been requested.
+    transcriptStatus?: TranscriptStatus | null;
+    detectedLanguage?: string;
+    englishTranscriptUrl?: string;
+    transcriptionError?: string;
+}
+
+export type TranscriptStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+/** Server-side TranscriptionStatusDto. status is null when no extraction row exists yet. */
+export interface RecordingTranscriptionStatus {
+    recordingId: string;
+    status: TranscriptStatus | null;
+    jobId?: string | null;
+    detectedLanguage?: string | null;
+    languageProbability?: number | null;
+    durationSeconds?: number | null;
+    segmentCount?: number | null;
+    wordCount?: number | null;
+    sourceTextUrl?: string | null;
+    englishTextUrl?: string | null;
+    errorMessage?: string | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
 }
 
 export interface NotificationAction {
@@ -537,6 +566,106 @@ export const syncRecordingsFromBbb = async (
         SYNC_RECORDINGS_FROM_BBB,
         null,
         { params: { scheduleId, instituteId } }
+    );
+    return response.data;
+};
+
+// -------------------------------------------------------------------------
+// Layer 1 — Process Recording (Whisper transcription)
+// -------------------------------------------------------------------------
+
+/**
+ * Kick off transcription for a recording ("Process Recording" button).
+ * 409 if already in progress; idempotent COMPLETED returns the existing row.
+ */
+export const processRecording = async (
+    scheduleId: string,
+    recordingId: string
+): Promise<RecordingTranscriptionStatus> => {
+    const response = await authenticatedAxiosInstance.post<RecordingTranscriptionStatus>(
+        RECORDING_TRANSCRIBE(scheduleId, recordingId)
+    );
+    return response.data;
+};
+
+/** Polled by the UI every 30s while QUEUED/RUNNING. {status: null} = no row. */
+export const getTranscriptionStatus = async (
+    scheduleId: string,
+    recordingId: string
+): Promise<RecordingTranscriptionStatus> => {
+    const response = await authenticatedAxiosInstance.get<RecordingTranscriptionStatus>(
+        RECORDING_TRANSCRIBE(scheduleId, recordingId)
+    );
+    return response.data;
+};
+
+// -------------------------------------------------------------------------
+// Layer 3 — Create Assessment from a completed transcript
+// -------------------------------------------------------------------------
+
+export type AssessmentArtifactStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED';
+
+export interface GeneratedQuestion {
+    id: string;
+    question: string;
+    options: string[];
+    correctAnswerIndex: number | null;
+    explanation: string;
+}
+
+export interface AssessmentArtifact {
+    artifactId: string;
+    recordingId: string;
+    status: AssessmentArtifactStatus;
+    errorMessage?: string | null;
+    title?: string | null;
+    questions?: GeneratedQuestion[] | null;
+    targetLanguage?: string | null;
+    modelUsed?: string | null;
+    numQuestions?: number | null;
+    assessmentId?: string | null;
+    assessmentViewUrl?: string | null;
+    registeredBatchIds?: string[] | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+}
+
+export interface CreateAssessmentFromRecordingRequest {
+    startDateTime: string;
+    endDateTime: string;
+    marksPerQuestion: number;
+    negativeMarkingEnabled: boolean;
+    negativeMarkPerQuestion?: number;
+    numQuestions: number;
+    durationMinutes: number;
+    assessmentVisibility: 'PRIVATE' | 'PUBLIC';
+    overrideTitle?: string;
+    packageSessionIdsOverride?: string[];
+}
+
+/**
+ * Synchronously waits for the LLM call (10-30s for ~20 MCQs on Gemini Flash).
+ * Returns the generated content + artifact id.
+ */
+export const createAssessmentFromRecording = async (
+    scheduleId: string,
+    recordingId: string,
+    body: CreateAssessmentFromRecordingRequest
+): Promise<AssessmentArtifact> => {
+    const response = await authenticatedAxiosInstance.post<AssessmentArtifact>(
+        RECORDING_CREATE_ASSESSMENT(scheduleId, recordingId),
+        body
+    );
+    return response.data;
+};
+
+/** Lists all previously-generated assessments for a recording (newest first). */
+export const listAssessmentsForRecording = async (
+    scheduleId: string,
+    recordingId: string
+): Promise<AssessmentArtifact[]> => {
+    const response = await authenticatedAxiosInstance.get<AssessmentArtifact[]>(
+        RECORDING_LIST_ASSESSMENTS(scheduleId, recordingId)
     );
     return response.data;
 };

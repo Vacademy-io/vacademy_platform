@@ -202,12 +202,14 @@ public class ExternalAIApiService {
             }
             mergedNode.set("questions", mergedQuestions);
 
-            // Merge is_process_completed
+            // Merge is_process_completed: once true, stay true. A later chunk
+            // that omits the field (or contains only partial data like tags)
+            // must not regress a previously-completed task back to false.
             boolean oldCompleted = oldNode.has("is_process_completed")
                     && oldNode.get("is_process_completed").asBoolean();
             boolean newCompleted = newNode.has("is_process_completed")
                     && newNode.get("is_process_completed").asBoolean();
-            mergedNode.put("is_process_completed", newCompleted);
+            mergedNode.put("is_process_completed", oldCompleted || newCompleted);
 
             // Merge title (keep old if exists)
             if (!oldNode.has("title") && newNode.has("title")) {

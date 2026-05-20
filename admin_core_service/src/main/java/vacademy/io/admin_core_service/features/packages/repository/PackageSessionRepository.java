@@ -427,4 +427,37 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
         long getLowAvailabilitySessions();
     }
 
+    /**
+     * Cheap "does this batch have any children that copied from it?" probe.
+     * Lets the lineage service short-circuit the heavy joined fetch for the
+     * common case where the batch has no copy history at all. Backed by
+     * {@code idx_package_session_content_copied_from} from V237.
+     */
+    boolean existsByContentCopiedFromPackageSessionId(String sourcePackageSessionId);
+
+    /**
+     * Reverse-lookup for content-copy lineage with package/session/level joined
+     * in one round-trip (avoids the 1+3N fan-out you get from the LAZY relations
+     * on PackageSession). Use {@link #existsByContentCopiedFromPackageSessionId}
+     * first to skip this entirely when there are no children.
+     */
+    @Query("SELECT ps FROM PackageSession ps " +
+            "LEFT JOIN FETCH ps.packageEntity " +
+            "LEFT JOIN FETCH ps.session " +
+            "LEFT JOIN FETCH ps.level " +
+            "WHERE ps.contentCopiedFromPackageSessionId = :sourceId")
+    List<PackageSession> findChildrenForLineage(@Param("sourceId") String sourcePackageSessionId);
+
+    /**
+     * Load a single batch with package/session/level already hydrated.
+     * Used for the "copied from" upstream lookup so we don't fire three extra
+     * lazy-init queries on the source batch.
+     */
+    @Query("SELECT ps FROM PackageSession ps " +
+            "LEFT JOIN FETCH ps.packageEntity " +
+            "LEFT JOIN FETCH ps.session " +
+            "LEFT JOIN FETCH ps.level " +
+            "WHERE ps.id = :id")
+    Optional<PackageSession> findByIdWithRelations(@Param("id") String id);
+
 }

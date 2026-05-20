@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
     getSubOrgs,
@@ -20,16 +21,16 @@ import { MyButton } from '@/components/design-system/button';
 import { Plus, Building2, Copy, Link2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { CreateSubOrgModal } from './create-sub-org-modal';
-import { SubOrgDetailModal } from './sub-org-detail-modal';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { buildSubOrgSlug } from '@/routes/manage-suborg-teams/-utils/sub-org-slug';
 
 export function SubOrgList() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const [selectedOrg, setSelectedOrg] = useState<any>(null);
+    const navigate = useNavigate();
 
     const instituteId = getCurrentInstituteId();
     const { data: subOrgsData, isLoading } = useQuery({
@@ -39,6 +40,20 @@ export function SubOrgList() {
     });
 
     const subOrgs = Array.isArray(subOrgsData) ? subOrgsData : (subOrgsData as any)?.content || [];
+
+    // Row click navigates to the institute-admin deep page for that sub-org. Modal is
+    // no longer mounted from here — drilldown is bookmarkable + shareable now.
+    const openSubOrg = (org: any) => {
+        const id =
+            org?.sub_org_id || org?.suborgId || org?.subOrgId || org?.suborg_id || org?.id;
+        const name =
+            org?.name || org?.institute_name || org?.instituteName || org?.subOrgName;
+        if (!id) return;
+        navigate({
+            to: '/manage-custom-teams/sub-orgs/$subOrgSlug',
+            params: { subOrgSlug: buildSubOrgSlug({ id, name }) },
+        });
+    };
 
     if (isLoading) return <DashboardLoader />;
 
@@ -84,7 +99,7 @@ export function SubOrgList() {
                                         org.id
                                     }
                                     org={org}
-                                    onRowClick={() => setSelectedOrg(org)}
+                                    onRowClick={() => openSubOrg(org)}
                                 />
                             ))
                         )}
@@ -96,16 +111,6 @@ export function SubOrgList() {
                 open={isCreateModalOpen}
                 onOpenChange={setIsCreateModalOpen}
             />
-
-            {selectedOrg && (
-                <SubOrgDetailModal
-                    open={!!selectedOrg}
-                    onOpenChange={(open) => {
-                        if (!open) setSelectedOrg(null);
-                    }}
-                    org={selectedOrg}
-                />
-            )}
         </div>
     );
 }

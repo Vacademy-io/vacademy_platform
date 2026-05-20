@@ -54,7 +54,7 @@ import useInstituteLogoStore from './institutelogo-global-zustand';
 import { useTabSettings } from '@/hooks/use-tab-settings';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { getEffectiveInstituteLogoFileId, getSelectedSubOrgId, getSelectedSubOrgLinkageType } from '@/lib/auth/facultyAccessUtils';
+import { getEffectiveInstituteLogoFileId, getValidSelectedSubOrgId, getSelectedSubOrgLinkageType } from '@/lib/auth/facultyAccessUtils';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 
@@ -94,7 +94,13 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
     // the new terms the moment they are saved on the settings page.
     useNamingSettingsVersion();
 
-    const selectedSubOrgId = getSelectedSubOrgId();
+    // IMPORTANT: use the *validated* selector here. The plain getter returns
+    // whatever's in localStorage, which can be a stale id from a previous session
+    // or a sub-org an institute admin only *visited* (not joined). Without this
+    // gate the sidebar would silently flip to sub-org branding for an institute
+    // admin who has no FSPSSM access. getValidSelectedSubOrgId self-heals stale
+    // entries so future renders settle on parent branding without manual clears.
+    const selectedSubOrgId = getValidSelectedSubOrgId();
     const subOrgLinkageType = getSelectedSubOrgLinkageType();
     const isPartnershipLinkage = subOrgLinkageType === 'PARTNERSHIP' || subOrgLinkageType === 'SUB_ORG';
 

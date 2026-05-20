@@ -267,15 +267,16 @@ function AttendanceTrackerContent() {
         return [{ label: 'All Batches', value: null }, ...extractedBatches];
     }, [batches]);
 
-    // Map packageSessionId → { batchName, packageId } for fast lookup
+    // Map packageSessionId → { batchName, packageId, packageName } for fast lookup
     const batchInfoMap = useMemo(() => {
-        const map = new Map<string, { batchName: string; packageId: string }>();
+        const map = new Map<string, { batchName: string; packageId: string; packageName: string }>();
         if (batches && Array.isArray(batches)) {
             for (const batchData of batches as batchWithStudentDetails[]) {
                 for (const batch of batchData.batches) {
                     map.set(batch.package_session_id, {
                         batchName: `${batch.batch_name} (${batch.invite_code})`,
                         packageId: batchData.package_dto.id,
+                        packageName: batchData.package_dto.package_name,
                     });
                 }
             }
@@ -565,14 +566,21 @@ function AttendanceTrackerContent() {
         setIsExporting(true);
         try {
             const allStudents = await fetchAllAttendancePages();
-            const csvData = allStudents.map((student) => ({
-                'Name': student.fullName || '',
-                'Email': student.email || '',
-                'Mobile Number': student.mobileNumber || '',
-                'Enrollment Number': student.instituteEnrollmentNumber || '',
-                'Gender': student.gender || '',
-                'Enrollment Status': student.enrollmentStatus || '',
-            }));
+            const csvData = allStudents.map((student) => {
+                const info = student.packageSessionId
+                    ? batchInfoMap.get(student.packageSessionId)
+                    : undefined;
+                return {
+                    'Name': student.fullName || '',
+                    'Email': student.email || '',
+                    'Mobile Number': student.mobileNumber || '',
+                    'Enrollment Number': student.instituteEnrollmentNumber || '',
+                    // 'Batch': info?.batchName || '',
+                    'Course': info?.packageName || '',
+                    'Gender': student.gender || '',
+                    'Enrollment Status': student.enrollmentStatus || '',
+                };
+            });
             const csv = Papa.unparse(csvData);
             downloadCsv(csv, `attendance_account_details_${format(new Date(), 'yyyy-MM-dd')}.csv`);
             toast.success('Account details exported successfully');
@@ -617,11 +625,17 @@ function AttendanceTrackerContent() {
                     .map((s) => `${s.title} (${s.meetingDate})`)
                     .join(', ');
 
+                const info = student.packageSessionId
+                    ? batchInfoMap.get(student.packageSessionId)
+                    : undefined;
+
                 return {
                     'Name': student.fullName || '',
                     'Email': student.email || '',
                     'Mobile Number': student.mobileNumber || '',
                     'Enrollment Number': student.instituteEnrollmentNumber || '',
+                    // 'Batch': info?.batchName || '',
+                    'Course': info?.packageName || '',
                     'Attendance %': `${student.attendancePercentage}%`,
                     'Classes Attended': `${attended}/${total}`,
                     'Avg Duration': formatDurationMinutes(avgDurationMinutes),

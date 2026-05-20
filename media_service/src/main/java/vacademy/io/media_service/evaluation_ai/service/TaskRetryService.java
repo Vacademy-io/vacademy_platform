@@ -235,11 +235,22 @@ public class TaskRetryService {
 
     /**
      * Handles the case when max retries are exceeded.
+     *
+     * For question-processing tasks we additionally require at least one
+     * question in the merged result. A partial JSON that contains only tags /
+     * subjects / classes (e.g. when JSON extraction grabbed an early
+     * chain-of-thought fragment) is not a usable result for the consumer, so
+     * we mark it FAILED instead of pretending it COMPLETED.
      */
     private void handleMaxRetriesExceeded(TaskStatus task) {
         String resultJson = task.getResultJson();
+        boolean hasUsableResult = resultJson != null && !resultJson.isEmpty();
 
-        if (resultJson != null && !resultJson.isEmpty()) {
+        if (hasUsableResult && isQuestionProcessingTask(task.getType())) {
+            hasUsableResult = hasAtLeastOneQuestion(resultJson);
+        }
+
+        if (hasUsableResult) {
             // We have partial results - mark as completed with what we have
             log.info("Task {} reached max retries but has partial results", task.getId());
             taskStatusService.updateTaskStatus(
@@ -248,13 +259,25 @@ public class TaskRetryService {
                     resultJson,
                     "Completed with partial results after max retries");
         } else {
-            // No results at all - mark as failed
-            log.warn("Task {} failed after max retries with no results", task.getId());
+            // No usable results - mark as failed
+            log.warn("Task {} failed after max retries with no usable results", task.getId());
             taskStatusService.updateTaskStatusAndStatusMessage(
                     task,
                     TaskStatusEnum.FAILED.name(),
                     null,
                     "Task failed after maximum retry attempts. Please try again with different input.");
+        }
+    }
+
+    private boolean hasAtLeastOneQuestion(String resultJson) {
+        try {
+            var node = objectMapper.readTree(resultJson);
+            return node.has("questions")
+                    && node.get("questions").isArray()
+                    && node.get("questions").size() > 0;
+        } catch (Exception e) {
+            log.warn("Could not parse resultJson while checking for questions", e);
+            return false;
         }
     }
 

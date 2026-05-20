@@ -1,0 +1,230 @@
+import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { useProductPageStore } from '../-stores/product-page-store';
+import { getActiveFields } from '../-utils/custom-field-aggregator';
+import { submitProductPageForm } from '../-services/product-page-service';
+import { pushTnCAccepted } from '@/components/common/enroll-by-invite/-utils/gtm';
+import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
+import { getFieldRenderType } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
+import { parseDropdownOptions } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
+import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
+import type { ProductPageData, ProductPageSettings, FieldValue } from '../-types/product-page-types';
+
+interface MultiEnrollFormProps {
+    pageData: ProductPageData;
+    settings: ProductPageSettings;
+    primaryColor?: string;
+    onBack: () => void;
+    onNext: () => void;
+}
+
+export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', onBack, onNext }: MultiEnrollFormProps) => {
+    const {
+        selectedPsOptionIds, setRegistrationData, setFormSubmitResult,
+    } = useProductPageStore();
+
+    const activeAggregatedFields = getActiveFields(
+        pageData.mappings,
+        selectedPsOptionIds,
+        pageData.aggregated_custom_fields
+    );
+
+    const [formValues, setFormValues] = useState<Record<string, string>>({});
+    const [errors, setErrors] = useState<Record<string, string>>({});
+    const [tncAccepted, setTncAccepted] = useState(false);
+    const [submitError, setSubmitError] = useState('');
+
+    const updateField = (key: string, value: string) => {
+        setFormValues((prev) => ({ ...prev, [key]: value }));
+        if (errors[key]) setErrors((prev) => ({ ...prev, [key]: '' }));
+    };
+
+    const validate = () => {
+        const newErrors: Record<string, string> = {};
+        for (const af of activeAggregatedFields) {
+            const cf = af.field.custom_field;
+            if (cf.isMandatory && !formValues[cf.fieldKey]?.trim()) {
+                newErrors[cf.fieldKey] = `${cf.fieldName} is required`;
+            }
+        }
+        if (settings.tnc.enabled && !tncAccepted) {
+            newErrors['_tnc'] = 'Please accept the terms and conditions to continue';
+        }
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
+
+    const formSubmitMutation = useMutation({
+        mutationFn: () => {
+            const registrationData: Record<string, FieldValue> = {};
+            for (const af of activeAggregatedFields) {
+                const cf = af.field.custom_field;
+                registrationData[cf.fieldKey] = {
+                    id: cf.id,
+                    name: cf.fieldName,
+                    value: formValues[cf.fieldKey] || '',
+                    is_mandatory: cf.isMandatory,
+                    type: cf.fieldType,
+                    comma_separated_options: cf.commaSeparatedOptions ?? undefined,
+                    config: cf.config ?? undefined,
+                    enroll_invite_ids: af.enroll_invite_ids,
+                };
+            }
+            setRegistrationData(registrationData);
+
+            return submitProductPageForm({
+                coursePageCode: pageData.code,
+                instituteId: pageData.institute_id,
+                selectedPsInvitePaymentOptionIds: selectedPsOptionIds,
+                registrationData,
+            });
+        },
+        onSuccess: (data) => {
+            setFormSubmitResult(data.user_id, data.abandoned_cart_entry_ids);
+            if (settings.tnc.enabled) pushTnCAccepted();
+            onNext();
+        },
+        onError: (err) => {
+            setSubmitError(err instanceof Error ? err.message : 'Submission failed. Please try again.');
+        },
+    });
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!validate()) return;
+        setSubmitError('');
+        formSubmitMutation.mutate();
+    };
+
+    return (
+        <>
+            {/* Form */}
+            <div className="mx-auto max-w-xl px-4 py-8">
+                <div className="mb-6">
+                    <h1 className="text-xl font-bold text-gray-900">Registration Details</h1>
+                    <p className="mt-1 text-sm text-gray-500">
+                        Fill in the details below to complete your enrollment
+                    </p>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                    {activeAggregatedFields
+                        .slice()
+                        .sort((a, b) => (a.field.custom_field.formOrder ?? 0) - (b.field.custom_field.formOrder ?? 0))
+                        .map((af) => {
+                            const cf = af.field.custom_field;
+                            const renderType = getFieldRenderType(cf.fieldKey, cf.fieldType);
+                            const options = cf.commaSeparatedOptions
+                                ? parseDropdownOptions(cf.commaSeparatedOptions)
+                                : cf.config && cf.config !== '{}'
+                                  ? parseDropdownOptions(cf.config)
+                                  : [];
+
+                            return (
+                                <div key={cf.id} className="space-y-1">
+                                    <label className="block text-sm font-medium text-gray-700">
+                                        {cf.fieldName}
+                                        {cf.isMandatory && (
+                                            <span className="ml-1 text-red-500">*</span>
+                                        )}
+                                    </label>
+                                    <CustomFieldRenderer
+                                        type={renderType}
+                                        name={cf.fieldKey}
+                                        placeholder={`Enter ${cf.fieldName.toLowerCase()}`}
+                                        value={formValues[cf.fieldKey] || ''}
+                                        onChange={(val) => updateField(cf.fieldKey, String(val))}
+                                        options={options}
+                                        config={cf.config ?? undefined}
+                                        required={cf.isMandatory}
+                                    />
+                                    {errors[cf.fieldKey] && (
+                                        <p className="text-xs text-red-600">{errors[cf.fieldKey]}</p>
+                                    )}
+                                </div>
+                            );
+                        })}
+
+                    {settings.tnc.enabled && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                            {settings.tnc.content && (
+                                <div
+                                    className="mb-3 text-xs text-gray-600 prose prose-xs max-w-none"
+                                    dangerouslySetInnerHTML={{ __html: settings.tnc.content }}
+                                />
+                            )}
+                            {settings.tnc.externalUrl && !settings.tnc.content && (
+                                <p className="mb-3 text-xs text-gray-600">
+                                    Please read our{' '}
+                                    <a
+                                        href={settings.tnc.externalUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="underline text-blue-600"
+                                    >
+                                        Terms & Conditions
+                                    </a>
+                                    .
+                                </p>
+                            )}
+                            <label className="flex cursor-pointer items-start gap-2">
+                                <input
+                                    type="checkbox"
+                                    checked={tncAccepted}
+                                    onChange={(e) => {
+                                        setTncAccepted(e.target.checked);
+                                        if (errors['_tnc']) setErrors((p) => ({ ...p, _tnc: '' }));
+                                    }}
+                                    className="mt-0.5 size-4 rounded border-gray-300 text-blue-600"
+                                />
+                                <span className="text-sm text-gray-700">
+                                    I have read and agree to the Terms & Conditions
+                                </span>
+                            </label>
+                            {errors['_tnc'] && (
+                                <p className="mt-1 text-xs text-red-600">{errors['_tnc']}</p>
+                            )}
+                        </div>
+                    )}
+
+                    {submitError && (
+                        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            {submitError}
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-2">
+                        {!settings.disableBackNavigation ? (
+                            <button
+                                type="button"
+                                onClick={onBack}
+                                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700"
+                            >
+                                <ArrowLeft className="size-4" />
+                                Back
+                            </button>
+                        ) : <div />}
+                        <button
+                            type="submit"
+                            disabled={formSubmitMutation.isPending}
+                            className="flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+                            style={{ backgroundColor: primaryColor }}
+                        >
+                            {formSubmitMutation.isPending ? (
+                                <>
+                                    <Loader2 className="size-4 animate-spin" />
+                                    Saving...
+                                </>
+                            ) : (
+                                <>
+                                    Continue to Payment
+                                    <ArrowRight className="size-4" />
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </>
+    );
+};

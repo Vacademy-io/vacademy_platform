@@ -11,6 +11,11 @@ const inviteParamsSchema = z.object({
   instituteId: z.string().uuid(),
   inviteCode: z.string(),
   ref: z.string().optional(),
+  utm_source: z.string().optional(),
+  utm_medium: z.string().optional(),
+  utm_campaign: z.string().optional(),
+  utm_content: z.string().optional(),
+  utm_term: z.string().optional(),
 });
 
 function InviteNotFoundPage() {
@@ -122,7 +127,11 @@ export const Route = createFileRoute("/learner-invitation-response/")({
 });
 
 function RouteComponent() {
-  const { instituteId, inviteCode } = Route.useSearch();
+  const { instituteId, inviteCode, utm_source, utm_medium, utm_campaign, utm_content, utm_term } = Route.useSearch();
+  const utmParams = Object.fromEntries(
+    Object.entries({ utm_source, utm_medium, utm_campaign, utm_content, utm_term }).filter(([, v]) => v !== undefined)
+  ) as Record<string, string>;
+
   // Fetch invite details FIRST to determine payment vendor
   const { data: inviteData } = useSuspenseQuery(
     handleGetEnrollInviteData({ instituteId, inviteCode })
@@ -131,7 +140,7 @@ function RouteComponent() {
   const paymentVendor = getPaymentVendor(inviteData);
   return (
     <PaymentGatewayWrapper vendor={paymentVendor} instituteId={instituteId}>
-      <EnrollByInvite vendor={paymentVendor} />
+      <EnrollByInvite vendor={paymentVendor} utmParams={utmParams} />
     </PaymentGatewayWrapper>
   );
 }

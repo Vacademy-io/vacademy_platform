@@ -43,10 +43,11 @@ function pushEvent(event: string, data: Record<string, unknown> = {}): void {
 // ─── Funnel Events ───────────────────────────────────────────────────────────
 
 /** Fired once when the enrollment page loads with GTM configured. */
-export function pushPageView(courseName: string, paymentType: string): void {
+export function pushPageView(courseName: string, paymentType: string, utmParams?: Record<string, string>): void {
     pushEvent('enrollment_page_view', {
         enrollment_course_name: courseName,
         enrollment_payment_type: paymentType,
+        ...utmParams,
     });
 }
 
@@ -87,6 +88,7 @@ export function pushPaymentInitiated(data: {
     vendor: string;
     currency?: string;
     amount?: number;
+    utmParams?: Record<string, string>;
 }): void {
     pushEvent('payment_initiated', {
         enrollment_course_name: data.courseName,
@@ -94,6 +96,7 @@ export function pushPaymentInitiated(data: {
         payment_vendor: data.vendor,
         enrollment_currency: data.currency || '',
         enrollment_amount: data.amount || 0,
+        ...data.utmParams,
     });
 }
 
@@ -102,11 +105,13 @@ export function pushPaymentFailed(data: {
     courseName: string;
     vendor: string;
     errorMessage: string;
+    utmParams?: Record<string, string>;
 }): void {
     pushEvent('payment_failed', {
         enrollment_course_name: data.courseName,
         payment_vendor: data.vendor,
         error_message: data.errorMessage,
+        ...data.utmParams,
     });
 }
 
@@ -116,11 +121,47 @@ export function pushEnrollmentSuccess(data: {
     paymentType: string;
     currency?: string;
     amount?: number;
+    utmParams?: Record<string, string>;
 }): void {
     pushEvent('enrollment_success', {
         enrollment_course_name: data.courseName,
         enrollment_payment_type: data.paymentType,
         enrollment_currency: data.currency || '',
         enrollment_amount: data.amount || 0,
+        ...data.utmParams,
     });
+}
+
+// ─── Product Page Events ─────────────────────────────────────────────────────
+
+export function pushProductPageView(pageCode: string, defaultStep: string, utmParams?: Record<string, string>): void {
+    pushEvent('product_page_view', { page_code: pageCode, default_step: defaultStep, ...utmParams });
+}
+
+export function pushCourseSelectionChanged(selectedCount: number, totalAmount: number): void {
+    pushEvent('product_page_course_selection_changed', { selected_count: selectedCount, total_amount: totalAmount });
+}
+
+export function pushCartViewed(selectedCourses: string[], totalAmount: number, utmParams?: Record<string, string>): void {
+    pushEvent('product_page_cart_viewed', { selected_courses: selectedCourses, total_amount: totalAmount, ...utmParams });
+}
+
+export function pushCouponApplied(couponCode: string, discountAmount: number): void {
+    pushEvent('product_page_coupon_applied', { coupon_code: couponCode, discount_amount: discountAmount });
+}
+
+export function pushTnCAccepted(): void {
+    pushEvent('product_page_tnc_accepted');
+}
+
+export function pushCombinedPaymentInitiated(totalAmount: number, courseCount: number, vendor: string, utmParams?: Record<string, string>): void {
+    pushEvent('product_page_payment_initiated', { total_amount: totalAmount, course_count: courseCount, vendor, ...utmParams });
+}
+
+export function pushCombinedEnrollmentSuccess(totalAmount: number, courseCount: number, utmParams?: Record<string, string>): void {
+    pushEvent('product_page_enrollment_success', { total_amount: totalAmount, course_count: courseCount, ...utmParams });
+}
+
+export function pushCombinedPaymentFailed(errorMessage: string, vendor: string, utmParams?: Record<string, string>): void {
+    pushEvent('product_page_payment_failed', { error_message: errorMessage, vendor, ...utmParams });
 }

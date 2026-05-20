@@ -71,6 +71,7 @@ import { Route as PlanningActivityLogsIndexRouteImport } from "./routes/planning
 import { Route as ManageStudentsStudentsListIndexRouteImport } from "./routes/manage-students/students-list/index"
 import { Route as ManageStudentsInviteIndexRouteImport } from "./routes/manage-students/invite/index"
 import { Route as ManageStudentsEnrollRequestsIndexRouteImport } from "./routes/manage-students/enroll-requests/index"
+import { Route as ManagePagesProductPagesIndexRouteImport } from "./routes/manage-pages/product-pages/index"
 import { Route as ManageInstituteTeamsIndexRouteImport } from "./routes/manage-institute/teams/index"
 import { Route as ManageInstituteSessionsIndexRouteImport } from "./routes/manage-institute/sessions/index"
 import { Route as ManageInstituteBatchesIndexRouteImport } from "./routes/manage-institute/batches/index"
@@ -150,6 +151,7 @@ import { Route as AiCenterAiToolsVsmartAudioIndexRouteImport } from "./routes/ai
 import { Route as AdmissionsNewEnquiryAudienceIdIndexRouteImport } from "./routes/admissions/new-enquiry/$audienceId/index"
 import { Route as AdmissionsApplicationNewIndexRouteImport } from "./routes/admissions/application/new/index"
 import { Route as StudyLibraryLiveSessionViewSessionIdRouteImport } from "./routes/study-library/live-session/view/$sessionId"
+import { Route as ManagePagesProductPagesEditorProductPageIdRouteImport } from "./routes/manage-pages/product-pages/editor/$productPageId"
 import { Route as StudyLibraryLiveSessionScheduleStep2IndexRouteImport } from "./routes/study-library/live-session/schedule/step2/index"
 import { Route as StudyLibraryLiveSessionScheduleStep1IndexRouteImport } from "./routes/study-library/live-session/schedule/step1/index"
 import { Route as StudyLibraryLiveSessionScheduleBulkIndexRouteImport } from "./routes/study-library/live-session/schedule/bulk/index"
@@ -617,6 +619,16 @@ const ManageStudentsEnrollRequestsIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/manage-students/enroll-requests/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const ManagePagesProductPagesIndexRoute =
+  ManagePagesProductPagesIndexRouteImport.update({
+    id: "/manage-pages/product-pages/",
+    path: "/manage-pages/product-pages/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/manage-pages/product-pages/index.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -1272,6 +1284,12 @@ const StudyLibraryLiveSessionViewSessionIdRoute =
     path: "/study-library/live-session/view/$sessionId",
     getParentRoute: () => rootRouteImport,
   } as any)
+const ManagePagesProductPagesEditorProductPageIdRoute =
+  ManagePagesProductPagesEditorProductPageIdRouteImport.update({
+    id: "/manage-pages/product-pages/editor/$productPageId",
+    path: "/manage-pages/product-pages/editor/$productPageId",
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const StudyLibraryLiveSessionScheduleStep2IndexRoute =
   StudyLibraryLiveSessionScheduleStep2IndexRouteImport.update({
     id: "/study-library/live-session/schedule/step2/",
@@ -1550,6 +1568,7 @@ export interface FileRoutesByFullPath {
   "/manage-institute/batches/": typeof ManageInstituteBatchesIndexRoute
   "/manage-institute/sessions/": typeof ManageInstituteSessionsIndexRoute
   "/manage-institute/teams/": typeof ManageInstituteTeamsIndexRoute
+  "/manage-pages/product-pages/": typeof ManagePagesProductPagesIndexRoute
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
@@ -1574,6 +1593,7 @@ export interface FileRoutesByFullPath {
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
+  "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new/": typeof AdmissionsApplicationNewIndexRoute
   "/admissions/new-enquiry/$audienceId/": typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -1714,6 +1734,7 @@ export interface FileRoutesByTo {
   "/manage-institute/batches": typeof ManageInstituteBatchesIndexRoute
   "/manage-institute/sessions": typeof ManageInstituteSessionsIndexRoute
   "/manage-institute/teams": typeof ManageInstituteTeamsIndexRoute
+  "/manage-pages/product-pages": typeof ManagePagesProductPagesIndexRoute
   "/manage-students/enroll-requests": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list": typeof ManageStudentsStudentsListIndexRoute
@@ -1738,6 +1759,7 @@ export interface FileRoutesByTo {
   "/workflow/$workflowId": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create": typeof WorkflowCreateIndexRoute
   "/workflow/list": typeof WorkflowListIndexRoute
+  "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new": typeof AdmissionsApplicationNewIndexRoute
   "/admissions/new-enquiry/$audienceId": typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -1880,6 +1902,7 @@ export interface FileRoutesById {
   "/manage-institute/batches/": typeof ManageInstituteBatchesIndexRoute
   "/manage-institute/sessions/": typeof ManageInstituteSessionsIndexRoute
   "/manage-institute/teams/": typeof ManageInstituteTeamsIndexRoute
+  "/manage-pages/product-pages/": typeof ManagePagesProductPagesIndexRoute
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
@@ -1904,6 +1927,7 @@ export interface FileRoutesById {
   "/workflow/$workflowId/": typeof WorkflowWorkflowIdIndexRoute
   "/workflow/create/": typeof WorkflowCreateIndexRoute
   "/workflow/list/": typeof WorkflowListIndexRoute
+  "/manage-pages/product-pages/editor/$productPageId": typeof ManagePagesProductPagesEditorProductPageIdRoute
   "/study-library/live-session/view/$sessionId": typeof StudyLibraryLiveSessionViewSessionIdRoute
   "/admissions/application/new/": typeof AdmissionsApplicationNewIndexRoute
   "/admissions/new-enquiry/$audienceId/": typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -2047,6 +2071,7 @@ export interface FileRouteTypes {
     | "/manage-institute/batches/"
     | "/manage-institute/sessions/"
     | "/manage-institute/teams/"
+    | "/manage-pages/product-pages/"
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
     | "/manage-students/students-list/"
@@ -2071,6 +2096,7 @@ export interface FileRouteTypes {
     | "/workflow/$workflowId/"
     | "/workflow/create/"
     | "/workflow/list/"
+    | "/manage-pages/product-pages/editor/$productPageId"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new/"
     | "/admissions/new-enquiry/$audienceId/"
@@ -2211,6 +2237,7 @@ export interface FileRouteTypes {
     | "/manage-institute/batches"
     | "/manage-institute/sessions"
     | "/manage-institute/teams"
+    | "/manage-pages/product-pages"
     | "/manage-students/enroll-requests"
     | "/manage-students/invite"
     | "/manage-students/students-list"
@@ -2235,6 +2262,7 @@ export interface FileRouteTypes {
     | "/workflow/$workflowId"
     | "/workflow/create"
     | "/workflow/list"
+    | "/manage-pages/product-pages/editor/$productPageId"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new"
     | "/admissions/new-enquiry/$audienceId"
@@ -2376,6 +2404,7 @@ export interface FileRouteTypes {
     | "/manage-institute/batches/"
     | "/manage-institute/sessions/"
     | "/manage-institute/teams/"
+    | "/manage-pages/product-pages/"
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
     | "/manage-students/students-list/"
@@ -2400,6 +2429,7 @@ export interface FileRouteTypes {
     | "/workflow/$workflowId/"
     | "/workflow/create/"
     | "/workflow/list/"
+    | "/manage-pages/product-pages/editor/$productPageId"
     | "/study-library/live-session/view/$sessionId"
     | "/admissions/application/new/"
     | "/admissions/new-enquiry/$audienceId/"
@@ -2541,6 +2571,7 @@ export interface RootRouteChildren {
   ManageInstituteBatchesIndexRoute: typeof ManageInstituteBatchesIndexRoute
   ManageInstituteSessionsIndexRoute: typeof ManageInstituteSessionsIndexRoute
   ManageInstituteTeamsIndexRoute: typeof ManageInstituteTeamsIndexRoute
+  ManagePagesProductPagesIndexRoute: typeof ManagePagesProductPagesIndexRoute
   ManageStudentsEnrollRequestsIndexRoute: typeof ManageStudentsEnrollRequestsIndexRoute
   ManageStudentsInviteIndexRoute: typeof ManageStudentsInviteIndexRoute
   ManageStudentsStudentsListIndexRoute: typeof ManageStudentsStudentsListIndexRoute
@@ -2565,6 +2596,7 @@ export interface RootRouteChildren {
   WorkflowWorkflowIdIndexRoute: typeof WorkflowWorkflowIdIndexRoute
   WorkflowCreateIndexRoute: typeof WorkflowCreateIndexRoute
   WorkflowListIndexRoute: typeof WorkflowListIndexRoute
+  ManagePagesProductPagesEditorProductPageIdRoute: typeof ManagePagesProductPagesEditorProductPageIdRoute
   StudyLibraryLiveSessionViewSessionIdRoute: typeof StudyLibraryLiveSessionViewSessionIdRoute
   AdmissionsApplicationNewIndexRoute: typeof AdmissionsApplicationNewIndexRoute
   AdmissionsNewEnquiryAudienceIdIndexRoute: typeof AdmissionsNewEnquiryAudienceIdIndexRoute
@@ -3062,6 +3094,13 @@ declare module "@tanstack/react-router" {
       path: "/manage-students/enroll-requests"
       fullPath: "/manage-students/enroll-requests/"
       preLoaderRoute: typeof ManageStudentsEnrollRequestsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/manage-pages/product-pages/": {
+      id: "/manage-pages/product-pages/"
+      path: "/manage-pages/product-pages"
+      fullPath: "/manage-pages/product-pages/"
+      preLoaderRoute: typeof ManagePagesProductPagesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/manage-institute/teams/": {
@@ -3617,6 +3656,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof StudyLibraryLiveSessionViewSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/manage-pages/product-pages/editor/$productPageId": {
+      id: "/manage-pages/product-pages/editor/$productPageId"
+      path: "/manage-pages/product-pages/editor/$productPageId"
+      fullPath: "/manage-pages/product-pages/editor/$productPageId"
+      preLoaderRoute: typeof ManagePagesProductPagesEditorProductPageIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/study-library/live-session/schedule/step2/": {
       id: "/study-library/live-session/schedule/step2/"
       path: "/study-library/live-session/schedule/step2"
@@ -3875,6 +3921,7 @@ const rootRouteChildren: RootRouteChildren = {
   ManageInstituteBatchesIndexRoute: ManageInstituteBatchesIndexRoute,
   ManageInstituteSessionsIndexRoute: ManageInstituteSessionsIndexRoute,
   ManageInstituteTeamsIndexRoute: ManageInstituteTeamsIndexRoute,
+  ManagePagesProductPagesIndexRoute: ManagePagesProductPagesIndexRoute,
   ManageStudentsEnrollRequestsIndexRoute:
     ManageStudentsEnrollRequestsIndexRoute,
   ManageStudentsInviteIndexRoute: ManageStudentsInviteIndexRoute,
@@ -3901,6 +3948,8 @@ const rootRouteChildren: RootRouteChildren = {
   WorkflowWorkflowIdIndexRoute: WorkflowWorkflowIdIndexRoute,
   WorkflowCreateIndexRoute: WorkflowCreateIndexRoute,
   WorkflowListIndexRoute: WorkflowListIndexRoute,
+  ManagePagesProductPagesEditorProductPageIdRoute:
+    ManagePagesProductPagesEditorProductPageIdRoute,
   StudyLibraryLiveSessionViewSessionIdRoute:
     StudyLibraryLiveSessionViewSessionIdRoute,
   AdmissionsApplicationNewIndexRoute: AdmissionsApplicationNewIndexRoute,

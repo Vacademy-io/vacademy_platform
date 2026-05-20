@@ -752,3 +752,21 @@ export const OFFLINE_SUBMIT_RESPONSES = `${BASE_URL}/assessment-service/assessme
 export const OFFLINE_CREATE_AND_SUBMIT = `${BASE_URL}/assessment-service/assessment/offline-entry/create-and-submit`;
 
 export const SYNC_MAX_SESSIONS = `${BASE_URL}/auth-service/v1/institute-settings/update-max-sessions`;
+
+// Product Pages
+export const PRODUCT_PAGE_BASE_URL = `${BASE_URL}/admin-core-service/v1/product-page`;
+export const PRODUCT_PAGE_OPEN_URL = `${BASE_URL}/admin-core-service/open/v1/product-page`;
+export const GET_ALL_PRODUCT_PAGES = (instituteId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/get-all?instituteId=${instituteId}`;
+export const CREATE_PRODUCT_PAGE = (instituteId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/create?instituteId=${instituteId}`;
+export const UPDATE_PRODUCT_PAGE = (coursePageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/update?coursePageId=${coursePageId}`;
+export const GET_PRODUCT_PAGE = (coursePageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${coursePageId}`;
+export const DELETE_PRODUCT_PAGE = (coursePageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/delete?coursePageId=${coursePageId}`;
+export const CREATE_PRODUCT_PAGE_COUPON = (coursePageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/coupon/create?coursePageId=${coursePageId}`;
+export const DELETE_PRODUCT_PAGE_COUPON = (couponCodeId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/coupon/${couponCodeId}`;

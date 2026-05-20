@@ -812,6 +812,7 @@ export const ActivityLogDialog = ({
                             </div>
                         );
                     })()}
+                    <div className="flex-1 overflow-y-auto">
                     {isLoading || isVideoResponseLoading ? (
                         <div className="flex items-center justify-center p-8">
                             <DashboardLoader />
@@ -1000,6 +1001,7 @@ export const ActivityLogDialog = ({
                             )}
                         </>
                     )}
+                    </div>
                 </DialogContent>
             </Dialog>
         </>

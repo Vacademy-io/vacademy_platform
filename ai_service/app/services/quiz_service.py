@@ -3,6 +3,7 @@ Quiz Service - Handles quiz generation and evaluation for practice mode.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -154,6 +155,367 @@ IMPORTANT: Return ONLY valid JSON, no additional text or markdown code blocks ar
             # Return an empty fallback quiz — caller will ask user to specify topic
             return self._generate_fallback_quiz(topic, num_questions)
     
+    # -----------------------------------------------------------------------
+    # Layer 3 — assessment-from-transcript generation
+    # -----------------------------------------------------------------------
+
+    _LANGUAGE_NAMES = {
+        "en": "English", "hi": "Hindi", "ta": "Tamil", "te": "Telugu",
+        "bn": "Bengali", "mr": "Marathi", "gu": "Gujarati", "kn": "Kannada",
+        "ml": "Malayalam", "pa": "Punjabi", "or": "Odia", "as": "Assamese",
+    }
+
+    async def generate_assessment_from_transcript(
+        self,
+        transcript_text: str,
+        target_language: str = "en",
+        num_questions: int = 20,
+        institute_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        model: Optional[str] = None,
+        include_images: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Generate an assessment (title + N MCQs) from a long-form transcript.
+
+        Unlike `generate_quiz`, this accepts the full transcript (no truncation),
+        always generates a title, and emits questions in `target_language`
+        (Whisper-detected source language).
+
+        Returns: {"title": str, "questions": [{...}, ...]}
+        Raises RuntimeError on LLM failure.
+        """
+        language_name = self._LANGUAGE_NAMES.get(
+            (target_language or "en").lower(), target_language or "English"
+        )
+
+        approx_tokens = len(transcript_text) // 4
+        if approx_tokens > 500_000:
+            logger.warning(
+                f"[assessment-gen] Transcript ~{approx_tokens} tokens — approaching context limit."
+            )
+
+        prompt = f"""You are an expert educator. The text below is the English transcript of a single class lecture.
+
+Your job:
+1. Read the transcript and identify the core topic.
+2. Produce a concise lecture TITLE (5–10 words) that captures the topic.
+3. Generate EXACTLY {num_questions} multiple-choice questions that test understanding of the lecture material.
+
+LANGUAGE OUTPUT REQUIREMENT — CRITICAL:
+The lecture audio was in {language_name}. The transcript you see is the English translation.
+EMIT THE TITLE, ALL QUESTION TEXT, ALL FOUR OPTIONS, AND ALL EXPLANATIONS IN {language_name.upper()}.
+Use the {language_name} script natively. Do not include English transliteration. If a technical term is universally English (e.g. "DNA", "HTML"), keep it as-is but everything else MUST be {language_name}.
+
+QUESTION-WRITING RULES:
+- Each question has EXACTLY 4 options. Exactly one is correct.
+- Distractors must be plausible — use common student misconceptions when possible.
+- Mix difficulty: ~40% recall, ~40% comprehension, ~20% application.
+- Each explanation: 1–2 sentences justifying the correct answer.
+- Avoid trick questions, negative phrasing, or "all/none of the above" options.
+- Questions must be answerable from the transcript content — do NOT pull in external knowledge.
+
+IMAGE HINTING (optional, important):
+For questions where a single clean diagram or illustration would clearly help
+a student understand the question (e.g. a labelled diagram, a process flow,
+a physical setup, a graph, a real-world scene), set an `image_prompt` field
+with a short English description (15–30 words) of the picture you'd want.
+For purely verbal questions (definitions, terminology, recall) leave
+`image_prompt` empty or omit it. Aim for **at most 3–5 questions out of
+{num_questions}** to have an image_prompt — do NOT add one to every question.
+
+LECTURE TRANSCRIPT (English):
+\"\"\"
+{transcript_text}
+\"\"\"
+
+OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
+{{
+  "title": "Lecture title in {language_name}",
+  "questions": [
+    {{
+      "id": "q1",
+      "question": "Question text in {language_name}?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct_answer_index": 0,
+      "explanation": "Why this answer is correct, in {language_name}.",
+      "image_prompt": "Optional — short English description of an illustration if it helps the question. Omit or leave empty for text-only questions."
+    }}
+  ]
+}}
+"""
+
+        # NOTE: ChatLLMClient.chat_completion() picks the model via its internal
+        # ApiKeyResolver (LLM_DEFAULT_MODEL env / ai_api_keys table). We do NOT
+        # pass `model` here — it's not a kwarg on chat_completion. Caller can
+        # influence model by setting LLM_DEFAULT_MODEL=google/gemini-2.5-flash.
+        if model:
+            logger.info(f"[assessment-gen] (note) caller hinted model={model}; actual model resolved by ChatLLMClient.")
+
+        try:
+            response = await self.llm_client.chat_completion(
+                messages=[
+                    {"role": "system", "content": "You are an expert assessment author for school and college classrooms. Always respond with valid JSON."},
+                    {"role": "user", "content": prompt},
+                ],
+                tools=None,
+                temperature=0.4,
+                max_tokens=32768,
+                institute_id=institute_id,
+                user_id=user_id,
+            )
+            content = response.get("content", "") or ""
+            json_content = self._extract_json(content)
+            if not json_content or not json_content.strip():
+                # Empty LLM output is the single most common cause of the
+                # cryptic "Expecting value: line 1 column 1 (char 0)" we
+                # used to bubble up. Surface a clear message instead — and
+                # log enough of the raw response that an operator can tell
+                # whether the LLM truly returned nothing or returned text
+                # that _extract_json couldn't parse.
+                logger.error(
+                    "[assessment-gen] LLM returned empty content. response.keys=%s, content.len=%d, content.head=%r",
+                    list(response.keys()) if isinstance(response, dict) else type(response).__name__,
+                    len(content),
+                    content[:200],
+                )
+                raise RuntimeError(
+                    "LLM returned an empty response — likely rate-limited, "
+                    "content-filtered, or an API key/model issue. Retry, "
+                    "and if it persists check ai-service logs for the raw "
+                    "LLM response."
+                )
+            data = json.loads(json_content, strict=False)
+        except Exception as e:
+            logger.error(f"[assessment-gen] LLM call/parse failed: {e}", exc_info=True)
+            raise RuntimeError(f"Failed to generate assessment from transcript: {e}") from e
+
+        title = (data.get("title") or "").strip() or "Untitled Assessment"
+        raw_questions = data.get("questions") or []
+
+        questions: List[Dict[str, Any]] = []
+        for i, q in enumerate(raw_questions):
+            options = q.get("options") or []
+            correct = q.get("correct_answer_index")
+            if (
+                not isinstance(options, list) or len(options) != 4
+                or not isinstance(correct, int) or not (0 <= correct < 4)
+                or not q.get("question")
+            ):
+                logger.warning(f"[assessment-gen] dropping malformed question idx={i}")
+                continue
+            questions.append({
+                "id": q.get("id") or f"q{len(questions) + 1}",
+                "question": q.get("question", "").strip(),
+                "options": [str(o).strip() for o in options],
+                "correct_answer_index": correct,
+                "explanation": (q.get("explanation") or "").strip(),
+                # Preserved only when the LLM judged this question would
+                # benefit from an illustration. Used by the optional
+                # image-enrichment step downstream — text-only questions
+                # leave this empty and skip the image-gen call entirely.
+                "image_prompt": (q.get("image_prompt") or "").strip(),
+            })
+
+        if not questions:
+            raise RuntimeError("LLM returned no valid questions — refusing to persist an empty assessment.")
+
+        logger.info(
+            f"[assessment-gen] generated title + {len(questions)} valid questions "
+            f"(requested {num_questions}, target_language={target_language})"
+        )
+
+        # Optional image enrichment. Adds an <img> tag at the start of
+        # every question and every option's text. Skipped by default —
+        # ~5 image calls per question (1 for the stem + 4 for options)
+        # adds 30-120s of latency and Gemini API spend. Caller must opt in.
+        if include_images:
+            try:
+                await self._enrich_questions_with_images(questions)
+            except Exception as e:
+                # Don't fail the whole assessment over image gen — log and
+                # ship the text-only questions. Each per-image failure is
+                # already swallowed inside the helper; this catch is for
+                # an unexpected outer error.
+                logger.warning(
+                    "[assessment-gen] image enrichment errored, returning text-only: %s",
+                    e,
+                )
+
+        return {"title": title, "questions": questions}
+
+    async def _enrich_questions_with_images(self, questions: List[Dict[str, Any]]) -> None:
+        """
+        Mutate `questions` in-place to attach an illustration only to the
+        questions where the LLM tagged an `image_prompt`. Options are
+        never image-enriched here — the existing AI-tools flow only puts
+        images on question stems where a diagram genuinely helps, and we
+        match that behaviour to avoid 100 wasted Gemini calls on a
+        20-question assessment.
+
+        Failures fall through silently — the original text is preserved
+        on a per-question basis, so a single image failing doesn't
+        damage the rest of the assessment.
+        """
+        gemini_key = self._gemini_api_key()
+        if not gemini_key:
+            logger.warning("[assessment-gen] include_images requested but no GEMINI_API_KEY available — skipping")
+            return
+
+        # Only the questions the LLM tagged as benefiting from an
+        # illustration. Typically 0-5 out of 20 — far below the 100
+        # image gens the old "always all questions + all options" path
+        # ran. The image_prompt was preserved by the validation step
+        # above; missing / empty means "text-only, no image".
+        jobs: List[tuple[int, str]] = []
+        for qi, q in enumerate(questions):
+            ip = (q.get("image_prompt") or "").strip()
+            if ip:
+                jobs.append((qi, ip))
+
+        if not jobs:
+            logger.info("[assessment-gen] include_images on but no questions tagged image_prompt — text-only")
+            return
+
+        # Concurrency cap is now mostly academic (we'll have 0-5 jobs in
+        # practice), but keep it for safety in case the LLM gets
+        # exuberant and tags 20+ questions.
+        semaphore = asyncio.Semaphore(8)
+
+        async def _run_one(qi: int, prompt: str) -> None:
+            async with semaphore:
+                # Wrap the LLM's natural-language image description with
+                # the platform-wide style guidance (flat, colourful,
+                # white-bg, no text) before sending to Gemini.
+                public_url = await self._gen_image_s3_url(
+                    self._build_image_prompt(prompt), gemini_key
+                )
+                if not public_url:
+                    return
+                # Same shape as the existing AI-tools image embeds —
+                # width:100% object-fit:contain — appended to the
+                # question text so the wording reads first and the
+                # diagram follows.
+                img_tag = (
+                    f'<img src="{public_url}" '
+                    f'style="width:100%;object-fit:contain;" />'
+                )
+                questions[qi]["question"] = (questions[qi].get("question") or "") + img_tag
+
+        logger.info(
+            "[assessment-gen] enriching %d/%d questions with images (LLM-selected)",
+            len(jobs),
+            len(questions),
+        )
+        await asyncio.gather(*(_run_one(qi, pr) for qi, pr in jobs), return_exceptions=True)
+        logger.info("[assessment-gen] image enrichment complete")
+
+    def _gemini_api_key(self) -> Optional[str]:
+        """Resolve the Gemini key from environment. Centralised so we don't
+        repeat the lookup logic across the various image-using callsites."""
+        import os
+        return os.environ.get("GEMINI_API_KEY")
+
+    @staticmethod
+    def _build_image_prompt(source_text: str) -> str:
+        """Wrap the LLM-provided image description with consistent style
+        guidance so all generated images share a clean educational look
+        — flat, colourful, white background, no in-image text — even
+        though the LLM picks the subject per question."""
+        return (
+            "Create a single clean educational illustration described below. "
+            "Style: flat, modern, colourful, white background, no text in "
+            "the image, no labels, no captions.\n\n"
+            f"Subject: {source_text.strip()}"
+        )
+
+    async def _gen_image_s3_url(self, prompt: str, gemini_key: str) -> Optional[str]:
+        """
+        Single Gemini image-gen call → S3 upload → public URL.
+
+        Returns None on any failure. We never raise: image gen is
+        best-effort enrichment, so a single image failing should leave
+        the rest of the question intact rather than fail the whole
+        assessment.
+
+        Matches the existing platform pattern — the URL we return looks
+        like `https://vacademy-media-storage-public.s3.amazonaws.com/
+        SERVICE_UPLOAD/<uuid>.jpeg`, identical in shape to images
+        produced by the AI-tools flow (which extracts them from PDFs).
+        """
+        try:
+            import base64
+            import httpx
+            url = (
+                "https://generativelanguage.googleapis.com/v1beta/models/"
+                f"gemini-3.1-flash-image-preview:generateContent?key={gemini_key}"
+            )
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    url,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {
+                            "imageConfig": {"aspectRatio": "16:9"},
+                            "responseModalities": ["IMAGE"],
+                        },
+                    },
+                )
+            if resp.status_code != 200:
+                logger.warning("[assessment-gen] image gen %s: %s", resp.status_code, resp.text[:200])
+                return None
+            data = resp.json()
+            inline = data.get("inlineData")
+            if not inline:
+                for cand in data.get("candidates", []):
+                    for part in cand.get("content", {}).get("parts", []):
+                        if "inlineData" in part:
+                            inline = part["inlineData"]
+                            break
+                    if inline:
+                        break
+            if not inline:
+                return None
+            mime = inline.get("mimeType", "image/png")
+            data_b64 = inline.get("data", "")
+            if not data_b64:
+                return None
+            try:
+                image_bytes = base64.b64decode(data_b64)
+            except Exception as decode_err:
+                logger.warning("[assessment-gen] image base64 decode failed: %s", decode_err)
+                return None
+
+            # Map mime → extension. PNG and JPEG are the two Gemini emits.
+            ext = "jpeg" if "jpeg" in mime or "jpg" in mime else "png"
+            object_key = f"SERVICE_UPLOAD/{uuid4()}.{ext}"
+            filename = object_key.rsplit("/", 1)[-1]
+
+            # S3 upload is sync (boto3); run it off the event loop so we
+            # don't block other in-flight image-gen calls.
+            try:
+                from .s3_service import S3Service
+                svc = S3Service()
+            except Exception as e:
+                logger.warning("[assessment-gen] S3Service unavailable: %s", e)
+                return None
+            try:
+                public_url = await asyncio.to_thread(
+                    svc.upload_file_content,
+                    image_bytes,
+                    filename,
+                    object_key,
+                    mime,
+                )
+                return public_url
+            except Exception as e:
+                logger.warning("[assessment-gen] S3 upload failed: %s", e)
+                return None
+        except Exception as e:
+            logger.warning("[assessment-gen] image gen exception: %s", e)
+            return None
+
     def _extract_json(self, content: str) -> str:
         """Extract JSON from LLM response, handling markdown code blocks."""
         # Try to find JSON in code blocks

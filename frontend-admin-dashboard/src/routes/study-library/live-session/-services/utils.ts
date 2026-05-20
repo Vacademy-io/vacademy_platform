@@ -14,6 +14,7 @@ import {
     SYNC_RECORDINGS_FROM_BBB,
     RECORDING_TRANSCRIBE,
     RECORDING_CREATE_ASSESSMENT,
+    RECORDING_PUBLISH_ASSESSMENT,
     RECORDING_LIST_ASSESSMENTS,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
@@ -641,6 +642,21 @@ export interface CreateAssessmentFromRecordingRequest {
     assessmentVisibility: 'PRIVATE' | 'PUBLIC';
     overrideTitle?: string;
     packageSessionIdsOverride?: string[];
+    /**
+     * Optional codes from the question-type picker step. Backend is
+     * tolerant of this being unset — when absent the LLM produces its
+     * default MCQ-only output. Accepted codes: MCQS, MCQM, TRUE_FALSE,
+     * ONE_WORD, LONG_ANSWER.
+     */
+    questionTypes?: string[];
+
+    /**
+     * When true, the backend asks Gemini to generate an illustrative
+     * image for every question stem and every option, embedded as inline
+     * <img> tags. Adds 30-120s of latency and roughly $0.03 per image
+     * (~$3 for a 20-question assessment), so off by default.
+     */
+    includeImages?: boolean;
 }
 
 /**
@@ -654,6 +670,58 @@ export const createAssessmentFromRecording = async (
 ): Promise<AssessmentArtifact> => {
     const response = await authenticatedAxiosInstance.post<AssessmentArtifact>(
         RECORDING_CREATE_ASSESSMENT(scheduleId, recordingId),
+        body
+    );
+    return response.data;
+};
+
+/**
+ * Publishes a generated assessment artifact: creates a real Assessment row +
+ * Section + Questions (with Options + correct-answer JSON) + batch
+ * registrations in assessment_service. After this returns COMPLETED-or-
+ * PUBLISHED status with `assessmentId` set, the assessment shows up in the
+ * institute's normal Assessment tab and learners on the registered batches
+ * can take it.
+ *
+ * Idempotent on the artifact — calling it twice for an already-published
+ * artifact returns the existing assessment id without re-creating.
+ */
+/**
+ * Body for the publish endpoint. All fields are optional — when omitted,
+ * the values captured at generation time (in `generation_params_json`)
+ * are used. The post-generation "Configure → Publish" flow populates
+ * these; the legacy publish call passed `title` only.
+ */
+export interface PublishAssessmentOverrides {
+    title?: string;
+    startDateTime?: string;
+    endDateTime?: string;
+    assessmentVisibility?: 'PRIVATE' | 'PUBLIC';
+    marksPerQuestion?: number;
+    durationMinutes?: number;
+    negativeMarkingEnabled?: boolean;
+    negativeMarkPerQuestion?: number;
+    /** Retries allowed after the first submission. 0 = no retries. */
+    reattemptCount?: number;
+    /** Minutes on the instructions/cover screen before the timer starts. */
+    previewTime?: number;
+}
+
+export const publishAssessmentFromRecording = async (
+    recordingId: string,
+    artifactId: string,
+    overrides?: PublishAssessmentOverrides | string
+): Promise<AssessmentArtifact> => {
+    // Back-compat: callers used to pass a bare title string. Accept that
+    // shape and convert it to the overrides object before sending.
+    const body: PublishAssessmentOverrides =
+        typeof overrides === 'string'
+            ? overrides.trim()
+                ? { title: overrides.trim() }
+                : {}
+            : (overrides ?? {});
+    const response = await authenticatedAxiosInstance.post<AssessmentArtifact>(
+        RECORDING_PUBLISH_ASSESSMENT(recordingId, artifactId),
         body
     );
     return response.data;

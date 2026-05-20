@@ -6,16 +6,14 @@ multiple output formats (JSON, SRT, VTT, TXT).
 """
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException
 
-from ..db import db_dependency
-from ..dependencies import get_institute_from_api_key
+from pydantic import BaseModel, Field
+
+from ..dependencies import get_institute_id_or_internal
 from ..config import get_settings
 from ..services.transcription_service import TranscriptionService
 
@@ -44,7 +42,17 @@ class TranscribeRequest(BaseModel):
         default=None,
         description="Output formats to generate: 'json', 'srt', 'vtt', 'txt'. Default: all",
     )
+    task: str = Field(
+        default="transcribe",
+        description="'transcribe' (source language), 'translate' (English only), or 'both' "
+                    "(produce both — single model load, two passes)",
+    )
     callback_url: Optional[str] = Field(None, description="Webhook URL to POST on completion/failure")
+    institute_id: Optional[str] = Field(
+        None,
+        description="Required only when calling with X-Internal-Service-Token "
+                    "(server-to-server auth). For institute-key auth, this is ignored.",
+    )
 
 
 class TranscribeResponse(BaseModel):
@@ -57,7 +65,9 @@ class TranscribeStatusResponse(BaseModel):
     job_id: str
     status: str  # queued, running, completed, failed
     progress: Optional[float] = None
-    output_urls: Optional[dict] = None
+    output_urls: Optional[dict] = None             # legacy: matches task
+    output_urls_source: Optional[dict] = None       # populated when task in ('transcribe', 'both')
+    output_urls_english: Optional[dict] = None      # populated when task in ('translate', 'both')
     duration_seconds: Optional[float] = None
     detected_language: Optional[str] = None
     language_probability: Optional[float] = None
@@ -85,7 +95,7 @@ def _get_transcription_service() -> TranscriptionService:
 @router.post("/v1/submit", response_model=TranscribeResponse)
 async def submit_transcription(
     request: TranscribeRequest,
-    institute_id: str = Depends(get_institute_from_api_key),
+    auth: tuple = Depends(get_institute_id_or_internal),
 ):
     """Submit a recording for transcription.
 
@@ -97,8 +107,24 @@ async def submit_transcription(
 
     Returns a job_id to poll for status via GET /transcription/v1/status/{job_id}.
     """
+    resolved_institute_id, auth_mode = auth
+    if auth_mode == "INTERNAL":
+        # Server-to-server callers (e.g. admin_core_service) supply the
+        # institute_id in the body since they have no per-institute API key.
+        if not request.institute_id:
+            raise HTTPException(
+                status_code=400,
+                detail="institute_id is required in request body when using X-Internal-Service-Token",
+            )
+        institute_id = request.institute_id
+    else:
+        institute_id = resolved_institute_id
+
     if request.model_size not in ("base", "small", "medium"):
         raise HTTPException(status_code=400, detail="model_size must be 'base', 'small', or 'medium'")
+
+    if request.task not in ("transcribe", "translate", "both"):
+        raise HTTPException(status_code=400, detail="task must be 'transcribe', 'translate', or 'both'")
 
     if request.output_formats:
         valid_formats = {"json", "srt", "vtt", "txt"}
@@ -115,6 +141,7 @@ async def submit_transcription(
             word_timestamps=request.word_timestamps,
             output_formats=request.output_formats,
             callback_url=request.callback_url,
+            task=request.task,
         )
     except RuntimeError as e:
         error_msg = str(e)
@@ -129,13 +156,15 @@ async def submit_transcription(
 @router.get("/v1/status/{job_id}", response_model=TranscribeStatusResponse)
 async def get_transcription_status(
     job_id: str,
-    institute_id: str = Depends(get_institute_from_api_key),
+    auth: tuple = Depends(get_institute_id_or_internal),
 ):
     """Poll transcription job status.
 
     Returns progress (0-100), and on completion: output URLs, detected language,
     duration, segment/word counts.
     """
+    # job_ids are globally unique; auth presence (either mode) is sufficient.
+    _resolved_institute_id, _auth_mode = auth
     svc = _get_transcription_service()
     resp = svc.check_status(job_id)
 
@@ -147,6 +176,8 @@ async def get_transcription_status(
         status=resp.get("status", "unknown"),
         progress=resp.get("progress"),
         output_urls=resp.get("output_urls"),
+        output_urls_source=resp.get("output_urls_source"),
+        output_urls_english=resp.get("output_urls_english"),
         duration_seconds=resp.get("duration_seconds"),
         detected_language=resp.get("detected_language"),
         language_probability=resp.get("language_probability"),

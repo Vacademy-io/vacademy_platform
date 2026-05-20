@@ -41,8 +41,11 @@ class TranscriptionService:
         word_timestamps: bool = True,
         output_formats: Optional[list[str]] = None,
         callback_url: Optional[str] = None,
+        task: str = "transcribe",
     ) -> str:
         """Submit a transcription job to the render worker. Returns job_id.
+
+        task: 'transcribe' (source language), 'translate' (English), or 'both'.
 
         Raises:
             RuntimeError: if submission fails or server is at capacity.
@@ -51,6 +54,7 @@ class TranscriptionService:
             "source_url": source_url,
             "model_size": model_size,
             "word_timestamps": word_timestamps,
+            "task": task,
         }
         if language is not None:
             payload["language"] = language

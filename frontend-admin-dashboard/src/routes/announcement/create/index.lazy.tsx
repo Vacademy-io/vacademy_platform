@@ -3318,11 +3318,19 @@ function CreateAnnouncementPage() {
                                               ? {
                                                     scheduleType,
                                                     timezone,
+                                                    // Send the picked wall-clock literal (YYYY-MM-DDTHH:mm:ss) so the
+                                                    // backend interprets it in the selected timezone. Converting
+                                                    // through new Date(...).toISOString() would shift by the browser's
+                                                    // local offset, which is almost never what the user picked.
                                                     startDate: oneTimeStart
-                                                        ? new Date(oneTimeStart).toISOString()
+                                                        ? oneTimeStart.length === 16
+                                                            ? `${oneTimeStart}:00`
+                                                            : oneTimeStart
                                                         : undefined,
                                                     endDate: oneTimeEnd
-                                                        ? new Date(oneTimeEnd).toISOString()
+                                                        ? oneTimeEnd.length === 16
+                                                            ? `${oneTimeEnd}:00`
+                                                            : oneTimeEnd
                                                         : undefined,
                                                 }
                                               : {

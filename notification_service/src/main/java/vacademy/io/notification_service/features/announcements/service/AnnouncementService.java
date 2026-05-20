@@ -528,6 +528,16 @@ public class AnnouncementService {
             processingService.processAnnouncementDelivery(announcementId);
         } else {
             schedulingService.scheduleAnnouncement(announcementId, scheduling);
+            // Without this the row stays DRAFT after a successful schedule, so the calendar
+            // shows it as a draft even though Quartz will fire it. PENDING_APPROVAL must
+            // win over SCHEDULED — the approval step is what releases delivery.
+            announcementRepository.findById(announcementId).ifPresent(a -> {
+                if (a.getStatus() == AnnouncementStatus.DRAFT) {
+                    a.setStatus(AnnouncementStatus.SCHEDULED);
+                    a.setUpdatedAt(LocalDateTime.now());
+                    announcementRepository.save(a);
+                }
+            });
         }
     }
 

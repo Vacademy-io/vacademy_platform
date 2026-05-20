@@ -114,6 +114,7 @@ import {
 } from '@/components/common/study-library/add-course/add-course-steps/CopyContentDialog';
 import { useCopyCourseContent } from '@/services/study-library/course-operations/copy-course-content';
 import { handleGetSlideCountDetails } from '../-services/get-slides-count';
+import { CopyContentLineageBadge } from './CopyContentLineageBadge';
 
 // Map between DisplaySettings ids and UI tab values
 const mapDisplayIdToUiValue = (id: CourseDetailsTabId): string => {
@@ -618,7 +619,7 @@ export const CourseStructureDetails = ({
         // target having content, refuse on the parent side too.
         if (selection.mode === 'REFERENCE' && targetBatchHasContent) {
             toast.error(
-                'This batch already has content. Reference-import would mix shared and existing content; please use Import by value (deep clone) instead.'
+                'This batch already has its own content. Linking it would mix linked and existing lessons. Choose "Make a separate copy" instead.'
             );
             return;
         }
@@ -630,7 +631,7 @@ export const CourseStructureDetails = ({
             });
             const summary = `${result.copiedSubjects} subject(s), ${result.copiedModules} module(s), ${result.copiedChapters} chapter(s), ${result.copiedSlides} slide(s)`;
             const modeLabel =
-                selection.mode === 'REFERENCE' ? 'imported by reference' : 'imported';
+                selection.mode === 'REFERENCE' ? 'linked from source' : 'copied in';
             if (
                 selection.mode === 'VALUE' &&
                 result.warnings &&
@@ -1421,7 +1422,10 @@ export const CourseStructureDetails = ({
                 {/* Sticky header with expand/collapse buttons */}
                 <div className="sticky top-0 z-10 mb-3 border-b border-gray-200 bg-white px-6 py-3">
                     <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-medium text-gray-700">Course Structure</h3>
+                        <div className="flex items-center gap-1">
+                            <h3 className="text-sm font-medium text-gray-700">Course Structure</h3>
+                            <CopyContentLineageBadge packageSessionId={batchPackageSessionId} />
+                        </div>
                         <div className="flex items-center gap-2">
                             {!readOnly && canCopyContent && (
                                 <MyButton
@@ -3473,9 +3477,14 @@ export const CourseStructureDetails = ({
                 <div className="mb-4">
                     <div className="flex items-start justify-between">
                         <div>
-                            <h3 className="mb-2 text-lg font-semibold text-gray-800">
-                                Content Structure
-                            </h3>
+                            <div className="flex items-center gap-1">
+                                <h3 className="mb-2 text-lg font-semibold text-gray-800">
+                                    Content Structure
+                                </h3>
+                                <CopyContentLineageBadge
+                                    packageSessionId={batchPackageSessionId}
+                                />
+                            </div>
                             <p className="text-sm text-gray-600">
                                 Navigate through your course content using folders
                             </p>

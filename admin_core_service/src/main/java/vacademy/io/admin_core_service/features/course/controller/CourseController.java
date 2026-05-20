@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.course.dto.AddCourseDTO;
+import vacademy.io.admin_core_service.features.course.dto.CopyContentLineageResponse;
 import vacademy.io.admin_core_service.features.course.dto.CopyCourseContentRequest;
 import vacademy.io.admin_core_service.features.course.dto.CopyCourseContentResponse;
 import vacademy.io.admin_core_service.features.course.dto.CourseBatchDTO;
@@ -96,5 +97,17 @@ public class CourseController {
                 request.getMode(),
                 userDetails == null ? null : userDetails.getUserId());
         return ResponseEntity.ok(result);
+    }
+
+    /**
+     * Content-copy lineage for a batch. Powers the (i) tooltip in the course
+     * structure view:
+     *  - upstream: "this batch's content came from X (separate / linked copy)"
+     *  - downstream: "these batches were seeded from this one"
+     */
+    @GetMapping("/copy-lineage/{packageSessionId}")
+    public ResponseEntity<CopyContentLineageResponse> getCopyLineage(
+            @PathVariable("packageSessionId") String packageSessionId) {
+        return ResponseEntity.ok(courseContentCopyService.getLineage(packageSessionId));
     }
 }

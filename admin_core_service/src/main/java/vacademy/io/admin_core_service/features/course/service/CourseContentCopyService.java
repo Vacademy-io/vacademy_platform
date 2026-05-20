@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.chapter.entity.ChapterToSlides;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterPackageSessionMappingRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterRepository;
 import vacademy.io.admin_core_service.features.chapter.repository.ChapterToSlidesRepository;
+import vacademy.io.admin_core_service.features.course.dto.CopyContentLineageResponse;
 import vacademy.io.admin_core_service.features.course.dto.CopyCourseContentResponse;
 import vacademy.io.admin_core_service.features.module.entity.ModuleChapterMapping;
 import vacademy.io.admin_core_service.features.module.entity.SubjectModuleMapping;
@@ -230,6 +231,92 @@ public class CourseContentCopyService {
                                                  List<String> targetPackageSessionIds,
                                                  String userId) {
         return copy(sourcePackageSessionId, targetPackageSessionIds, "VALUE", userId);
+    }
+
+    /**
+     * Build the content-copy lineage for a batch:
+     *  - upstream: which batch (if any) seeded this one, and via which mode;
+     *  - downstream: every batch that was later seeded from this one, with
+     *    the mode each child used.
+     *
+     * Returns an empty (all-null/empty) response when the batch is unknown,
+     * so the UI can render a neutral state without a 404.
+     *
+     * Fast path: when the batch has neither been seeded from another nor used
+     * as a source by any child, both signals are checked cheaply (one column
+     * read + one indexed EXISTS probe) and the method returns immediately. The
+     * expensive joined fetches only run when there's actually something to
+     * surface.
+     */
+    @Transactional(readOnly = true)
+    public CopyContentLineageResponse getLineage(String packageSessionId) {
+        if (packageSessionId == null || packageSessionId.isBlank()) {
+            throw new VacademyException("packageSessionId is required");
+        }
+
+        CopyContentLineageResponse response = CopyContentLineageResponse.builder()
+                .packageSessionId(packageSessionId)
+                .copiedTo(new ArrayList<>())
+                .build();
+
+        Optional<PackageSession> selfOpt = packageSessionRepository.findById(packageSessionId);
+        if (selfOpt.isEmpty()) {
+            return response;
+        }
+        PackageSession self = selfOpt.get();
+        response.setCopiedBy(self.getContentCopiedBy());
+
+        String sourceId = self.getContentCopiedFromPackageSessionId();
+        boolean hasUpstream = sourceId != null && !sourceId.isBlank();
+        boolean hasDownstream =
+                packageSessionRepository.existsByContentCopiedFromPackageSessionId(packageSessionId);
+
+        // Fast path: vanilla batch with no copy history in either direction.
+        // Skip the joined fetches entirely — most batches in any institute fall
+        // into this bucket, and the UI badge will render nothing anyway.
+        if (!hasUpstream && !hasDownstream) {
+            return response;
+        }
+
+        // Upstream: the batch this one was seeded from (if any). Source rows
+        // may have been deleted later — we recorded the id but not as a FK, so
+        // a missing source is expected and tolerated. Joined fetch avoids the
+        // three lazy-init queries on package / session / level.
+        if (hasUpstream) {
+            packageSessionRepository.findByIdWithRelations(sourceId).ifPresent(source ->
+                    response.setCopiedFrom(toBatchRef(source, self.getContentCopiedBy()))
+            );
+        }
+
+        // Downstream: indexed lookup that also joins package/session/level in
+        // one round-trip, so building N BatchRefs no longer fans out to 3N
+        // lazy SELECTs.
+        if (hasDownstream) {
+            List<PackageSession> children =
+                    packageSessionRepository.findChildrenForLineage(packageSessionId);
+            List<CopyContentLineageResponse.BatchRef> childRefs = new ArrayList<>(children.size());
+            for (PackageSession child : children) {
+                // Skip soft-deleted batches so the audit view does not surface them.
+                if (child.getStatus() != null && "DELETED".equalsIgnoreCase(child.getStatus())) {
+                    continue;
+                }
+                childRefs.add(toBatchRef(child, child.getContentCopiedBy()));
+            }
+            response.setCopiedTo(childRefs);
+        }
+        return response;
+    }
+
+    private CopyContentLineageResponse.BatchRef toBatchRef(PackageSession ps, String copiedBy) {
+        PackageEntity pkg = ps.getPackageEntity();
+        return CopyContentLineageResponse.BatchRef.builder()
+                .packageSessionId(ps.getId())
+                .courseId(pkg == null ? null : pkg.getId())
+                .courseName(pkg == null ? null : pkg.getPackageName())
+                .sessionName(ps.getSession() == null ? null : ps.getSession().getSessionName())
+                .levelName(ps.getLevel() == null ? null : ps.getLevel().getLevelName())
+                .copiedBy(copiedBy)
+                .build();
     }
 
     private boolean isReferenceMode(String mode) {

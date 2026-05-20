@@ -533,7 +533,7 @@ function EventCard({
                 <div className="flex items-center gap-2">
                     <span className={`inline-block size-2 rounded-full ${color}`} />
                     <div className="font-medium">{a.title}</div>
-                    {a.status && (
+                    {a.status && a.status !== 'DRAFT' && (
                         <span
                             className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${statusPillClasses(a.status)}`}
                         >

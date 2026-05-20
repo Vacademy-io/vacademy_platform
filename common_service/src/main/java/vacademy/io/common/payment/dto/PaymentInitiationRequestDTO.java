@@ -11,7 +11,7 @@ public class PaymentInitiationRequestDTO {
     private Double amount;
     private String currency;
     private String description;
-    private boolean isIncludePendingItems;
+    private boolean includePendingItems;
     private boolean chargeAutomatically;
     private String orderId;
     private String instituteId;

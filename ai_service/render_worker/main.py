@@ -44,6 +44,15 @@ jobs: Dict[str, dict] = {}
 worker = RenderWorker()
 transcribe_worker = TranscribeWorker()
 
+# Dev-mode static route — serves transcript files from local disk when AWS
+# creds are absent. Mounted lazily because the dir may not exist at boot.
+_LOCAL_TRANSCRIPT_DIR = os.environ.get("LOCAL_TRANSCRIPT_DIR", "/tmp/vacademy-transcripts")
+if not (os.environ.get("AWS_ACCESS_KEY_ID") and os.environ.get("AWS_SECRET_ACCESS_KEY")):
+    from fastapi.staticfiles import StaticFiles
+    os.makedirs(_LOCAL_TRANSCRIPT_DIR, exist_ok=True)
+    app.mount("/transcripts", StaticFiles(directory=_LOCAL_TRANSCRIPT_DIR), name="transcripts")
+    logger.info(f"Dev mode: serving transcripts from {_LOCAL_TRANSCRIPT_DIR} at /transcripts")
+
 
 # ---------------------------------------------------------------------------
 # Auth
@@ -868,9 +877,9 @@ async def concat_audio(request: ConcatAudioRequest, x_render_key: str = Header("
 
         s3 = boto3.client(
             "s3",
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID") or None,
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
-            region_name=os.environ.get("AWS_REGION", "ap-south-1"),
+            aws_access_key_id=os.environ.get("S3_AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID") or None,
+            aws_secret_access_key=os.environ.get("S3_AWS_ACCESS_SECRET") or os.environ.get("AWS_SECRET_ACCESS_KEY") or None,
+            region_name=os.environ.get("S3_AWS_REGION") or os.environ.get("AWS_REGION", "ap-south-1"),
         )
         try:
             s3.put_object(
@@ -1078,6 +1087,10 @@ class TranscribeJobRequest(BaseModel):
     model_size: str = Field(default="base", description="Whisper model: 'base', 'small', or 'medium'")
     word_timestamps: bool = Field(default=True, description="Include word-level timestamps")
     output_formats: Optional[list] = Field(default=None, description="List of: 'json', 'srt', 'vtt', 'txt'. Default: all")
+    task: str = Field(
+        default="transcribe",
+        description="'transcribe' (source language), 'translate' (English), or 'both' (run loaded model twice)",
+    )
     callback_url: Optional[str] = Field(None, description="URL to POST on completion")
 
 
@@ -1091,7 +1104,9 @@ class TranscribeJobStatus(BaseModel):
     job_id: str
     status: str  # queued, running, completed, failed
     progress: Optional[float] = None
-    output_urls: Optional[dict] = None
+    output_urls: Optional[dict] = None              # legacy: matches task
+    output_urls_source: Optional[dict] = None        # populated when task in ('transcribe', 'both')
+    output_urls_english: Optional[dict] = None       # populated when task in ('translate', 'both')
     duration_seconds: Optional[float] = None
     detected_language: Optional[str] = None
     language_probability: Optional[float] = None
@@ -1108,13 +1123,15 @@ async def _run_transcribe_job(job_id: str, request: TranscribeJobRequest):
     transcribe_jobs[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     try:
+        effective_model = os.getenv("WHISPER_MODEL_OVERRIDE") or request.model_size
         result = await transcribe_worker.transcribe(
             job_id=job_id,
             source_url=request.source_url,
             language=request.language,
-            model_size=request.model_size,
+            model_size=effective_model,
             word_timestamps=request.word_timestamps,
             output_formats=request.output_formats,
+            task=request.task,
             on_progress=lambda p: _update_transcribe_progress(job_id, p),
         )
 
@@ -1124,6 +1141,8 @@ async def _run_transcribe_job(job_id: str, request: TranscribeJobRequest):
             k: v for k, v in result.items()
             if k.endswith("_url")
         }
+        transcribe_jobs[job_id]["output_urls_source"] = result.get("output_urls_source")
+        transcribe_jobs[job_id]["output_urls_english"] = result.get("output_urls_english")
         transcribe_jobs[job_id]["duration_seconds"] = result.get("duration_seconds")
         transcribe_jobs[job_id]["detected_language"] = result.get("detected_language")
         transcribe_jobs[job_id]["language_probability"] = result.get("language_probability")
@@ -1171,6 +1190,10 @@ async def submit_transcribe_job(
     if request.model_size not in ("base", "small", "medium"):
         raise HTTPException(status_code=400, detail="model_size must be 'base', 'small', or 'medium'")
 
+    # Validate task
+    if request.task not in ("transcribe", "translate", "both"):
+        raise HTTPException(status_code=400, detail="task must be 'transcribe', 'translate', or 'both'")
+
     # Shared capacity check: all job types compete for CPU/RAM
     active_render = sum(1 for j in jobs.values() if j["status"] in ("queued", "running"))
     active_index = sum(1 for j in index_jobs.values() if j["status"] in ("queued", "running"))
@@ -1190,6 +1213,8 @@ async def submit_transcribe_job(
         "status": "queued",
         "progress": 0,
         "output_urls": None,
+        "output_urls_source": None,
+        "output_urls_english": None,
         "duration_seconds": None,
         "detected_language": None,
         "language_probability": None,

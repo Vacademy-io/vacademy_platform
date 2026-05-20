@@ -74,29 +74,50 @@ public class JsonUtils {
     // Uses balanced-bracket scanning so chain-of-thought text containing stray
     // braces (e.g. "if x > 0 { ... }") doesn't truncate the real JSON.
     // Supports both top-level objects and top-level arrays.
+    //
+    // When the response contains multiple balanced blocks (e.g. an LLM emits a
+    // small JSON-shaped fragment in chain-of-thought before the real payload),
+    // we try candidates longest-first and return the first one that parses as
+    // valid JSON. This is strictly safer than always picking the first or
+    // always picking the longest: if the only valid block is small, we still
+    // find it; if the longest valid block is the real answer, we prefer it.
     public static String extractAndSanitizeJson(String rawResponse) {
         if (rawResponse == null) {
             throw new IllegalArgumentException("No JSON found in the response");
         }
-        String jsonContent = extractBalanced(rawResponse);
-        if (jsonContent == null) {
-            // Fallback to the legacy first-{ / last-} bounds so behavior degrades gracefully
-            int start = rawResponse.indexOf('{');
-            int altStart = rawResponse.indexOf('[');
-            if (altStart != -1 && (start == -1 || altStart < start)) {
-                int end = rawResponse.lastIndexOf(']') + 1;
-                if (end > altStart) jsonContent = rawResponse.substring(altStart, end);
-            } else if (start != -1) {
-                int end = rawResponse.lastIndexOf('}') + 1;
-                if (end > start) jsonContent = rawResponse.substring(start, end);
+
+        List<String> candidates = findBalancedBlocks(rawResponse);
+        // Try candidates longest-first.
+        candidates.sort((a, b) -> Integer.compare(b.length(), a.length()));
+        for (String candidate : candidates) {
+            try {
+                String sanitized = JsonSanitizer.sanitize(candidate);
+                objectMapper.readTree(sanitized);
+                return sanitized;
+            } catch (Exception ignored) {
+                // try next candidate
             }
+        }
+
+        // Legacy fallback: first-{ / last-} (or first-[ / last-]) bounds. Kept
+        // for backwards compatibility — handles responses whose JSON contains
+        // an unmatched bracket inside a non-string region that the balanced
+        // scanner can't resolve.
+        String jsonContent = null;
+        int start = rawResponse.indexOf('{');
+        int altStart = rawResponse.indexOf('[');
+        if (altStart != -1 && (start == -1 || altStart < start)) {
+            int end = rawResponse.lastIndexOf(']') + 1;
+            if (end > altStart) jsonContent = rawResponse.substring(altStart, end);
+        } else if (start != -1) {
+            int end = rawResponse.lastIndexOf('}') + 1;
+            if (end > start) jsonContent = rawResponse.substring(start, end);
         }
         if (jsonContent == null) {
             throw new IllegalArgumentException("No JSON found in the response");
         }
 
         String sanitizedJson = JsonSanitizer.sanitize(jsonContent);
-
         try {
             objectMapper.readTree(sanitizedJson);
             return sanitizedJson;
@@ -106,10 +127,11 @@ public class JsonUtils {
     }
 
     /**
-     * Scans for the first balanced {...} or [...] block, respecting strings and
-     * escapes. Returns null if no balanced block found.
+     * Scans for all balanced {...} and [...] blocks, respecting strings and
+     * escapes. Returns blocks in the order they appear in the input.
      */
-    private static String extractBalanced(String input) {
+    private static List<String> findBalancedBlocks(String input) {
+        List<String> blocks = new ArrayList<>();
         int n = input.length();
         for (int i = 0; i < n; i++) {
             char c = input.charAt(i);
@@ -129,12 +151,13 @@ public class JsonUtils {
                 else if (ch == close) {
                     depth--;
                     if (depth == 0) {
-                        return input.substring(i, j + 1);
+                        blocks.add(input.substring(i, j + 1));
+                        break;
                     }
                 }
             }
             // unbalanced for this opener; try next
         }
-        return null;
+        return blocks;
     }
 }

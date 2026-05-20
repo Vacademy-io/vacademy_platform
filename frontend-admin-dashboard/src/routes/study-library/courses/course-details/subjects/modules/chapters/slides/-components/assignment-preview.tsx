@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Slide } from '../-hooks/use-slides';
 import { useContentStore } from '../-stores/chapter-sidebar-store';
-import { assignmentFormSchema, AssignmentFormType } from '../-form-schemas/assignmentFormSchema';
+import {
+    ALLOWED_FILE_TYPE_OPTIONS,
+    assignmentFormSchema,
+    AssignmentFormType,
+} from '../-form-schemas/assignmentFormSchema';
+import { Checkbox } from '@/components/ui/checkbox';
 import { FormProvider, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { FormControl, FormField, FormItem } from '@/components/ui/form';
@@ -252,6 +257,55 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                             </FormControl>
                         </FormItem>
                     )}
+                />
+
+                {/* Allowed Submission File Types */}
+                <FormField
+                    control={form.control}
+                    name="allowedFileTypes"
+                    render={({ field }) => {
+                        const selected: string[] = field.value ?? [];
+                        const toggle = (value: string, checked: boolean) => {
+                            const next = checked
+                                ? Array.from(new Set([...selected, value]))
+                                : selected.filter((v) => v !== value);
+                            field.onChange(next);
+                        };
+                        return (
+                            <FormItem>
+                                <div className="flex flex-col gap-3">
+                                    <div>
+                                        <h1 className="font-semibold">Allowed Submission File Types</h1>
+                                        <p className="text-sm text-neutral-500">
+                                            Choose which file types learners can upload. If none are
+                                            selected, all file types will be accepted.
+                                        </p>
+                                    </div>
+                                    <FormControl>
+                                        <div className="flex flex-wrap gap-4">
+                                            {ALLOWED_FILE_TYPE_OPTIONS.map((opt) => {
+                                                const checked = selected.includes(opt.value);
+                                                return (
+                                                    <label
+                                                        key={opt.value}
+                                                        className="flex cursor-pointer items-center gap-2 rounded-md border border-neutral-200 px-3 py-2 text-sm hover:bg-neutral-50"
+                                                    >
+                                                        <Checkbox
+                                                            checked={checked}
+                                                            onCheckedChange={(c) =>
+                                                                toggle(opt.value, c === true)
+                                                            }
+                                                        />
+                                                        <span>{opt.label}</span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    </FormControl>
+                                </div>
+                            </FormItem>
+                        );
+                    }}
                 />
 
                 {/* Marks Configuration */}

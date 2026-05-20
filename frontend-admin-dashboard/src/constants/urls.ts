@@ -1,17 +1,24 @@
 import { BACKEND_BASE_URL } from '../config/baseUrl';
 
 export const BASE_URL = BACKEND_BASE_URL;
-export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
 export const BASE_URL_LEARNER_DASHBOARD =
     import.meta.env.VITE_LEARNER_DASHBOARD_URL || 'https://learner.vacademy.io';
 
-// For testing, use localhost:8077
+// AI service URL — used by all ai-service callers (credits balance, models,
+// lecture plans, transcript-notes, etc.). Points at the configured backend
+// gateway so the same constant works across dev/stage/prod without
+// hardcoded localhost fallbacks.
 export const AI_SERVICE_BASE_URL =
     import.meta.env.VITE_AI_SERVICE_BASE_URL || `${BACKEND_BASE_URL}/ai-service`;
 
 // AI Video URLs API
 export const GET_VIDEO_URLS = (videoId: string) => `${AI_SERVICE_BASE_URL}/video/urls/${videoId}`;
 export const SCRAPE_URL = `${AI_SERVICE_BASE_URL}/utils/scrape-url`;
+
+// Turn a lecture transcript into markdown study notes via Gemini. Body:
+// { transcript_text: string, title_hint?: string, target_language?: 'en'|'hi'|… }.
+// Response: { markdown: string, model: string }.
+export const GENERATE_TRANSCRIPT_NOTES_URL = `${AI_SERVICE_BASE_URL}/transcript/generate-notes`;
 
 // Institute AI Settings APIs
 export const GET_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
@@ -434,23 +441,26 @@ export const CREATE_PROVIDER_MEETING = `${BASE_URL}/admin-core-service/live-sess
 export const GET_SCHEDULE_RECORDINGS = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings`;
 export const SYNC_RECORDINGS_FROM_BBB = `${BASE_URL}/admin-core-service/live-sessions/provider/meeting/recordings/sync`;
 
-// "Process Recording" / "Transcript Ready" flow — kicks off Whisper transcription
-// for a specific BBB recording and polls for terminal state. Path-keyed by
-// scheduleId + recordingId so admin-core can locate the recording in O(1).
-//
-// LOCAL-TESTING NOTE: routes to LOCAL_ADMIN_CORE_BASE (http://localhost:8072)
-// because Layer 1 transcription only lives on locally-running admin-core right
-// now. Swap to `${BASE_URL}/...` once the backend ships to stage/prod.
+// "Process Recording" / "Transcript Ready" flow — kicks off Whisper
+// transcription for a specific BBB recording and polls for terminal state.
+// Path-keyed by scheduleId + recordingId so admin-core can locate the
+// recording in O(1).
 export const RECORDING_TRANSCRIBE = (scheduleId: string, recordingId: string) =>
-    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/transcribe`;
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/transcribe`;
 
 // Layer 3 — Create Assessment from a completed recording transcript.
-// Same local-testing routing as above.
 export const RECORDING_CREATE_ASSESSMENT = (scheduleId: string, recordingId: string) =>
-    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/create-assessment`;
 
 export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: string) =>
-    `${LOCAL_ADMIN_CORE_BASE}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
+    `${BASE_URL}/admin-core-service/live-sessions/schedule/${scheduleId}/recording/${recordingId}/assessments`;
+
+// Publish a previously-generated assessment artifact to assessment_service.
+// Body: PublishAssessmentOverridesDto (title, schedule, marking, attempts,
+// preview time, visibility — all optional, fall back to stored generation
+// params when absent).
+export const RECORDING_PUBLISH_ASSESSMENT = (recordingId: string, artifactId: string) =>
+    `${BASE_URL}/admin-core-service/live-sessions/recording/${recordingId}/assessment/${artifactId}/publish`;
 
 // export const GET_ALL_FACULTY = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const GET_FACULTY_BY_INSTITUTE_CREATORS_ONLY = `${BASE_URL}/admin-core-service/open/institute/v1/faculty/by-institute/only-creator`;
@@ -758,3 +768,20 @@ export const ADMIN_ACTIVITY_LOGS_LIST = `${BASE_URL}/admin-core-service/audit/v1
 export const ADMIN_ACTIVITY_LOG_BY_ID = (id: string) =>
     `${BASE_URL}/admin-core-service/audit/v1/logs/${id}`;
 export const ADMIN_ACTIVITY_LOGS_EXPORT_CSV = `${BASE_URL}/admin-core-service/audit/v1/logs/export.csv`;
+// Product Pages
+export const PRODUCT_PAGE_BASE_URL = `${BASE_URL}/admin-core-service/v1/product-page`;
+export const PRODUCT_PAGE_OPEN_URL = `${BASE_URL}/admin-core-service/open/v1/product-page`;
+export const GET_ALL_PRODUCT_PAGES = (instituteId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/get-all?instituteId=${instituteId}`;
+export const CREATE_PRODUCT_PAGE = (instituteId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/create?instituteId=${instituteId}`;
+export const UPDATE_PRODUCT_PAGE = (coursePageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/update?coursePageId=${coursePageId}`;
+export const GET_PRODUCT_PAGE = (coursePageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/${coursePageId}`;
+export const DELETE_PRODUCT_PAGE = (coursePageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/delete?coursePageId=${coursePageId}`;
+export const CREATE_PRODUCT_PAGE_COUPON = (coursePageId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/coupon/create?coursePageId=${coursePageId}`;
+export const DELETE_PRODUCT_PAGE_COUPON = (couponCodeId: string) =>
+    `${PRODUCT_PAGE_BASE_URL}/coupon/${couponCodeId}`;

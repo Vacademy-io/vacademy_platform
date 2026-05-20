@@ -8,8 +8,13 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         props: {
             logo: '',
             title: 'My Platform',
-            navigation: [{ label: 'Home', route: 'homepage', openInSameTab: true }],
-            authLinks: [{ label: 'Login', route: 'login' }],
+            backgroundColor: '#4F46E5',
+            textColor: '#FFFFFF',
+            navigation: [
+                { label: 'Home', url: '/', openInSameTab: true },
+                { label: 'Courses', url: '#courses', openInSameTab: true },
+            ],
+            ctaButton: { enabled: true, text: 'Enroll Now', url: '' },
         },
     },
 
@@ -19,17 +24,20 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         props: {
             layout: 'split',
             backgroundColor: '#F8FAFC',
+            textColor: '#111827',
             left: {
                 title: 'Welcome to Our Platform',
-                description: 'Start your learning journey today.',
+                subheading: 'Your path to mastery starts here',
+                description: '<p>Start your learning journey today with expert-led courses designed for real-world success.</p>',
+                tags: ['Online', 'Self-paced', 'Certified'],
                 button: {
-                    enabled: false,
-                    text: 'Get Started',
+                    enabled: true,
+                    text: 'Explore Courses',
                     action: 'navigate',
-                    target: '',
+                    target: '#courses',
                 },
             },
-            right: { image: '', alt: 'Hero image' },
+            right: { image: '', alt: 'Hero image', imageCollage: [] },
             styles: { padding: '40px', roundedEdges: true, textAlign: 'left' },
         },
     },
@@ -58,6 +66,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         enabled: true,
         props: {
             layout: 'two-column',
+            backgroundColor: '#F9FAFB',
+            textColor: '#374151',
             leftSection: {
                 title: 'My Platform',
                 text: 'Welcome to our platform.',
@@ -139,6 +149,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             description: 'Numbers that speak about our growth.',
             stats: [{ label: 'Students', value: '100+' }],
             style: 'circle',
+            backgroundColor: '#FFFFFF',
+            textColor: '#111827',
             styles: { backgroundColor: '#FFFFFF', textColor: '#111827', hoverEffect: 'scale' },
         },
     },
@@ -151,6 +163,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             description: 'Real feedback from our learners.',
             layout: 'grid-scroll',
             testimonials: [],
+            backgroundColor: '#F9FAFB',
+            textColor: '#111827',
             styles: {
                 backgroundColor: '#F9FAFB',
                 roundedEdges: true,
@@ -240,6 +254,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
                 { question: 'Is there a free trial?', answer: 'Yes! Many of our courses offer a free preview.' },
             ],
             backgroundColor: '#F9FAFB',
+            textColor: '#111827',
         },
     },
 
@@ -487,6 +502,7 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             style: 'cards',
             iconSize: 'large',
             backgroundColor: '#FFFFFF',
+            textColor: '#111827',
         },
     },
 
@@ -551,7 +567,49 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             ],
             connectorStyle: 'line',
             backgroundColor: '#FFFFFF',
+            textColor: '#111827',
             accentColor: '',
+        },
+    },
+    marquee: {
+        type: 'marquee',
+        enabled: true,
+        props: {
+            items: [
+                { icon: '⭐', text: 'Top-rated courses' },
+                { icon: '🎓', text: '10,000+ learners enrolled' },
+                { icon: '🏆', text: 'Expert-led curriculum' },
+                { icon: '🚀', text: 'Learn at your own pace' },
+                { icon: '💡', text: 'Industry-relevant skills' },
+            ],
+            defaultIcon: '⭐',
+            speed: 'medium',
+            direction: 'left',
+            pauseOnHover: true,
+            backgroundColor: '#1e1b4b',
+            textColor: '#ffffff',
+            iconColor: '#facc15',
+            fontSize: 'sm',
+        },
+    },
+    productCourseGrid: {
+        type: 'productCourseGrid',
+        enabled: true,
+        props: {
+            title: '',
+            columns: 3,
+            layout: 'grid',
+            showPrice: true,
+            showBadge: true,
+            showFilters: true,
+        },
+    },
+
+    htmlBlock: {
+        type: 'htmlBlock',
+        enabled: true,
+        props: {
+            html: '',
         },
     },
 };

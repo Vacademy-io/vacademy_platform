@@ -154,7 +154,7 @@ const AIQuestionsPreview = ({
             return handleGetQuestionsInvidualTask(taskId);
         },
         onSuccess: (response) => {
-            if (!response.questions) {
+            if (!response.questions || response.questions.length === 0) {
                 setTimeout(() => {
                     setNoResponse(false);
                 }, 10000);
@@ -196,7 +196,7 @@ const AIQuestionsPreview = ({
             setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['GET_INDIVIDUAL_AI_LIST_DATA'] });
             }, 100);
-            if (!response.questions) {
+            if (!response.questions || response.questions.length === 0) {
                 toast.success('No data exists!');
                 return;
             }

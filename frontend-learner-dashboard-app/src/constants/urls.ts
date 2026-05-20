@@ -183,6 +183,7 @@ export const ENROLLMENT_PAYMENT_GATEWAY_DETAILS = `${BASE_URL}/admin-core-servic
 export const ENROLLMENT_INVITE_DETAILS = `${BASE_URL}/admin-core-service/v1/enroll-invite`;
 export const ENROLLMENT_PAYMENT_INITIATION = `${BASE_URL}/admin-core-service/v1/learner/enroll`;
 export const ENROLLMENT_PAYMENT_INITIATION_V2 = `${BASE_URL}/admin-core-service/v2/learner/enroll`;
+export const PAYMENT_LOGS_URL = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs`;
 export const COLLECT_PUBLIC_USER_DATA = `${BASE_URL}/admin-core-service/v1/learner/enroll/detail`;
 
 export const GENERATE_CERTIFICATE = `${BASE_URL}/admin-core-service/institute/v1/certificate/learner/get`;
@@ -271,3 +272,11 @@ export const TERMINATE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/lo
 export const TERMINATE_CURRENT_SESSION = `${BASE_URL}/auth-service/learner/v1/session/logout-current`;
 export const SELECT_INSTITUTE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/select-institute`;
 export const VALIDATE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/validate`;
+
+// Product Pages (open — no auth required)
+export const PRODUCT_PAGE_OPEN_URL = `${BASE_URL}/admin-core-service/open/v1/product-page`;
+export const GET_PRODUCT_PAGE_BY_CODE = (code: string, instituteId: string) =>
+  `${PRODUCT_PAGE_OPEN_URL}/by-code?code=${code}&instituteId=${instituteId}`;
+export const VALIDATE_PRODUCT_PAGE_COUPON = `${PRODUCT_PAGE_OPEN_URL}/validate-coupon`;
+export const PRODUCT_PAGE_FORM_SUBMIT = `${PRODUCT_PAGE_OPEN_URL}/form-submit`;
+export const PRODUCT_PAGE_ENROLL = `${PRODUCT_PAGE_OPEN_URL}/enroll`;

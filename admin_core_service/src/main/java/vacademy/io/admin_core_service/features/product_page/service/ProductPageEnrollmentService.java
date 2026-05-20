@@ -1,0 +1,496 @@
+package vacademy.io.admin_core_service.features.product_page.service;
+
+import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
+import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
+import vacademy.io.admin_core_service.features.product_page.dto.*;
+import vacademy.io.admin_core_service.features.product_page.entity.ProductPageInviteMapping;
+import vacademy.io.admin_core_service.features.institute.service.InstitutePaymentGatewayMappingService;
+import vacademy.io.admin_core_service.features.product_page.repository.ProductPageInviteMappingRepository;
+import vacademy.io.admin_core_service.features.product_page.repository.ProductPageRepository;
+import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
+import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
+import vacademy.io.admin_core_service.features.institute_learner.entity.StudentSessionInstituteGroupMapping;
+import vacademy.io.admin_core_service.features.institute_learner.manager.StudentRegistrationManager;
+import vacademy.io.admin_core_service.features.institute_learner.service.LearnerEnrollmentEntryService;
+import vacademy.io.admin_core_service.features.learner_payment_option_operation.service.OneTimePaymentOptionOperation;
+import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.payments.service.PaymentService;
+import vacademy.io.admin_core_service.features.user_subscription.entity.AppliedCouponDiscount;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLogLineItem;
+import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
+import vacademy.io.admin_core_service.features.user_subscription.repository.AppliedCouponDiscountRepository;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogLineItemRepository;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentPlanRepository;
+import vacademy.io.admin_core_service.features.user_subscription.service.UserPlanService;
+import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
+import vacademy.io.common.auth.dto.learner.LearnerEnrollResponseDTO;
+import vacademy.io.common.auth.dto.learner.LearnerPackageSessionsEnrollDTO;
+import vacademy.io.common.common.dto.CustomFieldValueDTO;
+import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.institute.entity.session.PackageSession;
+import vacademy.io.common.payment.dto.PaymentInitiationRequestDTO;
+import vacademy.io.common.payment.dto.PaymentResponseDTO;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
+
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Slf4j
+@Service
+public class ProductPageEnrollmentService {
+
+    private static final String STATUS_ACTIVE = "ACTIVE";
+    private static final String LINE_ITEM_TYPE = "PRODUCT_PAGE_ALLOCATION";
+
+    @Autowired
+    private ProductPageRepository coursePageRepository;
+
+    @Autowired
+    private ProductPageInviteMappingRepository mappingRepository;
+
+    @Autowired
+    private PackageSessionRepository packageSessionRepository;
+
+    @Autowired
+    private PaymentPlanRepository paymentPlanRepository;
+
+    @Autowired
+    private StudentRegistrationManager studentRegistrationManager;
+
+    @Autowired
+    private LearnerEnrollmentEntryService learnerEnrollmentEntryService;
+
+    @Autowired
+    private CustomFieldValueService customFieldValueService;
+
+    @Autowired
+    private PaymentService paymentService;
+
+    @Autowired
+    private UserPlanService userPlanService;
+
+    @Autowired
+    private OneTimePaymentOptionOperation oneTimePaymentOptionOperation;
+
+    @Autowired
+    private PaymentLogRepository paymentLogRepository;
+
+    @Autowired
+    private PaymentLogLineItemRepository paymentLogLineItemRepository;
+
+    @Autowired
+    private AppliedCouponDiscountRepository appliedCouponDiscountRepository;
+
+    @Autowired
+    private ProductPageService coursePageService;
+
+    @Autowired
+    private PaymentLogService paymentLogService;
+
+    @Autowired
+    private InstitutePaymentGatewayMappingService institutePaymentGatewayMappingService;
+
+    // -------------------------------------------------------------------------
+    // Step 1: form-submit — create user + ABANDONED_CART entries per invite
+    // -------------------------------------------------------------------------
+
+    @Transactional
+    public ProductPageFormSubmitResponse submitProductPageForm(ProductPageFormSubmitRequest request) {
+        log.info("Course page form submit for code={}, institute={}",
+                request.getProductPageCode(), request.getInstituteId());
+
+        List<ProductPageInviteMapping> selectedMappings = resolveMappings(
+                request.getProductPageCode(), request.getInstituteId(),
+                request.getSelectedPsInvitePaymentOptionIds());
+
+        // Create / update user
+        UserDTO user = studentRegistrationManager.createUserFromAuthService(
+                request.getUserDetails(), request.getInstituteId(), false);
+
+        studentRegistrationManager.createStudentFromRequest(
+                user, mapToStudentExtraDetails(request.getLearnerExtraDetails()));
+
+        // Create ABANDONED_CART entry for each selected invite's package session
+        List<String> abandonedCartEntryIds = new ArrayList<>();
+        for (ProductPageInviteMapping mapping : selectedMappings) {
+            String packageSessionId = mapping.getPsInvitePaymentOption().getPackageSession().getId();
+
+            PackageSession invitedSession = learnerEnrollmentEntryService
+                    .findInvitedPackageSession(packageSessionId);
+
+            PackageSession actualSession = packageSessionRepository.findById(packageSessionId)
+                    .orElseThrow(() -> new VacademyException("PackageSession not found: " + packageSessionId));
+
+            learnerEnrollmentEntryService.markPreviousEntriesAsDeleted(
+                    user.getId(), invitedSession.getId(), packageSessionId, request.getInstituteId());
+
+            StudentSessionInstituteGroupMapping entry = learnerEnrollmentEntryService
+                    .createOnlyDetailsFilledEntry(user.getId(), invitedSession, actualSession,
+                            request.getInstituteId(), null);
+
+            abandonedCartEntryIds.add(entry.getId());
+        }
+
+        // Save custom field values
+        if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
+            customFieldValueService.addCustomFieldValue(
+                    request.getCustomFieldValues(),
+                    CustomFieldValueSourceTypeEnum.USER.name(),
+                    user.getId());
+        }
+
+        log.info("Form submitted for user={}, {} ABANDONED_CART entries created", user.getId(), abandonedCartEntryIds.size());
+        return ProductPageFormSubmitResponse.builder()
+                .userId(user.getId())
+                .abandonedCartEntryIds(abandonedCartEntryIds)
+                .message("Form submitted. Please proceed to payment.")
+                .build();
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 2: enroll — combined payment + split fulfillment
+    // Razorpay two-phase flow:
+    //   Phase 1 (razorpayPaymentId is absent): create order, return key+orderId, DO NOT enroll yet
+    //   Phase 2 (razorpayPaymentId present):  verify signature, create PAID log, enroll
+    // All other vendors: single call (FREE, Cashfree redirect, etc.)
+    // -------------------------------------------------------------------------
+
+    @Transactional
+    public ProductPageEnrollResponse enrollForProductPage(ProductPageEnrollRequest request) {
+        log.info("Course page enroll for code={}, institute={}",
+                request.getProductPageCode(), request.getInstituteId());
+
+        List<ProductPageInviteMapping> selectedMappings = resolveMappings(
+                request.getProductPageCode(), request.getInstituteId(),
+                request.getSelectedMappings().stream()
+                        .map(ProductPageSelectedMappingDTO::getPsInvitePaymentOptionId)
+                        .collect(Collectors.toList()));
+
+        // Validate + compute total server-side
+        double serverTotal = 0.0;
+        Map<String, PaymentPlan> planByMappingId = new LinkedHashMap<>();
+        for (ProductPageSelectedMappingDTO sel : request.getSelectedMappings()) {
+            PaymentPlan plan = paymentPlanRepository.findById(sel.getPaymentPlanId())
+                    .orElseThrow(() -> new VacademyException("PaymentPlan not found: " + sel.getPaymentPlanId()));
+            planByMappingId.put(sel.getPsInvitePaymentOptionId(), plan);
+            serverTotal += plan.getActualPrice();
+        }
+
+        // Apply coupon discount if provided
+        AppliedCouponDiscount couponDiscount = null;
+        double discountAmount = 0.0;
+        if (request.getCouponCode() != null && !request.getCouponCode().isBlank()) {
+            ProductPageCouponValidateResponse couponResp = coursePageService.validateCoupon(
+                    request.getProductPageCode(), request.getCouponCode(), serverTotal);
+            if (!couponResp.isValid()) {
+                throw new VacademyException("Coupon invalid: " + couponResp.getMessage());
+            }
+            couponDiscount = appliedCouponDiscountRepository.findById(couponResp.getAppliedCouponDiscountId())
+                    .orElse(null);
+            discountAmount = couponResp.getDiscountValue() != null ? couponResp.getDiscountValue() : 0.0;
+        }
+
+        double finalTotal = serverTotal - discountAmount;
+
+        PaymentInitiationRequestDTO payReq = request.getPaymentInitiationRequest();
+        payReq.setAmount(finalTotal);
+
+        // Override vendor/vendorId/currency from the first EnrollInvite so we always use
+        // the invite's configured payment gateway, ignoring whatever the client sends.
+        EnrollInvite firstInvite = null;
+        if (!selectedMappings.isEmpty()) {
+            firstInvite = selectedMappings.get(0).getPsInvitePaymentOption().getEnrollInvite();
+            if (firstInvite.getVendor() != null) payReq.setVendor(firstInvite.getVendor());
+            if (firstInvite.getVendorId() != null) payReq.setVendorId(firstInvite.getVendorId());
+            if (firstInvite.getCurrency() != null) payReq.setCurrency(firstInvite.getCurrency());
+        }
+
+        // Defensive: ensure currency always has a value (Razorpay gateway requires it).
+        // Fall back to any plan's currency, then to "INR".
+        if (!org.springframework.util.StringUtils.hasText(payReq.getCurrency())) {
+            String planCurrency = planByMappingId.values().stream()
+                    .map(vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan::getCurrency)
+                    .filter(c -> c != null && !c.isBlank())
+                    .findFirst().orElse("INR");
+            payReq.setCurrency(planCurrency);
+            log.warn("Currency was missing from request; defaulted to {}", planCurrency);
+        }
+
+        // Create / find user
+        UserDTO user = studentRegistrationManager.createUserFromAuthService(
+                request.getUser(), request.getInstituteId(), false);
+        payReq.setEmail(user.getEmail());
+
+        // ── Razorpay Phase 1: order creation ──────────────────────────────────
+        boolean isRazorpay = "RAZORPAY".equalsIgnoreCase(payReq.getVendor());
+        boolean isRazorpayPhase2 = isRazorpay
+                && payReq.getRazorpayRequest() != null
+                && payReq.getRazorpayRequest().getRazorpayPaymentId() != null
+                && !payReq.getRazorpayRequest().getRazorpayPaymentId().isBlank();
+
+        if (isRazorpay && !isRazorpayPhase2) {
+            // Phase 1: create Razorpay order + payment log (PAYMENT_PENDING) — do NOT enroll yet
+            PaymentResponseDTO gatewayResponse = paymentService.handlePaymentWithUser(
+                    payReq, request.getInstituteId(), user, null);
+
+            String paymentLogId = payReq.getOrderId();
+            log.info("Razorpay Phase 1: order created, paymentLogId={}", paymentLogId);
+
+            String razorpayKeyId = null;
+            String razorpayOrderId = null;
+            if (gatewayResponse != null && gatewayResponse.getResponseData() != null) {
+                Object k = gatewayResponse.getResponseData().get("razorpayKeyId");
+                if (k instanceof String) razorpayKeyId = (String) k;
+                Object o = gatewayResponse.getResponseData().get("razorpayOrderId");
+                if (o instanceof String) razorpayOrderId = (String) o;
+            }
+
+            return ProductPageEnrollResponse.builder()
+                    .paymentLogId(paymentLogId)
+                    .userId(user.getId())
+                    .status(PaymentStatusEnum.PAYMENT_PENDING.name())
+                    .orderId(razorpayOrderId)
+                    .razorpayKeyId(razorpayKeyId)
+                    .message("Razorpay order created. Please complete payment.")
+                    .build();
+        }
+
+        // ── Razorpay Phase 2: verify signature + enroll ───────────────────────
+        String parentPaymentLogId;
+        if (isRazorpayPhase2) {
+            verifyRazorpaySignature(payReq, request.getInstituteId(), firstInvite);
+
+            // Create a payment log with PAID status (payment already collected by Razorpay)
+            parentPaymentLogId = paymentLogService.createPaymentLog(
+                    user.getId(), finalTotal,
+                    payReq.getVendor(), payReq.getVendorId(), payReq.getCurrency(),
+                    null, null);
+            payReq.setOrderId(parentPaymentLogId);
+            paymentLogService.updatePaymentLog(
+                    parentPaymentLogId,
+                    "ACTIVE",
+                    PaymentStatusEnum.PAID.name(),
+                    "{\"razorpayPaymentId\":\"" + payReq.getRazorpayRequest().getRazorpayPaymentId() + "\","
+                    + "\"razorpayOrderId\":\"" + payReq.getRazorpayRequest().getRazorpayOrderId() + "\"}");
+            log.info("Razorpay Phase 2: payment verified, paymentLogId={}", parentPaymentLogId);
+
+        } else {
+            // Non-Razorpay (FREE, Cashfree redirect, etc.): single-call flow
+            PaymentResponseDTO gatewayResponse = paymentService.handlePaymentWithUser(
+                    payReq, request.getInstituteId(), user, null);
+            parentPaymentLogId = payReq.getOrderId();
+            log.info("Combined payment initiated, parentPaymentLogId={}", parentPaymentLogId);
+
+            // For redirect-based gateways (Cashfree etc.) return immediately
+            String paymentUrl = null;
+            if (gatewayResponse != null && gatewayResponse.getResponseData() != null) {
+                Object urlObj = gatewayResponse.getResponseData().get("paymentUrl");
+                if (urlObj instanceof String) paymentUrl = (String) urlObj;
+            }
+            if (paymentUrl != null) {
+                return ProductPageEnrollResponse.builder()
+                        .paymentLogId(parentPaymentLogId)
+                        .userId(user.getId())
+                        .status("PAYMENT_PENDING")
+                        .paymentUrl(paymentUrl)
+                        .message("Redirect to payment gateway")
+                        .build();
+            }
+        }
+
+        // ── Enroll per invite (shared by Phase 2 + non-Razorpay paid flows) ──
+        List<String> enrolledSessionIds = new ArrayList<>();
+        for (ProductPageSelectedMappingDTO sel : request.getSelectedMappings()) {
+            ProductPageInviteMapping mapping = selectedMappings.stream()
+                    .filter(m -> m.getPsInvitePaymentOption().getId().equals(sel.getPsInvitePaymentOptionId()))
+                    .findFirst()
+                    .orElseThrow();
+
+            PackageSessionLearnerInvitationToPaymentOption bridge = mapping.getPsInvitePaymentOption();
+            EnrollInvite invite = bridge.getEnrollInvite();
+            PaymentPlan plan = planByMappingId.get(sel.getPsInvitePaymentOptionId());
+
+            PaymentInitiationRequestDTO invitePayReq = clonePaymentRequest(payReq);
+            invitePayReq.setAmount(plan.getActualPrice());
+
+            LearnerPackageSessionsEnrollDTO enrollDTO = new LearnerPackageSessionsEnrollDTO();
+            enrollDTO.setPackageSessionIds(List.of(bridge.getPackageSession().getId()));
+            enrollDTO.setPlanId(plan.getId());
+            enrollDTO.setPaymentOptionId(bridge.getPaymentOption().getId());
+            enrollDTO.setEnrollInviteId(invite.getId());
+            enrollDTO.setReferRequest(request.getReferRequest());
+            enrollDTO.setCustomFieldValues(filterFieldsForInvite(request.getCustomFieldValues(), invite.getId()));
+            enrollDTO.setPaymentInitiationRequest(invitePayReq);
+
+            vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan userPlan =
+                    userPlanService.createUserPlan(
+                            user.getId(), plan,
+                            couponDiscount, invite,
+                            bridge.getPaymentOption(), invitePayReq,
+                            "INVITED");
+
+            Map<String, Object> extraData = new HashMap<>();
+            extraData.put("SKIP_PAYMENT_INITIATION", true);
+            if (parentPaymentLogId != null) {
+                extraData.put("PARENT_PAYMENT_LOG_ID", parentPaymentLogId);
+            }
+            if (isRazorpayPhase2) {
+                // Signal that payment is already collected — downstream can mark PAID
+                extraData.put("FORCE_PAID_STATUS", true);
+            }
+
+            oneTimePaymentOptionOperation.enrollLearnerToBatch(
+                    user, enrollDTO, request.getInstituteId(),
+                    invite, bridge.getPaymentOption(), userPlan, extraData,
+                    request.getLearnerExtraDetails());
+
+            enrolledSessionIds.add(bridge.getPackageSession().getId());
+            log.info("Enrolled user={} in session={} for invite={}",
+                    user.getId(), bridge.getPackageSession().getId(), invite.getId());
+
+            if (parentPaymentLogId != null) {
+                createLineItem(parentPaymentLogId, invite.getId(), (int) Math.round(plan.getActualPrice()));
+            }
+        }
+
+        if (parentPaymentLogId != null && discountAmount > 0 && request.getCouponCode() != null) {
+            createLineItem(parentPaymentLogId, "COUPON:" + request.getCouponCode(), -(int) Math.round(discountAmount));
+        }
+
+        return ProductPageEnrollResponse.builder()
+                .paymentLogId(parentPaymentLogId)
+                .userId(user.getId())
+                .status(isRazorpayPhase2 ? PaymentStatusEnum.PAID.name() : "INITIATED")
+                .enrolledPackageSessionIds(enrolledSessionIds)
+                .message("Enrollment successful")
+                .build();
+    }
+
+    private void verifyRazorpaySignature(PaymentInitiationRequestDTO payReq, String instituteId,
+            EnrollInvite firstInvite) {
+        try {
+            Map<String, Object> gatewayData = institutePaymentGatewayMappingService
+                    .findInstitutePaymentGatewaySpecifData(payReq.getVendor(), instituteId);
+            String keySecret = (String) gatewayData.getOrDefault("publishableKey",
+                    gatewayData.get("keySecret"));
+            if (keySecret == null) {
+                log.warn("Razorpay key_secret not found; skipping signature verification");
+                return;
+            }
+            String razorpayOrderId = payReq.getRazorpayRequest().getRazorpayOrderId();
+            String razorpayPaymentId = payReq.getRazorpayRequest().getRazorpayPaymentId();
+            String signature = payReq.getRazorpayRequest().getRazorpaySignature();
+            if (razorpayOrderId == null || razorpayPaymentId == null || signature == null) {
+                throw new VacademyException("Missing Razorpay verification fields");
+            }
+            String payload = razorpayOrderId + "|" + razorpayPaymentId;
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(keySecret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] hash = mac.doFinal(payload.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) hex.append(String.format("%02x", b));
+            if (!hex.toString().equals(signature)) {
+                throw new VacademyException("Razorpay payment signature verification failed");
+            }
+            log.info("Razorpay signature verified for orderId={}", razorpayOrderId);
+        } catch (VacademyException ve) {
+            throw ve;
+        } catch (Exception e) {
+            throw new VacademyException("Razorpay signature verification error: " + e.getMessage());
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Internal helpers
+    // -------------------------------------------------------------------------
+
+    private List<ProductPageInviteMapping> resolveMappings(
+            String coursePageCode, String instituteId, List<String> psInvitePoIds) {
+
+        var page = coursePageRepository.findByCode(coursePageCode)
+                .orElseThrow(() -> new VacademyException("Course page not found: " + coursePageCode));
+
+        if (!page.getInstituteId().equals(instituteId)) {
+            throw new VacademyException("Course page does not belong to this institute");
+        }
+
+        List<ProductPageInviteMapping> activeMappings = mappingRepository
+                .findByProductPageIdAndStatusIn(page.getId(), List.of(STATUS_ACTIVE));
+
+        Set<String> activePoIds = activeMappings.stream()
+                .map(m -> m.getPsInvitePaymentOption().getId())
+                .collect(Collectors.toSet());
+
+        for (String id : psInvitePoIds) {
+            if (!activePoIds.contains(id)) {
+                throw new VacademyException("Mapping " + id + " is not part of this course page");
+            }
+        }
+
+        return activeMappings.stream()
+                .filter(m -> psInvitePoIds.contains(m.getPsInvitePaymentOption().getId()))
+                .collect(Collectors.toList());
+    }
+
+    private PaymentInitiationRequestDTO clonePaymentRequest(PaymentInitiationRequestDTO source) {
+        PaymentInitiationRequestDTO clone = new PaymentInitiationRequestDTO();
+        clone.setVendor(source.getVendor());
+        clone.setVendorId(source.getVendorId());
+        clone.setCurrency(source.getCurrency());
+        clone.setInstituteId(source.getInstituteId());
+        clone.setEmail(source.getEmail());
+        clone.setStripeRequest(source.getStripeRequest());
+        clone.setRazorpayRequest(source.getRazorpayRequest());
+        clone.setEwayRequest(source.getEwayRequest());
+        clone.setCashfreeRequest(source.getCashfreeRequest());
+        clone.setPhonePeRequest(source.getPhonePeRequest());
+        clone.setChargeAutomatically(source.isChargeAutomatically());
+        clone.setIncludePendingItems(source.isIncludePendingItems());
+        return clone;
+    }
+
+    private List<CustomFieldValueDTO> filterFieldsForInvite(
+            List<CustomFieldValueDTO> allValues, String inviteId) {
+        if (allValues == null) return Collections.emptyList();
+        return allValues.stream()
+                .filter(v -> v.getEnrollInviteIds() == null
+                        || v.getEnrollInviteIds().isEmpty()
+                        || v.getEnrollInviteIds().contains(inviteId))
+                .collect(Collectors.toList());
+    }
+
+    private void createLineItem(String paymentLogId, String sourceId, int amount) {
+        paymentLogRepository.findById(paymentLogId).ifPresent(log -> {
+            PaymentLogLineItem item = new PaymentLogLineItem();
+            item.setPaymentLog(log);
+            item.setType(LINE_ITEM_TYPE);
+            item.setSource("ENROLL_INVITE");
+            item.setSourceId(sourceId);
+            item.setAmount(amount);
+            paymentLogLineItemRepository.save(item);
+        });
+    }
+
+    private vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtraDetails
+            mapToStudentExtraDetails(LearnerExtraDetails extra) {
+        if (extra == null) return null;
+        var d = new vacademy.io.admin_core_service.features.institute_learner.dto.StudentExtraDetails();
+        d.setFathersName(extra.getFathersName());
+        d.setMothersName(extra.getMothersName());
+        d.setParentsMobileNumber(extra.getParentsMobileNumber());
+        d.setParentsEmail(extra.getParentsEmail());
+        return d;
+    }
+}

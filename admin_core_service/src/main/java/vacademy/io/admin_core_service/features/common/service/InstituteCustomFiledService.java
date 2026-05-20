@@ -440,6 +440,7 @@ public class InstituteCustomFiledService {
 
         InstituteCustomFieldDTO instituteDTO = new InstituteCustomFieldDTO();
         instituteDTO.setId(icf.getId());
+        instituteDTO.setFieldId(cf.getId()); // the CustomFields PK — used as dedup key in aggregation
         instituteDTO.setInstituteId(icf.getInstituteId());
         instituteDTO.setType(icf.getType());
         instituteDTO.setTypeId(icf.getTypeId());

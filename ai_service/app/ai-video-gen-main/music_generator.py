@@ -37,7 +37,7 @@ MAX_CHUNK_SECONDS = 180.0
 MAX_SEGMENT_SECONDS = MAX_CHUNK_SECONDS
 
 _AWS_BUCKET = os.environ.get("AWS_BUCKET_NAME", "vacademy-media-storage")
-_AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
+_AWS_REGION = os.environ.get("S3_AWS_REGION") or os.environ.get("AWS_REGION", "ap-south-1")
 _AWS_PUBLIC_HOST = f"{_AWS_BUCKET}.s3.amazonaws.com"
 
 
@@ -364,7 +364,7 @@ def _resolve_music_provider() -> str:
         return "lyria"
     # fal-elevenlabs is a SFX model, not a music composer — keep it as
     # last-resort fallback when no Lyria creds exist.
-    if os.environ.get("FAL_API_KEY") or os.environ.get("FAL_KEY"):
+    if os.environ.get("FAL_API_KEY"):
         return "fal_elevenlabs"
     return "fallback"
 

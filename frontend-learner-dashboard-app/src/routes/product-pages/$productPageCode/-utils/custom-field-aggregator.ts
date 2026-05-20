@@ -23,8 +23,10 @@ export function getActiveFields(
 
 /**
  * Returns the initial set of selected ps_invite_payment_option_ids.
- * Priority: ?courseIds= URL param (comma-separated package_session_ids) →
- * fallback to DB preselected flag.
+ * Priority:
+ *   1. ?courseIds= URL param matched against package_session_id
+ *   2. ?courseIds= URL param matched against ps_invite_payment_option_id (admin may pass either)
+ *   3. DB preselected flag
  */
 export function resolveInitialSelection(
     mappings: ProductPageMappingResponse[],
@@ -32,11 +34,20 @@ export function resolveInitialSelection(
 ): string[] {
     if (courseIdsParam) {
         const ids = new Set(courseIdsParam.split(',').map((s) => s.trim()).filter(Boolean));
-        const matched = mappings
+
+        // Try package_session_id first (the canonical admin-generated URL format)
+        const byPsId = mappings
             .filter((m) => ids.has(m.package_session_id) && m.status === 'ACTIVE')
             .map((m) => m.ps_invite_payment_option_id);
-        if (matched.length > 0) return matched;
+        if (byPsId.length > 0) return byPsId;
+
+        // Also accept ps_invite_payment_option_id directly (URLs copied from admin settings)
+        const byOptionId = mappings
+            .filter((m) => ids.has(m.ps_invite_payment_option_id) && m.status === 'ACTIVE')
+            .map((m) => m.ps_invite_payment_option_id);
+        if (byOptionId.length > 0) return byOptionId;
     }
+
     // Fall back to DB preselected flag
     return mappings
         .filter((m) => m.preselected && m.status === 'ACTIVE')

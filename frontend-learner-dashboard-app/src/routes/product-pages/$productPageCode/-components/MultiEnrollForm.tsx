@@ -1,27 +1,63 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useProductPageStore } from '../-stores/product-page-store';
-import { getActiveFields } from '../-utils/custom-field-aggregator';
+import { getActiveFields, resolveInitialSelection } from '../-utils/custom-field-aggregator';
 import { submitProductPageForm } from '../-services/product-page-service';
 import { pushTnCAccepted } from '@/components/common/enroll-by-invite/-utils/gtm';
 import { CustomFieldRenderer } from '@/components/common/custom-fields/CustomFieldRenderer';
 import { getFieldRenderType } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
 import { parseDropdownOptions } from '@/components/common/enroll-by-invite/-utils/custom-field-helpers';
 import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react';
-import type { ProductPageData, ProductPageSettings, FieldValue } from '../-types/product-page-types';
+import type { ProductPageData, ProductPageSettings, FieldValue, PageJson } from '../-types/product-page-types';
+
+function parseSafeJson<T>(jsonStr: string | null | undefined, fallback: T): T {
+    if (!jsonStr) return fallback;
+    try { return JSON.parse(jsonStr) as T; } catch { return fallback; }
+}
+
+const EMPTY_PAGE_JSON: PageJson = { globalSettings: { primaryColor: '#4F46E5', logoFileId: '' }, components: [] };
 
 interface MultiEnrollFormProps {
     pageData: ProductPageData;
     settings: ProductPageSettings;
     primaryColor?: string;
+    courseIds?: string;
     onBack: () => void;
     onNext: () => void;
 }
 
-export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', onBack, onNext }: MultiEnrollFormProps) => {
+export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', courseIds, onBack, onNext }: MultiEnrollFormProps) => {
     const {
-        selectedPsOptionIds, setRegistrationData, setFormSubmitResult,
+        selectedPsOptionIds, setRegistrationData, setFormSubmitResult, toggleSelection, setSelection,
     } = useProductPageStore();
+
+    const currency = pageData.currency || 'INR';
+    const currencySymbol = currency === 'INR' ? '₹' : currency;
+
+    // Only the courses from the URL (or DB-preselected) — shown in "Enrolling for"
+    const primaryIds = useMemo(
+        () => new Set(resolveInitialSelection(pageData.mappings, courseIds)),
+        [pageData.mappings, courseIds]
+    );
+    const primaryMappings = useMemo(
+        () => pageData.mappings.filter((m) => primaryIds.has(m.ps_invite_payment_option_id)),
+        [pageData.mappings, primaryIds]
+    );
+
+    const pageSuggestions = useMemo(
+        () => parseSafeJson<PageJson>(pageData.page_json, EMPTY_PAGE_JSON).suggestions ?? {},
+        [pageData.page_json]
+    );
+    // Include selected suggested courses too so the user can remove them
+    const suggestedIds = useMemo(() => [...new Set(
+        selectedPsOptionIds.flatMap((id) => pageSuggestions[id] ?? [])
+    )], [selectedPsOptionIds, pageSuggestions]);
+
+    const removeSuggested = (id: string) =>
+        setSelection(selectedPsOptionIds.filter((sid) => sid !== id));
+    const suggestedMappings = useMemo(() => pageData.mappings.filter(
+        (m) => suggestedIds.includes(m.ps_invite_payment_option_id) && m.status === 'ACTIVE'
+    ), [pageData.mappings, suggestedIds]);
 
     const activeAggregatedFields = getActiveFields(
         pageData.mappings,
@@ -106,6 +142,94 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                         Fill in the details below to complete your enrollment
                     </p>
                 </div>
+
+                {/* Selected courses — compact single-line summary (URL-passed or preselected only) */}
+                {primaryMappings.length > 0 && (
+                    <div className="mb-5 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                        <span className="shrink-0 text-xs font-medium text-gray-400">Enrolling for:</span>
+                        {primaryMappings.map((m) => {
+                            const name = m.package_name
+                                ? `${m.package_name}${m.session_name ? ` · ${m.session_name}` : ''}`
+                                : m.payment_plan?.name || 'Course';
+                            const price = m.payment_plan?.actual_price ?? 0;
+                            return (
+                                <span
+                                    key={m.ps_invite_payment_option_id}
+                                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs"
+                                >
+                                    <span className="max-w-[140px] truncate font-medium text-gray-800">{name}</span>
+                                    {price > 0 && (
+                                        <span className="text-gray-400">·&nbsp;{currencySymbol}{price.toLocaleString()}</span>
+                                    )}
+                                </span>
+                            );
+                        })}
+                    </div>
+                )}
+
+                {/* Suggested courses — shown before the form so users can adjust their cart before filling fields */}
+                {(() => {
+                    const showOn = settings.suggestedCourses?.showOn ?? 'BOTH';
+                    const visible = settings.suggestedCourses?.enabled &&
+                        (showOn === 'FORM' || showOn === 'BOTH') &&
+                        suggestedMappings.length > 0;
+                    if (!visible) return null;
+                    return (
+                        <div className="mb-6">
+                            <h2 className="mb-3 text-sm font-semibold text-gray-700">
+                                {settings.suggestedCourses!.heading || 'People also buy'}
+                            </h2>
+                            <div className="flex gap-3 overflow-x-auto pb-2">
+                                {suggestedMappings.map((m) => {
+                                    const plan = m.payment_plan;
+                                    const isAdded = selectedPsOptionIds.includes(m.ps_invite_payment_option_id);
+                                    const initials = (m.package_name || plan?.name || 'C')
+                                        .trim().split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+                                    const label = m.package_name
+                                        ? `${m.package_name}${m.session_name ? ` · ${m.session_name}` : ''}`
+                                        : plan?.name || 'Course';
+                                    return (
+                                        <div
+                                            key={m.ps_invite_payment_option_id}
+                                            className="flex w-44 shrink-0 flex-col rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
+                                        >
+                                            <div
+                                                className="mb-2.5 flex size-10 items-center justify-center rounded-xl text-sm font-bold text-white"
+                                                style={{ backgroundColor: primaryColor }}
+                                            >
+                                                {initials}
+                                            </div>
+                                            <p className="mb-1 line-clamp-2 flex-1 text-xs font-semibold leading-snug text-gray-900">{label}</p>
+                                            <p className="mb-3 text-sm font-bold text-gray-900">
+                                                {(plan?.actual_price ?? 0) > 0
+                                                    ? `${currencySymbol}${plan!.actual_price.toLocaleString()}`
+                                                    : 'Free'}
+                                            </p>
+                                            {isAdded ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeSuggested(m.ps_invite_payment_option_id)}
+                                                    className="w-full rounded-lg border border-red-400 py-1.5 text-xs font-semibold text-red-500 transition-colors hover:opacity-80"
+                                                >
+                                                    − Remove
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleSelection(m.ps_invite_payment_option_id)}
+                                                    className="w-full rounded-lg border py-1.5 text-xs font-semibold transition-colors hover:opacity-80"
+                                                    style={{ borderColor: primaryColor, color: primaryColor }}
+                                                >
+                                                    + Add
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    );
+                })()}
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                     {activeAggregatedFields

@@ -1,6 +1,4 @@
-import { useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { handleGetProductPage } from "../-services/product-page-service";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useProductPageStore } from "../-stores/product-page-store";
 import { resolveInitialSelection } from "../-utils/custom-field-aggregator";
 import {
@@ -13,13 +11,18 @@ import { MultiEnrollForm } from "./MultiEnrollForm";
 import { CombinedPaymentStep } from "./CombinedPaymentStep";
 import { ProductPageSuccess } from "./ProductPageSuccess";
 import { CheckoutLayout } from "./CheckoutLayout";
-import type { ProductPageSettings, PageJson } from "../-types/product-page-types";
+import type {
+  ProductPageSettings,
+  PageJson,
+  ProductPageData,
+} from "../-types/product-page-types";
 
 interface ProductPageShellProps {
   productPageCode: string;
   instituteId: string;
+  pageData: ProductPageData;
   courseIds?: string;
-  defaultTab?: 'CATALOG' | 'CART' | 'PAYMENT';
+  defaultTab?: "CATALOG" | "CART" | "PAYMENT";
   utmParams: Record<string, string | undefined>;
 }
 
@@ -48,38 +51,31 @@ const DEFAULT_PAGE_JSON: PageJson = {
 export const ProductPageShell = ({
   productPageCode,
   instituteId,
+  pageData,
   courseIds,
   defaultTab,
   utmParams,
 }: ProductPageShellProps) => {
-  const { step, pageData, setPageData, setStep, setSelection, setUtmParams } =
+  const { step, setPageData, setStep, setSelection, setUtmParams } =
     useProductPageStore();
   const gtmFired = useRef(false);
-
-  const { data, isLoading, error } = useQuery({
-    ...handleGetProductPage(productPageCode, instituteId),
-  });
-
-  // Hydrate store once on data load
   const initialized = useRef(false);
-  useEffect(() => {
-    if (!data || initialized.current) return;
+
+  // useLayoutEffect runs synchronously before the browser paints — ensures the
+  // correct step is set before any frame is visible, preventing a flash of the
+  // catalog when the page is supposed to start on CART / FORM.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => {
+    if (initialized.current) return;
     initialized.current = true;
-    setPageData(data);
+
+    setPageData(pageData);
 
     const settings = parseSafeJson<ProductPageSettings>(
-      data.settings_json,
+      pageData.settings_json,
       DEFAULT_SETTINGS,
     );
-    const initial = resolveInitialSelection(data.mappings, courseIds);
-    setSelection(initial);
 
-    const utmFiltered = Object.fromEntries(
-      Object.entries(utmParams).filter(([, v]) => v !== undefined),
-    ) as Record<string, string>;
-    setUtmParams(utmFiltered);
-
-    // URL param overrides the saved setting — allows sharing step-specific links
     const resolvedStep = defaultTab ?? settings.defaultStep;
     const startStep =
       resolvedStep === "CART"
@@ -87,43 +83,44 @@ export const ProductPageShell = ({
         : resolvedStep === "PAYMENT"
           ? "FORM"
           : "CATALOG";
-    setStep(startStep);
-  }, [data]);
 
-  // GTM injection
+    const initial = resolveInitialSelection(pageData.mappings, courseIds);
+
+    // Suggested course IDs must never be auto-selected — they are opt-in only.
+    const pageJson = parseSafeJson<PageJson>(pageData.page_json, DEFAULT_PAGE_JSON);
+    const allSuggestedIds = new Set(Object.values(pageJson.suggestions ?? {}).flat());
+
+    const finalSelection =
+      initial.length > 0 || startStep === "CATALOG"
+        ? initial
+        : pageData.mappings
+            .filter((m) => m.status === "ACTIVE" && !allSuggestedIds.has(m.ps_invite_payment_option_id))
+            .map((m) => m.ps_invite_payment_option_id);
+    setSelection(finalSelection);
+
+    const utmFiltered = Object.fromEntries(
+      Object.entries(utmParams).filter(([, v]) => v !== undefined),
+    ) as Record<string, string>;
+    setUtmParams(utmFiltered);
+
+    setStep(startStep);
+  }, []);
+
+  // GTM injection — run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (!data || gtmFired.current) return;
+    if (gtmFired.current) return;
     const settings = parseSafeJson<ProductPageSettings>(
-      data.settings_json,
+      pageData.settings_json,
       DEFAULT_SETTINGS,
     );
-    const gtmId = settings.gtmContainerId || data.gtm_container_id;
+    const gtmId = settings.gtmContainerId || pageData.gtm_container_id;
     if (gtmId) {
       injectGtm(gtmId);
       gtmFired.current = true;
       pushProductPageView(productPageCode, settings.defaultStep, utmParams);
     }
-  }, [data]);
-
-  if (isLoading || !pageData) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <div className="size-10 animate-spin rounded-full border-4 border-gray-200 border-t-blue-600" />
-      </div>
-    );
-  }
-
-  if (error) {
-    const msg = error instanceof Error ? error.message : "Failed to load page";
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 text-center">
-        <p className="text-lg font-semibold text-gray-700">
-          Unable to load this page
-        </p>
-        <p className="mt-2 text-sm text-gray-500">{msg}</p>
-      </div>
-    );
-  }
+  }, []);
 
   const settings = parseSafeJson<ProductPageSettings>(
     pageData.settings_json,
@@ -144,7 +141,11 @@ export const ProductPageShell = ({
       )}
 
       {(step === "CART" || step === "FORM" || step === "PAYMENT") && (
-        <CheckoutLayout pageData={pageData} pageJson={pageJson} primaryColor={primaryColor}>
+        <CheckoutLayout
+          pageData={pageData}
+          pageJson={pageJson}
+          primaryColor={primaryColor}
+        >
           {step === "CART" && (
             <CartStep
               pageData={pageData}
@@ -159,6 +160,7 @@ export const ProductPageShell = ({
               pageData={pageData}
               settings={settings}
               primaryColor={primaryColor}
+              courseIds={courseIds}
               onBack={() => setStep("CART")}
               onNext={() => setStep("PAYMENT")}
             />

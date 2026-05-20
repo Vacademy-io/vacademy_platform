@@ -754,8 +754,8 @@ export const OFFLINE_CREATE_AND_SUBMIT = `${BASE_URL}/assessment-service/assessm
 export const SYNC_MAX_SESSIONS = `${BASE_URL}/auth-service/v1/institute-settings/update-max-sessions`;
 
 // Product Pages
-export const PRODUCT_PAGE_BASE_URL = `${'http://localhost:8072'}/admin-core-service/v1/product-page`;
-export const PRODUCT_PAGE_OPEN_URL = `${'http://localhost:8072'}/admin-core-service/open/v1/product-page`;
+export const PRODUCT_PAGE_BASE_URL = `${BASE_URL}/admin-core-service/v1/product-page`;
+export const PRODUCT_PAGE_OPEN_URL = `${BASE_URL}/admin-core-service/open/v1/product-page`;
 export const GET_ALL_PRODUCT_PAGES = (instituteId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/get-all?instituteId=${instituteId}`;
 export const CREATE_PRODUCT_PAGE = (instituteId: string) =>

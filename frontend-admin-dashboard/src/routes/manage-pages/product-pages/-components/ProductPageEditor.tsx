@@ -92,7 +92,7 @@ export const ProductPageEditor = () => {
                 <MyButton
                     buttonType="secondary"
                     scale="medium"
-                    onClick={() => navigate({ to: '/manage-pages/product-pages/' })}
+                    onClick={() => navigate({ to: '/manage-pages/product-pages' })}
                 >
                     Back to list
                 </MyButton>
@@ -105,7 +105,7 @@ export const ProductPageEditor = () => {
             {/* Top bar */}
             <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-neutral-200 bg-white px-6 py-3">
                 <button
-                    onClick={() => navigate({ to: '/manage-pages/product-pages/' })}
+                    onClick={() => navigate({ to: '/manage-pages/product-pages' })}
                     className="flex items-center gap-1.5 text-sm text-neutral-500 hover:text-neutral-700 transition-colors"
                 >
                     <ArrowLeft className="size-4" />

@@ -274,7 +274,7 @@ export const SELECT_INSTITUTE_SESSION = `${BASE_URL}/auth-service/learner/v1/ses
 export const VALIDATE_SESSION = `${BASE_URL}/auth-service/learner/v1/session/validate`;
 
 // Product Pages (open — no auth required)
-export const PRODUCT_PAGE_OPEN_URL = `${"http://localhost:8072"}/admin-core-service/open/v1/product-page`;
+export const PRODUCT_PAGE_OPEN_URL = `${BASE_URL}/admin-core-service/open/v1/product-page`;
 export const GET_PRODUCT_PAGE_BY_CODE = (code: string, instituteId: string) =>
   `${PRODUCT_PAGE_OPEN_URL}/by-code?code=${code}&instituteId=${instituteId}`;
 export const VALIDATE_PRODUCT_PAGE_COUPON = `${PRODUCT_PAGE_OPEN_URL}/validate-coupon`;

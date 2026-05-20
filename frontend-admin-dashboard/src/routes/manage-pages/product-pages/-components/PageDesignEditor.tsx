@@ -438,7 +438,7 @@ const HeaderEditor = ({ props: p, onChange }: EditorProps) => {
                     <input type="checkbox" checked={(cta.enabled as boolean) ?? false} onChange={(e) => updateCta('enabled', e.target.checked)} className="size-4 accent-primary-500" />
                     <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-400">CTA Button</span>
                 </label>
-                {cta.enabled && (
+                {!!(cta.enabled) && (
                     <div className="space-y-2 pt-1">
                         <Input value={(cta.text as string) || ''} onChange={(e) => updateCta('text', e.target.value)} placeholder="Enroll Now" className="h-7 text-xs" />
                         <Input value={(cta.url as string) || ''} onChange={(e) => updateCta('url', e.target.value)} placeholder="URL or #section" className="h-7 text-xs" />

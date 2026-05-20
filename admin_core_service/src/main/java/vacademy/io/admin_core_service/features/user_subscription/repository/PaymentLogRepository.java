@@ -56,6 +56,12 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                       AND psli.packageSession.id IN (:packageSessionIds)
                   ))
               AND (:#{#userId == null ? 1 : 0} = 1 OR up.userId = :userId)
+              AND NOT EXISTS (
+                    SELECT 1
+                    FROM PackageSessionLearnerInvitationToPaymentOption psli_int
+                    WHERE psli_int.enrollInvite.id = ei.id
+                      AND psli_int.packageSession.packageEntity.packageType IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')
+                  )
             ORDER BY pl.createdAt DESC
       """, countQuery = """
       SELECT COUNT(pl) FROM PaymentLog pl
@@ -76,6 +82,12 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                 AND psli.packageSession.id IN (:packageSessionIds)
             ))
         AND (:#{#userId == null ? 1 : 0} = 1 OR up.userId = :userId)
+        AND NOT EXISTS (
+              SELECT 1
+              FROM PackageSessionLearnerInvitationToPaymentOption psli_int
+              WHERE psli_int.enrollInvite.id = ei.id
+                AND psli_int.packageSession.packageEntity.packageType IN ('DELIVERY_CHARGE', 'SECURITY_DEPOSIT')
+            )
       """)
   Page<PaymentLog> findPaymentLogIdsWithFilters(
       @Param("instituteId") String instituteId,

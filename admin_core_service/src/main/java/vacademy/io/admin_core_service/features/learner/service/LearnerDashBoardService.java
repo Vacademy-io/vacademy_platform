@@ -139,8 +139,22 @@ public class LearnerDashBoardService {
         List<String> validPackageSessionIds = (packageSessionId == null) ? List.of()
                 : packageSessionId.stream().filter(id -> id != null && !id.isBlank()).collect(java.util.stream.Collectors.toList());
 
+        // Count of user-visible packages — excludes internal types (DELIVERY_CHARGE,
+        // SECURITY_DEPOSIT) so the dashboard "books" count matches what the My Books
+        // widget renders. Filtering here (not in the repo) keeps the underlying query
+        // reusable by other callers that legitimately need internal types.
+        int visiblePackagesCount = packageRepository
+                .findDistinctPackagesByUserIdAndInstituteId(user.getUserId(), instituteId)
+                .stream()
+                .filter(p -> {
+                    String t = p.getPackageType();
+                    return t == null || (!"DELIVERY_CHARGE".equals(t) && !"SECURITY_DEPOSIT".equals(t));
+                })
+                .toList()
+                .size();
+
         return new LeanerDashBoardDetailDTO(
-                packageRepository.countDistinctPackagesByUserIdAndInstituteId(user.getUserId(), instituteId),
+                visiblePackagesCount,
                 0,
                 validPackageSessionIds.isEmpty() ? List.of() : slideRepository.findRecentIncompleteSlides(
                         user.getUserId(),

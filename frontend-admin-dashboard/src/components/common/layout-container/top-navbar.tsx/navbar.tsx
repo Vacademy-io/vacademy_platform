@@ -27,6 +27,7 @@ import {
     getTokenFromCookie,
     getUserRoles,
     removeCookiesAndLogout,
+    clearAllClientStorage,
 } from '@/lib/auth/sessionUtility';
 import { useNavigate } from '@tanstack/react-router';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -215,6 +216,7 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
         resetChapterSidebarStore();
 
         removeCookiesAndLogout(); // Ensure logout completes
+        clearAllClientStorage(); // Wipe localStorage + sessionStorage on explicit user logout
         navigate({
             to: '/login',
         });

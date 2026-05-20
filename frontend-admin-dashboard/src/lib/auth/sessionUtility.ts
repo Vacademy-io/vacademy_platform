@@ -280,6 +280,33 @@ const removeCookiesAndLogout = (): void => {
     Cookies.remove(TokenKey.refreshToken, { domain: SSO_CONFIG.SHARED_DOMAIN });
 };
 
+// Full client-side storage wipe — only call from user-initiated logout flows,
+// NOT from axios interceptors or token-refresh failure handlers, since those
+// fire on transient 401s during page load and would blank the app on refresh.
+// Preserves theme keys so the user's visual preference survives logout/login.
+const LOGOUT_PRESERVED_LOCAL_STORAGE_KEYS = ['theme-code', 'theme-custom-color'] as const;
+
+const clearAllClientStorage = (): void => {
+    try {
+        const preserved: Record<string, string> = {};
+        for (const key of LOGOUT_PRESERVED_LOCAL_STORAGE_KEYS) {
+            const value = localStorage.getItem(key);
+            if (value !== null) preserved[key] = value;
+        }
+        localStorage.clear();
+        for (const [key, value] of Object.entries(preserved)) {
+            localStorage.setItem(key, value);
+        }
+    } catch (error) {
+        console.warn('Failed to clear localStorage during logout:', error);
+    }
+    try {
+        sessionStorage.clear();
+    } catch (error) {
+        console.warn('Failed to clear sessionStorage during logout:', error);
+    }
+};
+
 // Debug function to check token status
 const debugTokenStatus = (): void => {
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
@@ -298,6 +325,7 @@ const debugTokenStatus = (): void => {
 export {
     refreshTokens,
     removeCookiesAndLogout,
+    clearAllClientStorage,
     setAuthorizationCookie,
     getTokenFromCookie,
     isTokenExpired,

@@ -335,6 +335,154 @@ const CartControls: React.FC<{
   return null;
 };
 
+// ─── New course card (image + name + description + price + View/Add buttons) ──
+
+interface CourseCardProps {
+  course: Course;
+  globalSettings?: any;
+  showCartControls: boolean;
+  displayTitle: boolean;
+  displayDescription: boolean;
+  displayImage: boolean;
+  displayPrice: boolean;
+  displayLevel: boolean;
+  roundedEdges: boolean;
+  onView: () => void;
+  addItem: (item: Omit<CartItem, "quantity">) => void;
+  removeItem: (enrollInviteId: string) => void;
+  getItemByEnrollInviteId: (id: string) => CartItem | undefined;
+}
+
+const CourseCard: React.FC<CourseCardProps> = ({
+  course,
+  globalSettings,
+  showCartControls,
+  displayTitle,
+  displayDescription,
+  displayImage,
+  displayPrice,
+  displayLevel,
+  roundedEdges,
+  onView,
+  addItem,
+  removeItem,
+  getItemByEnrollInviteId,
+}) => {
+  const cartItem = course.enrollInviteId
+    ? getItemByEnrollInviteId(course.enrollInviteId)
+    : undefined;
+  const isInCart = !!cartItem;
+
+  return (
+    <div
+      className={`flex flex-col bg-white border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all duration-200 ${
+        roundedEdges ? "rounded-xl" : "rounded-none"
+      }`}
+    >
+      {/* Image with inner card border */}
+      {displayImage && (
+        <div className="p-3 pb-2">
+          <div className="overflow-hidden rounded-lg border border-gray-100">
+            <CourseImage
+              previewImageUrl={course.thumbnail}
+              alt={course.title}
+              className="w-full object-cover"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="flex flex-col flex-1 px-4 pb-4 pt-1">
+        {/* Level badge */}
+        {displayLevel && course.level && (
+          <span className="inline-block self-start px-2 py-0.5 bg-primary-50 text-primary-700 text-xs rounded-md mb-2">
+            {course.level}
+          </span>
+        )}
+
+        {/* Name */}
+        {displayTitle && (
+          <h3 className="font-semibold text-gray-900 text-sm leading-snug line-clamp-2 mb-1.5">
+            {course.title}
+          </h3>
+        )}
+
+        {/* Description */}
+        {displayDescription &&
+          course.description &&
+          course.description !== "No description available" && (
+            <p className="text-xs text-gray-500 leading-relaxed line-clamp-2 mb-2 flex-1">
+              {course.description}
+            </p>
+          )}
+
+        {/* Price */}
+        {displayPrice && globalSettings?.payment?.enabled !== false && (
+          <p className="text-base font-bold text-[hsl(var(--catalogue-text-primary))] mb-4 mt-1">
+            {course.price === 0
+              ? "Free"
+              : `${getCurrencySymbol(course.currency || "INR")}${course.price.toLocaleString()}`}
+          </p>
+        )}
+
+        {/* Action buttons */}
+        <div className="flex gap-2 mt-auto">
+          <button
+            type="button"
+            onClick={onView}
+            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+          >
+            View
+          </button>
+          {showCartControls && course.enrollInviteId &&
+            (isInCart ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeItem(course.enrollInviteId!);
+                  toast.success(`${course.title} removed from cart`);
+                }}
+                className="flex-1 rounded-lg border border-red-300 bg-white px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 hover:border-red-400 transition-colors"
+              >
+                Remove
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!course.enrollInviteId) {
+                    toast.error(
+                      "Cannot add item to cart: missing enroll invite ID",
+                    );
+                    return;
+                  }
+                  addItem({
+                    id: course.id,
+                    title: course.title,
+                    price: course.price,
+                    image: course.thumbnail,
+                    level: course.level,
+                    packageSessionId: course.packageSessionId,
+                    enrollInviteId: course.enrollInviteId,
+                    levelId: course.levelId,
+                    courseId: course.courseId,
+                  });
+                  toast.success(`${course.title} added to cart!`);
+                }}
+                className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors"
+              >
+                Add
+              </button>
+            ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   title,
   showFilters,
@@ -358,6 +506,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortOption, setSortOption] = useState("Newest");
+  const [totalApiElements, setTotalApiElements] = useState(0);
 
   // Filter states
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
@@ -369,7 +518,39 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 6;
+  const itemsPerPage = 9;
+
+  // Derive filter options from loaded courses (before shouldShow* checks)
+  const levels = useMemo(
+    () =>
+      [...new Set(courses.map((c) => c.level).filter(Boolean))].map(
+        (level) => ({ id: level, name: toTitleCase(level) }),
+      ),
+    [courses],
+  );
+  const tags = useMemo(
+    () =>
+      [
+        ...new Set(
+          courses
+            .flatMap(
+              (c) =>
+                c.comma_separeted_tags
+                  ?.split(",")
+                  .map((t: string) => t.trim()) || [],
+            )
+            .filter(Boolean),
+        ),
+      ].map((tag) => ({ id: tag, name: tag })),
+    [courses],
+  );
+  const instructors = useMemo(
+    () =>
+      [...new Set(courses.map((c) => c.instructor).filter(Boolean))].map(
+        (instructor) => ({ id: instructor, name: instructor }),
+      ),
+    [courses],
+  );
 
   // Enrollment dialog state
   // Removed enrollment dialog state - all enrollment happens on details page
@@ -425,10 +606,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     [filtersConfig]
   );
   const defaultToAllFilters = filterIds.size === 0;
-  const shouldShowLevelFilter = filtersEnabled && (defaultToAllFilters || filterIds.has("level"));
-  const shouldShowTagsFilter = filtersEnabled && (defaultToAllFilters || filterIds.has("tags"));
+  const shouldShowLevelFilter =
+    filtersEnabled && (defaultToAllFilters || filterIds.has("level")) && levels.length > 1;
+  const shouldShowTagsFilter =
+    filtersEnabled && (defaultToAllFilters || filterIds.has("tags")) && tags.length > 0;
   const shouldShowInstructorFilter =
-    filtersEnabled && (defaultToAllFilters || filterIds.has("instructors") || filterIds.has("authors"));
+    filtersEnabled &&
+    (defaultToAllFilters || filterIds.has("instructors") || filterIds.has("authors")) &&
+    instructors.length > 1;
   const priceFilterConfig = useMemo(
     () =>
       filtersEnabled
@@ -537,7 +722,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           params: {
             instituteId: instituteId,
             page: 0,
-            size: 20, // Reasonable size for course catalog
+            size: 50,
             sort: "createdAt,desc"
           },
           headers: {
@@ -588,25 +773,9 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
           };
         });
 
+        setTotalApiElements(response.data?.totalElements || transformedCourses.length);
         setCourses(transformedCourses);
         setFilteredCourses(transformedCourses);
-
-        // Debug: Log available level values to help diagnose filtering
-        if (transformedCourses.length > 0) {
-          const uniqueLevels = [...new Set(transformedCourses.map(c => c.level || c.level_name))];
-          console.log('[CourseCatalogComponent] Available level values:', uniqueLevels);
-          // Log first course to see all available fields
-          if (transformedCourses[0]) {
-            console.log('[CourseCatalogComponent] Sample course fields:', {
-              level: transformedCourses[0].level,
-              level_name: transformedCourses[0].level_name,
-              allKeys: Object.keys(transformedCourses[0]).filter(k =>
-                k.toLowerCase().includes('buy') ||
-                k.toLowerCase().includes('rent')
-              )
-            });
-          }
-        }
       } catch (error) {
         console.error("[CourseCatalogComponent] Error fetching courses:", error);
         setCourses([]);
@@ -783,7 +952,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     }
 
     navigate({
-      to: `/${tagName}/${course.id}`,
+      to: `/${tagName}/${course.packageSessionId || course.id}`,
       search: searchParams.toString() ? {
         enrollInviteId: course.enrollInviteId,
         packageSessionId: course.packageSessionId,
@@ -793,24 +962,6 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     });
   };
 
-
-  // Get unique values for filters
-  const levels = [...new Set(courses.map(course => course.level))].map(level => ({
-    id: level,
-    name: toTitleCase(level)
-  }));
-
-  const tags = [...new Set(courses.flatMap(course =>
-    course.comma_separeted_tags?.split(',').map((tag: string) => tag.trim()) || []
-  ))].map(tag => ({
-    id: tag,
-    name: tag
-  }));
-
-  const instructors = [...new Set(courses.map(course => course.instructor))].map(instructor => ({
-    id: instructor,
-    name: instructor
-  }));
 
   const filterBadgeCount =
     selectedLevels.length +
@@ -1027,123 +1178,80 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
             </div>
 
             {/* Course Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
               {paginatedCourses.map((course, index) => (
-                <div
+                <CourseCard
                   key={`${course.id}-${index}-${currentPage}`}
-                  className={`bg-white overflow-hidden cursor-pointer transition-colors duration-200 border border-gray-200 hover:border-gray-300 ${render?.styles?.roundedEdges !== false ? 'rounded-lg' : 'rounded-none'
-                    }`}
-                  onClick={() => handleCourseClick(course)}
-                >
-                  {/* Course Thumbnail */}
-                  {displayImage && (
-                    <CourseImage
-                      previewImageUrl={course.thumbnail}
-                      alt={course.title}
-                      className="w-full h-40 object-cover"
-                    />
-                  )}
-
-                  <div className="p-3">
-                    {/* Course Title */}
-                    {displayTitle && (
-                      <h3 className="text-base font-semibold text-gray-900 mb-1.5 line-clamp-2">
-                        {course.title}
-                      </h3>
-                    )}
-
-                    {/* Course Description */}
-                    {displayDescription && (
-                      <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                        {course.description}
-                      </p>
-                    )}
-
-                    {/* Course Info */}
-                    <div className="flex flex-col gap-2">
-                      {/* Price */}
-                      {displayPrice && globalSettings?.payment?.enabled !== false && (
-                        <span className="text-lg font-bold text-primary-600">
-                          {course.price === 0 ? "Free" : `${getCurrencySymbol(course.currency || 'INR')}${course.price.toFixed(2)}`}
-                        </span>
-                      )}
-
-                      {/* Badges and Cart */}
-                      {(displayLevel || displayRating || shouldShowCartControls) && (
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {displayLevel && (
-                              <span className="px-2 py-0.5 bg-primary-50 text-primary-700 text-xs rounded-md">
-                                {course.level}
-                              </span>
-                            )}
-                            {displayRating && course.rating > 0 && (
-                              <span className="px-2 py-0.5 bg-amber-50 text-amber-700 text-xs rounded-md">
-                                ⭐ {course.rating.toFixed(1)}
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Add to Cart Button or Quantity Controls */}
-                          {shouldShowCartControls && (
-                            <CartControls
-                              course={course}
-                              globalSettings={globalSettings}
-                              cartButtonConfig={cartButtonConfig}
-                              addItem={addItem}
-                              getItemByEnrollInviteId={getItemByEnrollInviteId}
-                              updateQuantity={updateQuantity}
-                              removeItem={removeItem}
-                            />
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                  course={course}
+                  globalSettings={globalSettings}
+                  showCartControls={shouldShowCartControls}
+                  displayTitle={displayTitle}
+                  displayDescription={displayDescription}
+                  displayImage={displayImage}
+                  displayPrice={displayPrice}
+                  displayLevel={displayLevel}
+                  roundedEdges={render?.styles?.roundedEdges !== false}
+                  onView={() => handleCourseClick(course)}
+                  addItem={addItem}
+                  removeItem={removeItem}
+                  getItemByEnrollInviteId={getItemByEnrollInviteId}
+                />
               ))}
             </div>
 
             {/* No Results */}
             {filteredCourses.length === 0 && (
               <div className="text-center py-8">
-                <p className="text-gray-500 text-base">No courses found matching your criteria.</p>
+                <p className="text-gray-500 text-base">
+                  No courses found matching your criteria.
+                </p>
               </div>
             )}
 
-            {/* Pagination - Only show if there are multiple pages */}
+            {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex justify-center">
-                <div className="flex space-x-2">
-                  <Button
-                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                     disabled={currentPage === 1}
-                    className="px-3 py-2"
+                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Previous
-                  </Button>
+                  </button>
 
                   {[...Array(totalPages)].map((_, i) => (
-                    <Button
+                    <button
                       key={i + 1}
+                      type="button"
                       onClick={() => setCurrentPage(i + 1)}
-                      className={`px-3 py-2 ${currentPage === i + 1
-                        ? 'bg-primary-600 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-50'
-                        }`}
+                      className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                        currentPage === i + 1
+                          ? "border-primary-600 bg-primary-600 text-white"
+                          : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                      }`}
                     >
                       {i + 1}
-                    </Button>
+                    </button>
                   ))}
 
-                  <Button
-                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                    }
                     disabled={currentPage === totalPages}
-                    className="px-3 py-2"
+                    className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Next
-                  </Button>
+                  </button>
                 </div>
+                {totalApiElements > courses.length && (
+                  <p className="text-xs text-gray-400">
+                    Showing {courses.length} of {totalApiElements} courses
+                  </p>
+                )}
               </div>
             )}
           </div>

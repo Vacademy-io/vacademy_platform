@@ -13,5 +13,8 @@ public class RazorpayRequestDTO {
     private String applicantId;
     private String paymentOptionId;
 
-    // Getters and setters
+    // Set by Razorpay JS SDK after payment — used for Phase 2 signature verification
+    private String razorpayPaymentId;
+    private String razorpayOrderId;
+    private String razorpaySignature;
 }

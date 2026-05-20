@@ -348,6 +348,11 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemLink: '/manage-pages',
                 subItemId: 'website-builder',
             },
+            {
+                subItem: 'Product Pages',
+                subItemLink: '/manage-pages/product-pages',
+                subItemId: 'product-pages',
+            },
         ],
     },
     {

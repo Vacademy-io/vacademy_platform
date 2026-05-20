@@ -202,6 +202,27 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "stepsProcess":
         return <StepsProcessRenderer key={id} {...props} />;
 
+      case "productCourseGrid":
+        // In the catalogue context, render as a standard course catalog grid
+        return (
+          <CourseCatalogComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            globalSettings={globalSettings}
+            tagName={tagName}
+          />
+        );
+
+      case "htmlBlock":
+        return (
+          <div
+            key={id}
+            className="px-6 py-4"
+            dangerouslySetInnerHTML={{ __html: (props.html as string) || "" }}
+          />
+        );
+
       case "columnLayout": {
         const {
           slots = [] as any[][],

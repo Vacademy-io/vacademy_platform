@@ -83,7 +83,7 @@ function getThumbnailStyle(primaryColor: string, selected: boolean) {
 
 // ─── Full-width header ────────────────────────────────────────────────────────
 
-const HeaderBlock = ({
+export const HeaderBlock = ({
   props,
   primaryColor,
   pageName,
@@ -219,7 +219,7 @@ const HtmlBlock = ({ props }: { props: Record<string, unknown> }) => {
   );
 };
 
-const FooterBlock = ({ props }: { props: Record<string, unknown> }) => {
+export const FooterBlock = ({ props }: { props: Record<string, unknown> }) => {
   const text = (props.text as string) || "";
   if (!text) return null;
   return (
@@ -1214,7 +1214,7 @@ const HeroSectionBlock = ({
   );
 };
 
-const NewHeaderBlock = ({
+export const NewHeaderBlock = ({
   props,
   primaryColor,
   pageName,
@@ -1273,7 +1273,7 @@ const NewHeaderBlock = ({
   );
 };
 
-const NewFooterBlock = ({ props }: { props: Record<string, unknown> }) => {
+export const NewFooterBlock = ({ props }: { props: Record<string, unknown> }) => {
   const left = (props.leftSection as Record<string, unknown>) || {};
   const bottomNote = (props.bottomNote as string) || (props.text as string) || "";
   const title = (left.title as string) || "";

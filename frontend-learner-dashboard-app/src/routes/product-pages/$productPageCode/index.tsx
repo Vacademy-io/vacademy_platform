@@ -108,6 +108,7 @@ function ProductPageLoader({
             <ProductPageShell
                 productPageCode={productPageCode}
                 instituteId={instituteId}
+                pageData={data}
                 courseIds={search.courseIds}
                 defaultTab={search.defaultTab}
                 utmParams={{

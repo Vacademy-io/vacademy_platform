@@ -293,7 +293,6 @@ export const TrueFalseQuestionPaperTemplateMainView = ({
 
     return (
         <div className={className}>
-            <QuestionSettingsPopover form={form} currentQuestionIndex={currentQuestionIndex} />
 
             <QuestionHeader
                 form={form}

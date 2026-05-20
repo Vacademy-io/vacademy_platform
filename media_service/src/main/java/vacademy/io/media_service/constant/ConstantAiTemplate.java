@@ -453,18 +453,24 @@ public class ConstantAiTemplate {
 
     private static String getPdfToQuestionWithTopicTemplate() {
         return """
+                ============================================================
+                TEACHER'S REQUEST (read this FIRST and follow it EXACTLY):
+                Required Topics :  {requiredTopics}
+
+                The teacher wants questions matching these specific topics / pages / question numbers. You MUST honor the count, type, difficulty, and language they specified if present in the topic description. Do NOT pull questions from outside the required scope.
+                ============================================================
+
                 HTML raw data :  {htmlData}
 
                 Already extracted question Number = {allQuestionNumbers}
 
-                Required Topics :  {requiredTopics}
-
                         Prompt:
-                        Convert the given HTML file containing questions, only extract questions from the given topics into the following JSON format:
+                        Extract ONLY questions that match the Required Topics above into the following JSON format:
                         - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
                         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
                         - Do not generate any questions if already generated all questions from Required Topics and set is_process_completed true.
                         - Preserve all DS_TAGs in HTML content in comments
+                        - If the teacher specified a question count, type, difficulty, or language in the Required Topics description, you MUST honor it on every question you produce.
                         {imageInstruction}
 
                         JSON format :
@@ -512,76 +518,95 @@ public class ConstantAiTemplate {
 
     private static String getPdfToQuestionTemplate() {
         return """
+                ============================================================
+                TEACHER'S REQUEST (read this FIRST and follow it EXACTLY):
+                {userPrompt}
+                ============================================================
+
                 HTML raw data :  {htmlData}
                 Already extracted question Number = {allQuestionNumbers}
 
-                        Prompt:
-                        Convert the given HTML file containing questions into the following JSON format:
-                         - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
-                         - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
-                         - Do not generate any questions if already generated required questions and set is_process_completed true.
-                         - Preserve all DS_TAGs in HTML content in comments
-                         {imageInstruction}
+                Prompt:
+                You are generating a question paper from the provided HTML source. The TEACHER'S REQUEST above states the count, question type, difficulty, and language. You MUST honor every part of it. If the request says "10 MCQ questions", produce exactly 10 questions and every one MUST be MCQS type — not a mix unless "Mixed" was explicitly requested. If the request specifies a language, EVERY question, option, answer, and explanation MUST be in that language.
 
-                        JSON format :
+                Generation rules:
+                 - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
+                 - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
+                 - Do not generate any questions if already generated the number the teacher requested and set is_process_completed true.
+                 - Preserve all DS_TAGs in HTML content in comments
+                 {imageInstruction}
 
-                                {{
-                                         "questions": [
+                JSON format :
+
+                        {{
+                                 "questions": [
+                                     {{
+                                         "question_number": "number",
+                                         "question": {{
+                                             "type": "HTML",
+                                             "content": "string" // Include img tags if present
+                                         }},
+                                         "options": [
                                              {{
-                                                 "question_number": "number",
-                                                 "question": {{
-                                                     "type": "HTML",
-                                                     "content": "string" // Include img tags if present
-                                                 }},
-                                                 "options": [
-                                                     {{
-                                                         "type": "HTML",
-                                                         "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
-                                                         "content": "string" // Include img tags if present
-                                                     }}
-                                                 ],
-                                                 "correct_options": ["1"], // preview_id of correct option or list of correct options
-                                                 "ans": "string",
-                                                 "exp": "string",
-                                                 "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER ", //Strictly Include question_type
-                                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-                                                 "level": "easy | medium | hard"
+                                                 "type": "HTML",
+                                                 "preview_id": "string", // generate sequential id for each option like "1", "2", "3", "4"
+                                                 "content": "string" // Include img tags if present
                                              }}
                                          ],
-                                         "title": "string" // Suitable title for the question paper,
-                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
-                                         "is_process_completed": false,
-                                         "difficulty": "easy | medium | hard",
-                                         "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
-                                         "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
+                                         "correct_options": ["1"], // preview_id of correct option or list of correct options
+                                         "ans": "string",
+                                         "exp": "string",
+                                         "question_type": "MCQS | MCQM | ONE_WORD | LONG_ANSWER ", //Strictly Include question_type
+                                         "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+                                         "level": "easy | medium | hard"
                                      }}
+                                 ],
+                                 "title": "string" // Suitable title for the question paper,
+                                 "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"] // multiple chapter and topic names for question paper,
+                                 "is_process_completed": false,
+                                 "difficulty": "easy | medium | hard",
+                                 "subjects": ["subject1", "subject2", "subject3", "subject4", "subject5"] // multiple subject names for question paper like maths or thermodynamics or physics etc ,
+                                 "classes": ["class 1" , "class 2" ] // can be of multiple class - | class 3 | class 4 | class 5 | class 6 | class 7 | class 8 | class 9 | class 10 | class 11 | class 12 | engineering | medical | commerce | law
+                             }}
 
-                        For LONG_ANSWER, and ONE_WORD question types:
-                        - Leave 'correct_options' empty but fill 'ans' and 'exp'
-                        - Omit 'options' field entirely
+                For LONG_ANSWER, and ONE_WORD question types:
+                - Leave 'correct_options' empty but fill 'ans' and 'exp'
+                - Omit 'options' field entirely
 
-                        Also keep the DS_TAGS field intact in html
-                        And do not try to calculate right ans, only add if available in input
+                Also keep the DS_TAGS field intact in html
+                And do not try to calculate right ans, only add if available in input
 
-                        IMPORTANT: {userPrompt}
+                ============================================================
+                FINAL REMINDER — match the teacher's request EXACTLY:
+                {userPrompt}
+
+                If the request says "N questions", produce exactly N — not fewer, not more.
+                If the request specifies a single question type (MCQ, True/False, Numeric, Short answer), EVERY question MUST be that type.
+                If the request specifies a difficulty, set "level" on every question and the top-level "difficulty" to match.
+                If the request specifies a language other than English, generate ALL content (questions, options, answers, explanations) in that language. DO NOT default to English.
+                ============================================================
                 """;
     }
 
     private static String getAudioToQuestionTemplate() {
         return """
+                ============================================================
+                TEACHER'S REQUIREMENTS (follow EXACTLY):
+                  • Number of questions: {numQuestions}  (produce exactly this many — no fewer, no more)
+                  • Difficulty: {difficulty}             (set this on every question's "level" AND the top-level "difficulty")
+                  • Language: {language}                 (ALL questions, options, answers, explanations in this language — do NOT default to English)
+                  • Additional teacher prompt: {optionalPrompt}
+                ============================================================
+
                 Class Lecture raw data :  {classLecture}
-                Questions Difficulty :  {difficulty}
-                Number of Questions :  {numQuestions}
-                Optional Teacher Prompt :  {optionalPrompt}
-                Language of questions:  {language}
                 Already extracted question Number = {allQuestionNumbers}
 
 
                         Prompt:
-                        From the given audio lecture compile hard and medium questions, try engaging questions, convert it into the following JSON format:
+                        From the given audio lecture, generate engaging questions of the difficulty specified above, in the language specified above, in the count specified above. Convert into the following JSON format:
                           - If 'Already extracted question Number' is empty, start fresh from the beginning of the HTML.
                          - If it is not empty, continue generating from where the last question left off based on the existing data and avoid duplicate Questions.
-                         - Do not generate any questions if already generated required questions and set is_process_completed true.
+                         - Stop and set is_process_completed: true once you have produced exactly {numQuestions} questions.
                          - Preserve all DS_TAGs in HTML content in comments
                          {imageInstruction}
 

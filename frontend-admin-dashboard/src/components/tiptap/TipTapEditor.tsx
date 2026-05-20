@@ -41,6 +41,8 @@ type TipTapEditorProps = {
   editable?: boolean;
   // Optional: trigger to add a table row
   addTableRow?: { nonce: number };
+  // Optional: hide the toolbar entirely (compact / inline use). Editor still accepts input.
+  hideToolbar?: boolean;
 };
 
 export function TipTapEditor({
@@ -53,6 +55,7 @@ export function TipTapEditor({
   insertTextRequest,
   editable = true,
   addTableRow,
+  hideToolbar = false,
 }: TipTapEditorProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -998,7 +1001,7 @@ export function TipTapEditor({
       className={`rounded-md border bg-white shadow-sm ${className || ''}`.trim()}
       style={{ width: '100%', maxHeight: 'inherit', minHeight: 'inherit' }}
     >
-      {editable && (
+      {editable && !hideToolbar && (
         <div className="flex flex-wrap items-center gap-1 overflow-x-auto border-b p-2 text-sm">
           <div className="flex items-center gap-1">
             <button type="button" title="Bold" onClick={() => editor?.chain().focus().toggleBold().run()} className={`rounded px-2 py-1 hover:bg-neutral-100 ${editor?.isActive('bold') ? 'bg-neutral-200' : ''}`}>B</button>
